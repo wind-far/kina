@@ -142,15 +142,29 @@ function buildFeedSrc(n) {
   return `${feedImageBase}/${name}`
 }
 
+/** Fisher–Yates：返回新数组，不打乱入参 */
+function shuffleArray(arr) {
+  const a = arr.slice()
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const t = a[i]
+    a[i] = a[j]
+    a[j] = t
+  }
+  return a
+}
+
 const feedItems = ref(
-  Array.from({ length: 40 }, (_, i) => {
-    const n = i + 1
-    return {
-      n,
-      src: buildFeedSrc(n),
-      alt: `Feed ${n}`,
-    }
-  }),
+  shuffleArray(
+    Array.from({ length: 40 }, (_, i) => {
+      const n = i + 1
+      return {
+        n,
+        src: buildFeedSrc(n),
+        alt: `Feed ${n}`,
+      }
+    }),
+  ),
 )
 
 /** 每张图 natural 尺寸；null 表示未加载，布局按 1:1 占位 */

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 
 // 导入子组件
 import { TypeSelector, type CreationType } from './selectors'
@@ -25,6 +25,12 @@ interface Props {
   showResizeHandle?: boolean
   // 当前面板宽度（用于设置 CSS 变量）
   panelWidth?: number
+  /** 外部同步的提示词（如作品详情当前条目）；与 promptSyncKey 一起变化时写入输入框 */
+  externalPrompt?: string
+  /** 同步键（如当前大图 URL）；变化时用 externalPrompt 覆盖输入，避免与画廊不一致 */
+  promptSyncKey?: string | number
+  /** 初始创作类型（如作品详情内默认「图片生成」） */
+  initialCreationType?: CreationType
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -33,7 +39,10 @@ const props = withDefaults(defineProps<Props>(), {
   defaultExpanded: false,
   popupPlacement: 'auto',
   showResizeHandle: false,
-  panelWidth: 400
+  panelWidth: 400,
+  externalPrompt: undefined,
+  promptSyncKey: undefined,
+  initialCreationType: undefined
 })
 
 // 事件定义
@@ -49,13 +58,15 @@ const emit = defineEmits<{
   }]
   // 面板宽度调整事件
   resize: [width: number]
+  /** 展开状态变化（true=展开），供父级调整预览区留白等 */
+  expandedChange: [expanded: boolean]
 }>()
 
 // 输入内容
 const inputValue = ref('')
 
-// 当前创作类型
-const currentType = ref<CreationType>('agent')
+// 当前创作类型（有 initialCreationType 时与之一致，避免先闪默认 Agent）
+const currentType = ref<CreationType>(props.initialCreationType ?? 'agent')
 
 // 组件引用（用于弹窗互斥）
 const typeSelectorRef = ref<InstanceType<typeof TypeSelector> | null>(null)
@@ -79,6 +90,30 @@ const handleAgentToolbarPanelOpen = () => {
 
 // 内部折叠状态（根据 defaultExpanded 初始化）
 const isCollapsed = ref(!props.defaultExpanded)
+
+watch(
+  () => [props.promptSyncKey, props.externalPrompt] as const,
+  () => {
+    if (props.promptSyncKey === undefined && props.externalPrompt === undefined) return
+    inputValue.value = props.externalPrompt ?? ''
+  },
+  { immediate: true }
+)
+
+watch(
+  () => props.initialCreationType,
+  (t) => {
+    if (t) currentType.value = t
+  }
+)
+
+watch(
+  isCollapsed,
+  (c) => {
+    emit('expandedChange', !c)
+  },
+  { immediate: true }
+)
 
 // 展开输入框
 const expand = () => {

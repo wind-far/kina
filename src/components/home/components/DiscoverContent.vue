@@ -23,7 +23,15 @@
               :key="index"
               :class="['list-item-ZCXUDd', 'animated-iDahmY', getCarouselItemClass(index)]"
             >
-              <div class="carousel-item-etX02e" :data-index="index">
+              <div
+                class="carousel-item-etX02e"
+                :data-index="index"
+                role="button"
+                tabindex="0"
+                @click="openWorkDetailFromCarousel(item, index)"
+                @keydown.enter.prevent="openWorkDetailFromCarousel(item, index)"
+                @keydown.space.prevent="openWorkDetailFromCarousel(item, index)"
+              >
                 <div class="container-bG3PQ9">
                   <div style="transition:opacity 300ms;opacity:1">
                     <img
@@ -95,7 +103,14 @@
         :data-index="index + 1"
         :style="feedTileStyle(index)"
       >
-        <div class="feed-item-IXsc39 feed-item-image-NrtAVV cover-container-zfPgao">
+        <div
+          class="feed-item-IXsc39 feed-item-image-NrtAVV cover-container-zfPgao"
+          role="button"
+          tabindex="0"
+          @click="openWorkDetailFromFeed(item, index)"
+          @keydown.enter.prevent="openWorkDetailFromFeed(item, index)"
+          @keydown.space.prevent="openWorkDetailFromFeed(item, index)"
+        >
           <div class="content-TIH4aR">
             <div class="container-bG3PQ9">
               <div style="transition:opacity 300ms;opacity:1">
@@ -128,6 +143,18 @@ import {
   computeMasonryMetrics,
   masonryScrollHeight,
 } from '@/components/home/discoverMasonryLayout'
+
+const emit = defineEmits(['open-work-detail'])
+
+/**
+ * @param {{
+ *   gallery: Array<{ imageSrc: string, promptText?: string }>
+ *   index: number
+ * } | { imageSrc: string, promptText?: string }} payload
+ */
+function emitOpenWorkDetail(payload) {
+  emit('open-work-detail', payload)
+}
 
 /** 可替换为接口数据；默认 01–40 共 40 张 */
 const feedImageBase = 'https://qwe-oss.oss-cn-beijing.aliyuncs.com/ai-gen'
@@ -306,6 +333,26 @@ const prevSlide = () => {
 
 const goToSlide = (index) => {
   currentSlide.value = index
+}
+
+function openWorkDetailFromFeed(item, index) {
+  emitOpenWorkDetail({
+    gallery: feedItems.value.map((it) => ({
+      imageSrc: it.src,
+      promptText: it.alt,
+    })),
+    index,
+  })
+}
+
+function openWorkDetailFromCarousel(item, index) {
+  emitOpenWorkDetail({
+    gallery: carouselItems.value.map((it) => ({
+      imageSrc: it.image,
+      promptText: it.title,
+    })),
+    index,
+  })
 }
 </script>
 

@@ -377,6 +377,7 @@ body body[lv-theme-version="2.0"][lv-theme=light],html body[lv-theme-version="2.
 body,html {
     --lvv-color-main-default: var(--brand-main-default);
     --lvv-color-text-primary: #ebf8ff;
+    --lvv-color-text-secondary: var(--text-secondary);
     --lvv-color-main-006: #26f8f80f;
     --lvv-color-main-02: #26f8f833;
     --lvv-color-main-hover: var(--brand-main-hover);

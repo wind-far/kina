@@ -89,7 +89,7 @@
             <slot :name="`tab-${index}`" :tab="tab">
               <!-- 默认内容 -->
               <div v-if="index === 0">
-                <DiscoverContent />
+                <DiscoverContent @open-work-detail="$emit('open-work-detail', $event)" />
               </div>
             </slot>
           </div>
@@ -114,7 +114,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['tab-change', 'search'])
+const emit = defineEmits(['tab-change', 'search', 'open-work-detail'])
 
 const activeTab = ref(0)
 const searchText = ref('')

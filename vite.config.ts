@@ -3,12 +3,38 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import fs from 'node:fs/promises'
+import { createAiGatewayPlugin } from './server/ai-gateway/plugin'
 
 const MOCK_AGENT_HTTP_RAW_PATH = path.resolve(__dirname, 'src/views/generate/mocks/http_raw.txt')
 
 const createMockAgentRawPlugin = () => ({
   name: 'mock-agent-http-raw',
   configureServer(server: any) {
+    const register = (targetServer: any) => {
+      targetServer.middlewares.use(async (req: any, res: any, next: any) => {
+        if (req.url !== '/__mock_agent_http_raw') {
+          next()
+          return
+        }
+
+        try {
+          const content = await fs.readFile(MOCK_AGENT_HTTP_RAW_PATH, 'utf8')
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+          res.end(content)
+        } catch (error: any) {
+          res.statusCode = 404
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({
+            message: error?.message || '读取 http_raw.txt 失败',
+          }))
+        }
+      })
+    }
+
+    register(server)
+  },
+  configurePreviewServer(server: any) {
     server.middlewares.use(async (req: any, res: any, next: any) => {
       if (req.url !== '/__mock_agent_http_raw') {
         next()
@@ -36,6 +62,7 @@ export default defineConfig({
   plugins: [
     vue(),
     tailwindcss(),
+    createAiGatewayPlugin(),
     createMockAgentRawPlugin(),
   ],
 

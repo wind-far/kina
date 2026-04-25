@@ -4,7 +4,7 @@
  * 包含 API 配置 + 模型管理，可在任意页面引入使用
  */
 import { ref, watch } from 'vue'
-import { getBaseUrl, setBaseUrl, getApiKey, getEndpoint, setEndpoint } from '@/api/request'
+import { getBaseUrl, setBaseUrl, getApiKey, setApiKey, getEndpoint, setEndpoint } from '@/api/request'
 import { IMAGE_MODELS, VIDEO_MODELS, CHAT_MODELS } from '@/config/models'
 import { getAgentModel, setAgentModel } from '@/api/agent'
 
@@ -51,7 +51,7 @@ const removeModel = (category, index) => {
 
 const save = () => {
   setBaseUrl(apiBaseUrl.value)
-  localStorage.setItem('workflow-api-key', apiKey.value)
+  setApiKey(apiKey.value)
   setEndpoint('chat', chatEndpoint.value)
   setEndpoint('image', imageEndpoint.value)
   setEndpoint('video', videoEndpoint.value)

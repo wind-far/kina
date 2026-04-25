@@ -1,25 +1,27 @@
 /**
  * 流式对话 API（SSE）
- * 通用 async generator，可被 workflow 和 generate 复用
+ * 前端请求同源网关，再由网关转发到第三方聊天接口。
  */
-import { getBaseUrl, getApiKey, getEndpoint } from './request'
+
+import { AI_GATEWAY_REQUEST_PATH, createGatewayPayload } from './ai-gateway'
 
 /**
  * 流式对话补全
  */
 export async function* streamChatCompletions(data: Record<string, unknown>, signal?: AbortSignal) {
-  const apiKey = getApiKey()
-  const baseUrl = getBaseUrl()
-  const endpoint = getEndpoint('chat')
-
-  const response = await fetch(`${baseUrl}${endpoint}`, {
+  const response = await fetch(AI_GATEWAY_REQUEST_PATH, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
     },
-    body: JSON.stringify({ ...data, stream: true }),
-    signal
+    body: JSON.stringify(createGatewayPayload('chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      data: { ...data, stream: true },
+    })),
+    signal,
   })
 
   if (!response.ok) {
@@ -56,7 +58,6 @@ export async function* streamChatCompletions(data: Record<string, unknown>, sign
     }
   }
 
-  // 处理 buffer 中残留的数据
   if (buffer.trim()) {
     for (const line of buffer.split('\n')) {
       const trimmed = line.trim()

@@ -11,11 +11,11 @@ export const createVideoTask = (data: any, options: any = {}) => {
     method: 'post',
     data,
     headers: { 'Content-Type': 'multipart/form-data' }
-  })
+  }, 'video')
 }
 
 export const getVideoTaskStatus = (taskId: string) =>
-  request({ url: `/videos/${taskId}`, method: 'get' })
+  request({ url: `/videos/${taskId}`, method: 'get' }, 'video')
 
 export const pollVideoTask = async (taskId: string, maxAttempts: number = 120, interval: number = 5000) => {
   for (let i = 0; i < maxAttempts; i++) {

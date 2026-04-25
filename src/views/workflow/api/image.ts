@@ -3,7 +3,9 @@
  * 支持 /images/generations 和 /chat/completions 两种协议
  */
 
-import { request, getEndpoint, getBaseUrl, getApiKey } from './request'
+import { request, getEndpoint } from './request'
+import { getUpstreamRequestConfig } from '@/api/provider-config'
+import { AI_GATEWAY_REQUEST_PATH } from '@/api/ai-gateway'
 
 export const generateImage = async (data: any, options: any = {}) => {
   const { requestType = 'json', endpoint } = options
@@ -19,7 +21,7 @@ export const generateImage = async (data: any, options: any = {}) => {
     method: 'post',
     data,
     headers: requestType === 'formdata' ? { 'Content-Type': 'multipart/form-data' } : {}
-  })
+  }, 'image')
 }
 
 /**
@@ -27,22 +29,27 @@ export const generateImage = async (data: any, options: any = {}) => {
  * 从 SSE 流中提取图片 URL 或 base64
  */
 async function generateImageViaChat(data: any, endpoint: string) {
-  const baseUrl = getBaseUrl()
-  const apiKey = getApiKey()
-
   const body = {
     model: data.model,
     messages: [{ role: 'user', content: data.prompt }],
     stream: true
   }
 
-  const response = await fetch(`${baseUrl}${endpoint}`, {
+  const response = await fetch(AI_GATEWAY_REQUEST_PATH, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
+      'Content-Type': 'application/json'
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify({
+      upstream: getUpstreamRequestConfig('image', endpoint),
+      request: {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body,
+      },
+    }),
   })
 
   if (!response.ok) {

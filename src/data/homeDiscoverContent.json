@@ -742,6 +742,24 @@
         "modelLabel": "图片 4.1",
         "aspectRatioLabel": "9:16"
       }
+    },
+    {
+      "id": "feed-41",
+      "imageSrc": "https://qwe-oss.oss-cn-beijing.aliyuncs.com/ai-gen/41.jpeg",
+      "alt": "Feed 41",
+      "promptText": "A dramatic poster of Chen Pingan in the style of Chinese fantasy animation, a young swordsman in a vivid red robe standing alone on the ruined Jianqi Great Wall, red clothes fluttering violently in the wind, long black hair flowing, carrying an ancient sword, calm but resolute expression, youthful face with a mature and battle-worn aura. He stands at the edge of a broken wall above a vast desolate world, with shattered mountains, stormy clouds, flying snow, endless mist, and a ruined defensive frontier symbolizing the last barrier of humankind. The atmosphere is tragic, heroic, lonely, and epic, emphasizing duty, courage, protection, and growth. Chinese xianxia fantasy aesthetics, cinematic lighting, highly detailed, anime illustration, cold gray-blue palette with the bright red robe as the visual focal point, poster composition, vertical movie poster.\n",
+      "user": {
+        "name": "山海入梦",
+        "avatarSrc": ""
+      },
+      "favoriteCount": 178,
+      "detail": {
+        "createDate": "2026-04-22",
+        "aiGeneratedText": "内容由 AI 生成",
+        "promptTipLabel": "图片提示词",
+        "modelLabel": "图片 4.1",
+        "aspectRatioLabel": "9:16"
+      }
     }
   ]
 }

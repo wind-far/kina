@@ -140,14 +140,14 @@ export const useWorkflowOrchestrator = () => {
   }
 
   // 分析用户意图
-  const analyzeIntent = async (userInput: string) => {
+  const analyzeIntent = async (userInput: string, options?: { systemPromptOverride?: string }) => {
     isAnalyzing.value = true
     try {
       let response = ''
       for await (const chunk of streamChatCompletions({
         model: 'gpt-4o',
         messages: [
-          { role: 'system', content: INTENT_ANALYSIS_PROMPT },
+          { role: 'system', content: options?.systemPromptOverride || INTENT_ANALYSIS_PROMPT },
           { role: 'user', content: userInput }
         ]
       })) {

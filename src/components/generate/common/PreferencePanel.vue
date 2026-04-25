@@ -341,21 +341,21 @@ onBeforeUnmount(() => {
          :class="['lv-trigger', 'lv-popover', 'lv-trigger-position-bl', 'popover-hjZ_EM', 'preference-panel-popover', `placement-${actualPlacement}`]"
          :style="{ ...panelStyle, opacity: 1, position: 'fixed', maxWidth: 'unset', display: 'initial', pointerEvents: 'auto', zIndex: 10000 }"
          @click.stop>
-      <div class="lv-popover-content" role="tooltip">
+      <div :class="['lv-popover-content', actualPlacement === 'bottom' ? 'lv-popover-content-bottom' : 'lv-popover-content-top']" role="tooltip">
         <div class="lv-popover-content-inner">
           <div class="lv-popover-inner">
             <div class="lv-popover-inner-content">
-              <div class="fields-Ohpia1 agentic-settings-panel-PW6SXt">
+              <div class="fields-Ohpia1 fields-KlnpPy agentic-settings-panel-PW6SXt agentic-settings-panel-jKGPPr">
                 <!-- 生成偏好 -->
-                <div class="field-lS55rI">
-                  <div class="title-RK9CLE primary-qeUHsW">
+                <div class="field-lS55rI field-MHJGjQ">
+                  <div class="title-RK9CLE title-GC81t8 primary-qeUHsW primary-PY98FX">
                     生成偏好
-                    <div class="extra-XsPrhm">
-                      <div class="container-acAd2k">
+                    <div class="extra-XsPrhm extra-dFtE0Q">
+                      <div class="container-acAd2k container-Flr7LK">
                         自动
                         <button role="switch"
                                 :aria-checked="localAutoMode"
-                                :class="['lv-switch', 'lv-switch-small', 'lv-switch-type-circle', 'switch-xgMSH6', { 'lv-switch-checked': localAutoMode }]"
+                                :class="['lv-switch', 'lv-switch-small', 'lv-switch-type-circle', 'switch-xgMSH6', 'switch-vSSrBM', { 'lv-switch-checked': localAutoMode }]"
                                 type="button"
                                 @click="localAutoMode = !localAutoMode">
                           <div class="lv-switch-dot"></div>
@@ -363,23 +363,23 @@ onBeforeUnmount(() => {
                       </div>
                     </div>
                   </div>
-                  <div :class="['lv-radio-group', 'lv-radio-size-small', 'lv-radio-mode-outline', 'radio-group-nSistg', 'radio-group-A7r8m8', { 'radio-group-disabled-azzH2v': isDisabled }]"
+                  <div :class="['lv-radio-group', 'lv-radio-size-small', 'lv-radio-mode-outline', 'radio-group-nSistg', 'radio-group-A7r8m8', 'radio-group-Qx5UyB', 'radio-group-eK_F9H', { 'radio-group-disabled-azzH2v': isDisabled }]"
                        role="radiogroup">
                     <label class="lv-radio" :class="{ 'lv-radio-checked': preferenceType === 'image' }">
                       <input type="radio" value="image" class="sf-hidden" v-model="preferenceType" :disabled="isDisabled">
-                      <div :class="['radio-yGzTi5', { 'checked-KVSAoI': preferenceType === 'image' }]">图片</div>
+                      <div :class="['radio-yGzTi5', 'radio-nJ4pYo', { 'checked-KVSAoI checked-TSy7WC': preferenceType === 'image' }]">图片</div>
                     </label>
                     <label class="lv-radio" :class="{ 'lv-radio-checked': preferenceType === 'video' }">
                       <input type="radio" value="video" class="sf-hidden" v-model="preferenceType" :disabled="isDisabled">
-                      <div :class="['radio-yGzTi5', { 'checked-KVSAoI': preferenceType === 'video' }]">视频</div>
+                      <div :class="['radio-yGzTi5', 'radio-nJ4pYo', { 'checked-KVSAoI checked-TSy7WC': preferenceType === 'video' }]">视频</div>
                     </label>
                   </div>
                 </div>
 
                 <!-- 选择比例 -->
-                <div class="field-lS55rI">
-                  <div class="title-RK9CLE secondary-IGs0cX">选择比例</div>
-                  <div :class="['lv-radio-group', 'lv-radio-size-small', 'lv-radio-mode-outline', 'radio-group-nSistg', 'radio-group-csT79P', { 'aspect-ratio-radio-group-disabled-d5D3ro': isDisabled }]"
+                <div class="field-lS55rI field-MHJGjQ">
+                  <div class="title-RK9CLE title-GC81t8 secondary-IGs0cX secondary-oFxtL_">选择比例</div>
+                  <div :class="['lv-radio-group', 'lv-radio-size-small', 'lv-radio-mode-outline', 'radio-group-nSistg', 'radio-group-csT79P', 'radio-group-Qx5UyB', 'radio-group-x5S5vB', { 'aspect-ratio-radio-group-disabled-d5D3ro': isDisabled }]"
                        role="radiogroup">
                     <label v-for="option in aspectRatioOptions"
                            :key="option.value"
@@ -390,8 +390,8 @@ onBeforeUnmount(() => {
                              class="sf-hidden"
                              v-model="currentAspectRatio"
                              :disabled="isDisabled">
-                      <div :class="['radio-yGzTi5', { 'checked-KVSAoI': currentAspectRatio === option.value }]">
-                        <div class="radio-content-qJGArn">
+                      <div :class="['radio-yGzTi5', 'radio-nJ4pYo', { 'checked-KVSAoI checked-TSy7WC': currentAspectRatio === option.value }]">
+                        <div class="radio-content-qJGArn radio-content-yd1Iv0">
                           <!-- 智能图标 -->
                           <svg v-if="option.value === 'auto'" width="16" height="16" viewBox="0 0 24 24"
                                preserveAspectRatio="xMidYMid meet" fill="none" role="presentation"
@@ -482,7 +482,7 @@ onBeforeUnmount(() => {
                                     clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
                             </g>
                           </svg>
-                          <span class="label-l6Zq3t">{{ option.label }}</span>
+                          <span class="label-l6Zq3t label-P9Pef1">{{ option.label }}</span>
                         </div>
                       </div>
                     </label>
@@ -490,13 +490,13 @@ onBeforeUnmount(() => {
                 </div>
 
                 <!-- 其他设置 -->
-                <div class="field-lS55rI">
-                  <div class="title-RK9CLE secondary-IGs0cX">其他设置</div>
-                  <div class="other-settings-k8Nb2R">
+                <div class="field-lS55rI field-MHJGjQ">
+                  <div class="title-RK9CLE title-GC81t8 secondary-IGs0cX secondary-oFxtL_">其他设置</div>
+                  <div class="other-settings-k8Nb2R other-settings-ZxX9lM">
                     <!-- 模型选择按钮 -->
                     <button ref="modelTriggerRef"
                             tabindex="0"
-                            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'trigger-button-HdTM8H', 'model-select-mx2Aeo', { 'trigger-button-disabled-cJzDE3': isDisabled }]"
+                            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'trigger-button-HdTM8H', 'trigger-button-N_YSvF', 'model-select-mx2Aeo', 'model-select-HWM8up', { 'trigger-button-disabled-cJzDE3': isDisabled }]"
                             type="button"
                             @click.stop="toggleModelSelect">
                       <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet"
@@ -553,7 +553,7 @@ onBeforeUnmount(() => {
                          aria-autocomplete="list"
                          :aria-expanded="isResolutionSelectOpen"
                          tabindex="0"
-                         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'resolution-select-BKucmm', 'select-joF5y7', { 'resolution-select-disabled-EoEwFj': isDisabled }]"
+                         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'resolution-select-BKucmm', 'resolution-select-JQy4Sm', 'select-joF5y7', { 'resolution-select-disabled-EoEwFj': isDisabled }]"
                          @click.stop="toggleResolutionSelect">
                       <div class="lv-select-view">
                         <span class="lv-select-view-selector">
@@ -580,7 +580,7 @@ onBeforeUnmount(() => {
                                 </g>
                               </svg>
                             </span>
-                            <div class="commercial-content-vye33D">{{ currentResolutionLabel }}</div>
+                            <div class="commercial-content-vye33D commercial-content-BMmP_Y">{{ currentResolutionLabel }}</div>
                           </span>
                         </span>
                         <div aria-hidden="true" class="lv-select-suffix">
@@ -636,6 +636,189 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.fields-KlnpPy {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.agentic-settings-panel-jKGPPr {
+  --agentic-generator-settings-opacity: 0.5;
+}
+
+.field-MHJGjQ {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.title-GC81t8 {
+  display: flex;
+  font-family: var(--alphanumeric-font-family);
+}
+
+.title-GC81t8.primary-PY98FX {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  height: 22px;
+  line-height: 22px;
+}
+
+.title-GC81t8.secondary-oFxtL_ {
+  color: var(--text-placeholder);
+  font-size: 12px;
+  font-weight: 400;
+  height: 12px;
+  line-height: 12px;
+}
+
+.extra-dFtE0Q {
+  flex: 1 1;
+}
+
+.container-Flr7LK {
+  align-items: center;
+  color: var(--text-secondary);
+  display: flex;
+  font-size: 12px;
+  font-weight: 400;
+  gap: 4px;
+  justify-content: flex-end;
+  line-height: 20px;
+}
+
+.switch-vSSrBM {
+  margin-left: 8px;
+}
+
+.lv-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  box-shadow: none;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  outline: none;
+  padding: 0;
+}
+
+.radio-group-Qx5UyB {
+  align-items: center;
+  background: var(--bg-block-secondary-default);
+  border-radius: var(--radio-group-border-radius);
+  display: flex;
+  gap: 2px;
+  justify-content: space-around;
+  padding: 2px;
+}
+
+.radio-group-Qx5UyB.lv-radio-group .lv-radio {
+  border-radius: calc(var(--radio-group-border-radius) - 2px);
+  height: 100%;
+  margin-right: 0;
+  overflow: hidden;
+  padding-left: 0;
+  width: 100%;
+}
+
+.radio-group-eK_F9H {
+  height: 36px;
+  --radio-group-border-radius: 10px;
+}
+
+.radio-group-x5S5vB {
+  height: 60px;
+  --radio-group-border-radius: 12px;
+}
+
+.radio-nJ4pYo {
+  align-items: center;
+  background-color: transparent;
+  color: var(--text-secondary);
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  transition: color .1s linear, background-color .1s linear;
+  width: 100%;
+}
+
+.radio-nJ4pYo:hover,
+.radio-nJ4pYo:active {
+  background-color: var(--component-segmented-control-hover);
+}
+
+.radio-nJ4pYo.checked-TSy7WC {
+  background-color: var(--component-segmented-control-selected);
+  color: var(--radio-checked-text-color, var(--text-primary));
+}
+
+.radio-content-yd1Iv0 {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  justify-content: center;
+  width: 48px;
+}
+
+.label-P9Pef1 {
+  height: 12px;
+  line-height: 12px;
+}
+
+.other-settings-ZxX9lM {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.other-settings-ZxX9lM .lv-select-view {
+  display: flex;
+  justify-content: center;
+}
+
+.other-settings-ZxX9lM .lv-select-view .lv-select-view-selector {
+  width: unset !important;
+}
+
+.trigger-button-N_YSvF {
+  flex: 1 1;
+}
+
+.model-select-HWM8up.lv-btn.lv-btn-size-default:not(.lv-btn-size-default.lv-btn-icon-only):not(.lv-btn-shape-circle) {
+  padding: 0;
+}
+
+.trigger-button-N_YSvF.lv-btn-secondary:not(.lv-btn-disabled) {
+  background: var(--bg-block-primary-default);
+  color: var(--text-primary);
+}
+
+.trigger-button-N_YSvF.lv-btn-secondary:not(.lv-btn-disabled):not(.lv-btn-loading):focus-visible,
+.trigger-button-N_YSvF.lv-btn-secondary:not(.lv-btn-disabled):not(.lv-btn-loading):hover {
+  background: var(--bg-block-primary-hover);
+  box-shadow: none;
+  color: var(--text-primary);
+}
+
+.trigger-button-N_YSvF.lv-btn-secondary:not(.lv-btn-disabled):not(.lv-btn-loading):active {
+  background: var(--bg-block-primary-pressed);
+  color: var(--text-primary);
+}
+
+.resolution-select-JQy4Sm {
+  flex: 1 1;
+}
+
+.commercial-content-BMmP_Y {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
+
 /* 箭头图标旋转 */
 .arrow-icon-T9MGzD {
   transition: transform 0.1s linear;

@@ -10,6 +10,7 @@ import { streamChatCompletions } from '@/api/chat'
 import { getAgentModel } from '@/api/agent'
 import { generateImage } from '@/views/workflow/api/image'
 import { getAllImageModels } from '@/config/models'
+import { buildAgentChatMessages } from '@/config/agentSkills'
 import type { CreationType } from '../../components/generate/selectors'
 
 const route = useRoute()
@@ -30,6 +31,7 @@ interface GeneratingRecord {
   resolution: string
   duration: string
   feature: string
+  skill: string
   content: string
   images: string[]
   done: boolean
@@ -58,7 +60,7 @@ const formatGroupLabel = (date: Date): string => {
 }
 
 // 处理发送事件
-const handleSend = (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string }) => {
+const handleSend = (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string }) => {
   const record: GeneratingRecord = {
     id: nextId++,
     type,
@@ -70,6 +72,7 @@ const handleSend = (message: string, type: CreationType, options?: { model?: str
     resolution: options?.resolution || '',
     duration: options?.duration || '',
     feature: options?.feature || '',
+    skill: options?.skill || 'general',
     content: '',
     images: [],
     done: false,
@@ -152,7 +155,7 @@ const runAgentStream = async (record: GeneratingRecord) => {
   try {
     const stream = streamChatCompletions({
       model: getAgentModel(),
-      messages: [{ role: 'user', content: record.prompt }]
+      messages: buildAgentChatMessages(record.skill, record.prompt)
     })
     for await (const chunk of stream) {
       buffer += chunk
@@ -183,12 +186,12 @@ const handlePageClick = (e: MouseEvent) => {
 // 修复滚动方向反转问题 + 控制输入框折叠/展开
 onMounted(() => {
   // 检查路由参数（从首页跳转过来的发送请求）
-  const { message, type, model, ratio, resolution } = route.query
+  const { message, type, model, ratio, resolution, skill } = route.query
   if (message && type) {
     handleSend(
       message as string,
       type as CreationType,
-      { model: model as string, ratio: ratio as string, resolution: resolution as string }
+      { model: model as string, ratio: ratio as string, resolution: resolution as string, skill: skill as string }
     )
     // 清除 query 参数，避免刷新重复创建
     router.replace({ path: '/generate' })

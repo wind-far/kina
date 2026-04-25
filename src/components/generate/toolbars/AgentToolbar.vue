@@ -299,7 +299,7 @@ const toggleCreativeDesign = () => {
     </span>
 
     <!-- 技能选择弹窗 -->
-    <SelectPopup v-model:visible="isSkillSelectOpen" :trigger-ref="skillTriggerRef" :placement="placement" title="">
+    <SelectPopup v-model:visible="isSkillSelectOpen" :trigger-ref="skillTriggerRef" :placement="placement" popup-class="skill-select-popup-shell-dark-X2p9Qa" title="">
       <div class="skill-select-shell-P9dLm4">
         <div class="skill-select-title-T5mQ2s">选择技能</div>
         <ul class="lv-select-popup-inner skill-select-popup-J8Tukj">
@@ -419,7 +419,7 @@ const toggleCreativeDesign = () => {
 
 .skill-select-k92QxV .lv-select-view-value {
   gap: 6px;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--text-primary);
 }
 
 .skill-select-k92QxV .lv-select-view-value > svg {
@@ -427,7 +427,7 @@ const toggleCreativeDesign = () => {
 }
 
 .skill-select-k92QxV .lv-select-arrow-icon {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--text-placeholder);
 }
 
 .skill-select-k92QxV.active-P7cL4x .lv-select-view,
@@ -440,11 +440,11 @@ const toggleCreativeDesign = () => {
   transform: rotate(180deg);
 }
 
-.lv-select-popup:has(.skill-select-shell-P9dLm4) {
+.skill-select-popup-shell-dark-X2p9Qa {
   border-radius: 18px;
-  border-color: rgba(255, 255, 255, 0.08);
-  background: #1d1f24;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+  border-color: var(--stroke-tertiary);
+  background: var(--bg-dropdown-menu);
+  box-shadow: var(--shadow-dropdown-menu);
   padding: 0;
 }
 
@@ -462,7 +462,7 @@ const toggleCreativeDesign = () => {
 
 .skill-select-title-T5mQ2s {
   padding: 2px 8px 10px;
-  color: rgba(255, 255, 255, 0.38);
+  color: var(--text-placeholder);
   font-size: 12px;
   line-height: 18px;
 }
@@ -480,7 +480,7 @@ const toggleCreativeDesign = () => {
 }
 
 .skill-option-vV8DvA:hover {
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--bg-block-primary-hover);
 }
 
 .skill-option-selected-U7rKf2 {
@@ -500,7 +500,7 @@ const toggleCreativeDesign = () => {
   justify-content: center;
   width: 16px;
   height: 16px;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text-primary);
 }
 
 .skill-option-content-EZ4xS5 {
@@ -512,7 +512,7 @@ const toggleCreativeDesign = () => {
 }
 
 .skill-option-title-r6mY8X {
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 500;
   line-height: 18px;
@@ -521,7 +521,7 @@ const toggleCreativeDesign = () => {
 }
 
 .skill-option-description-t34hRc {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 16px;
   flex: 1;

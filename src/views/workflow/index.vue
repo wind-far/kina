@@ -17,6 +17,7 @@ import { WORKFLOW_TEMPLATES } from './config/workflows'
 import SettingsDialog from '@/components/common/ApiSettingsDialog.vue'
 import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import { useWorkflowOrchestrator } from './composables/useWorkflowOrchestrator'
+import { buildAgentWorkflowStrategy } from '@/config/agentSkills'
 
 // 节点组件
 import TextNode from './components/nodes/TextNode.vue'
@@ -147,16 +148,23 @@ const onEdgesChange = (changes) => {
 const onPaneClick = () => { showNodeMenu.value = false }
 
 // 处理内容生成器发送（使用工作流编排器）
-const handlePromptSend = async (message, type) => {
+const handlePromptSend = async (message, type, options) => {
   const cx = -viewport.value.x / viewport.value.zoom + (window.innerWidth / 2) / viewport.value.zoom
   const cy = -viewport.value.y / viewport.value.zoom + (window.innerHeight / 2) / viewport.value.zoom
   const position = { x: cx - 300, y: cy - 100 }
 
   if (type === 'agent') {
-    // agent 类型：意图分析 + 自动编排执行
+    // agent 类型：根据技能选择不同提示词模板或工作流
     try {
-      const intent = await analyzeIntent(message)
-      await executeWorkflow(intent, position)
+      const strategy = buildAgentWorkflowStrategy(options?.skill || 'general', message)
+      if (strategy.mode === 'direct') {
+        await executeWorkflow(strategy.params, position)
+      } else {
+        const intent = await analyzeIntent(strategy.userInput, {
+          systemPromptOverride: strategy.systemPrompt
+        })
+        await executeWorkflow(intent, position)
+      }
     } catch (err) {
       console.error('工作流执行失败:', err)
     }

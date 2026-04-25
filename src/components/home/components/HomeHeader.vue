@@ -34,6 +34,7 @@ const handleSend = (message, type, options) => {
       message,
       type,
       ...(options?.model && { model: options.model }),
+      ...(options?.skill && { skill: options.skill }),
       ...(options?.ratio && { ratio: options.ratio }),
       ...(options?.resolution && { resolution: options.resolution })
     }

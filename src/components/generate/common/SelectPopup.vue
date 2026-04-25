@@ -14,11 +14,14 @@ interface Props {
   title?: string
   // 弹出方向：top-向上, bottom-向下, auto-自动计算
   placement?: Placement
+  // 追加到弹窗外层的自定义类名
+  popupClass?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   title: '',
-  placement: 'auto'
+  placement: 'auto',
+  popupClass: ''
 })
 
 // Emits 定义
@@ -150,7 +153,7 @@ onUnmounted(() => {
   <Teleport to="body">
     <div v-if="visible"
          ref="popupRef"
-         :class="['lv-select-popup', `placement-${actualPlacement}`]"
+         :class="['lv-select-popup', `placement-${actualPlacement}`, props.popupClass]"
          tabindex="-1"
          :style="{
            position: 'fixed',

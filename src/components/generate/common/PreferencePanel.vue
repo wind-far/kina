@@ -156,11 +156,15 @@ const panelStyle = ref<{
   transformOrigin?: string
 }>({})
 
+// 面板元素引用，用于读取真实宽度并避免写死定位
+const panelRef = ref<HTMLElement | null>(null)
+
 // 实际弹出方向（用于样式控制）
 const actualPlacement = ref<'top' | 'bottom'>('top')
 
 // 预估面板高度（用于自动计算方向）
 const ESTIMATED_PANEL_HEIGHT = 400
+const ESTIMATED_PANEL_WIDTH = 484
 
 // 计算最佳弹出方向
 const calculateBestPlacement = (): 'top' | 'bottom' => {
@@ -214,10 +218,16 @@ const calculatePosition = () => {
   if (!props.triggerRef) return
 
   const triggerRect = props.triggerRef.getBoundingClientRect()
-  const panelWidth = 484
+  const panelWidth = panelRef.value?.offsetWidth || ESTIMATED_PANEL_WIDTH
+  const triggerCenterX = triggerRect.left + triggerRect.width / 2
 
-  // 计算左对齐位置
-  let left = triggerRect.left
+  // 以触发器中心点定位，再根据面板真实宽度做边界纠偏
+  let left = triggerCenterX - panelWidth / 2
+
+  // 确保不超出屏幕左边界
+  if (left < 20) {
+    left = 20
+  }
 
   // 确保不超出屏幕右边界
   if (left + panelWidth > window.innerWidth - 20) {
@@ -236,7 +246,7 @@ const calculatePosition = () => {
       top: `${top}px`,
       left: `${left}px`,
       transform: 'none',
-      transformOrigin: '15px 0px 0px'
+      transformOrigin: `${triggerCenterX - left}px 0px 0px`
     }
   } else {
     // 向上弹出：面板显示在触发器上方
@@ -246,7 +256,7 @@ const calculatePosition = () => {
       top: `${top}px`,
       left: `${left}px`,
       transform: 'translateY(-100%)',
-      transformOrigin: '15px 100% 0px'
+      transformOrigin: `${triggerCenterX - left}px 100% 0px`
     }
   }
 }
@@ -319,7 +329,9 @@ const handleClickOutside = (e: MouseEvent) => {
 // 监听 visible 变化
 watch(() => props.visible, (newVal) => {
   if (newVal) {
-    calculatePosition()
+    requestAnimationFrame(() => {
+      calculatePosition()
+    })
     closeAllSubPopups()
   }
 })
@@ -327,17 +339,20 @@ watch(() => props.visible, (newVal) => {
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   window.addEventListener('resize', calculatePosition)
+  window.addEventListener('scroll', calculatePosition, true)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
   window.removeEventListener('resize', calculatePosition)
+  window.removeEventListener('scroll', calculatePosition, true)
 })
 </script>
 
 <template>
   <Teleport to="body">
     <div v-if="visible"
+         ref="panelRef"
          :class="['lv-trigger', 'lv-popover', 'lv-trigger-position-bl', 'popover-hjZ_EM', 'preference-panel-popover', `placement-${actualPlacement}`]"
          :style="{ ...panelStyle, opacity: 1, position: 'fixed', maxWidth: 'unset', display: 'initial', pointerEvents: 'auto', zIndex: 10000 }"
          @click.stop>
@@ -636,6 +651,14 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.preference-panel-popover :deep(.lv-popover-content-top) {
+  transform: none;
+}
+
+.preference-panel-popover :deep(.lv-popover-content-bottom) {
+  transform: none;
+}
+
 .fields-KlnpPy {
   display: flex;
   flex-direction: column;

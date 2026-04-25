@@ -10,6 +10,7 @@ type Placement = 'top' | 'bottom' | 'auto'
 
 // 布局模式类型
 type LayoutMode = 'default' | 'sidebar'
+type SurfaceVariant = 'default' | 'home'
 
 // Props 定义
 interface Props {
@@ -31,6 +32,8 @@ interface Props {
   promptSyncKey?: string | number
   /** 初始创作类型（如作品详情内默认「图片生成」） */
   initialCreationType?: CreationType
+  /** 展示变体：首页可使用差异化按钮样式 */
+  variant?: SurfaceVariant
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -42,7 +45,8 @@ const props = withDefaults(defineProps<Props>(), {
   panelWidth: 400,
   externalPrompt: undefined,
   promptSyncKey: undefined,
-  initialCreationType: undefined
+  initialCreationType: undefined,
+  variant: 'home'
 })
 
 // 事件定义
@@ -233,6 +237,8 @@ const placeholder = computed(() => {
 
 // 是否为侧边栏模式
 const isSidebar = computed(() => props.layout === 'sidebar')
+// 默认将非侧边栏场景统一成新版样式，侧边栏仍保留紧凑布局
+const isHomeVariant = computed(() => !isSidebar.value && props.variant === 'home')
 
 // 根据折叠状态和布局模式返回不同的高度
 const promptControlHeight = computed(() => {
@@ -530,11 +536,30 @@ onUnmounted(() => {
             {{ priceText }}
           </div>
           <div>
-            <button :class="['lv-btn', 'lv-btn-primary', 'lv-btn-size-default', 'lv-btn-shape-circle', 'lv-btn-icon-only', 'button-lc3WzE', 'submit-button-KJTUYS', collapsedSubmitButtonClass, { 'collapsed-WjKggt': isCollapsed, 'expand-transition-start-ejnjPm': !isCollapsed, 'lv-btn-disabled': isSubmitDisabled }]"
+            <button :class="['lv-btn', 'lv-btn-primary', 'lv-btn-size-default', 'lv-btn-shape-circle', 'lv-btn-icon-only', 'button-lc3WzE', 'submit-button-KJTUYS', collapsedSubmitButtonClass, { 'collapsed-WjKggt': isCollapsed, 'expand-transition-start-ejnjPm': !isCollapsed, 'lv-btn-disabled': isSubmitDisabled, 'home-submit-button-Fk2nQa': isHomeVariant }]"
                     :disabled="isSubmitDisabled"
                     type="button"
                     @click.stop="handleSubmit">
-              <svg fill="none" height="1em"
+              <svg v-if="isHomeVariant"
+                   fill="none"
+                   height="20"
+                   preserveAspectRatio="xMidYMid meet"
+                   role="presentation"
+                   viewBox="0 0 24 24"
+                   width="20"
+                   xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 15.6V8.9"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-width="2"></path>
+                <path d="M9.35 11.55 12 8.9l2.65 2.65"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"></path>
+              </svg>
+              <svg v-else
+                   fill="none" height="1em"
                    preserveAspectRatio="xMidYMid meet"
                    role="presentation" viewBox="0 0 24 24"
                    width="1em" xmlns="http://www.w3.org/2000/svg">
@@ -613,11 +638,31 @@ onUnmounted(() => {
             {{ priceText }}
           </div>
           <div>
-            <button :class="['lv-btn', 'lv-btn-primary', 'lv-btn-size-default', 'lv-btn-shape-circle', 'lv-btn-icon-only', 'button-lc3WzE', 'submit-button-KJTUYS', isSidebar ? 'submit-button-qiVtq5' : 'submit-button-CpjScj', { 'collapsed-WjKggt': isCollapsed, 'expand-transition-start-ejnjPm': !isCollapsed, 'lv-btn-disabled': isSubmitDisabled }]"
+            <button :class="['lv-btn', 'lv-btn-primary', 'lv-btn-size-default', 'lv-btn-shape-circle', 'lv-btn-icon-only', 'button-lc3WzE', 'submit-button-KJTUYS', isSidebar ? 'submit-button-qiVtq5' : 'submit-button-CpjScj', { 'collapsed-WjKggt': isCollapsed, 'expand-transition-start-ejnjPm': !isCollapsed, 'lv-btn-disabled': isSubmitDisabled, 'home-submit-button-Fk2nQa': isHomeVariant }]"
                     :disabled="isSubmitDisabled"
                     type="button"
                     @click.stop="handleSubmit">
-              <svg fill="none" height="1em"
+              <!-- 首页按钮使用更接近参考图的直箭头图标 -->
+              <svg v-if="isHomeVariant"
+                   fill="none"
+                   height="20"
+                   preserveAspectRatio="xMidYMid meet"
+                   role="presentation"
+                   viewBox="0 0 24 24"
+                   width="20"
+                   xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 15.6V8.9"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-width="2"></path>
+                <path d="M9.35 11.55 12 8.9l2.65 2.65"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"></path>
+              </svg>
+              <svg v-else
+                   fill="none" height="1em"
                    preserveAspectRatio="xMidYMid meet"
                    role="presentation" viewBox="0 0 24 24"
                    width="1em" xmlns="http://www.w3.org/2000/svg">
@@ -637,4 +682,33 @@ onUnmounted(() => {
 <style>
 /* 引入全局样式，不使用 scoped */
 @import "../../views/generate/generate.css";
+
+/* 统一新版发送按钮样式：普通布局走反转圆钮，侧边栏保持原样 */
+.dimension-layout-FUl4Nj .home-submit-button-Fk2nQa.lv-btn.lv-btn-primary {
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: var(--text-primary);
+  color: var(--inverse-text-primary);
+  box-shadow: none;
+}
+
+.dimension-layout-FUl4Nj .home-submit-button-Fk2nQa.lv-btn.lv-btn-primary:not(.lv-btn-disabled):hover {
+  background: color-mix(in srgb, var(--text-primary) 92%, var(--bg-body));
+  color: var(--inverse-text-primary);
+}
+
+.dimension-layout-FUl4Nj .home-submit-button-Fk2nQa.lv-btn.lv-btn-primary:not(.lv-btn-disabled):active {
+  background: color-mix(in srgb, var(--text-primary) 84%, var(--bg-body));
+}
+
+.dimension-layout-FUl4Nj .home-submit-button-Fk2nQa.lv-btn.lv-btn-primary.lv-btn-disabled {
+  background: color-mix(in srgb, var(--text-primary) 28%, transparent);
+  color: color-mix(in srgb, var(--inverse-text-primary) 72%, transparent);
+}
+
+.dimension-layout-FUl4Nj .home-submit-button-Fk2nQa > svg {
+  width: 20px;
+  height: 20px;
+}
 </style>

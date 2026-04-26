@@ -57,6 +57,11 @@ body,html {
     --canvas-float-backdrop-blur: 32px
 }
 
+/* 抬高消息提示层级，避免被自定义详情弹层覆盖。 */
+.el-message {
+    z-index: 30001 !important;
+}
+
 body [data-lv-theme-force=dark],body [lv-theme=dark],body body[lv-theme-version="2.0"],html [data-lv-theme-force=dark],html [lv-theme=dark],html body[lv-theme-version="2.0"] {
     --bg-black: #000;
     --bg-body: #0f0f12;

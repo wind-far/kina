@@ -55,7 +55,8 @@
                                    crossorigin="anonymous"
                                    draggable="false"
                                    loading="lazy"
-                                   :src="url" />
+                                   :src="url"
+                                   @click.stop="handlePreview(i)" />
                             </div>
                           </div>
                         </div>
@@ -205,7 +206,11 @@ const props = defineProps({
   error: { type: String, default: '' }
 })
 
-defineEmits(['edit', 'regenerate', 'more'])
+const emit = defineEmits(['edit', 'regenerate', 'more', 'preview'])
+
+const handlePreview = (index) => {
+  emit('preview', index)
+}
 
 const currentProgress = ref(props.progress)
 let timer = null

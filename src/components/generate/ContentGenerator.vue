@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted, watch } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { useLoginModalStore } from '@/stores/login-modal'
 
 // 导入子组件
 import { TypeSelector, type CreationType } from './selectors'
@@ -69,6 +71,10 @@ const emit = defineEmits<{
 
 // 输入内容
 const inputValue = ref('')
+
+// 登录态与全局登录弹窗。
+const authStore = useAuthStore()
+const { openLoginModal } = useLoginModalStore()
 
 // 当前创作类型（有 initialCreationType 时与之一致，避免先闪默认 Agent）
 const currentType = ref<CreationType>(props.initialCreationType ?? 'agent')
@@ -165,6 +171,12 @@ const handleKeydown = (e: KeyboardEvent) => {
 const handleSubmit = () => {
   const message = inputValue.value.trim()
   if (!message) return
+
+  // 未登录时直接弹出登录框，并保留当前输入内容。
+  if (!authStore.isLoggedIn.value) {
+    openLoginModal('content-generator-submit')
+    return
+  }
 
   // 触发发送事件
   if (currentType.value === 'image' && imageToolbarRef.value) {

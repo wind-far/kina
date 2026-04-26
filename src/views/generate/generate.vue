@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { ElMessage } from 'element-plus'
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SideMenu from '../../components/home/components/SideMenu.vue'
 import ContentGenerator from '../../components/generate/ContentGenerator.vue'
 import ImageLoadingRecord from '../../components/generate/common/ImageLoadingRecord.vue'
 import AgentLoadingRecord from '../../components/generate/common/AgentLoadingRecord.vue'
+import ImagePreview from '@/components/ImagePreview.vue'
 import ApiSettingsDialog from '@/components/common/ApiSettingsDialog.vue'
 import { streamChatCompletions } from '@/api/chat'
 import { getAgentModel } from '@/api/agent'
@@ -28,6 +30,8 @@ import type {
   AgentTaskStep,
 } from '@/types/agent'
 import { useWorkflowOrchestrator } from '@/views/workflow/composables/useWorkflowOrchestrator'
+import { AUTH_LOGIN_SUCCESS_EVENT, useAuthStore } from '@/stores/auth'
+import { useLoginModalStore } from '@/stores/login-modal'
 import GenerateAgentRecord from './components/GenerateAgentRecord.vue'
 import {
   clearMockAgentTask,
@@ -41,6 +45,8 @@ import {
 const route = useRoute()
 const router = useRouter()
 const { analyzeIntent } = useWorkflowOrchestrator()
+const authStore = useAuthStore()
+const { openLoginModal } = useLoginModalStore()
 
 // ContentGenerator 组件引用
 const contentGeneratorRef = ref<InstanceType<typeof ContentGenerator> | null>(null)
@@ -66,16 +72,77 @@ interface GeneratingRecord {
   agentTaskId?: string
   agentRun?: AgentRunState
 }
+
+interface GeneratePreviewImageItem {
+  id: string
+  src: string
+  promptText?: string
+  modelLabel?: string
+  aspectRatioLabel?: string
+  resolutionLabel?: string
+  featureLabel?: string
+  createDate?: string
+}
 const generatingRecords = ref<GeneratingRecord[]>([])
 let nextId = 0
 const recordPersistTimers = new Map<number, ReturnType<typeof setTimeout>>()
 const recordPersistInflight = new Set<number>()
+const previewVisible = ref(false)
+const previewIndex = ref(0)
+const previewImages = ref<GeneratePreviewImageItem[]>([])
 
 const feedImagePool: AgentImageResult[] = (discoverContent.feedItems || []).map((item, index) => ({
   id: item.id || `feed-image-${index + 1}`,
   imageSrc: item.imageSrc,
   promptText: item.promptText || item.alt,
 }))
+
+const buildPreviewImagesFromRecord = (record: GeneratingRecord): GeneratePreviewImageItem[] => {
+  return (record.images || []).map((imageUrl, index) => ({
+    id: `${record.id}-${index + 1}`,
+    src: imageUrl,
+    promptText: record.prompt,
+    modelLabel: record.model,
+    aspectRatioLabel: record.ratio,
+    resolutionLabel: record.resolution,
+    featureLabel: record.feature,
+    createDate: record.time,
+  }))
+}
+
+const handlePreviewRecordImage = (record: GeneratingRecord, index: number) => {
+  if (!record.done || !record.images.length) {
+    return
+  }
+
+  previewImages.value = buildPreviewImagesFromRecord(record)
+  previewIndex.value = Math.min(Math.max(0, index), Math.max(0, previewImages.value.length - 1))
+  previewVisible.value = true
+}
+
+const handlePreviewDownload = async (image: GeneratePreviewImageItem) => {
+  const anchor = document.createElement('a')
+  anchor.href = image.src
+  anchor.download = `generate-${Date.now()}.png`
+  anchor.rel = 'noopener'
+  anchor.click()
+}
+
+const handlePreviewFavorite = () => {
+  ElMessage.success('生成页预览暂不支持收藏入库')
+}
+
+const handlePreviewPublish = () => {
+  ElMessage.success('请前往资产页或发布流程继续操作')
+}
+
+const handlePreviewGenerateVideo = () => {
+  ElMessage.success('生视频能力请在资产页详情中使用')
+}
+
+const handlePreviewEditInCanvas = () => {
+  ElMessage.success('请前往画布页继续编辑')
+}
 
 type AgentStepStatus = AgentTaskStep['status']
 
@@ -508,6 +575,32 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
   agentRun: record.agentRun,
 })
 
+
+// 将后端持久化后的正式资源地址回写到当前记录，避免重复提交 base64 或上游临时链接。
+const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGenerationRecord) => {
+  record.dbId = saved.id
+  record.content = saved.content
+  record.error = saved.error
+  record.done = saved.done
+  record.images = Array.isArray(saved.images) ? [...saved.images] : []
+
+  if (!record.agentRun) return
+
+  const persistedImages = saved.agentRun?.result?.images || []
+  const currentImages = record.agentRun.result?.images || []
+
+  record.agentRun = {
+    ...record.agentRun,
+    result: {
+      ...record.agentRun.result,
+      images: persistedImages.map((image, index) => ({
+        ...image,
+        promptText: currentImages[index]?.promptText || image.promptText,
+      })),
+    },
+  }
+}
+
 // 立即持久化一条记录；创建与更新都走这里统一收口。
 const persistRecordNow = async (record: GeneratingRecord) => {
   if (recordPersistInflight.has(record.id)) return
@@ -516,11 +609,12 @@ const persistRecordNow = async (record: GeneratingRecord) => {
   try {
     if (!record.dbId) {
       const saved = await createGenerationRecordRequest(toGenerationRecordPayload(record))
-      record.dbId = saved.id
+      syncRecordWithPersisted(record, saved)
       return
     }
 
-    await updateGenerationRecordRequest(record.dbId, toGenerationRecordPayload(record))
+    const saved = await updateGenerationRecordRequest(record.dbId, toGenerationRecordPayload(record))
+    syncRecordWithPersisted(record, saved)
   } catch {
     // 持久化失败时不影响当前页面的生成流程。
   } finally {
@@ -573,8 +667,14 @@ const loadPersistedGeneratingRecords = async () => {
   }
 }
 
+
 // 处理发送事件
 const handleSend = (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string }) => {
+  if (!authStore.isLoggedIn.value) {
+    openLoginModal('generate-send-guard')
+    return
+  }
+
   const recordId = nextId++
   const record: GeneratingRecord = {
     id: recordId,
@@ -1174,6 +1274,9 @@ const runAgentStream = async (record: GeneratingRecord) => {
 // 上一次滚动位置
 let lastScrollTop = 0
 
+// 登录成功后的页面数据刷新监听器。
+let authLoginSuccessListener: (() => void) | null = null
+
 // 点击空白区域折叠
 const handlePageClick = (e: MouseEvent) => {
   const target = e.target as HTMLElement
@@ -1184,6 +1287,13 @@ const handlePageClick = (e: MouseEvent) => {
     contentGeneratorRef.value?.collapse()
   }
 }
+
+onUnmounted(() => {
+  if (authLoginSuccessListener) {
+    window.removeEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
+    authLoginSuccessListener = null
+  }
+})
 
 // 修复滚动方向反转问题 + 控制输入框折叠/展开
 onMounted(() => {
@@ -1205,6 +1315,11 @@ onMounted(() => {
 
   // 添加页面点击监听
   document.addEventListener('click', handlePageClick)
+
+  authLoginSuccessListener = () => {
+    void loadPersistedGeneratingRecords()
+  }
+  window.addEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
 
   if (scrollContainer) {
     const handleWheel = (e: WheelEvent) => {
@@ -1312,6 +1427,7 @@ onMounted(() => {
                                         :done="record.done"
                                         :images="record.images"
                                         :error="record.error"
+                                        @preview="handlePreviewRecordImage(record, $event)"
                                       />
                                     </div>
                                     <div v-if="record.type === 'agent'" class=item-Xh64V7 :data-index="index * 2 + 2" style=z-index:1>
@@ -1322,288 +1438,7 @@ onMounted(() => {
                                       </div>
                                     </div>
                                   </template>
-                                  <div id=item_9341e2ed-6804-4e34-9b38-1eb6fe79c48e_034d015f-dde5-f7fc-ad92-e079b6c18e44
-                                       class=item-Xh64V7
-                                       data-id=034d015f-dde5-f7fc-ad92-e079b6c18e44
-                                       data-index=0 style=z-index:1>
-                                    <div class="responsive-container-msS_cP responsive-container-Nivf0N">
-                                      <div class="content-DPogfx ai-generated-record-content-hg5EL8">
-                                        <div class=agentic-record-qV_0lS>
-                                          <div class="agentic-record-content-pUXA3k completed-E206yG">
-                                            <div class=user-message-IyG6vx>
-                                              <div class=context-menu-trigger-QXaWD5>
-                                                <div class=user-message-content-Qs9l2b>
-                                                  <div class=user-message-text-Fb_kWq>
-                                                    <span class=prompt-value-container-KCtKOf><span>你好</span></span>
-                                                  </div>
-                                                </div>
-                                              </div>
-                                            </div>
-                                            <div class=assistant-message-text-e69SR6>
-                                              <div class="markdown-render-DkILWY markdown-render-UH4_kU">
-                                                <h1>意图分析</h1>
-                                                <p>
-                                                  用户输入了“你好”，这是一个友好的问候。根据系统提示，我需要主动引导用户进入创作流程。因此，我将通过提问来激发用户的创作灵感，为后续的图片或视频生成任务做准备。</p>
-                                                <h1>任务规划</h1>
-                                                <ol>
-                                                  <li>回应用户的问候。</li>
-                                                  <li>
-                                                    提出一系列引导性问题，涵盖图片生成、视频生成、图片编辑等多个方面，以帮助用户明确自己的创作需求。
-                                                  </li>
-                                                  <li>
-                                                    保持对话的开放性和友好性，鼓励用户分享他们的想法。
-                                                  </li>
-                                                </ol>
-                                                <p>你好！很高兴能为您服务。</p>
-                                                <p>
-                                                  我是您的AI创作助手，可以为您生成图片、视频，或者对您的图片进行编辑。您今天想创作些什么呢？</p>
-                                                <p>
-                                                  是想生成一张全新的图片，比如“赛博朋克风格的城市夜景”？还是想让一张静态的图片动起来，比如“让照片里的小猫眨眨眼”？或者，您有一张图片想进行修改，比如“把照片里的背景换成星空”？</p>
-                                                <p>
-                                                  告诉我您的想法，我们一起把它变成现实！</p>
-                                              </div>
-                                            </div>
-                                            <div class=ai-generated-notice-U9hEwy>
-                                              以上内容由 AI 生成
-                                            </div>
-                                          </div>
-                                          <div class=record-bottom-slots-AYv3JV>
-                                            <div>
-                                              <div class=card-bottom-button-view-xY_JqR
-                                                   style=--right-padding:14px>
-                                                <div class=icon-Eb0kRz>
-                                                  <svg fill=none height=1em
-                                                       preserveAspectRatio="xMidYMid meet"
-                                                       role=presentation
-                                                       viewBox="0 0 24 24"
-                                                       width=1em
-                                                       xmlns=http://www.w3.org/2000/svg>
-                                                    <g>
-                                                      <path clip-rule=evenodd
-                                                            d="m8.56 5.726 3.948-2.776a.5.5 0 0 1 .788.41v2.23h2.72v2H9.187a.996.996 0 0 1-.631-.225c-.518-.367-.61-1.208.003-1.64Zm10.775 9.213a1 1 0 1 0 1.5 1.323 6.403 6.403 0 0 0 1.605-4.249 6.403 6.403 0 0 0-1.606-4.249 6.41 6.41 0 0 0-4.817-2.174v2a4.41 4.41 0 0 1 3.318 1.498 4.403 4.403 0 0 1 1.105 2.925 4.403 4.403 0 0 1-1.105 2.926Zm-14.67-5.88a1 1 0 1 0-1.5-1.323 6.403 6.403 0 0 0-1.605 4.249c0 1.628.607 3.117 1.606 4.25a6.41 6.41 0 0 0 4.817 2.174v-2a4.41 4.41 0 0 1-3.318-1.498 4.403 4.403 0 0 1-1.105-2.926c0-1.123.416-2.145 1.105-2.926Zm3.318 9.35h2.404v2.232a.5.5 0 0 0 .788.409l3.962-2.785a.816.816 0 0 0 .066-.05.999.999 0 0 0-.591-1.806H7.983v2Z"
-                                                            data-follow-fill=currentColor
-                                                            fill=currentColor
-                                                            fill-rule=evenodd></path>
-                                                    </g>
-                                                  </svg>
-                                                </div>
-                                                <div>重新生成</div>
-                                              </div>
-                                            </div>
-                                            <div>
-                                              <div class=card-icon-button-PCRIDi>
-                                                <div class=icon-Eb0kRz>
-                                                  <svg fill=none height=1em
-                                                       preserveAspectRatio="xMidYMid meet"
-                                                       role=presentation
-                                                       viewBox="0 0 24 24"
-                                                       width=1em
-                                                       xmlns=http://www.w3.org/2000/svg>
-                                                    <g>
-                                                      <path d="M7.06 10.154c-.2 0-.392.03-.583.059.062-.209.126-.42.228-.61.102-.277.262-.517.42-.758.134-.261.368-.438.54-.661.18-.217.426-.362.621-.542.191-.189.442-.283.64-.416.209-.12.39-.251.584-.314l.484-.199a.535.535 0 0 0 .313-.624l-.19-.757a.556.556 0 0 0-.669-.406l-.618.154c-.243.045-.503.168-.792.28-.285.127-.615.213-.922.418-.309.196-.665.359-.979.62-.304.271-.671.505-.942.849-.296.321-.589.659-.816 1.043-.263.366-.441.768-.63 1.165-.17.398-.308.804-.42 1.199a10.833 10.833 0 0 0-.344 2.187c-.03.644-.013 1.18.025 1.568.013.182.038.36.056.483l.023.15.023-.005a4.038 4.038 0 1 0 3.948-4.883Zm9.871 0c-.2 0-.392.03-.583.059.062-.209.125-.42.228-.61.102-.277.262-.517.42-.758.133-.261.367-.438.54-.661.18-.217.426-.362.62-.542.192-.189.442-.283.641-.416.209-.12.39-.251.584-.314l.483-.199a.535.535 0 0 0 .314-.624l-.19-.757a.556.556 0 0 0-.67-.406l-.617.154c-.244.045-.503.168-.792.28-.284.128-.615.213-.922.419-.31.195-.665.359-.98.62-.304.27-.67.505-.942.848-.296.321-.588.659-.815 1.043-.263.366-.442.768-.63 1.165-.17.398-.308.804-.42 1.199a10.832 10.832 0 0 0-.345 2.187c-.03.644-.012 1.18.025 1.568.014.182.039.36.057.483l.022.15.024-.005a4.038 4.038 0 1 0 3.948-4.883Z"
-                                                            data-follow-fill=currentColor
-                                                            fill=currentColor></path>
-                                                    </g>
-                                                  </svg>
-                                                </div>
-                                              </div>
-                                              <div class="simple-tooltip-scroll-anchor sf-hidden"></div>
-                                            </div>
-                                            <div class="operation-button-oVtvlN normal-button-mS74ha">
-                                                                                    <span class=icon-oB5C0a><svg
-                                                                                        fill=none height=1em
-                                                                                        preserveAspectRatio="xMidYMid meet"
-                                                                                        role=presentation
-                                                                                        viewBox="0 0 24 24"
-                                                                                        width=1em
-                                                                                        xmlns=http://www.w3.org/2000/svg><g><path
-                                                                                        clip-rule=evenodd
-                                                                                        d="M7 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm7 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm5 2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
-                                                                                        data-follow-fill=currentColor
-                                                                                        fill=currentColor
-                                                                                        fill-rule=evenodd></path></g></svg></span>
-                                            </div>
-                                            <div class="simple-tooltip-scroll-anchor sf-hidden"></div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div id=item_9341e2ed-6804-4e34-9b38-1eb6fe79c48e_febd2940-ccfc-11f0-b294-af2ab3cf6b8b
-                                       class=item-Xh64V7
-                                       data-id=febd2940-ccfc-11f0-b294-af2ab3cf6b8b
-                                       data-index=3 style=z-index:1>
-                                    <div class="responsive-container-msS_cP responsive-container-NBoaUU">
-                                      <div class="content-DPogfx ai-generated-record-content-hg5EL8">
-                                        <div class=image-record-ytX6Dp>
-                                          <div class=record-header-E91Dfj>
-                                            <div class=record-header-content-Lkk9CM>
-                                              <div class=prompt-suffix-labels-wrapper-qthJZj
-                                                   style=--line-height:24px;--padding-top:4px>
-                                                <div class=prompt-suffix-labels-NBprFc
-                                                     style=--line-height:24px;--padding-top:4px>
-                                                  <div class=prompt-suffix-labels-content-uFKTga>
-                                                                                                <span class=prompt-P_8aF8><span
-                                                                                                    class=prompt-value-container-KCtKOf><span>一只猫在花园里玩耍，卡通风格</span></span></span><span
-                                                      class=labels-mHLx1x
-                                                      style=visibility:visible><span
-                                                      class=label-lhnDlt>图片 4.0</span><span
-                                                      class=label-lhnDlt>1:1</span><span
-                                                      class=label-lhnDlt>2K</span></span>
-                                                  </div>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </div>
-                                          <div class=record-box-wrapper-MDgaBP>
-                                            <div class=image-record-content-TuJi21>
-                                              <div class=responsive-image-grid-WOh0lB>
-                                                <div class="image-card-wrapper-WOgXrk landscape-Ven8Mz"
-                                                     style=--aspect-ratio:1>
-                                                  <div class=image-record-item-W6Y7Df>
-                                                    <div class=context-menu-trigger-WJ6VDZ>
-                                                      <div class="slot-card-container-gulhrr image-card-container-dFemyw">
-                                                        <div class=content-container-z0JOWv>
-                                                          <div aria-describedby=DndDescribedBy-0
-                                                               aria-disabled=false
-                                                               aria-roledescription=draggable
-                                                               class=image-card-container-qy7ui4
-                                                               role=button
-                                                               tabindex=0>
-                                                            <div class="container-bG3PQ9 image-GnB1sY">
-                                                              <div style="transition:opacity 300ms;opacity:1">
-                                                                <img class=image-TLmgkP
-                                                                     crossorigin=anonymous
-                                                                     data-apm-action=ai-generated-image-record-card
-                                                                     draggable=false
-                                                                     fetchpriority=high
-                                                                     loading=lazy
-                                                                     src="https://p3-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/6a37e138cede4802be9fcc05c42ab87c~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=tTmi9yn9JBoHnwIQwoqg5p%2BYuDA%3D&format=.webp">
-                                                              </div>
-                                                            </div>
-                                                          </div>
-                                                        </div>
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                                <div class="image-card-wrapper-WOgXrk landscape-Ven8Mz"
-                                                     style=--aspect-ratio:1>
-                                                  <div class=image-record-item-W6Y7Df>
-                                                    <div class=context-menu-trigger-WJ6VDZ>
-                                                      <div class="slot-card-container-gulhrr image-card-container-dFemyw">
-                                                        <div class=content-container-z0JOWv>
-                                                          <div aria-describedby=DndDescribedBy-0
-                                                               aria-disabled=false
-                                                               aria-roledescription=draggable
-                                                               class=image-card-container-qy7ui4
-                                                               role=button
-                                                               tabindex=0>
-                                                            <div class="container-bG3PQ9 image-GnB1sY">
-                                                              <div style="transition:opacity 300ms;opacity:1">
-                                                                <img class=image-TLmgkP
-                                                                     crossorigin=anonymous
-                                                                     data-apm-action=ai-generated-image-record-card
-                                                                     draggable=false
-                                                                     fetchpriority=high
-                                                                     loading=lazy
-                                                                     src="https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/2fbae30526cc47d48ba6fbb5a453bd60~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=T%2Fo9gmYv7pHhMF4l85a87IhBrBI%3D&format=.webp">
-                                                              </div>
-                                                            </div>
-                                                          </div>
-                                                        </div>
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                                </div>
 
-                                              </div>
-                                            </div>
-                                            <div class=operations-NxPE1B>
-                                              <div class=record-bottom-slots-AYv3JV>
-                                                <div>
-                                                  <div class=card-bottom-button-view-xY_JqR
-                                                       style=--right-padding:14px>
-                                                    <div class=icon-Eb0kRz>
-                                                      <svg fill=none
-                                                           height=1em
-                                                           preserveAspectRatio="xMidYMid meet"
-                                                           role=presentation
-                                                           viewBox="0 0 24 24"
-                                                           width=1em
-                                                           xmlns=http://www.w3.org/2000/svg>
-                                                        <g>
-                                                          <path clip-rule=evenodd
-                                                                d="M3.764 8.02a2.5 2.5 0 0 1 2.5-2.5H17.03a2.5 2.5 0 0 1 2.5 2.5V9.8a3.25 3.25 0 0 1 2-.082V8.019a4.5 4.5 0 0 0-4.5-4.5H6.264a4.5 4.5 0 0 0-4.5 4.5v7.932a4.5 4.5 0 0 0 4.5 4.5h5.837a2.436 2.436 0 0 1-.05-.57v-1.43H6.263a2.5 2.5 0 0 1-2.5-2.5V8.019Zm17.67 3.964a1 1 0 0 0-1.41-.004l-5.773 5.707a.25.25 0 0 0-.074.178v2.366c0 .138.112.25.25.25h2.347a.25.25 0 0 0 .178-.075l5.71-5.791a1 1 0 0 0-.006-1.41l-1.221-1.22Z"
-                                                                data-follow-fill=currentColor
-                                                                fill=currentColor
-                                                                fill-rule=evenodd></path>
-                                                        </g>
-                                                      </svg>
-                                                    </div>
-                                                    <div>重新编辑</div>
-                                                  </div>
-                                                </div>
-                                                <div>
-                                                  <div>
-                                                    <div class=tooltip-container-jIHxiC>
-                                                      <div class=card-bottom-button-view-xY_JqR
-                                                           style=--right-padding:14px>
-                                                        <div class=icon-Eb0kRz>
-                                                          <svg fill=none
-                                                               height=1em
-                                                               preserveAspectRatio="xMidYMid meet"
-                                                               role=presentation
-                                                               viewBox="0 0 24 24"
-                                                               width=1em
-                                                               xmlns=http://www.w3.org/2000/svg>
-                                                            <g>
-                                                              <path clip-rule=evenodd
-                                                                    d="m8.56 5.726 3.948-2.776a.5.5 0 0 1 .788.41v2.23h2.72v2H9.187a.996.996 0 0 1-.631-.225c-.518-.367-.61-1.208.003-1.64Zm10.775 9.213a1 1 0 1 0 1.5 1.323 6.403 6.403 0 0 0 1.605-4.249 6.403 6.403 0 0 0-1.606-4.249 6.41 6.41 0 0 0-4.817-2.174v2a4.41 4.41 0 0 1 3.318 1.498 4.403 4.403 0 0 1 1.105 2.925 4.403 4.403 0 0 1-1.105 2.926Zm-14.67-5.88a1 1 0 1 0-1.5-1.323 6.403 6.403 0 0 0-1.605 4.249c0 1.628.607 3.117 1.606 4.25a6.41 6.41 0 0 0 4.817 2.174v-2a4.41 4.41 0 0 1-3.318-1.498 4.403 4.403 0 0 1-1.105-2.926c0-1.123.416-2.145 1.105-2.926Zm3.318 9.35h2.404v2.232a.5.5 0 0 0 .788.409l3.962-2.785a.816.816 0 0 0 .066-.05.999.999 0 0 0-.591-1.806H7.983v2Z"
-                                                                    data-follow-fill=currentColor
-                                                                    fill=currentColor
-                                                                    fill-rule=evenodd></path>
-                                                            </g>
-                                                          </svg>
-                                                        </div>
-                                                        <div>再次生成
-                                                        </div>
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                                <div class="operation-button-oVtvlN normal-button-mS74ha">
-                                                                                            <span class=icon-oB5C0a><svg
-                                                                                                fill=none height=1em
-                                                                                                preserveAspectRatio="xMidYMid meet"
-                                                                                                role=presentation
-                                                                                                viewBox="0 0 24 24"
-                                                                                                width=1em
-                                                                                                xmlns=http://www.w3.org/2000/svg><g><path
-                                                                                                clip-rule=evenodd
-                                                                                                d="M7 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm7 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm5 2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
-                                                                                                data-follow-fill=currentColor
-                                                                                                fill=currentColor
-                                                                                                fill-rule=evenodd></path></g></svg></span>
-                                                </div>
-                                                <div class="simple-tooltip-scroll-anchor sf-hidden"></div>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div id=item_9341e2ed-6804-4e34-9b38-1eb6fe79c48e_1764404742876
-                                       class=item-Xh64V7 data-id=1764404742876 data-index=4
-                                       style=z-index:1>
-                                    <div class=responsive-container-msS_cP>
-                                      <div class="content-DPogfx ai-generated-record-content-hg5EL8">
-                                        <div class=group-title-mhd8yy>11月29日</div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div class=scroll-slot-coWS6S></div>
                                 </div>
                               </div>
                             </div>
@@ -1717,6 +1552,17 @@ onMounted(() => {
       </div>
     </div>
   </div>
+
+  <ImagePreview
+    v-model:visible="previewVisible"
+    v-model:currentIndex="previewIndex"
+    :images="previewImages"
+    @download="handlePreviewDownload"
+    @favorite="handlePreviewFavorite"
+    @publish="handlePreviewPublish"
+    @generate-video="handlePreviewGenerateVideo"
+    @edit-in-canvas="handlePreviewEditInCanvas"
+  />
 </template>
 
 <style>

@@ -192,7 +192,14 @@
                           </div>
                           <div class="right-container-Oz90lW">
                             <div>
-                              <div class="favorite-RlC8dW favorite-t8jQY4">
+                              <div
+                                  class="favorite-RlC8dW favorite-t8jQY4"
+                                  role="button"
+                                  tabindex="0"
+                                  @click.stop="emit('favorite')"
+                                  @keydown.enter.prevent="emit('favorite')"
+                                  @keydown.space.prevent="emit('favorite')"
+                              >
                                 <div class="lottie-icon-container icon-QlNaEG">
                                   <div class="lottie-icon-content">
                                     <svg width="1em" height="1em"
@@ -377,7 +384,7 @@ const props = defineProps({
   usePromptLabel: { type: String, default: '使用提示词' },
 })
 
-const emit = defineEmits(['update:modelValue', 'close', 'gallery-nav', 'content-send'])
+const emit = defineEmits(['update:modelValue', 'close', 'gallery-nav', 'content-send', 'favorite'])
 
 const dialogRef = ref(/** @type {HTMLElement | null} */ (null))
 const contentGeneratorRef = ref(/** @type {InstanceType<typeof ContentGenerator> | null} */ (null))

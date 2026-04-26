@@ -54,16 +54,18 @@
       :aspect-ratio-label="workDetailAspectRatioLabel"
       :gallery-length="workDetailGallery.length"
       @gallery-nav="handleGalleryNav"
+      @favorite="handleWorkDetailFavorite"
     />
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import SideMenu from '../../components/home/components/SideMenu.vue'
 import HomeHeader from '../../components/home/components/HomeHeader.vue'
 import TabsSection from '@components/home/components/TabsSection.vue'
 import HomeDetailModalFrom from '@components/home/components/HomeDetailModalFrom.vue'
+import { applyAssetAction } from '@/api/asset-items'
 
 const handleTabChange = (index) => {
   console.log('Tab changed to:', index)
@@ -74,9 +76,10 @@ const handleSearch = (searchText) => {
 }
 
 const workDetailOpen = ref(false)
-/** @type {import('vue').Ref<Array<{ imageSrc: string, promptText?: string, user?: { name?: string, avatarSrc?: string }, favoriteCount?: number|string, detail?: { createDate?: string, aiGeneratedText?: string, promptTipLabel?: string, modelLabel?: string, aspectRatioLabel?: string } }>>} */
+/** @type {import('vue').Ref<Array<{ id?: string, imageSrc: string, promptText?: string, user?: { name?: string, avatarSrc?: string }, favoriteCount?: number|string, detail?: { createDate?: string, aiGeneratedText?: string, promptTipLabel?: string, modelLabel?: string, aspectRatioLabel?: string } }>>} */
 const workDetailGallery = ref([])
 const workDetailGalleryIndex = ref(0)
+const viewedAssetIds = new Set()
 
 const workDetailImageSrc = computed(() => {
   const g = workDetailGallery.value
@@ -109,6 +112,12 @@ const workDetailLikeCount = computed(() => {
   const g = workDetailGallery.value
   const i = workDetailGalleryIndex.value
   return g[i]?.favoriteCount ?? 999
+})
+
+const currentWorkDetailAssetId = computed(() => {
+  const g = workDetailGallery.value
+  const i = workDetailGalleryIndex.value
+  return g[i]?.id || ''
 })
 
 const workDetailCreateDate = computed(() => {
@@ -155,6 +164,7 @@ function handleOpenWorkDetail(payload) {
     workDetailGalleryIndex.value = Math.min(Math.max(0, ix), payload.gallery.length - 1)
   } else {
     workDetailGallery.value = [{
+      id: payload.id,
       imageSrc: payload.imageSrc,
       promptText: payload.promptText,
       user: payload.user,
@@ -163,6 +173,7 @@ function handleOpenWorkDetail(payload) {
     }]
     workDetailGalleryIndex.value = 0
   }
+  viewedAssetIds.clear()
   workDetailOpen.value = true
 }
 
@@ -172,6 +183,55 @@ function handleGalleryNav(delta) {
   if (n <= 1) return
   workDetailGalleryIndex.value = (workDetailGalleryIndex.value + delta + n) % n
 }
+
+async function trackWorkDetailView() {
+  const assetId = currentWorkDetailAssetId.value
+  if (!assetId || viewedAssetIds.has(assetId)) return
+
+  viewedAssetIds.add(assetId)
+
+  try {
+    await applyAssetAction('view', [assetId])
+  } catch (error) {
+    console.warn('记录作品浏览失败', error)
+  }
+}
+
+async function handleWorkDetailFavorite() {
+  const assetId = currentWorkDetailAssetId.value
+  if (!assetId) return
+
+  const index = workDetailGalleryIndex.value
+  const current = workDetailGallery.value[index]
+  const currentCount = Number(current?.favoriteCount || 0) || 0
+
+  if (current) {
+    workDetailGallery.value[index] = {
+      ...current,
+      favoriteCount: currentCount + 1,
+    }
+  }
+
+  try {
+    await applyAssetAction('favorite', [assetId])
+  } catch (error) {
+    if (current) {
+      workDetailGallery.value[index] = {
+        ...current,
+        favoriteCount: currentCount,
+      }
+    }
+    console.warn('收藏作品失败', error)
+  }
+}
+
+watch(
+  [workDetailOpen, currentWorkDetailAssetId],
+  ([open]) => {
+    if (!open) return
+    void trackWorkDetailView()
+  },
+)
 </script>
 
 <style scoped>

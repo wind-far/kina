@@ -1,6 +1,7 @@
 <template>
   <div class="responsive-container-msS_cP responsive-container-NBoaUU">
     <div class="content-DPogfx ai-generated-record-content-hg5EL8">
+      <div v-if="time" class="group-title-mhd8yy">{{ time }}</div>
       <div class="image-record-ytX6Dp">
         <!-- 头部：提示词和标签 -->
         <div class="record-header-E91Dfj">
@@ -93,7 +94,78 @@
               {{ currentProgress }}%造梦中
             </div>
           </div>
-          <div class="operations-NxPE1B"></div>
+          <div v-if="done && !error" class="operations-NxPE1B">
+            <div class="record-bottom-slots-AYv3JV">
+              <div>
+                <div class="card-bottom-button-view-xY_JqR"
+                     style="--right-padding:14px"
+                     @click="$emit('edit')">
+                  <div class="icon-Eb0kRz">
+                    <svg fill="none"
+                         height="1em"
+                         preserveAspectRatio="xMidYMid meet"
+                         role="presentation"
+                         viewBox="0 0 24 24"
+                         width="1em"
+                         xmlns="http://www.w3.org/2000/svg">
+                      <g>
+                        <path clip-rule="evenodd"
+                              d="M3.764 8.02a2.5 2.5 0 0 1 2.5-2.5H17.03a2.5 2.5 0 0 1 2.5 2.5V9.8a3.25 3.25 0 0 1 2-.082V8.019a4.5 4.5 0 0 0-4.5-4.5H6.264a4.5 4.5 0 0 0-4.5 4.5v7.932a4.5 4.5 0 0 0 4.5 4.5h5.837a2.436 2.436 0 0 1-.05-.57v-1.43H6.263a2.5 2.5 0 0 1-2.5-2.5V8.019Zm17.67 3.964a1 1 0 0 0-1.41-.004l-5.773 5.707a.25.25 0 0 0-.074.178v2.366c0 .138.112.25.25.25h2.347a.25.25 0 0 0 .178-.075l5.71-5.791a1 1 0 0 0-.006-1.41l-1.221-1.22Z"
+                              data-follow-fill="currentColor"
+                              fill="currentColor"
+                              fill-rule="evenodd"></path>
+                      </g>
+                    </svg>
+                  </div>
+                  <div>重新编辑</div>
+                </div>
+              </div>
+              <div>
+                <div class="card-bottom-button-view-xY_JqR"
+                     style="--right-padding:14px"
+                     @click="$emit('regenerate')">
+                  <div class="icon-Eb0kRz">
+                    <svg fill="none"
+                         height="1em"
+                         preserveAspectRatio="xMidYMid meet"
+                         role="presentation"
+                         viewBox="0 0 24 24"
+                         width="1em"
+                         xmlns="http://www.w3.org/2000/svg">
+                      <g>
+                        <path clip-rule="evenodd"
+                              d="m8.56 5.726 3.948-2.776a.5.5 0 0 1 .788.41v2.23h2.72v2H9.187a.996.996 0 0 1-.631-.225c-.518-.367-.61-1.208.003-1.64Zm10.775 9.213a1 1 0 1 0 1.5 1.323 6.403 6.403 0 0 0 1.605-4.249 6.403 6.403 0 0 0-1.606-4.249 6.41 6.41 0 0 0-4.817-2.174v2a4.41 4.41 0 0 1 3.318 1.498 4.403 4.403 0 0 1 1.105 2.925 4.403 4.403 0 0 1-1.105 2.926Zm-14.67-5.88a1 1 0 1 0-1.5-1.323 6.403 6.403 0 0 0-1.605 4.249c0 1.628.607 3.117 1.606 4.25a6.41 6.41 0 0 0 4.817 2.174v-2a4.41 4.41 0 0 1-3.318-1.498 4.403 4.403 0 0 1-1.105-2.926c0-1.123.416-2.145 1.105-2.926Zm3.318 9.35h2.404v2.232a.5.5 0 0 0 .788.409l3.962-2.785a.816.816 0 0 0 .066-.05.999.999 0 0 0-.591-1.806H7.983v2Z"
+                              data-follow-fill="currentColor"
+                              fill="currentColor"
+                              fill-rule="evenodd"></path>
+                      </g>
+                    </svg>
+                  </div>
+                  <div>再次生成</div>
+                </div>
+              </div>
+              <div class="operation-button-oVtvlN normal-button-mS74ha"
+                   @click="$emit('more')">
+                <span class="icon-oB5C0a">
+                  <svg fill="none"
+                       height="1em"
+                       preserveAspectRatio="xMidYMid meet"
+                       role="presentation"
+                       viewBox="0 0 24 24"
+                       width="1em"
+                       xmlns="http://www.w3.org/2000/svg">
+                    <g>
+                      <path clip-rule="evenodd"
+                            d="M7 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm7 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm5 2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
+                            data-follow-fill="currentColor"
+                            fill="currentColor"
+                            fill-rule="evenodd"></path>
+                    </g>
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -105,6 +177,8 @@ import { ref, watch, onMounted, onUnmounted } from 'vue'
 import loadingVideoUrl from '@/assets/animations/record-loading-animation.mp4'
 
 const props = defineProps({
+  /** 分组时间 */
+  time: { type: String, default: '' },
   /** 提示词 */
   prompt: { type: String, default: '' },
   /** 模型版本 */
@@ -130,6 +204,8 @@ const props = defineProps({
   /** 错误信息 */
   error: { type: String, default: '' }
 })
+
+defineEmits(['edit', 'regenerate', 'more'])
 
 const currentProgress = ref(props.progress)
 let timer = null
@@ -167,6 +243,23 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 修正长提示词头部被绝对定位撑出后覆盖图片区的问题 */
+:deep(.record-header-E91Dfj .record-header-content-Lkk9CM) {
+  align-items: flex-start;
+}
+
+:deep(.record-header-E91Dfj .prompt-suffix-labels-wrapper-qthJZj) {
+  height: auto;
+  max-height: none;
+  min-height: calc(var(--line-height) * 2 + var(--padding-top) * 2);
+}
+
+:deep(.record-header-E91Dfj .prompt-suffix-labels-NBprFc) {
+  max-height: none;
+  overflow: visible;
+  position: relative;
+}
+
 /* 加载动画覆盖层 */
 .loading-container-VeCJoq {
   border-radius: 2px;

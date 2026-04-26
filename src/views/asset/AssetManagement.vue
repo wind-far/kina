@@ -716,13 +716,27 @@
     @generate-video="handlePreviewGenerateVideo"
     @edit-in-canvas="handlePreviewEditInCanvas"
   />
+
+  <PublishArtworkModal
+    v-model:visible="publishArtworkVisible"
+    :image="publishTargetImage"
+    :submitting="publishSubmitting"
+    @submit="handlePublishArtworkSubmit"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import SideMenu from '@/components/home/components/SideMenu.vue'
 import ImagePreview from '@/components/ImagePreview.vue'
+import PublishArtworkModal from '@/components/PublishArtworkModal.vue'
+import {
+  applyAssetAction,
+  listAssetItems,
+  type PersistedAssetItem,
+} from '@/api/asset-items'
+import discoverContent from '@/data/homeDiscoverContent.json'
 
 // 类型定义
 type TabType = 'image' | 'video' | 'canvas' | 'editor' | 'story' | 'audio'
@@ -797,6 +811,9 @@ const selectedItems = ref<Set<string>>(new Set())
 // 图片预览状态
 const previewVisible = ref<boolean>(false)
 const previewIndex = ref<number>(0)
+const publishArtworkVisible = ref<boolean>(false)
+const publishSubmitting = ref<boolean>(false)
+const publishTargetImage = ref<ImageItem | null>(null)
 
 // 选中数量计算属性
 const selectedCount = computed(() => selectedItems.value.size)
@@ -868,6 +885,12 @@ const allImages = computed(() => {
 interface ImageItem {
   id: string
   src: string
+  promptText?: string
+  modelLabel?: string
+  aspectRatioLabel?: string
+  resolutionLabel?: string
+  featureLabel?: string
+  createDate?: string
 }
 
 interface ImageGroup {
@@ -876,35 +899,95 @@ interface ImageGroup {
   images: ImageItem[]
 }
 
-const imageGroups = ref<ImageGroup[]>([
-  {
-    date: '11月29日',
-    isFirst: true,
-    images: [
-      { id: 'img-1', src: 'https://p3-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/a5e970c89c744bec8fe85119d63b9715~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=czQl6PyRsjuofo4PtjJE4bRXFYM%3D&format=.webp' },
-      { id: 'img-2', src: 'https://p3-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/4ee948b55091412191db9b02ac2d66c4~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=p8BCZkygcMGb7YMkPxTTlJD%2Frew%3D&format=.webp' },
-      { id: 'img-3', src: 'https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/3b0243be18c3416f93c851076f0beebf~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=iDesfW8n5qU9V9k8GHpCl%2BMqffA%3D&format=.webp' },
-      { id: 'img-4', src: 'https://p3-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/0c066ae0f7034059b11c420ae584ffa0~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=jvxs2iug%2FYfma8EiYXSEhrEWpqI%3D&format=.webp' },
-      { id: 'img-5', src: 'https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/6a37e138cede4802be9fcc05c42ab87c~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=2YR2n1dzzivSlAzbqiqli7N1Lb0%3D&format=.webp' },
-      { id: 'img-6', src: 'https://p3-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/2fbae30526cc47d48ba6fbb5a453bd60~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=NV2Miqg10VhzcQPGMm6pa5ucMpQ%3D&format=.webp' },
-      { id: 'img-7', src: 'https://p3-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/75488455460346dd9b616e0060cf1269~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=3zeQhAgjVCjAZOc0RvT9erw%2Bd7g%3D&format=.webp' },
-      { id: 'img-8', src: 'https://p3-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/fdc6599ca4874361bcffe9e7029642ec~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=krzZtZtYPJ96UI0fN15py9nhQ8w%3D&format=.webp' },
-      { id: 'img-9', src: 'https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/65ae292d758147b3bcbe3d9ccc6c3cac~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=YqqEOweyazUdX9kPSdWPgQjh9eY%3D&format=.webp' },
-      { id: 'img-10', src: 'https://p3-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/deca19f516884a77949c7b1482ce9b34~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=s8mRuNgu1BuHvjJpfrAjWUv0W%2BM%3D&format=.webp' },
-      { id: 'img-11', src: 'https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/7ff39da275df44a1b97361d5e323cf7e~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=4ChxktROl45pzyrNfrskyA%2FPSQ8%3D&format=.webp' },
-      { id: 'img-12', src: 'https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/90278f6cfbf44c40a1c95a934251383e~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=p7IicJgQ%2B67zLT7eQ21%2B1ZxRz5Q%3D&format=.webp' }
-    ]
-  },
-  {
-    date: '11月26日',
-    images: [
-      { id: 'img-13', src: 'https://p3-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/6b5e1fff32f24903a4ba6a3117e32b37~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=y2wwp3YaumABd1EfHf7NnOEs%2Fog%3D&format=.webp' },
-      { id: 'img-14', src: 'https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/5fd396caca3a461ea98fd2a52ac5bac2~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=26ayF7FKkymbEZjlOXdcnJquQ8A%3D&format=.webp' },
-      { id: 'img-15', src: 'https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/33ddd928499040da9be75b9f6626c587~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=9Iid3z9lsoPsy8idhC%2BAEpJB10U%3D&format=.webp' },
-      { id: 'img-16', src: 'https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/7650746fa48c4bd58f9afb11b42bcd08~tplv-tb4s082cfz-aigc_resize_mark:360:360.webp?lk3s=43402efa&x-expires=1771632000&x-signature=ibhsDLIxFoaZ%2FJyNL%2BqBfWahiuM%3D&format=.webp' }
-    ]
+const formatGroupDate = (value: string | Date) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '未知日期'
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+const buildImageGroups = (items: Array<ImageItem & { createdAt?: string }>) => {
+  const groups = new Map<string, ImageItem[]>()
+
+  items.forEach((item) => {
+    const groupKey = formatGroupDate(item.createdAt || new Date().toISOString())
+    const current = groups.get(groupKey) || []
+    current.push(item)
+    groups.set(groupKey, current)
+  })
+
+  return Array.from(groups.entries()).map(([date, images], index) => ({
+    date,
+    isFirst: index === 0,
+    images,
+  }))
+}
+
+const getAssetResolutionLabel = (item: PersistedAssetItem) => {
+  const sourceMeta = (item.sourceMeta || {}) as Record<string, unknown>
+  const explicitLabel = sourceMeta.resolutionLabel
+  if (typeof explicitLabel === 'string' && explicitLabel.trim() !== '') {
+    return explicitLabel
   }
-])
+
+  const width = item.width || 0
+  const height = item.height || 0
+  const maxSide = Math.max(width, height)
+
+  if (maxSide >= 3840) return '4K'
+  if (maxSide >= 2048) return '2K'
+  if (maxSide >= 1280) return '高清'
+  return '标清'
+}
+
+const buildFallbackImageGroups = () => buildImageGroups(
+  (discoverContent.feedItems || []).map((item) => ({
+    id: item.id,
+    src: item.imageSrc,
+    promptText: item.promptText,
+    modelLabel: (item.detail as { modelLabel?: string } | undefined)?.modelLabel || '图片 4.0',
+    aspectRatioLabel: (item.detail as { aspectRatioLabel?: string } | undefined)?.aspectRatioLabel || '1:1',
+    resolutionLabel: ((item.detail as { resolutionLabel?: string } | undefined)?.resolutionLabel) || '2K',
+  })),
+)
+
+const buildImageGroupsFromAssets = (items: PersistedAssetItem[]) => buildImageGroups(
+  items.map(item => ({
+    id: item.id,
+    src: item.previewUrl || item.fileUrl,
+    promptText: item.promptText,
+    modelLabel: item.modelLabel || '图片 4.0',
+    aspectRatioLabel: item.aspectRatio || '1:1',
+    resolutionLabel: getAssetResolutionLabel(item),
+    createDate: item.createdAt,
+    createdAt: item.createdAt,
+  })),
+)
+
+const imageGroups = ref<ImageGroup[]>(buildFallbackImageGroups())
+
+const loadImageAssets = async () => {
+  try {
+    const assets = await listAssetItems({
+      scope: 'mine',
+      assetType: 'image',
+      take: 120,
+    })
+
+    if (assets.length) {
+      imageGroups.value = buildImageGroupsFromAssets(assets)
+      return
+    }
+
+    imageGroups.value = buildFallbackImageGroups()
+  } catch (error) {
+    console.warn('读取资产列表失败，继续使用本地示例数据。', error)
+    imageGroups.value = buildFallbackImageGroups()
+  }
+}
+
+onMounted(async () => {
+  await loadImageAssets()
+})
 
 // 切换标签页
 const switchTab = (tab: TabType) => {
@@ -939,30 +1022,37 @@ const setAudioFilter = (filter: AudioFilterType) => {
 // 批量操作处理函数
 const handleBatchDelete = async () => {
   const itemIds = Array.from(selectedItems.value)
-  console.log('批量删除:', itemIds)
-  // TODO: 实现删除逻辑
-  ElMessage.info(`将删除 ${itemIds.length} 项内容`)
+  if (!itemIds.length) return
+
+  await applyAssetAction('delete', itemIds)
+  await loadImageAssets()
+  exitBatchMode()
+  ElMessage.success(`已删除 ${itemIds.length} 项内容`)
 }
 
 const handleBatchDownload = async () => {
   const itemIds = Array.from(selectedItems.value)
-  console.log('批量下载:', itemIds)
-  // TODO: 实现下载逻辑
-  ElMessage.info(`将下载 ${itemIds.length} 个文件`)
+  if (!itemIds.length) return
+
+  await applyAssetAction('download', itemIds)
+  ElMessage.success(`已记录 ${itemIds.length} 项下载`)
 }
 
 const handleBatchPublish = async () => {
   const itemIds = Array.from(selectedItems.value)
-  console.log('批量发布:', itemIds)
-  // TODO: 实现发布逻辑
-  ElMessage.info(`将发布 ${itemIds.length} 项内容`)
+  if (!itemIds.length) return
+
+  await applyAssetAction('publish', itemIds)
+  await loadImageAssets()
+  ElMessage.success(`已发布 ${itemIds.length} 项内容`)
 }
 
 const handleBatchFavorite = async () => {
   const itemIds = Array.from(selectedItems.value)
-  console.log('批量收藏:', itemIds)
-  // TODO: 实现收藏逻辑
-  ElMessage.success(`将收藏 ${itemIds.length} 项内容`)
+  if (!itemIds.length) return
+
+  await applyAssetAction('favorite', itemIds)
+  ElMessage.success(`已收藏 ${itemIds.length} 项内容`)
 }
 
 const handleEditInCapCut = async () => {
@@ -979,21 +1069,41 @@ watch(activeTab, () => {
 
 // 图片预览事件处理
 const handlePreviewDownload = (image: ImageItem) => {
-  console.log('下载图片:', image)
-  ElMessage.info('开始下载图片')
-  // TODO: 实现下载逻辑
+  void applyAssetAction('download', [image.id]).then(() => {
+    ElMessage.success('已记录下载')
+  })
 }
 
 const handlePreviewFavorite = (image: ImageItem) => {
-  console.log('收藏图片:', image)
-  ElMessage.success('已添加到收藏')
-  // TODO: 实现收藏逻辑
+  void applyAssetAction('favorite', [image.id]).then(() => {
+    ElMessage.success('已添加到收藏')
+  })
 }
 
 const handlePreviewPublish = (image: ImageItem) => {
-  console.log('发布图片:', image)
-  ElMessage.info('准备发布图片')
-  // TODO: 实现发布逻辑
+  publishTargetImage.value = image
+  publishArtworkVisible.value = true
+}
+
+// 单张发布走参考页弹窗，确认后再真正执行发布。
+const handlePublishArtworkSubmit = async ({
+  image,
+}: {
+  image: ImageItem
+  title: string
+  description: string
+}) => {
+  publishSubmitting.value = true
+
+  try {
+    await applyAssetAction('publish', [image.id])
+    publishArtworkVisible.value = false
+    publishTargetImage.value = null
+    await loadImageAssets()
+    ElMessage.success('已发布图片')
+  } finally {
+    publishSubmitting.value = false
+  }
 }
 
 const handlePreviewGenerateVideo = (image: ImageItem) => {

@@ -188,9 +188,44 @@ import {
   computeMasonryMetrics,
   masonryScrollHeight,
 } from '@/components/home/discoverMasonryLayout'
+import { listAssetItems } from '@/api/asset-items'
 import discoverContent from '@/data/homeDiscoverContent.json'
 
 const emit = defineEmits(['open-work-detail'])
+
+const buildFeedItemFromAsset = (item) => ({
+  id: item.id,
+  src: item.previewUrl || item.fileUrl,
+  alt: item.title || item.promptText || item.id,
+  promptText: item.promptText,
+  user: {
+    name: item.owner?.name || '创作者',
+    avatarSrc: item.owner?.avatarSrc || '',
+  },
+  favoriteCount: item.favoriteCount || 0,
+  detail: {
+    createDate: item.createdAt,
+    aiGeneratedText: '内容由 AI 生成',
+    promptTipLabel: '图片提示词',
+    modelLabel: item.modelLabel || '图片模型',
+    aspectRatioLabel: item.aspectRatio || '1:1',
+  },
+})
+
+const buildFallbackFeedItems = () => (
+  discoverContent.feedItems.map((item) => ({
+    id: item.id,
+    src: item.imageSrc,
+    alt: item.alt,
+    promptText: item.promptText,
+    user: item.user || {
+      name: '创作者',
+      avatarSrc: '',
+    },
+    favoriteCount: item.favoriteCount || 0,
+    detail: item.detail,
+  }))
+)
 
 /**
  * @param {{
@@ -220,17 +255,7 @@ function formatFavoriteCount(count) {
 }
 
 const feedItems = ref(
-  shuffleArray(
-    discoverContent.feedItems.map((item) => ({
-      id: item.id,
-      src: item.imageSrc,
-      alt: item.alt,
-      promptText: item.promptText,
-      user: item.user,
-      favoriteCount: item.favoriteCount,
-      detail: item.detail,
-    })),
-  ),
+  shuffleArray(buildFallbackFeedItems()),
 )
 
 /** 每张图 natural 尺寸；null 表示未加载，布局按 1:1 占位 */
@@ -284,6 +309,22 @@ onMounted(() => {
   } else {
     trackWinResize = apply
     window.addEventListener('resize', trackWinResize)
+  }
+})
+
+onMounted(async () => {
+  try {
+    const assets = await listAssetItems({
+      scope: 'feed',
+      assetType: 'image',
+      take: 80,
+    })
+
+    if (assets.length) {
+      feedItems.value = shuffleArray(assets.map(buildFeedItemFromAsset))
+    }
+  } catch (error) {
+    console.warn('读取首页瀑布流失败，继续使用本地 JSON 数据。', error)
   }
 })
 
@@ -365,6 +406,7 @@ const goToSlide = (index) => {
 function openWorkDetailFromFeed(item, index) {
   emitOpenWorkDetail({
     gallery: feedItems.value.map((it) => ({
+      id: it.id,
       imageSrc: it.src,
       promptText: it.promptText || it.alt,
       user: it.user,
@@ -378,6 +420,7 @@ function openWorkDetailFromFeed(item, index) {
 function openWorkDetailFromCarousel(item, index) {
   emitOpenWorkDetail({
     gallery: carouselItems.value.map((it) => ({
+      id: it.id,
       imageSrc: it.image,
       promptText: it.promptText || it.title,
       user: it.user,

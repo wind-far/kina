@@ -2,11 +2,16 @@
  * Agent 模式配置
  */
 import { DEFAULT_CHAT_MODEL } from '@/config/models'
+import { getProviderRuntimeConfig, saveProviderRuntimeConfig } from './provider-config'
 
 export const getAgentModel = (): string => {
-  return localStorage.getItem('agent-chat-model') || DEFAULT_CHAT_MODEL
+  return getProviderRuntimeConfig().defaultChatModel || DEFAULT_CHAT_MODEL
 }
 
 export const setAgentModel = (model: string) => {
-  localStorage.setItem('agent-chat-model', model)
+  const currentConfig = getProviderRuntimeConfig()
+  void saveProviderRuntimeConfig({
+    ...currentConfig,
+    defaultChatModel: model,
+  })
 }

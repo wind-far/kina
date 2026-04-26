@@ -11,6 +11,13 @@ import { getAgentModel } from '@/api/agent'
 import { generateImage } from '@/views/workflow/api/image'
 import { getAllImageModels } from '@/config/models'
 import { buildAgentChatMessages } from '@/config/agentSkills'
+import {
+  createGenerationRecord as createGenerationRecordRequest,
+  listGenerationRecords as listGenerationRecordsRequest,
+  updateGenerationRecord as updateGenerationRecordRequest,
+  type GenerationRecordUpsertPayload,
+  type PersistedGenerationRecord,
+} from '@/api/generation-records'
 import type { CreationType } from '../../components/generate/selectors'
 import discoverContent from '@/data/homeDiscoverContent.json'
 import type {
@@ -41,6 +48,7 @@ const contentGeneratorRef = ref<InstanceType<typeof ContentGenerator> | null>(nu
 // 生成记录列表
 interface GeneratingRecord {
   id: number
+  dbId?: string
   type: CreationType
   prompt: string
   time: string
@@ -60,6 +68,8 @@ interface GeneratingRecord {
 }
 const generatingRecords = ref<GeneratingRecord[]>([])
 let nextId = 0
+const recordPersistTimers = new Map<number, ReturnType<typeof setTimeout>>()
+const recordPersistInflight = new Set<number>()
 
 const feedImagePool: AgentImageResult[] = (discoverContent.feedItems || []).map((item, index) => ({
   id: item.id || `feed-image-${index + 1}`,
@@ -438,6 +448,25 @@ const shouldUseAgentWorkspaceFlow = (skill?: string) => {
   return Boolean(skill && skill !== 'general')
 }
 
+// 将页面内的记录结构转换为后端持久化结构。
+const toGenerationRecordPayload = (record: GeneratingRecord): GenerationRecordUpsertPayload => ({
+  type: record.type,
+  prompt: record.prompt,
+  content: record.content,
+  error: record.error,
+  model: record.model,
+  modelKey: record.modelKey,
+  ratio: record.ratio,
+  resolution: record.resolution,
+  duration: record.duration,
+  feature: record.feature,
+  skill: record.skill,
+  done: record.done,
+  agentTaskId: record.agentTaskId,
+  images: record.images,
+  agentRun: record.agentRun,
+})
+
 // 设置弹窗
 const showSettings = ref(false)
 
@@ -455,6 +484,93 @@ const formatGroupLabel = (date: Date): string => {
     return `${date.getMonth() + 1}月${date.getDate()}日`
   }
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+// 将后端返回的持久化记录还原成页面使用结构。
+const createRecordFromPersisted = (record: PersistedGenerationRecord): GeneratingRecord => ({
+  id: nextId++,
+  dbId: record.id,
+  type: record.type,
+  prompt: record.prompt,
+  time: formatGroupLabel(new Date(record.createdAt)),
+  model: record.model,
+  modelKey: record.modelKey,
+  ratio: record.ratio,
+  resolution: record.resolution,
+  duration: record.duration,
+  feature: record.feature,
+  skill: record.skill,
+  content: record.content,
+  images: record.images,
+  done: record.done,
+  error: record.error,
+  agentTaskId: record.agentTaskId,
+  agentRun: record.agentRun,
+})
+
+// 立即持久化一条记录；创建与更新都走这里统一收口。
+const persistRecordNow = async (record: GeneratingRecord) => {
+  if (recordPersistInflight.has(record.id)) return
+  recordPersistInflight.add(record.id)
+
+  try {
+    if (!record.dbId) {
+      const saved = await createGenerationRecordRequest(toGenerationRecordPayload(record))
+      record.dbId = saved.id
+      return
+    }
+
+    await updateGenerationRecordRequest(record.dbId, toGenerationRecordPayload(record))
+  } catch {
+    // 持久化失败时不影响当前页面的生成流程。
+  } finally {
+    recordPersistInflight.delete(record.id)
+  }
+}
+
+// 执行过程中的频繁状态变化走节流更新，减少后端写入次数。
+const schedulePersistRecord = (record: GeneratingRecord, immediate = false) => {
+  const existingTimer = recordPersistTimers.get(record.id)
+  if (existingTimer) {
+    clearTimeout(existingTimer)
+  }
+
+  const run = () => {
+    recordPersistTimers.delete(record.id)
+    void persistRecordNow(record)
+  }
+
+  if (immediate) {
+    run()
+    return
+  }
+
+  const timer = setTimeout(run, 200)
+  recordPersistTimers.set(record.id, timer)
+}
+
+// 首屏加载最近的生成记录，用于刷新后回放历史。
+const loadPersistedGeneratingRecords = async () => {
+  try {
+    const records = await listGenerationRecordsRequest()
+    if (!records.length) return
+
+    const existingDbIds = new Set(
+      generatingRecords.value
+        .map(item => item.dbId)
+        .filter((id): id is string => Boolean(id)),
+    )
+
+    const nextRecords = records
+      .filter(record => !existingDbIds.has(record.id))
+      .map(createRecordFromPersisted)
+
+    if (!nextRecords.length) return
+
+    generatingRecords.value = [...generatingRecords.value, ...nextRecords]
+  } catch {
+    // 数据库未配置或接口失败时，继续使用前端内存态。
+  }
 }
 
 // 处理发送事件
@@ -481,6 +597,7 @@ const handleSend = (message: string, type: CreationType, options?: { model?: str
       : undefined,
   }
   generatingRecords.value.unshift(record)
+  schedulePersistRecord(record, true)
 
   // 根据类型触发不同的生成逻辑
   if (type === 'agent') {
@@ -526,10 +643,13 @@ const runImageGeneration = async (record: GeneratingRecord) => {
     } else {
       record.error = '未能获取到生成的图片'
     }
+    schedulePersistRecord(record)
   } catch (e: unknown) {
     record.error = e instanceof Error ? e.message : '图片生成失败'
+    schedulePersistRecord(record)
   } finally {
     record.done = true
+    schedulePersistRecord(record, true)
   }
 }
 
@@ -557,12 +677,14 @@ const runAgentExecution = async (record: GeneratingRecord) => {
     const errorMessage = e instanceof Error ? e.message : '任务分析失败，请稍后重试。'
     record.error = errorMessage
     record.agentRun = buildAgentErrorRun(record.agentRun, errorMessage)
+    schedulePersistRecord(record, true)
   } finally {
     record.agentTaskId = undefined
     if (taskId) {
       clearMockAgentTask(taskId)
     }
     record.done = true
+    schedulePersistRecord(record, true)
   }
 }
 
@@ -582,11 +704,13 @@ const handleMockAgentEvent = (
   if (event.type === 'run_failed') {
     record.error = event.errorMessage
     record.agentRun = buildAgentErrorRun(record.agentRun, event.errorMessage)
+    schedulePersistRecord(record, true)
     return
   }
 
   if (event.type === 'run_stopped') {
     record.agentRun = buildAgentStoppedRun(record.agentRun, event.message)
+    schedulePersistRecord(record, true)
     return
   }
 
@@ -996,6 +1120,8 @@ const handleMockAgentEvent = (
       })
       break
   }
+
+  schedulePersistRecord(record, event.type === 'run_completed')
 }
 
 // 通用助手沿用原先的流式对话逻辑。
@@ -1012,6 +1138,7 @@ const runAgentStream = async (record: GeneratingRecord) => {
         const chars = Math.min(buffer.length, Math.ceil(Math.random() * 2) + 1)
         record.content += buffer.slice(0, chars)
         buffer = buffer.slice(chars)
+        schedulePersistRecord(record)
         requestAnimationFrame(step)
       } else {
         flushing = false
@@ -1032,11 +1159,13 @@ const runAgentStream = async (record: GeneratingRecord) => {
     }
   } catch (e: unknown) {
     record.error = e instanceof Error ? e.message : '请求失败'
+    schedulePersistRecord(record)
   }
 
   streamDone = true
   if (!buffer.length) {
     record.done = true
+    schedulePersistRecord(record, true)
   } else {
     flush()
   }
@@ -1058,6 +1187,8 @@ const handlePageClick = (e: MouseEvent) => {
 
 // 修复滚动方向反转问题 + 控制输入框折叠/展开
 onMounted(() => {
+  void loadPersistedGeneratingRecords()
+
   // 检查路由参数（从首页跳转过来的发送请求）
   const { message, type, model, ratio, resolution, skill } = route.query
   if (message && type) {
@@ -1110,6 +1241,8 @@ onMounted(() => {
 
     // 清理函数
     onUnmounted(() => {
+      recordPersistTimers.forEach(timer => clearTimeout(timer))
+      recordPersistTimers.clear()
       scrollContainer.removeEventListener('wheel', handleWheel)
       scrollContainer.removeEventListener('scroll', handleScroll)
       document.removeEventListener('click', handlePageClick)
@@ -1169,6 +1302,7 @@ onMounted(() => {
                                         :error="record.error"
                                       />
                                       <ImageLoadingRecord v-else
+                                        :time="record.time"
                                         :prompt="record.prompt"
                                         :model="record.model"
                                         :ratio="record.ratio"
@@ -1180,7 +1314,7 @@ onMounted(() => {
                                         :error="record.error"
                                       />
                                     </div>
-                                    <div class=item-Xh64V7 :data-index="index * 2 + 2" style=z-index:1>
+                                    <div v-if="record.type === 'agent'" class=item-Xh64V7 :data-index="index * 2 + 2" style=z-index:1>
                                       <div class=responsive-container-msS_cP>
                                         <div class="content-DPogfx ai-generated-record-content-hg5EL8">
                                           <div class=group-title-mhd8yy>{{ record.time }}</div>
@@ -1585,6 +1719,6 @@ onMounted(() => {
   </div>
 </template>
 
-<style scoped>
+<style>
 @import "./generate.css";
 </style>

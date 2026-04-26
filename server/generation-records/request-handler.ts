@@ -1,4 +1,5 @@
 import { sendJson } from '../ai-gateway/shared'
+import { requireCurrentSessionUser } from '../auth/session'
 import { isPrismaConfigured } from '../db/prisma'
 import { createGenerationRecord, listGenerationRecords, updateGenerationRecord } from './service'
 import { GENERATION_RECORDS_BASE_PATH } from './constants'
@@ -13,26 +14,31 @@ export const handleGenerationRecordsRequest = async (req: any, res: any) => {
     }
 
     const requestUrl = String(req.url || '').split('?')[0]
+    const currentUser = await requireCurrentSessionUser(req, res)
+    if (!currentUser) {
+      return
+    }
+
     const recordId = requestUrl.startsWith(`${GENERATION_RECORDS_BASE_PATH}/`)
       ? decodeURIComponent(requestUrl.slice(GENERATION_RECORDS_BASE_PATH.length + 1))
       : ''
 
     if (req.method === 'GET' && requestUrl === GENERATION_RECORDS_BASE_PATH) {
-      const data = await listGenerationRecords()
+      const data = await listGenerationRecords(currentUser.id)
       sendJson(res, 200, { data })
       return
     }
 
     if (req.method === 'POST' && requestUrl === GENERATION_RECORDS_BASE_PATH) {
       const payload = await readGenerationRecordBody(req)
-      const data = await createGenerationRecord(payload)
+      const data = await createGenerationRecord(payload, currentUser.id)
       sendJson(res, 200, { data })
       return
     }
 
     if (req.method === 'PATCH' && recordId) {
       const payload = await readGenerationRecordBody(req)
-      const data = await updateGenerationRecord(recordId, payload)
+      const data = await updateGenerationRecord(recordId, payload, currentUser.id)
       sendJson(res, 200, { data })
       return
     }

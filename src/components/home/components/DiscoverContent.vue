@@ -189,18 +189,21 @@ import {
   masonryScrollHeight,
 } from '@/components/home/discoverMasonryLayout'
 import { listAssetItems } from '@/api/asset-items'
+import { AUTH_LOGIN_SUCCESS_EVENT } from '@/stores/auth'
+import { buildAssetUrl } from '@/api/http'
 import discoverContent from '@/data/homeDiscoverContent.json'
 
 const emit = defineEmits(['open-work-detail'])
 
 const buildFeedItemFromAsset = (item) => ({
   id: item.id,
-  src: item.previewUrl || item.fileUrl,
+  src: buildAssetUrl(item.previewUrl || item.fileUrl),
   alt: item.title || item.promptText || item.id,
   promptText: item.promptText,
   user: {
+    id: item.owner?.id || '',
     name: item.owner?.name || '创作者',
-    avatarSrc: item.owner?.avatarSrc || '',
+    avatarSrc: buildAssetUrl(item.owner?.avatarSrc || ''),
   },
   favoriteCount: item.favoriteCount || 0,
   detail: {
@@ -219,6 +222,7 @@ const buildFallbackFeedItems = () => (
     alt: item.alt,
     promptText: item.promptText,
     user: item.user || {
+      id: '',
       name: '创作者',
       avatarSrc: '',
     },
@@ -294,6 +298,11 @@ const trackWidth = ref(1653)
 let trackResizeObserver = null
 /** @type {(() => void) | null} */
 let trackWinResize = null
+/** @type {((event: Event) => void) | null} */
+let assetDeletedListener = null
+
+/** @type {((event: Event) => void) | null} */
+let authLoginSuccessListener = null
 
 onMounted(() => {
   const el = trackRef.value
@@ -312,7 +321,7 @@ onMounted(() => {
   }
 })
 
-onMounted(async () => {
+const loadDiscoverFeedItems = async () => {
   try {
     const assets = await listAssetItems({
       scope: 'feed',
@@ -322,10 +331,33 @@ onMounted(async () => {
 
     if (assets.length) {
       feedItems.value = shuffleArray(assets.map(buildFeedItemFromAsset))
+      return
     }
+
+    feedItems.value = buildFallbackFeedItems()
   } catch (error) {
     console.warn('读取首页瀑布流失败，继续使用本地 JSON 数据。', error)
+    feedItems.value = buildFallbackFeedItems()
   }
+}
+
+onMounted(async () => {
+  await loadDiscoverFeedItems()
+})
+
+onMounted(() => {
+  assetDeletedListener = (event) => {
+    const deletedAssetId = event instanceof CustomEvent ? String(event.detail?.id || '').trim() : ''
+    if (!deletedAssetId) return
+    feedItems.value = feedItems.value.filter(item => item.id !== deletedAssetId)
+  }
+
+  document.addEventListener('asset-item-deleted', assetDeletedListener)
+
+  authLoginSuccessListener = () => {
+    void loadDiscoverFeedItems()
+  }
+  window.addEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
 })
 
 onBeforeUnmount(() => {
@@ -334,6 +366,14 @@ onBeforeUnmount(() => {
   if (trackWinResize) {
     window.removeEventListener('resize', trackWinResize)
     trackWinResize = null
+  }
+  if (assetDeletedListener) {
+    document.removeEventListener('asset-item-deleted', assetDeletedListener)
+    assetDeletedListener = null
+  }
+  if (authLoginSuccessListener) {
+    window.removeEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
+    authLoginSuccessListener = null
   }
 })
 

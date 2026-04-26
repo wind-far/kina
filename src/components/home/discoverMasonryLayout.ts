@@ -17,6 +17,12 @@ export type MasonryMetrics = {
   heroRect: MasonryRect
 }
 
+export type PlainMasonryMetrics = {
+  columnGap: number
+  colWidth: number
+  colLefts: number[]
+}
+
 const DEFAULT_TRACK = 1653
 
 /**
@@ -41,6 +47,46 @@ export function computeMasonryMetrics(trackWidth: number, columnGap = 2): Masonr
 function displayHeight(nw: number, nh: number, colWidth: number): number {
   if (!nw || !nh || nw <= 0 || nh <= 0) return colWidth
   return Math.max(1, Math.round((colWidth * nh) / nw))
+}
+
+/**
+ * 纯瀑布流轨道指标计算。
+ * 不包含首页 Hero 卡，只负责普通列宽、列坐标与间距。
+ */
+export function computePlainMasonryMetrics(options: {
+  trackWidth: number
+  minColumnWidth?: number
+  maxColumnWidth?: number
+  maxColumns?: number
+  columnGap?: number
+}): PlainMasonryMetrics {
+  const {
+    trackWidth,
+    minColumnWidth = 220,
+    maxColumnWidth = 252,
+    maxColumns = 7,
+    columnGap = 16,
+  } = options
+
+  const normalizedTrackWidth = Math.max(320, Math.floor(trackWidth || DEFAULT_TRACK))
+  const estimatedColumnCount = Math.max(
+    1,
+    Math.floor((normalizedTrackWidth + columnGap) / (minColumnWidth + columnGap)),
+  )
+  const columnCount = Math.min(estimatedColumnCount, Math.max(1, maxColumns))
+  const rawColumnWidth = Math.floor((normalizedTrackWidth - (columnCount - 1) * columnGap) / columnCount)
+  const colWidth = Math.max(minColumnWidth, Math.min(maxColumnWidth, rawColumnWidth))
+  const usedWidth = columnCount * colWidth + Math.max(0, columnCount - 1) * columnGap
+  const offsetLeft = Math.max(0, Math.floor((normalizedTrackWidth - usedWidth) / 2))
+  const colLefts = Array.from({ length: columnCount }, (_, index) => (
+    offsetLeft + index * (colWidth + columnGap)
+  ))
+
+  return {
+    columnGap,
+    colWidth,
+    colLefts,
+  }
 }
 
 /**
@@ -86,4 +132,54 @@ export function masonryScrollHeight(feedLayouts: MasonryRect[], heroRect: Masonr
     maxY = Math.max(maxY, r.top + r.height)
   }
   return maxY + 24
+}
+
+/**
+ * 纯瀑布流卡片布局生成。
+ * 适合个人中心、资产页等不带 Hero 卡的页面复用。
+ */
+export function buildPlainMasonryLayoutsFromSizes(
+  sizes: ReadonlyArray<{ w: number; h: number } | null | undefined>,
+  metrics: PlainMasonryMetrics,
+): MasonryRect[] {
+  const { colWidth, colLefts, columnGap } = metrics
+  const colBottom = new Array(colLefts.length).fill(0)
+  const out: MasonryRect[] = []
+
+  for (let i = 0; i < sizes.length; i += 1) {
+    const currentSize = sizes[i]
+    const width = currentSize && currentSize.w > 0 ? currentSize.w : 1
+    const height = currentSize && currentSize.h > 0 ? currentSize.h : 1
+    const displayH = Math.max(140, displayHeight(width, height, colWidth))
+
+    let targetColumnIndex = 0
+    let minBottom = colBottom[0]
+    for (let k = 1; k < colBottom.length; k += 1) {
+      if (colBottom[k] < minBottom) {
+        minBottom = colBottom[k]
+        targetColumnIndex = k
+      }
+    }
+
+    const top = colBottom[targetColumnIndex]
+    const left = colLefts[targetColumnIndex]
+    colBottom[targetColumnIndex] = top + displayH + columnGap
+
+    out.push({
+      left,
+      top,
+      width: colWidth,
+      height: displayH,
+    })
+  }
+
+  return out
+}
+
+/**
+ * 纯瀑布流内容高度。
+ */
+export function plainMasonryScrollHeight(layouts: ReadonlyArray<MasonryRect>): number {
+  if (!layouts.length) return 0
+  return Math.max(...layouts.map(layout => layout.top + layout.height))
 }

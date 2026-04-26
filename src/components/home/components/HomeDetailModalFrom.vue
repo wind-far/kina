@@ -222,7 +222,16 @@
                                 <span class="count-GysjBc">{{ likeCount }}</span>
                               </div>
                             </div>
-                            <div class="operation-wrapper-Hc6lfr">
+                            <div
+                                ref="operationTriggerRef"
+                                class="operation-wrapper-Hc6lfr"
+                                role="button"
+                                tabindex="0"
+                                aria-label="更多操作"
+                                @click.stop="toggleOperationMenu"
+                                @keydown.enter.prevent="toggleOperationMenu"
+                                @keydown.space.prevent="toggleOperationMenu"
+                            >
                               <svg width="1em" height="1em"
                                    viewBox="0 0 24 24"
                                    preserveAspectRatio="xMidYMid meet"
@@ -237,6 +246,33 @@
                                         fill="currentColor"></path>
                                 </g>
                               </svg>
+                              <div
+                                  v-if="operationMenuVisible"
+                                  ref="operationMenuRef"
+                                  class="home-work-detail-operation-menu"
+                              >
+                                <button
+                                    v-if="isAuthor"
+                                    type="button"
+                                    class="home-work-detail-operation-menu-item operation-menu-content-item-p3jbuP"
+                                    @click.stop="handleDelete"
+                                >
+                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 3.75A.75.75 0 0 1 9.75 3h4.5a.75.75 0 0 1 .75.75V5h3.25a.75.75 0 0 1 0 1.5h-.81l-.78 10.18A2.25 2.25 0 0 1 14.42 18.75H9.58a2.25 2.25 0 0 1-2.24-2.07L6.56 6.5h-.81a.75.75 0 0 1 0-1.5H9V3.75Zm1.5 1.25V4.5h3V5h-3Zm-1.65 1.5.73 9.95a.75.75 0 0 0 .75.69h4.34a.75.75 0 0 0 .75-.69l.73-9.95H8.85Zm2.4 2.25c.41 0 .75.34.75.75v4.5a.75.75 0 0 1-1.5 0v-4.5c0-.41.34-.75.75-.75Zm3 0c.41 0 .75.34.75.75v4.5a.75.75 0 0 1-1.5 0v-4.5c0-.41.34-.75.75-.75Z" fill="currentColor"/>
+                                  </svg>
+                                  <span>删除</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="home-work-detail-operation-menu-item operation-menu-content-item-p3jbuP"
+                                    @click.stop="handleReport"
+                                >
+                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 2.75a9.25 9.25 0 1 0 9.25 9.25A9.26 9.26 0 0 0 12 2.75Zm0 17a7.75 7.75 0 1 1 7.75-7.75A7.76 7.76 0 0 1 12 19.75Zm-.75-11.5a.75.75 0 0 1 1.5 0v4.5a.75.75 0 0 1-1.5 0v-4.5Zm.75 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" fill="currentColor"/>
+                                  </svg>
+                                  <span>举报</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -348,6 +384,7 @@
 <script setup>
 import ContentGenerator from '@components/generate/ContentGenerator.vue'
 import { computed, nextTick, onBeforeUnmount, ref, unref, watch } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 
 const BODY_SCROLL_LOCK = 'home-work-detail-modal-scroll-lock'
 
@@ -366,6 +403,7 @@ const props = defineProps({
   imageSrc: { type: String, default: '' },
   /** 当前画廊条目数；大于 1 时可点左侧上下箭头切换 */
   galleryLength: { type: Number, default: 0 },
+  ownerId: { type: String, default: '' },
   authorName: { type: String, default: '创作者' },
   authorAvatarSrc: { type: String, default: '' },
   likeCount: { type: [String, Number], default: 999 },
@@ -384,12 +422,15 @@ const props = defineProps({
   usePromptLabel: { type: String, default: '使用提示词' },
 })
 
-const emit = defineEmits(['update:modelValue', 'close', 'gallery-nav', 'content-send', 'favorite'])
+const emit = defineEmits(['update:modelValue', 'close', 'gallery-nav', 'content-send', 'favorite', 'delete', 'report'])
 
 const dialogRef = ref(/** @type {HTMLElement | null} */ (null))
 const contentGeneratorRef = ref(/** @type {InstanceType<typeof ContentGenerator> | null} */ (null))
+const operationTriggerRef = ref(/** @type {HTMLElement | null} */ (null))
+const operationMenuRef = ref(/** @type {HTMLElement | null} */ (null))
 /** 点击「使用提示词」后为 true，关闭弹层前保持：底部条始终在（折叠态），不用 v-show 在点空白时关掉整条 */
 const contentGeneratorVisible = ref(false)
+const operationMenuVisible = ref(false)
 /** 递增以强制 ContentGenerator 将当前提示词写入输入框 */
 const contentGeneratorSyncNonce = ref(0)
 /** 与 ContentGenerator 展开态联动，用于预览区底部留白（即梦式叠层） */
@@ -402,6 +443,8 @@ const generatorPromptForSync = computed(() =>
 )
 
 const resolvedAuthorAvatarSrc = computed(() => props.authorAvatarSrc || EMPTY_AVATAR_DATA_URI)
+const authStore = useAuthStore()
+const isAuthor = computed(() => Boolean(props.ownerId) && authStore.currentUser.value?.id === props.ownerId)
 
 const contentGeneratorPromptSyncKey = computed(
     () => `${props.imageSrc}\0${contentGeneratorSyncNonce.value}`,
@@ -425,6 +468,10 @@ function onDocumentKeydown(/** @type {KeyboardEvent} */ e) {
   if (!props.modelValue) return
   if (e.key === 'Escape') {
     e.preventDefault()
+    if (operationMenuVisible.value) {
+      operationMenuVisible.value = false
+      return
+    }
     if (contentGeneratorVisible.value) {
       const inst = contentGeneratorRef.value
       if (inst && !unref(inst.isCollapsed)) {
@@ -466,6 +513,20 @@ function toggleEmbeddedContentGenerator() {
   contentGeneratorRef.value?.toggle()
 }
 
+function toggleOperationMenu() {
+  operationMenuVisible.value = !operationMenuVisible.value
+}
+
+function handleDelete() {
+  operationMenuVisible.value = false
+  emit('delete')
+}
+
+function handleReport() {
+  operationMenuVisible.value = false
+  emit('report')
+}
+
 /** 使用提示词：刷新同步 key、确保底部栏展示并展开 */
 function openContentGeneratorFromPrompt() {
   contentGeneratorSyncNonce.value += 1
@@ -488,6 +549,14 @@ function handleDocumentClickForGenerator(/** @type {MouseEvent} */ e) {
   contentGeneratorRef.value?.collapse()
 }
 
+function handleDocumentClickForOperationMenu(/** @type {MouseEvent} */ e) {
+  if (!operationMenuVisible.value || !props.modelValue) return
+  const target = e.target
+  if (!(target instanceof Node)) return
+  if (operationTriggerRef.value?.contains(target) || operationMenuRef.value?.contains(target)) return
+  operationMenuVisible.value = false
+}
+
 function onDetailImageLoad() {
   detailImageReady.value = true
 }
@@ -497,6 +566,7 @@ function onDetailImageError() {
 }
 
 function close() {
+  operationMenuVisible.value = false
   emit('update:modelValue', false)
   emit('close')
 }
@@ -504,6 +574,7 @@ function close() {
 function teardownModalChrome() {
   document.removeEventListener('keydown', onDocumentKeydown, true)
   document.removeEventListener('click', handleDocumentClickForGenerator, true)
+  document.removeEventListener('click', handleDocumentClickForOperationMenu, true)
   document.body.classList.remove(BODY_SCROLL_LOCK)
   document.documentElement.classList.remove(BODY_SCROLL_LOCK)
   if (focusBeforeOpen instanceof HTMLElement) {
@@ -529,8 +600,10 @@ watch(
     (open) => {
       document.removeEventListener('keydown', onDocumentKeydown, true)
       document.removeEventListener('click', handleDocumentClickForGenerator, true)
+      document.removeEventListener('click', handleDocumentClickForOperationMenu, true)
       if (open) {
         contentGeneratorVisible.value = false
+        operationMenuVisible.value = false
         detailImageReady.value = !props.imageSrc
         focusBeforeOpen = document.activeElement
         document.body.classList.add(BODY_SCROLL_LOCK)
@@ -542,6 +615,7 @@ watch(
         })
       } else {
         contentGeneratorVisible.value = false
+        operationMenuVisible.value = false
         teardownModalChrome()
       }
     },
@@ -555,6 +629,16 @@ watch(
       document.removeEventListener('click', handleDocumentClickForGenerator, true)
       if (open && vis) {
         document.addEventListener('click', handleDocumentClickForGenerator, true)
+      }
+    },
+)
+
+watch(
+    () => [props.modelValue, operationMenuVisible.value],
+    ([open, visible]) => {
+      document.removeEventListener('click', handleDocumentClickForOperationMenu, true)
+      if (open && visible) {
+        document.addEventListener('click', handleDocumentClickForOperationMenu, true)
       }
     },
 )
@@ -618,6 +702,43 @@ body.home-work-detail-modal-scroll-lock {
 .home-work-detail-modal-leave-to .lv-modal {
   opacity: 0;
   transform: scale(0.94);
+}
+
+.home-work-detail-operation-menu {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 8;
+  min-width: 180px;
+  padding: 10px;
+  border: 1px solid var(--stroke-secondary, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  background: var(--bg-dropdown-menu, #1b1d22);
+  box-shadow: var(--shadow-dropdown-menu, 0 16px 48px rgba(0, 0, 0, 0.32));
+}
+
+.home-work-detail-modal-host .operation-wrapper-Hc6lfr {
+  position: relative;
+}
+
+.home-work-detail-operation-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary, #f5fbff);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: left;
+}
+
+.home-work-detail-operation-menu-item svg {
+  flex: 0 0 auto;
 }
 
 .home-work-detail-modal-enter-to .lv-modal,

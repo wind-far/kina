@@ -2,11 +2,13 @@ import { readJsonBody, sendJson } from '../ai-gateway/shared'
 
 export type AssetScope = 'feed' | 'mine'
 export type AssetKind = 'image' | 'video'
+export type AssetPublishState = 'all' | 'published' | 'draft'
 
 export interface AssetListQuery {
   scope: AssetScope
   assetType: AssetKind
   take: number
+  publishState: AssetPublishState
 }
 
 export type AssetActionType = 'delete' | 'publish' | 'unpublish' | 'favorite' | 'view' | 'download'
@@ -22,11 +24,18 @@ export const readAssetListQuery = (requestUrl: string) => {
   const scope = url.searchParams.get('scope') === 'mine' ? 'mine' : 'feed'
   const assetType = url.searchParams.get('assetType') === 'video' ? 'video' : 'image'
   const rawTake = Number(url.searchParams.get('take') || 0)
+  const rawPublishState = String(url.searchParams.get('publishState') || '').trim().toLowerCase()
+  const publishState = rawPublishState === 'published'
+    ? 'published'
+    : rawPublishState === 'draft'
+      ? 'draft'
+      : 'all'
 
   return {
     scope,
     assetType,
     take: Number.isFinite(rawTake) && rawTake > 0 ? Math.min(rawTake, 120) : 60,
+    publishState,
   } satisfies AssetListQuery
 }
 

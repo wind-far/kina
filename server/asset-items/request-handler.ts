@@ -1,4 +1,5 @@
 import { sendJson } from '../ai-gateway/shared'
+import { requireCurrentSessionUser } from '../auth/session'
 import { isPrismaConfigured } from '../db/prisma'
 import { readAssetActionBody, readAssetListQuery, sendAssetItemsError } from './shared'
 import { applyAssetAction, listMineAssetItems, listPublicAssetItems } from './service'
@@ -17,17 +18,30 @@ export const handleAssetItemsRequest = async (req: any, res: any) => {
 
     if (req.method === 'GET' && pathname === ASSET_ITEMS_BASE_PATH) {
       const query = readAssetListQuery(requestUrl)
-      const data = query.scope === 'mine'
-        ? await listMineAssetItems(query)
-        : await listPublicAssetItems(query)
+      if (query.scope === 'mine') {
+        const currentUser = await requireCurrentSessionUser(req, res)
+        if (!currentUser) {
+          return
+        }
 
+        const data = await listMineAssetItems(query, currentUser.id)
+        sendJson(res, 200, { data })
+        return
+      }
+
+      const data = await listPublicAssetItems(query)
       sendJson(res, 200, { data })
       return
     }
 
     if (req.method === 'POST' && pathname === `${ASSET_ITEMS_BASE_PATH}/actions`) {
+      const currentUser = await requireCurrentSessionUser(req, res)
+      if (!currentUser) {
+        return
+      }
+
       const payload = await readAssetActionBody(req)
-      const data = await applyAssetAction(payload)
+      const data = await applyAssetAction(payload, currentUser.id)
       sendJson(res, 200, { data })
       return
     }

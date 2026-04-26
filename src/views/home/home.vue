@@ -43,6 +43,7 @@
     <HomeDetailModalFrom
       v-model="workDetailOpen"
       :image-src="workDetailImageSrc"
+      :owner-id="workDetailOwnerId"
       :prompt-text="workDetailPromptText"
       :author-name="workDetailAuthorName"
       :author-avatar-src="workDetailAuthorAvatarSrc"
@@ -55,11 +56,14 @@
       :gallery-length="workDetailGallery.length"
       @gallery-nav="handleGalleryNav"
       @favorite="handleWorkDetailFavorite"
+      @delete="handleWorkDetailDelete"
+      @report="handleWorkDetailReport"
     />
   </div>
 </template>
 
 <script setup>
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, ref, watch } from 'vue'
 import SideMenu from '../../components/home/components/SideMenu.vue'
 import HomeHeader from '../../components/home/components/HomeHeader.vue'
@@ -106,6 +110,12 @@ const workDetailAuthorAvatarSrc = computed(() => {
   const g = workDetailGallery.value
   const i = workDetailGalleryIndex.value
   return g[i]?.user?.avatarSrc || ''
+})
+
+const workDetailOwnerId = computed(() => {
+  const g = workDetailGallery.value
+  const i = workDetailGalleryIndex.value
+  return g[i]?.user?.id || ''
 })
 
 const workDetailLikeCount = computed(() => {
@@ -223,6 +233,52 @@ async function handleWorkDetailFavorite() {
     }
     console.warn('收藏作品失败', error)
   }
+}
+
+function removeCurrentWorkDetailItem() {
+  const currentIndex = workDetailGalleryIndex.value
+  const currentItem = workDetailGallery.value[currentIndex]
+  if (!currentItem) return ''
+
+  workDetailGallery.value = workDetailGallery.value.filter((_, index) => index !== currentIndex)
+  if (!workDetailGallery.value.length) {
+    workDetailOpen.value = false
+    workDetailGalleryIndex.value = 0
+  } else if (currentIndex >= workDetailGallery.value.length) {
+    workDetailGalleryIndex.value = workDetailGallery.value.length - 1
+  }
+
+  return currentItem.id || ''
+}
+
+async function handleWorkDetailDelete() {
+  const assetId = currentWorkDetailAssetId.value
+  if (!assetId) return
+
+  try {
+    await ElMessageBox.confirm('确定删除这条作品吗？删除后将无法恢复。', '删除确认', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+
+  await applyAssetAction('delete', [assetId])
+  const deletedAssetId = removeCurrentWorkDetailItem()
+  if (deletedAssetId) {
+    document.dispatchEvent(new CustomEvent('asset-item-deleted', {
+      detail: {
+        id: deletedAssetId,
+      },
+    }))
+  }
+  ElMessage.success('作品已删除')
+}
+
+function handleWorkDetailReport() {
+  ElMessage.success('举报已提交，我们会尽快处理')
 }
 
 watch(

@@ -171,7 +171,7 @@
                                       </div>
                                     </div>
                                   </div>
-                                  <div class="image-s9z">
+                                  <div v-if="imageGroups.length" class="image-s9z">
                                     <div class="vList-q9n style-FG29L" id="style-FG29L">
                                       <div id="style-MK2n3" class="style-MK2n3">
                                         <div id="style-TK4rG" class="style-TK4rG">
@@ -212,6 +212,12 @@
                                           <div class="load-more-detector-c4r"></div>
                                         </div>
                                       </div>
+                                    </div>
+                                  </div>
+                                  <div v-else class="video-cv8">
+                                    <div class="empty-page-ij3">
+                                      <img src="https://lf3-lv-buz.vlabstatic.com/obj/image-lvweb-buz/ies/lvweb/dreamina_cn/static/image/empty-image-dark.6e788cae.png" class="image-eyv">
+                                      <div class="description-96w">暂无相关资产</div>
                                     </div>
                                   </div>
                                 </div>
@@ -726,7 +732,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import SideMenu from '@/components/home/components/SideMenu.vue'
 import ImagePreview from '@/components/ImagePreview.vue'
@@ -736,7 +742,8 @@ import {
   listAssetItems,
   type PersistedAssetItem,
 } from '@/api/asset-items'
-import discoverContent from '@/data/homeDiscoverContent.json'
+import { buildAssetUrl } from '@/api/http'
+import { AUTH_LOGIN_SUCCESS_EVENT } from '@/stores/auth'
 
 // 类型定义
 type TabType = 'image' | 'video' | 'canvas' | 'editor' | 'story' | 'audio'
@@ -939,21 +946,10 @@ const getAssetResolutionLabel = (item: PersistedAssetItem) => {
   return '标清'
 }
 
-const buildFallbackImageGroups = () => buildImageGroups(
-  (discoverContent.feedItems || []).map((item) => ({
-    id: item.id,
-    src: item.imageSrc,
-    promptText: item.promptText,
-    modelLabel: (item.detail as { modelLabel?: string } | undefined)?.modelLabel || '图片 4.0',
-    aspectRatioLabel: (item.detail as { aspectRatioLabel?: string } | undefined)?.aspectRatioLabel || '1:1',
-    resolutionLabel: ((item.detail as { resolutionLabel?: string } | undefined)?.resolutionLabel) || '2K',
-  })),
-)
-
 const buildImageGroupsFromAssets = (items: PersistedAssetItem[]) => buildImageGroups(
   items.map(item => ({
     id: item.id,
-    src: item.previewUrl || item.fileUrl,
+    src: buildAssetUrl(item.previewUrl || item.fileUrl),
     promptText: item.promptText,
     modelLabel: item.modelLabel || '图片 4.0',
     aspectRatioLabel: item.aspectRatio || '1:1',
@@ -963,7 +959,10 @@ const buildImageGroupsFromAssets = (items: PersistedAssetItem[]) => buildImageGr
   })),
 )
 
-const imageGroups = ref<ImageGroup[]>(buildFallbackImageGroups())
+const imageGroups = ref<ImageGroup[]>([])
+
+// 登录成功后的页面数据刷新监听器。
+let authLoginSuccessListener: (() => void) | null = null
 
 const loadImageAssets = async () => {
   try {
@@ -978,15 +977,27 @@ const loadImageAssets = async () => {
       return
     }
 
-    imageGroups.value = buildFallbackImageGroups()
+    imageGroups.value = []
   } catch (error) {
-    console.warn('读取资产列表失败，继续使用本地示例数据。', error)
-    imageGroups.value = buildFallbackImageGroups()
+    console.warn('读取资产列表失败。', error)
+    imageGroups.value = []
   }
 }
 
 onMounted(async () => {
   await loadImageAssets()
+
+  authLoginSuccessListener = () => {
+    void loadImageAssets()
+  }
+  window.addEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
+})
+
+onBeforeUnmount(() => {
+  if (authLoginSuccessListener) {
+    window.removeEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
+    authLoginSuccessListener = null
+  }
 })
 
 // 切换标签页

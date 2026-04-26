@@ -1,3 +1,5 @@
+import { Buffer } from 'node:buffer'
+import { saveUploadedBuffer } from '../storage/service'
 import { prisma } from '../db/prisma'
 import type { GenerationRecordPayload, GenerationOutputPayload } from './shared'
 
@@ -63,8 +65,8 @@ const isDisplayableAssetOutput = (outputType: GenerationOutputPayload['outputTyp
   return outputType === 'image' || outputType === 'video'
 }
 
-// 统一收敛输出结果，兼容旧的 images 数组与新的 outputs 结构
-const normalizeOutputs = (payload: GenerationRecordPayload): GenerationOutputPayload[] => {
+// 统一收敛输出结果，兼容旧的 images 数组与新的 outputs 结构。
+const collectOutputs = (payload: GenerationRecordPayload): GenerationOutputPayload[] => {
   const explicitOutputs = Array.isArray(payload.outputs) ? payload.outputs : []
   if (explicitOutputs.length) {
     return explicitOutputs
@@ -91,10 +93,108 @@ const normalizeOutputs = (payload: GenerationRecordPayload): GenerationOutputPay
   return [...imageOutputs, ...textOutputs]
 }
 
+// 判断是否为 base64 Data URL。
+const isDataUrl = (value?: string | null) => {
+  return /^data:[^;,]+;base64,/i.test(String(value || '').trim())
+}
+
+// 判断是否为远程资源 URL。
+const isRemoteHttpUrl = (value?: string | null) => {
+  return /^https?:\/\//i.test(String(value || '').trim())
+}
+
+// 判断是否已经是本服务托管的本地上传地址。
+const isLocalManagedAssetUrl = (value?: string | null) => {
+  return String(value || '').trim().startsWith('/uploads/')
+}
+
+// 从 Data URL 中解析 MIME 类型与二进制内容。
+const parseDataUrl = (value: string) => {
+  const matched = String(value || '').trim().match(/^data:([^;,]+);base64,(.+)$/i)
+  if (!matched) {
+    throw new Error('无法解析生成结果中的 Data URL')
+  }
+
+  return {
+    mimeType: matched[1] || 'application/octet-stream',
+    buffer: Buffer.from(matched[2], 'base64'),
+  }
+}
+
+// 下载远程资源，转换为可上传的缓冲区。
+const downloadRemoteAsset = async (url: string) => {
+  const response = await fetch(url)
+
+  if (!response.ok) {
+    throw new Error(`下载远程资源失败：${response.status}`)
+  }
+
+  const arrayBuffer = await response.arrayBuffer()
+
+  return {
+    mimeType: String(response.headers.get('content-type') || '').trim() || undefined,
+    buffer: Buffer.from(arrayBuffer),
+  }
+}
+
+// 将生成输出统一转存到当前启用的存储系统，并保留原始来源信息。
+const materializeOutputAsset = async (
+  output: GenerationOutputPayload,
+  index: number,
+) => {
+  if (!isDisplayableAssetOutput(output.outputType) || !output.url) {
+    return output
+  }
+
+  const rawUrl = String(output.url || '').trim()
+
+  // 已经是当前服务本地托管地址时，直接复用，避免重复上传。
+  if (isLocalManagedAssetUrl(rawUrl)) {
+    return output
+  }
+
+  // 只处理 base64 Data URL 与远程 URL，其他形式先按原样保留。
+  if (!isDataUrl(rawUrl) && !isRemoteHttpUrl(rawUrl)) {
+    return output
+  }
+
+  const sourceAsset = isDataUrl(rawUrl)
+    ? parseDataUrl(rawUrl)
+    : await downloadRemoteAsset(rawUrl)
+
+  const savedAsset = await saveUploadedBuffer({
+    buffer: sourceAsset.buffer,
+    mimeType: output.mimeType || sourceAsset.mimeType,
+    filename: `generation-output-${index + 1}`,
+    category: `generated/${output.outputType}`,
+  })
+
+  return {
+    ...output,
+    url: savedAsset.publicUrl,
+    mimeType: output.mimeType || sourceAsset.mimeType || savedAsset.mimeType,
+    metaJson: {
+      ...(output.metaJson || {}),
+      originalUrl: rawUrl,
+      storageType: savedAsset.storageType,
+      storageCode: savedAsset.storageCode,
+      relativePath: savedAsset.relativePath,
+    },
+  }
+}
+
+// 统一归一化输出列表，并将需要托管的资源写入自己的存储系统。
+const normalizeOutputs = async (payload: GenerationRecordPayload) => {
+  const outputs = collectOutputs(payload)
+
+  return Promise.all(outputs.map((output, index) => materializeOutputAsset(output, index)))
+}
+
 // 根据生成输出重建资源层数据，供首页与资产页统一查询。
 const syncAssetItemsForRecord = async (
   tx: any,
   generationRecordId: string,
+  currentUserId: string,
   payload: GenerationRecordPayload,
   outputRecords: Array<{
     id: string
@@ -119,7 +219,7 @@ const syncAssetItemsForRecord = async (
 
   await tx.assetItem.createMany({
     data: assetOutputs.map((output) => ({
-      userId: null,
+      userId: currentUserId,
       generationRecordId,
       generationOutputId: output.id,
       assetType: output.outputType === 'video' ? 'VIDEO' : 'IMAGE',
@@ -135,8 +235,9 @@ const syncAssetItemsForRecord = async (
       promptText: String(payload.prompt || '').trim() || null,
       modelLabel: String(payload.model || '').trim() || null,
       aspectRatio: String(payload.ratio || '').trim() || null,
-      visibility: 'PUBLIC',
-      publishStatus: 'PUBLISHED',
+      // 生成完成后先进入个人资产草稿态，只有用户主动发布后才进入公开流。
+      visibility: 'PRIVATE',
+      publishStatus: 'DRAFT',
       reviewStatus: 'APPROVED',
       favoriteCount: 0,
       viewCount: 0,
@@ -146,7 +247,7 @@ const syncAssetItemsForRecord = async (
         ? { skill: payload.skill || 'general', mode: 'agent' }
         : { skill: payload.skill || 'general', mode: 'direct' },
       isDeleted: false,
-      publishedAt: new Date(),
+      publishedAt: null,
     })),
   })
 }
@@ -342,9 +443,9 @@ const serializeGenerationRecord = (record: any) => ({
 })
 
 // 获取最近的生成记录列表
-export const listGenerationRecords = async () => {
+export const listGenerationRecords = async (currentUserId?: string | null) => {
   const records = await prisma.generationRecord.findMany({
-    where: { userId: null },
+    where: { userId: currentUserId },
     include: buildRecordInclude(),
     orderBy: { createdAt: 'desc' },
     take: 50,
@@ -354,16 +455,17 @@ export const listGenerationRecords = async () => {
 }
 
 // 创建一条新的生成记录，并同步写入输出与 Agent 过程
-export const createGenerationRecord = async (payload: GenerationRecordPayload) => {
+export const createGenerationRecord = async (payload: GenerationRecordPayload, currentUserId: string) => {
   if (!String(payload.prompt || '').trim()) {
     throw new Error('提示词不能为空')
   }
 
-  const outputs = normalizeOutputs(payload)
+  const outputs = await normalizeOutputs(payload)
 
   const created = await prisma.$transaction(async (tx) => {
     const createdRecord = await tx.generationRecord.create({
       data: {
+        userId: currentUserId,
         type: mapGenerationType(payload.type),
         status: mapGenerationStatus(payload),
         prompt: String(payload.prompt || '').trim(),
@@ -421,13 +523,14 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload) =
       })
     }
 
-    await syncAssetItemsForRecord(tx, createdRecord.id, payload, createdOutputs)
+    await syncAssetItemsForRecord(tx, createdRecord.id, currentUserId, payload, createdOutputs)
 
     const agentRun = toAgentRunCreateInput(createdRecord.id, payload)
     if (agentRun) {
       const createdAgentRun = await tx.agentRun.create({
         data: {
           generationRecordId: createdRecord.id,
+          userId: currentUserId,
           query: agentRun.query,
           skill: agentRun.skill,
           status: agentRun.status as any,
@@ -485,10 +588,23 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload) =
 }
 
 // 更新已有生成记录，采用“主记录更新 + 子表重建”的方式保持结构简单
-export const updateGenerationRecord = async (id: string, payload: GenerationRecordPayload) => {
-  const outputs = normalizeOutputs(payload)
+export const updateGenerationRecord = async (id: string, payload: GenerationRecordPayload, currentUserId: string) => {
+  const outputs = await normalizeOutputs(payload)
 
   await prisma.$transaction(async (tx) => {
+    const existingRecord = await tx.generationRecord.findUnique({
+      where: { id },
+      select: { id: true, userId: true },
+    })
+
+    if (!existingRecord) {
+      throw new Error('生成记录不存在')
+    }
+
+    if (existingRecord.userId !== currentUserId) {
+      throw new Error('无权修改当前生成记录')
+    }
+
     await tx.generationRecord.update({
       where: { id },
       data: {
@@ -552,7 +668,7 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
       })
     }
 
-    await syncAssetItemsForRecord(tx, id, payload, createdOutputs)
+    await syncAssetItemsForRecord(tx, id, currentUserId, payload, createdOutputs)
 
     const existingAgentRun = await tx.agentRun.findUnique({
       where: { generationRecordId: id },
@@ -572,6 +688,7 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
       ? await tx.agentRun.update({
           where: { id: existingAgentRun.id },
           data: {
+            userId: currentUserId,
             query: agentRun.query,
             skill: agentRun.skill,
             status: agentRun.status as any,
@@ -591,6 +708,7 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
       : await tx.agentRun.create({
           data: {
             generationRecordId: id,
+            userId: currentUserId,
             query: agentRun.query,
             skill: agentRun.skill,
             status: agentRun.status as any,

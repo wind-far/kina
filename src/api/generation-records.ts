@@ -1,6 +1,7 @@
 import type { AgentRunState } from '@/types/agent'
 import type { CreationType } from '@/components/generate/selectors'
 import { buildApiUrl } from './http'
+import { readApiData } from './response'
 
 // 后端返回的持久化生成记录结构
 export interface PersistedGenerationRecord {
@@ -50,43 +51,41 @@ export interface GenerationRecordUpsertPayload {
 
 const GENERATION_RECORDS_API_PATH = '/api/generation-records'
 
-// 统一解析接口响应
-const readJson = async <T>(response: Response) => {
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || payload?.message || '请求失败')
-  }
-  return payload?.data as T
-}
-
 // 获取已持久化的生成记录
 export const listGenerationRecords = async () => {
   const response = await fetch(buildApiUrl(GENERATION_RECORDS_API_PATH), {
     method: 'GET',
+    credentials: 'include',
   })
-  return readJson<PersistedGenerationRecord[]>(response)
+  return readApiData<PersistedGenerationRecord[]>(response)
 }
 
 // 创建生成记录
 export const createGenerationRecord = async (payload: GenerationRecordUpsertPayload) => {
   const response = await fetch(buildApiUrl(GENERATION_RECORDS_API_PATH), {
     method: 'POST',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
   })
-  return readJson<PersistedGenerationRecord>(response)
+  return readApiData<PersistedGenerationRecord>(response, {
+    showErrorMessage: true,
+  })
 }
 
 // 更新生成记录
 export const updateGenerationRecord = async (id: string, payload: GenerationRecordUpsertPayload) => {
   const response = await fetch(buildApiUrl(`${GENERATION_RECORDS_API_PATH}/${encodeURIComponent(id)}`), {
     method: 'PATCH',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
   })
-  return readJson<PersistedGenerationRecord>(response)
+  return readApiData<PersistedGenerationRecord>(response, {
+    showErrorMessage: true,
+  })
 }

@@ -2,8 +2,22 @@ import { prisma } from '../db/prisma'
 import type { AssetActionPayload, AssetListQuery } from './shared'
 
 const DEFAULT_AUTHOR = {
+  id: '',
   name: '创作者',
   avatarSrc: '',
+}
+
+// 统一把关联用户信息映射为前端作者结构。
+const serializeOwner = (user: { id?: string | null; name?: string | null; avatarUrl?: string | null } | null | undefined) => {
+  if (!user) {
+    return DEFAULT_AUTHOR
+  }
+
+  return {
+    id: String(user.id || '').trim(),
+    name: String(user.name || '').trim() || DEFAULT_AUTHOR.name,
+    avatarSrc: String(user.avatarUrl || '').trim(),
+  }
 }
 
 // 数据库存储值转前端资源类型。
@@ -39,7 +53,7 @@ const serializeAssetItem = (record: any) => {
     reviewStatus: String(record.reviewStatus || '').toLowerCase(),
     createdAt: record.createdAt,
     publishedAt: record.publishedAt,
-    owner: DEFAULT_AUTHOR,
+    owner: serializeOwner(record.user),
     sourceMeta: record.sourceMetaJson || {},
   }
 }
@@ -54,6 +68,15 @@ export const listPublicAssetItems = async (query: AssetListQuery) => {
       publishStatus: 'PUBLISHED',
       reviewStatus: 'APPROVED',
     },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          avatarUrl: true,
+        },
+      },
+    },
     orderBy: [
       { publishedAt: 'desc' },
       { createdAt: 'desc' },
@@ -65,15 +88,39 @@ export const listPublicAssetItems = async (query: AssetListQuery) => {
 }
 
 // 查询当前用户资产。
-// 当前项目尚未接入完整登录态，先按匿名用户 userId = null 收口。
-export const listMineAssetItems = async (query: AssetListQuery) => {
+export const listMineAssetItems = async (query: AssetListQuery, currentUserId: string) => {
+  const publishStateWhere = query.publishState === 'published'
+    ? {
+        visibility: 'PUBLIC' as const,
+        publishStatus: 'PUBLISHED' as const,
+        reviewStatus: 'APPROVED' as const,
+      }
+    : query.publishState === 'draft'
+      ? {
+          publishStatus: 'DRAFT' as const,
+        }
+      : {}
+
   const records = await prisma.assetItem.findMany({
     where: {
-      userId: null,
+      userId: currentUserId,
       assetType: query.assetType === 'video' ? 'VIDEO' : 'IMAGE',
       isDeleted: false,
+      ...publishStateWhere,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          avatarUrl: true,
+        },
+      },
     },
     orderBy: [
+      query.publishState === 'published'
+        ? { publishedAt: 'desc' }
+        : { createdAt: 'desc' },
       { createdAt: 'desc' },
     ],
     take: query.take,
@@ -83,14 +130,14 @@ export const listMineAssetItems = async (query: AssetListQuery) => {
 }
 
 // 批量更新资源状态。
-export const applyAssetAction = async (payload: AssetActionPayload) => {
+export const applyAssetAction = async (payload: AssetActionPayload, currentUserId: string) => {
   if (!payload.ids.length) {
     throw new Error('缺少资源 ID')
   }
 
   const where = {
     id: { in: payload.ids },
-    userId: null,
+    userId: currentUserId,
     isDeleted: false,
   }
 

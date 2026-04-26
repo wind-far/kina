@@ -7,8 +7,7 @@ datasource db {
 }
 
 /// 第一版用户表。
-/// 当前项目还没有完整登录体系，这里先预留用户实体，
-/// 允许业务表中的 userId 为空，后续接入登录态时可平滑迁移。
+/// 作为登录、资源、生成、配置等模块的统一用户实体。
 model AppUser {
   id                String             @id @default(cuid()) @db.VarChar(36)
   name              String?            @db.VarChar(100)
@@ -18,6 +17,10 @@ model AppUser {
   status            UserStatus         @default(ANONYMOUS)
   createdAt         DateTime           @default(now()) @map("created_at")
   updatedAt         DateTime           @updatedAt @map("updated_at")
+  verificationCodes AuthVerificationCode[]
+  authIdentities    AppUserAuthIdentity[]
+  sessions          AppSession[]
+  authMethodConfigs AuthMethodConfig[]
   providerConfigs   AiProviderConfig[]
   storageConfigs    ObjectStorageConfig[]
   generationRecords GenerationRecord[]
@@ -26,6 +29,101 @@ model AppUser {
   assetFavorites    AssetFavorite[]
 
   @@map("app_users")
+}
+
+/// 通用验证码记录表。
+/// 手机、邮箱以及后续其他验证通道都复用该表。
+model AuthVerificationCode {
+  id          String              @id @default(cuid()) @db.VarChar(36)
+  userId      String?             @map("user_id") @db.VarChar(36)
+  methodType  AuthMethodType      @map("method_type")
+  channel     VerificationChannel
+  scene       String              @default("login") @db.VarChar(50)
+  target      String              @db.VarChar(191)
+  code        String              @db.VarChar(16)
+  expiresAt   DateTime            @map("expires_at")
+  usedAt      DateTime?           @map("used_at")
+  requesterIp String?             @map("requester_ip") @db.VarChar(100)
+  userAgent   String?             @map("user_agent") @db.VarChar(500)
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  user        AppUser?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([methodType, target, scene, createdAt], map: "idx_auth_verification_codes_method_target_scene_created_at")
+  @@index([expiresAt], map: "idx_auth_verification_codes_expires_at")
+  @@map("auth_verification_codes")
+}
+
+/// 登录方式配置表。
+/// 用于后台动态启用、禁用、排序和扩展不同登录方式。
+model AuthMethodConfig {
+  id              String             @id @default(cuid()) @db.VarChar(36)
+  userId          String?            @map("user_id") @db.VarChar(36)
+  methodType      AuthMethodType     @unique(map: "uk_auth_method_configs_method_type") @map("method_type")
+  category        AuthMethodCategory
+  displayName     String             @map("display_name") @db.VarChar(100)
+  description     String?            @db.VarChar(255)
+  iconType        String?            @map("icon_type") @db.VarChar(50)
+  iconUrl         String?            @map("icon_url") @db.Text
+  isEnabled       Boolean            @default(true) @map("is_enabled")
+  isVisible       Boolean            @default(true) @map("is_visible")
+  sortOrder       Int                @default(0) @map("sort_order")
+  allowAutoFill   Boolean            @default(true) @map("allow_auto_fill")
+  allowSignUp     Boolean            @default(true) @map("allow_sign_up")
+  configJson      Json?              @map("config_json")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  user            AppUser?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userIdentities  AppUserAuthIdentity[]
+
+  @@index([isEnabled, isVisible, sortOrder], map: "idx_auth_method_configs_enabled_visible_sort")
+  @@map("auth_method_configs")
+}
+
+/// 用户登录身份绑定表。
+/// 邮箱、手机号、第三方平台身份都通过该表与用户主表关联。
+model AppUserAuthIdentity {
+  id               String           @id @default(cuid()) @db.VarChar(36)
+  userId           String           @map("user_id") @db.VarChar(36)
+  methodType       AuthMethodType   @map("method_type")
+  providerUserId   String?          @map("provider_user_id") @db.VarChar(191)
+  providerUnionId  String?          @map("provider_union_id") @db.VarChar(191)
+  identifier       String           @db.VarChar(191)
+  isVerified       Boolean          @default(true) @map("is_verified")
+  verifiedAt       DateTime?        @map("verified_at")
+  metaJson         Json?            @map("meta_json")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  user             AppUser          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  authMethodConfig AuthMethodConfig @relation(fields: [methodType], references: [methodType], onDelete: Cascade)
+
+  @@unique([methodType, identifier], map: "uk_app_user_auth_identities_method_identifier")
+  @@unique([methodType, providerUserId], map: "uk_app_user_auth_identities_method_provider_user_id")
+  @@index([userId, methodType], map: "idx_app_user_auth_identities_user_method")
+  @@map("app_user_auth_identities")
+}
+
+/// 用户会话表。
+/// 使用 HttpOnly Cookie + 服务端会话记录实现登录态，
+/// 便于后续资产、发布、配置等接口统一识别当前用户。
+model AppSession {
+  id                 String         @id @default(cuid()) @db.VarChar(36)
+  userId             String         @map("user_id") @db.VarChar(36)
+  tokenHash          String         @unique(map: "uk_app_sessions_token_hash") @map("token_hash") @db.VarChar(128)
+  authMethodType     AuthMethodType @map("auth_method_type")
+  identifierSnapshot String?        @map("identifier_snapshot") @db.VarChar(191)
+  ipAddress          String?        @map("ip_address") @db.VarChar(100)
+  userAgent          String?        @map("user_agent") @db.VarChar(500)
+  expiresAt          DateTime       @map("expires_at")
+  revokedAt          DateTime?      @map("revoked_at")
+  lastActiveAt       DateTime?      @map("last_active_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  user               AppUser        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt], map: "idx_app_sessions_user_expires_at")
+  @@index([expiresAt], map: "idx_app_sessions_expires_at")
+  @@map("app_sessions")
 }
 
 /// 用户自定义厂商配置。
@@ -114,7 +212,7 @@ model ObjectStorageConfig {
 /// 覆盖 generate 页面里当前所有记录字段，并为后续服务端持久化留出扩展空间。
 model GenerationRecord {
   id               String             @id @default(cuid()) @db.VarChar(36)
-  userId           String?            @map("user_id") @db.VarChar(36)
+  userId           String             @map("user_id") @db.VarChar(36)
   providerConfigId String?            @map("provider_config_id") @db.VarChar(36)
   clientRecordId   Int?               @map("client_record_id")
   type             GenerationType
@@ -135,7 +233,7 @@ model GenerationRecord {
   finishedAt       DateTime?          @map("finished_at")
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
-  user             AppUser?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user             AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
   providerConfig   AiProviderConfig?  @relation(fields: [providerConfigId], references: [id], onDelete: SetNull)
   outputs          GenerationOutput[]
   assets           AssetItem[]
@@ -176,7 +274,7 @@ model GenerationOutput {
 /// 首页瀑布流与资产页都应查询该表，而不是直接查询 generation_outputs。
 model AssetItem {
   id                 String             @id @default(cuid()) @db.VarChar(36)
-  userId             String?            @map("user_id") @db.VarChar(36)
+  userId             String             @map("user_id") @db.VarChar(36)
   generationRecordId String?            @map("generation_record_id") @db.VarChar(36)
   generationOutputId String?            @map("generation_output_id") @db.VarChar(36)
   assetType          AssetType          @map("asset_type")
@@ -204,7 +302,7 @@ model AssetItem {
   publishedAt        DateTime?          @map("published_at")
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
-  user               AppUser?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user               AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
   generationRecord   GenerationRecord?  @relation(fields: [generationRecordId], references: [id], onDelete: SetNull)
   generationOutput   GenerationOutput?  @relation(fields: [generationOutputId], references: [id], onDelete: SetNull)
   favorites          AssetFavorite[]
@@ -221,10 +319,10 @@ model AssetItem {
 model AssetFavorite {
   id        String    @id @default(cuid()) @db.VarChar(36)
   assetId    String    @map("asset_id") @db.VarChar(36)
-  userId     String?   @map("user_id") @db.VarChar(36)
+  userId     String    @map("user_id") @db.VarChar(36)
   createdAt  DateTime  @default(now()) @map("created_at")
   asset      AssetItem @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  user       AppUser?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user       AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([assetId, userId], map: "uk_asset_favorites_asset_user")
   @@index([userId, createdAt], map: "idx_asset_favorites_user_created_at")
@@ -236,7 +334,7 @@ model AssetFavorite {
 model AgentRun {
   id                   String                @id @default(cuid()) @db.VarChar(36)
   generationRecordId   String                @unique(map: "uk_agent_runs_generation_record_id") @map("generation_record_id") @db.VarChar(36)
-  userId               String?               @map("user_id") @db.VarChar(36)
+  userId               String                @map("user_id") @db.VarChar(36)
   query                String                @db.LongText
   skill                String?               @db.VarChar(100)
   status               AgentRunStatus        @default(IDLE)
@@ -256,7 +354,7 @@ model AgentRun {
   createdAt            DateTime              @default(now()) @map("created_at")
   updatedAt            DateTime              @updatedAt @map("updated_at")
   generationRecord     GenerationRecord      @relation(fields: [generationRecordId], references: [id], onDelete: Cascade)
-  user                 AppUser?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user                 AppUser               @relation(fields: [userId], references: [id], onDelete: Cascade)
   steps                AgentRunStep[]
   processSections      AgentProcessSection[]
 
@@ -312,6 +410,25 @@ enum UserStatus {
   ANONYMOUS
   ACTIVE
   DISABLED
+}
+
+enum AuthMethodType {
+  PHONE_CODE
+  EMAIL_CODE
+  WECHAT_OAUTH
+  GITHUB_OAUTH
+  GOOGLE_OAUTH
+  CUSTOM_OAUTH
+}
+
+enum AuthMethodCategory {
+  CODE
+  OAUTH
+}
+
+enum VerificationChannel {
+  PHONE
+  EMAIL
 }
 
 enum ProviderType {

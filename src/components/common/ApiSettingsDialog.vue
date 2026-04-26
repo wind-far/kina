@@ -4,7 +4,6 @@
  * 包含 API 配置 + 模型管理，可在任意页面引入使用
  */
 import { ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
 import {
   getProviderRuntimeConfig,
   loadProviderRuntimeConfig,
@@ -90,11 +89,13 @@ const save = async () => {
         video: customVideoModels.value,
         chat: customChatModels.value,
       },
+    }, {
+      showSuccessMessage: true,
+      showErrorMessage: true,
     })
-    ElMessage.success('配置已保存')
     close()
   } catch (error: unknown) {
-    ElMessage.error(error instanceof Error ? error.message : '保存配置失败')
+    console.error('保存配置失败', error)
   } finally {
     isSaving.value = false
   }

@@ -1,4 +1,5 @@
 import { buildApiUrl } from './http'
+import { readApiData } from './response'
 
 // 本地文件上传分类。
 export type StorageUploadCategory = 'general' | 'asset' | 'avatar' | 'publish' | 'reference'
@@ -31,14 +32,9 @@ export const uploadStorageFile = async (
     body: file,
   })
 
-  // 解析返回内容。
-  const payload = await response.json().catch(() => ({}))
-
-  // 非成功状态直接抛错。
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || payload?.message || '上传失败')
-  }
-
   // 返回后端保存结果。
-  return payload?.data as UploadedStorageFile
+  return readApiData<UploadedStorageFile>(response, {
+    showSuccessMessage: true,
+    showErrorMessage: true,
+  })
 }

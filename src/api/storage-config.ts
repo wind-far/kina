@@ -1,4 +1,5 @@
 import { buildApiUrl } from './http'
+import { readApiData } from './response'
 
 // 对象存储配置结构。
 export interface StorageConfigItem {
@@ -39,21 +40,12 @@ export interface StorageConfigPayload {
 // 对象存储配置接口基础路径。
 const STORAGE_CONFIGS_API_PATH = '/api/storage/configs'
 
-// 统一解析响应数据。
-const readJson = async <T>(response: Response) => {
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || payload?.message || '请求失败')
-  }
-  return payload?.data as T
-}
-
 // 查询对象存储配置列表。
 export const listStorageConfigs = async () => {
   const response = await fetch(buildApiUrl(STORAGE_CONFIGS_API_PATH), {
     method: 'GET',
   })
-  return readJson<StorageConfigItem[]>(response)
+  return readApiData<StorageConfigItem[]>(response)
 }
 
 // 创建对象存储配置。
@@ -65,7 +57,10 @@ export const createStorageConfig = async (payload: StorageConfigPayload) => {
     },
     body: JSON.stringify(payload),
   })
-  return readJson<StorageConfigItem>(response)
+  return readApiData<StorageConfigItem>(response, {
+    showSuccessMessage: true,
+    showErrorMessage: true,
+  })
 }
 
 // 更新对象存储配置。
@@ -77,7 +72,10 @@ export const updateStorageConfig = async (id: string, payload: Partial<StorageCo
     },
     body: JSON.stringify(payload),
   })
-  return readJson<StorageConfigItem>(response)
+  return readApiData<StorageConfigItem>(response, {
+    showSuccessMessage: true,
+    showErrorMessage: true,
+  })
 }
 
 // 启用某一条对象存储配置。
@@ -85,5 +83,8 @@ export const activateStorageConfig = async (id: string) => {
   const response = await fetch(buildApiUrl(`${STORAGE_CONFIGS_API_PATH}/${encodeURIComponent(id)}/activate`), {
     method: 'POST',
   })
-  return readJson<StorageConfigItem>(response)
+  return readApiData<StorageConfigItem>(response, {
+    showSuccessMessage: true,
+    showErrorMessage: true,
+  })
 }

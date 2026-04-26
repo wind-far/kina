@@ -5,6 +5,7 @@
 
 import { DEFAULT_CHAT_MODEL } from '@/config/models'
 import { buildApiUrl } from './http'
+import { readApiData, type ApiMessageOptions } from './response'
 
 export type AiEndpointType = 'chat' | 'image' | 'video'
 export type CustomModelCategory = 'image' | 'video' | 'chat'
@@ -196,13 +197,8 @@ export const loadProviderRuntimeConfig = async (force = false) => {
     method: 'GET',
   })
     .then(async (response) => {
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}))
-        throw new Error(error?.error?.message || error?.message || '读取配置失败')
-      }
-
-      const payload = await response.json()
-      return applyRuntimeConfig(payload?.data || {})
+      const data = await readApiData<Partial<ProviderRuntimeConfig>>(response)
+      return applyRuntimeConfig(data || {})
     })
     .catch(() => {
       return runtimeConfigCache
@@ -214,7 +210,10 @@ export const loadProviderRuntimeConfig = async (force = false) => {
   return loadRuntimeConfigPromise
 }
 
-export const saveProviderRuntimeConfig = async (config: Partial<ProviderRuntimeConfig>) => {
+export const saveProviderRuntimeConfig = async (
+  config: Partial<ProviderRuntimeConfig>,
+  messageOptions?: ApiMessageOptions,
+) => {
   const payload = normalizeRuntimeConfig({
     ...runtimeConfigCache,
     ...config,
@@ -228,13 +227,8 @@ export const saveProviderRuntimeConfig = async (config: Partial<ProviderRuntimeC
     body: JSON.stringify(payload),
   })
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}))
-    throw new Error(error?.error?.message || error?.message || '保存配置失败')
-  }
-
-  const result = await response.json()
-  return applyRuntimeConfig(result?.data || payload)
+  const data = await readApiData<Partial<ProviderRuntimeConfig>>(response, messageOptions)
+  return applyRuntimeConfig(data || payload)
 }
 
 export const getUpstreamRequestConfig = (

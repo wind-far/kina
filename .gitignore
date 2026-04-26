@@ -18,6 +18,7 @@ package-lock.json
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+.vscode/settings.json
 .idea
 .DS_Store
 *.suo
@@ -25,3 +26,10 @@ package-lock.json
 *.njsproj
 *.sln
 *.sw?
+.agents/
+.claude/
+.codemoss/
+.codex-temp/
+.kiro/
+.env.development
+.env.production

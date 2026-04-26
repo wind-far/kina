@@ -6,17 +6,25 @@ import '@styles/styles.css'
 import App from './App.vue'
 import router from './router'
 import { loadProviderRuntimeConfig } from './api/provider-config'
+import { useAuthStore } from './stores/auth'
 
 const app = createApp(App)
 
 // 全局注册 Element Plus
 app.use(ElementPlus, {
   locale: zhCn,  // 中文语言包
-  size: 'default' // 默认尺寸
+  size: 'default', // 默认尺寸
+  zIndex: 30000, // 提高全局浮层层级，避免被图片详情等自定义弹层遮挡
 })
 
 app.use(router)
 
-void loadProviderRuntimeConfig().finally(() => {
+const authStore = useAuthStore()
+
+void Promise.allSettled([
+  loadProviderRuntimeConfig(),
+  authStore.loadSession(),
+  authStore.loadMethods(),
+]).finally(() => {
   app.mount('#app')
 })

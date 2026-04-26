@@ -6,6 +6,7 @@
 import { request, getEndpoint } from './request'
 import { getUpstreamRequestConfig } from '@/api/provider-config'
 import { AI_GATEWAY_REQUEST_PATH } from '@/api/ai-gateway'
+import { handleUnauthorizedResponse } from '@/api/response'
 
 export const generateImage = async (data: any, options: any = {}) => {
   const { requestType = 'json', endpoint } = options
@@ -53,6 +54,7 @@ async function generateImageViaChat(data: any, endpoint: string) {
   })
 
   if (!response.ok) {
+    handleUnauthorizedResponse(response.status, 'image-chat-generation')
     const err = await response.json().catch(() => ({}))
     throw new Error(err?.error?.message || '请求失败')
   }

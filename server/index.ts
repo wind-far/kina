@@ -3,6 +3,8 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { AI_GATEWAY_MATCH_PATHS } from './ai-gateway/constants'
 import { handleAiGatewayRequest } from './ai-gateway/request-handler'
+import { isAuthPath } from './auth/constants'
+import { handleAuthRequest } from './auth/request-handler'
 import { isAssetItemsPath } from './asset-items/constants'
 import { handleAssetItemsRequest } from './asset-items/request-handler'
 import { isGenerationRecordsPath } from './generation-records/constants'
@@ -236,6 +238,9 @@ const applyCorsHeaders = (req: any, res: any) => {
     'Content-Type,Authorization,x-upstream-base-url,x-upstream-endpoint,x-upstream-api-key,x-upstream-method',
   )
 
+  // 允许跨域请求携带 Cookie。
+  res.setHeader('Access-Control-Allow-Credentials', 'true')
+
   // 告诉代理和浏览器当前响应会随 Origin 变化。
   res.setHeader('Vary', 'Origin')
 }
@@ -280,6 +285,12 @@ const dispatchRequest = async (req: any, res: any) => {
   // 命中 AI 网关时走网关转发逻辑。
   if (isAiGatewayPath(requestPath)) {
     await handleAiGatewayRequest(req, res)
+    return
+  }
+
+  // 命中认证接口时走登录逻辑。
+  if (isAuthPath(requestPath)) {
+    await handleAuthRequest(req, res)
     return
   }
 

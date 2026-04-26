@@ -1,0 +1,670 @@
+html.login-modal-scroll-lock,
+body.login-modal-scroll-lock {
+  overflow: hidden !important;
+}
+
+.login-modal-host {
+  --lvv-color-black-06: rgba(0, 0, 0, 0.48);
+  --lvv-color-scenes-overlay: #1c1c21;
+  --lvv-color-text-primary: #f5fbff;
+  --lvv-color-text-secondary: rgba(224, 245, 255, 0.6);
+  --lvv-color-text-placeholder: rgba(224, 245, 255, 0.35);
+  --lvv-color-text-disable: rgba(224, 245, 255, 0.2);
+  --lvv-color-fill-transparency-hover: rgba(204, 221, 255, 0.08);
+  --lvv-color-fill-bg-3: rgba(255, 255, 255, 0.08);
+  --lvv-color-main-default: #00cae0;
+  --lvv-color-main-hover: #0ad4ea;
+  --lvv-color-main-pressed: #00cae0;
+  --lvv-color-text-content-primary: #15161a;
+  --lvv-color-main-012: rgba(0, 202, 224, 0.12);
+  --lvv-color-line-1: rgba(204, 221, 255, 0.2);
+  --lvv-color-white-stationary: #fff;
+  --text-primary: #f5fbff;
+  --text-secondary: rgba(224, 245, 255, 0.6);
+  --text-placeholder: rgba(224, 245, 255, 0.35);
+  --text-disabled: rgba(224, 245, 255, 0.2);
+  --bg-block-primary-default: rgba(204, 221, 255, 0.08);
+  --bg-block-primary-hover: rgba(204, 221, 255, 0.12);
+  --bg-block-primary-pressed: rgba(204, 221, 255, 0.16);
+  --stroke-secondary: rgba(204, 221, 255, 0.06);
+  --lvv-color-fill-transparency-block: rgba(204, 221, 255, 0.08);
+  --shadow-general: rgba(0, 0, 0, 0.24);
+  --component-segmented-control-button-default: rgba(204, 221, 255, 0.08);
+  --component-segmented-control-button-hover: rgba(204, 221, 255, 0.12);
+  --component-segmented-control-button-pressed: rgba(204, 221, 255, 0.16);
+  --component-primary-button-bg-default: #f5fbff;
+  --component-primary-button-bg-disabled: rgba(204, 221, 255, 0.16);
+  --component-primary-button-bg-hover: #d4dfe6;
+  --component-primary-button-bg-pressed: #c2ccd5;
+  --component-primary-button-text-default: #15161a;
+  --component-primary-button-text-disabled: rgba(224, 245, 255, 0.2);
+}
+
+html[data-theme='light'] .login-modal-host,
+body[lv-theme='light'] .login-modal-host {
+  --lvv-color-black-06: rgba(0, 0, 0, 0.48);
+  --lvv-color-scenes-overlay: #fff;
+  --lvv-color-text-primary: #0f1419;
+  --lvv-color-text-secondary: #536471;
+  --lvv-color-text-placeholder: rgba(83, 100, 113, 0.64);
+  --lvv-color-text-disable: rgba(83, 100, 113, 0.36);
+  --lvv-color-fill-transparency-hover: rgba(0, 0, 0, 0.05);
+  --lvv-color-fill-bg-3: rgba(0, 0, 0, 0.06);
+  --lvv-color-main-default: #00a1c2;
+  --lvv-color-main-hover: #0996b2;
+  --lvv-color-main-pressed: #00a1c2;
+  --lvv-color-text-content-primary: #fff;
+  --lvv-color-main-012: rgba(0, 161, 194, 0.12);
+  --lvv-color-line-1: rgba(0, 0, 0, 0.12);
+  --lvv-color-white-stationary: #fff;
+  --text-primary: #0f1419;
+  --text-secondary: #536471;
+  --text-placeholder: rgba(83, 100, 113, 0.64);
+  --text-disabled: rgba(83, 100, 113, 0.36);
+  --bg-block-primary-default: rgba(0, 0, 0, 0.05);
+  --bg-block-primary-hover: rgba(0, 0, 0, 0.07);
+  --bg-block-primary-pressed: rgba(0, 0, 0, 0.1);
+  --stroke-secondary: rgba(0, 0, 0, 0.08);
+  --lvv-color-fill-transparency-block: rgba(0, 0, 0, 0.05);
+  --shadow-general: rgba(0, 0, 0, 0.16);
+  --component-segmented-control-button-default: rgba(0, 0, 0, 0.05);
+  --component-segmented-control-button-hover: rgba(0, 0, 0, 0.07);
+  --component-segmented-control-button-pressed: rgba(0, 0, 0, 0.1);
+  --component-primary-button-bg-default: #0f1419;
+  --component-primary-button-bg-disabled: rgba(15, 20, 25, 0.16);
+  --component-primary-button-bg-hover: #1a1d22;
+  --component-primary-button-bg-pressed: #0f0f12;
+  --component-primary-button-text-default: #fff;
+  --component-primary-button-text-disabled: rgba(83, 100, 113, 0.36);
+}
+
+.login-modal-host.lv-modal-wrapper {
+  height: 100%;
+  left: 0;
+  overflow: auto;
+  position: fixed;
+  top: 0;
+  width: 100%;
+  z-index: 1001;
+}
+
+.login-modal-host.lv-modal-wrapper.lv-modal-wrapper-align-center {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.login-modal-host.lv-modal-wrapper.lv-modal-wrapper-align-center::after {
+  content: '';
+  display: inline-block;
+  height: 100%;
+  vertical-align: middle;
+  width: 0;
+}
+
+.login-modal-host .lv-modal-mask {
+  background-color: var(--lvv-color-black-06);
+  height: 100%;
+  left: 0;
+  position: fixed;
+  top: 0;
+  width: 100%;
+  z-index: 1001;
+}
+
+.login-modal-host.lv-modal-wrapper.lv-modal-wrapper-align-center .lv-modal {
+  display: inline-block;
+  top: 0;
+  vertical-align: middle;
+  z-index: 1002;
+}
+
+.login-modal-host .lv-modal {
+  background-color: var(--lvv-color-scenes-overlay);
+  border: 0 solid transparent;
+  box-sizing: border-box;
+  box-shadow: 0 8px 56px 0 var(--shadow-general);
+  line-height: 1.5715;
+  margin: 0 auto;
+  position: relative;
+  text-align: left;
+  white-space: normal;
+}
+
+.login-focus-guard-canana {
+  height: 0;
+  left: 1px;
+  overflow: hidden;
+  padding: 0;
+  position: fixed;
+  top: 1px;
+  width: 1px;
+}
+
+.login-modal-host .lv-modal-simple {
+  width: 480px;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.login-modal-host .lv-modal-header {
+  align-items: center;
+  border: none;
+  box-sizing: border-box;
+  display: flex;
+  height: unset;
+  margin-bottom: 0;
+  padding: 32px;
+  width: 100%;
+}
+
+.login-modal-host .lv-modal-header .lv-modal-title {
+  flex: 1 1;
+}
+
+.login-modal-host .lv-modal-title {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.login-modal-host .lv-modal-closable .lv-modal-title {
+  padding-right: 32px;
+}
+
+.login-modal-host .lv-modal-simple .lv-modal-title {
+  text-align: left;
+}
+
+.login-modal-host .lv-modal-content {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 22px;
+  padding: 0 32px;
+  position: static;
+}
+
+.login-modal-host .lv-modal .lv-modal-close-icon {
+  cursor: pointer;
+  position: absolute;
+  stroke-width: 0;
+}
+
+.login-modal-host .lv-modal .lv-modal-close-icon path {
+  fill: var(--lvv-color-text-primary);
+}
+
+.login-modal-host .lv-modal-close-icon {
+  align-items: center;
+  border-radius: 8px;
+  color: var(--text-primary);
+  display: flex;
+  font-size: 20px;
+  height: 20px;
+  justify-content: center;
+  padding: 8px;
+  pointer-events: auto;
+  position: absolute;
+  right: 24px;
+  top: 24px;
+  transition: all 0.1s linear;
+  width: 20px;
+  z-index: 2;
+}
+
+.login-modal-host .lv-modal .lv-icon-hover.lv-modal-close-icon::before {
+  background-color: initial;
+  border-radius: 8px;
+  box-sizing: initial;
+  content: '';
+  height: 20px;
+  left: 50%;
+  padding: 8px;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+}
+
+.login-modal-host .lv-modal .lv-modal-close-icon:hover {
+  background: var(--bg-block-primary-hover);
+}
+
+.login-modal-host .lv-modal .lv-modal-close-icon:hover::before {
+  background: none;
+}
+
+.login-modal-host .lv-modal .lv-modal-close-icon:active {
+  background: var(--bg-block-primary-pressed);
+}
+
+.login-modal-host .lv-modal .lv-modal-close-icon:active::before {
+  background: none;
+}
+
+.title-UZtkUa {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.title-logo-xhenXQ {
+  display: block;
+  height: 16px;
+  width: auto;
+}
+
+.title-text-byG0WC {
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+  letter-spacing: 0;
+}
+
+.fields-YBLaPC {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.method-selector-YvSPmR {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.method-tab-JL2v9f {
+  align-items: center;
+  background: var(--component-segmented-control-button-default);
+  border: none;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 500;
+  height: 36px;
+  justify-content: center;
+  padding: 0 14px;
+  transition: all 0.1s linear;
+}
+
+.method-tab-JL2v9f:hover {
+  background: var(--component-segmented-control-button-hover);
+  color: var(--text-primary);
+}
+
+.method-tab-JL2v9f.is-active-Mw7P8u {
+  background: var(--component-primary-button-bg-default);
+  color: var(--component-primary-button-text-default);
+}
+
+.label-gB9Ufj {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  margin-bottom: 8px;
+}
+
+.input-pYC00w {
+  height: 40px;
+  width: 100%;
+}
+
+.login-modal-host .lv-input {
+  appearance: none;
+  border-radius: 8px;
+  box-sizing: border-box;
+  outline: none;
+  transition: color 0.1s linear, border-color 0.1s linear, background-color 0.1s linear;
+  -webkit-appearance: none;
+}
+
+.login-modal-host .lv-input-size-large {
+  font-size: 14px;
+  line-height: 22px;
+  padding: 9px 0;
+}
+
+.input-pYC00w.lv-input {
+  background-color: var(--bg-block-primary-default);
+  border: none;
+  border-radius: 8px;
+  box-shadow: none;
+  caret-color: var(--lvv-color-main-default);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 22px;
+  outline: none;
+  padding: 9px 12px;
+}
+
+.input-pYC00w.lv-input:hover,
+.input-pYC00w.lv-input:focus {
+  background-color: var(--bg-block-primary-hover);
+}
+
+.input-pYC00w.lv-input::placeholder {
+  color: var(--text-placeholder);
+  -webkit-text-fill-color: var(--text-placeholder);
+}
+
+.sms-row-E6NdAG {
+  align-items: center;
+  background: var(--bg-block-primary-default);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  box-sizing: border-box;
+  display: flex;
+  height: 40px;
+  padding: 0 2px 0 12px;
+}
+
+.sms-row-E6NdAG:hover,
+.sms-row-E6NdAG:focus-within {
+  background: var(--bg-block-primary-hover);
+}
+
+.sms-input-Zimtwu {
+  flex: 1 1;
+}
+
+.sms-input-Zimtwu.lv-input {
+  background: transparent;
+  padding: 9px 0;
+}
+
+.sms-input-Zimtwu.lv-input:hover,
+.sms-input-Zimtwu.lv-input:focus {
+  background: transparent;
+}
+
+.sms-action-Vmkiao {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  height: 100%;
+}
+
+.sms-divider-PmyvXM {
+  background: var(--stroke-secondary);
+  height: 10px;
+  width: 1px;
+}
+
+.login-modal-host .lv-btn {
+  font-family: inherit;
+}
+
+.login-modal-host .lv-btn-size-default {
+  height: 36px;
+  padding: 0 16px;
+}
+
+.login-modal-host .lv-btn-size-large {
+  font-size: 14px;
+  padding: 0 16px;
+}
+
+.sms-button-JmIuJw.lv-btn.lv-btn-size-default {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  min-width: 100px;
+}
+
+.sms-button-JmIuJw.lv-btn.lv-btn-size-default:hover {
+  background: var(--component-segmented-control-button-hover);
+}
+
+.sms-button-JmIuJw.lv-btn.lv-btn-size-default:active {
+  background: var(--component-segmented-control-button-pressed);
+}
+
+.sms-button-JmIuJw.lv-btn.lv-btn-size-default.lv-btn-disabled {
+  background: var(--lvv-color-fill-transparency-block);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.footer-X7PPzE {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin: 32px 0;
+}
+
+.oauth-group-L5M8tN {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.oauth-title-WP0zQh {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+}
+
+.oauth-buttons-S7VQpM {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+}
+
+.oauth-button-Nj6u2V {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--stroke-secondary);
+  border-radius: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 500;
+  height: 40px;
+  justify-content: center;
+  padding: 0 12px;
+  transition: all 0.1s linear;
+}
+
+.oauth-button-Nj6u2V:hover {
+  background: var(--bg-block-primary-hover);
+}
+
+.oauth-button-Nj6u2V:active {
+  background: var(--bg-block-primary-pressed);
+}
+
+.confirm-button-Y9lc6j.lv-btn.lv-btn-size-large {
+  background: var(--component-primary-button-bg-default, var(--lvv-color-main-default));
+  border: none;
+  border-radius: 8px;
+  color: var(--component-primary-button-text-default, var(--lvv-color-text-content-primary));
+  height: 48px;
+  width: 100%;
+}
+
+.confirm-button-Y9lc6j.lv-btn.lv-btn-size-large:not(.lv-btn-disabled):not(.lv-btn-loading):hover {
+  background-color: var(--component-primary-button-bg-hover, var(--lvv-color-main-hover));
+  border-color: transparent;
+  color: var(--component-primary-button-text-default, var(--lvv-color-text-content-primary));
+}
+
+.confirm-button-Y9lc6j.lv-btn.lv-btn-size-large:not(.lv-btn-disabled):not(.lv-btn-loading):active {
+  background-color: var(--component-primary-button-bg-pressed, var(--lvv-color-main-pressed));
+  border-color: transparent;
+  color: var(--component-primary-button-text-default, var(--lvv-color-text-content-primary));
+}
+
+.confirm-button-Y9lc6j.lv-btn.lv-btn-size-large.lv-btn-disabled {
+  background-color: var(--component-primary-button-bg-disabled);
+  cursor: not-allowed;
+  color: var(--component-primary-button-text-disabled);
+}
+
+.lv-icon-hover.lv-checkbox-icon-hover::before {
+  height: 20px;
+  width: 20px;
+}
+
+.lv-checkbox-icon-hover::before {
+  opacity: 0;
+}
+
+.lv-checkbox {
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-block;
+  font-size: 14px;
+  line-height: unset;
+  padding-left: 0;
+  position: relative;
+}
+
+.lv-checkbox > input[type='checkbox'] {
+  height: 0;
+  left: 0;
+  opacity: 0;
+  position: absolute;
+  top: 0;
+  width: 0;
+}
+
+.lv-checkbox:hover .lv-checkbox-icon-hover::before {
+  background-color: var(--lvv-color-fill-bg-3);
+}
+
+.lv-checkbox-text {
+  margin-left: 8px;
+}
+
+.lv-checkbox-mask-wrapper {
+  display: inline-block;
+  line-height: 1;
+  position: relative;
+  top: -0.09em;
+  vertical-align: middle;
+}
+
+.lv-checkbox-mask {
+  border: 1px solid var(--lvv-color-line-1);
+  border-radius: 4px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  user-select: none;
+  width: 16px;
+  height: 16px;
+}
+
+.lv-checkbox-mask::after {
+  background: var(--lvv-color-white-stationary);
+  border-radius: 0.5px;
+  content: '';
+  display: block;
+  height: 2px;
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translateX(-50%) translateY(-50%) scale(0);
+  width: 12px;
+}
+
+.lv-checkbox-mask-icon {
+  display: block;
+  height: 100%;
+  margin: 0 auto;
+  position: relative;
+  transform: scale(0);
+  transform-origin: center 75%;
+  width: 20px;
+}
+
+.lv-checkbox:hover .lv-checkbox-mask {
+  background-color: var(--lvv-color-main-012);
+  border-color: var(--lvv-color-line-1);
+  transition: border-color 0.1s linear, transform 0.3s cubic-bezier(0.3, 1.3, 0.3, 1);
+}
+
+.lv-checkbox-mask.is-checked-canana {
+  background-color: var(--lvv-color-main-default);
+  border-color: transparent;
+}
+
+.lv-checkbox-mask.is-checked-canana .lv-checkbox-mask-icon {
+  transform: scale(1);
+}
+
+.agreement-text-zcf5TA {
+  color: var(--text-secondary);
+  display: inline;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.link-text-OuVqYF {
+  color: var(--text-primary);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.agreement-text-zcf5TA > span:first-child {
+  margin-right: 2px;
+}
+
+.login-modal-enter-active,
+.login-modal-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.login-modal-enter-from,
+.login-modal-leave-to {
+  opacity: 0;
+}
+
+.login-modal-enter-active .lv-modal,
+.login-modal-leave-active .lv-modal {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.login-modal-enter-from .lv-modal,
+.login-modal-leave-to .lv-modal {
+  opacity: 0;
+  transform: scale(0.98);
+}
+
+@media (max-width: 640px) {
+  .login-modal-host.lv-modal-wrapper.lv-modal-wrapper-align-center {
+    padding: 16px;
+    white-space: normal;
+  }
+
+  .login-modal-host .lv-modal-simple {
+    width: min(100%, 480px);
+  }
+
+  .login-modal-host .lv-modal-header {
+    padding: 32px 20px 24px;
+  }
+
+  .login-modal-host .lv-modal-content {
+    padding: 0 20px 24px;
+  }
+
+  .login-modal-host .lv-modal-close-icon {
+    right: 20px;
+    top: 20px;
+  }
+}

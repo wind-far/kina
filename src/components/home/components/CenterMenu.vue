@@ -184,14 +184,26 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 
 const currentPath = computed(() => route.path)
 
 const navigateTo = (path) => {
+  if (path === '/account' && !authStore.isLoggedIn.value) {
+    router.push({
+      path: '/',
+      query: {
+        login: '1',
+      },
+    })
+    return
+  }
+
   router.push(path)
 }
 </script>

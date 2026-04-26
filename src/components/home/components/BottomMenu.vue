@@ -1,27 +1,55 @@
 <template>
-  <div role="menu" class="lv-menu lv-menu-light lv-menu-vertical bottomMenu-D_sElt">
+  <div role="menu" class="lv-menu lv-menu-light lv-menu-vertical bottomMenu-D_sElt login-menu-wrapper-TcQfJd">
     <div class="lv-menu-inner">
       <!-- 积分显示 -->
-      <div tabindex="0" role="menuitem" class="lv-menu-item lv-menu-item-size-default credit-display-menu-container-vPGgB6" id="SiderMenuCredit">
-        <div class="credit-container-vI5rYU">
-          <div class="credit-display-container-EgNfse column-mode-GFlEE0">
-            <div class="credit-amount-container-SnxCra">
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 25 24">
-                <path fill="currentColor" d="M22.044 12.695a.77.77 0 0 0-.596-.734c-4.688-1.152-7.18-3.92-7.986-9.924l-.006-.033a.573.573 0 0 0-1.137 0l-.007.033c-.805 6.004-3.298 8.772-7.986 9.924a.77.77 0 0 0-.596.734v.033a.82.82 0 0 0 .625.796c3.3.859 6.851 2.872 7.9 6.022.086.26.332.443.613.454h.037a.67.67 0 0 0 .614-.454c1.048-3.15 4.598-5.163 7.9-6.021a.82.82 0 0 0 .625-.797z" data-follow-fill="currentColor"></path>
-              </svg>
-              <div class="credit-amount-text-H7jPQp column-mode-SHz9kD">80</div>
-            </div>
-            <div class="upgrade-text-JHUaIS column-mode-vnmqXA">1元会员</div>
+<!--      <div tabindex="0" role="menuitem" class="lv-menu-item lv-menu-item-size-default credit-display-menu-container-vPGgB6" id="SiderMenuCredit">-->
+<!--        <div class="credit-container-vI5rYU">-->
+<!--          <div class="credit-display-container-EgNfse column-mode-GFlEE0">-->
+<!--            <div class="credit-amount-container-SnxCra">-->
+<!--              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 25 24">-->
+<!--                <path fill="currentColor" d="M22.044 12.695a.77.77 0 0 0-.596-.734c-4.688-1.152-7.18-3.92-7.986-9.924l-.006-.033a.573.573 0 0 0-1.137 0l-.007.033c-.805 6.004-3.298 8.772-7.986 9.924a.77.77 0 0 0-.596.734v.033a.82.82 0 0 0 .625.796c3.3.859 6.851 2.872 7.9 6.022.086.26.332.443.613.454h.037a.67.67 0 0 0 .614-.454c1.048-3.15 4.598-5.163 7.9-6.021a.82.82 0 0 0 .625-.797z" data-follow-fill="currentColor"></path>-->
+<!--              </svg>-->
+<!--              <div class="credit-amount-text-H7jPQp column-mode-SHz9kD">80</div>-->
+<!--            </div>-->
+<!--            <div class="upgrade-text-JHUaIS column-mode-vnmqXA">1元会员</div>-->
+<!--          </div>-->
+<!--        </div>-->
+<!--      </div>-->
+
+      <!-- 登录入口 / 个人中心入口 -->
+      <div
+        v-if="!isLoggedIn"
+        tabindex="0"
+        role="menuitem"
+        class="lv-menu-item lv-menu-item-size-default"
+        id="SiderMenuLogin"
+        @click="openLoginModal('bottom-menu')"
+      >
+        <div class="icon-container-XAovJs" style="--menu-icon-size:40px">
+          <div class="login-button-zpRsZb">
+            {{ loginButtonText }}
           </div>
         </div>
       </div>
 
-      <!-- 个人头像 -->
-      <div tabindex="0" role="menuitem" class="lv-menu-item lv-menu-item-size-default" id="Personal">
-        <div class="avatar-container-mJQ4W9">
-          <div class="avatar-AIKFS3">
+      <div
+        v-else
+        tabindex="0"
+        role="menuitem"
+        :class="['lv-menu-item', 'lv-menu-item-size-default', { 'lv-menu-selected': currentPath === '/account' }]"
+        id="Personal"
+        @click="navigateToAccount"
+      >
+        <div class="avatar-container-Od1Q_g">
+          <div class="avatar-Y3FqeU">
             <div style="width:100%;height:100%">
-              <div class="dreamina-component-avatar-container"></div>
+              <div class="dreamina-component-avatar-container">
+                <img
+                  :src="resolvedAvatarSrc"
+                  class="dreamina-component-avatar"
+                  :alt="loginButtonText"
+                >
+              </div>
             </div>
           </div>
         </div>
@@ -134,8 +162,97 @@
       </div>
     </div>
   </div>
+
 </template>
 
-<script setup>
-// 底部菜单组件 - 包含完整的图标
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { useRoute, useRouter } from 'vue-router'
+import { useLoginModalStore } from '@/stores/login-modal'
+
+// 默认头像占位图，避免登录后无头像时左下角看起来像“消失了”。
+const EMPTY_AVATAR_DATA_URI = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' rx='100' fill='%23E5E7EB'/%3E%3Ccircle cx='100' cy='76' r='30' fill='%239CA3AF'/%3E%3Cpath d='M52 154c8-24 28-38 48-38s40 14 48 38' fill='%239CA3AF'/%3E%3C/svg%3E"
+
+// 读取当前登录态。
+const authStore = useAuthStore()
+const isLoggedIn = authStore.isLoggedIn
+const loginButtonText = authStore.loginButtonText
+const { openLoginModal } = useLoginModalStore()
+
+// 路由能力。
+const router = useRouter()
+const route = useRoute()
+
+// 当前路由路径。
+const currentPath = computed(() => route.path)
+
+// 登录后头像地址。
+const resolvedAvatarSrc = computed(() => {
+  return authStore.currentUser.value?.avatarUrl || EMPTY_AVATAR_DATA_URI
+})
+
+// 跳转到个人中心。
+const navigateToAccount = () => {
+  if (!authStore.isLoggedIn.value) {
+    openLoginModal('account-entry')
+    return
+  }
+
+  void router.push('/account')
+}
 </script>
+
+<style scoped>
+.login-button-zpRsZb {
+  background: transparent;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  padding: 6px 11px;
+}
+
+.login-menu-wrapper-TcQfJd .login-button-zpRsZb:hover {
+  background: transparent;
+  border: 1px solid var(--stroke-tertiary);
+}
+
+.login-button-zpRsZb:active {
+  background: var(--bg-block-secondary-pressed);
+  border: 1px solid transparent;
+}
+
+.login-menu-wrapper-TcQfJd .lv-menu-item:hover {
+  background-color: var(--bg-block-primary-default);
+  border-radius: 14px;
+}
+
+.avatar-container-Od1Q_g {
+  align-items: center;
+  display: flex;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.avatar-Y3FqeU {
+  align-items: center;
+  border-radius: 999px;
+  display: flex;
+  height: 30px;
+  justify-content: center;
+  overflow: hidden;
+  width: 30px;
+}
+
+.avatar-Y3FqeU .dreamina-component-avatar {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+</style>

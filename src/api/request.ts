@@ -18,6 +18,7 @@ import {
   normalizeGatewayMethod,
 } from './ai-gateway'
 import { buildApiUrl } from './http'
+import { handleUnauthorizedResponse } from './response'
 
 export {
   getApiKey,
@@ -57,6 +58,7 @@ export const request = async (
     })
 
     if (!response.ok) {
+      handleUnauthorizedResponse(response.status, 'gateway-form-request')
       const err = await response.json().catch(() => ({}))
       const msg = err?.error?.message || err?.message || `请求失败 (${response.status})`
       throw new Error(msg)
@@ -74,6 +76,7 @@ export const request = async (
   })
 
   if (!response.ok) {
+    handleUnauthorizedResponse(response.status, 'gateway-json-request')
     const err = await response.json().catch(() => ({}))
     const msg = err?.error?.message || err?.message || `请求失败 (${response.status})`
     throw new Error(msg)

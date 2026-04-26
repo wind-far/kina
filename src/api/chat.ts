@@ -4,6 +4,7 @@
  */
 
 import { AI_GATEWAY_REQUEST_PATH, createGatewayPayload } from './ai-gateway'
+import { handleUnauthorizedResponse } from './response'
 
 /**
  * 流式对话补全
@@ -25,6 +26,7 @@ export async function* streamChatCompletions(data: Record<string, unknown>, sign
   })
 
   if (!response.ok) {
+    handleUnauthorizedResponse(response.status, 'chat-stream')
     const error = await response.json().catch(() => ({}))
     throw new Error(error?.error?.message || error?.message || '请求失败')
   }

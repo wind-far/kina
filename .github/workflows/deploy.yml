@@ -14,7 +14,7 @@ jobs:
     name: 构建并部署
     env:
       NODE_ENV: production
-      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+      VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       PROVIDER_CONFIG_SECRET: ${{ secrets.PROVIDER_CONFIG_SECRET }}
 
@@ -33,7 +33,7 @@ jobs:
       - name: 生成生产环境配置
         run: |
           if [ -z "${VITE_API_BASE_URL}" ]; then
-            echo "缺少 GitHub Actions 变量 VITE_API_BASE_URL"
+            echo "缺少 GitHub Actions 配置 VITE_API_BASE_URL（Variables 或 Secrets）"
             exit 1
           fi
 

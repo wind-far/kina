@@ -32,6 +32,7 @@ import type {
 import { useWorkflowOrchestrator } from '@/views/workflow/composables/useWorkflowOrchestrator'
 import { AUTH_LOGIN_SUCCESS_EVENT, useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
+import { uploadStorageFile } from '@/api/storage'
 import GenerateAgentRecord from './components/GenerateAgentRecord.vue'
 import {
   clearMockAgentTask,
@@ -142,6 +143,34 @@ const handlePreviewGenerateVideo = () => {
 
 const handlePreviewEditInCanvas = () => {
   ElMessage.success('请前往画布页继续编辑')
+}
+
+// 将 Data URL 转成浏览器 File，便于走现有上传接口，避免生成记录 PATCH 携带超大 base64。
+const dataUrlToFile = async (dataUrl: string, filename: string) => {
+  const response = await fetch(dataUrl)
+  const blob = await response.blob()
+  return new File([blob], filename, { type: blob.type || 'image/png' })
+}
+
+// 生成完成后先把 base64 图片转存到后端存储，再把正式 URL 写回记录，减少后续 PATCH 请求体积。
+const materializeGeneratedImageUrls = async (urls: string[]) => {
+  const nextUrls: string[] = []
+
+  for (const [index, url] of urls.entries()) {
+    if (!/^data:image\//i.test(String(url || '').trim())) {
+      nextUrls.push(url)
+      continue
+    }
+
+    const file = await dataUrlToFile(url, `generated-image-${Date.now()}-${index + 1}.png`)
+    const uploaded = await uploadStorageFile(file, 'asset', {
+      showSuccessMessage: false,
+      showErrorMessage: true,
+    })
+    nextUrls.push(uploaded.publicUrl)
+  }
+
+  return nextUrls
 }
 
 type AgentStepStatus = AgentTaskStep['status']
@@ -739,7 +768,7 @@ const runImageGeneration = async (record: GeneratingRecord) => {
     }
 
     if (urls.length) {
-      record.images = urls
+      record.images = await materializeGeneratedImageUrls(urls)
     } else {
       record.error = '未能获取到生成的图片'
     }

@@ -1,5 +1,5 @@
 import { buildApiUrl } from './http'
-import { readApiData } from './response'
+import { readApiData, type ApiMessageOptions } from './response'
 
 // 本地文件上传分类。
 export type StorageUploadCategory = 'general' | 'asset' | 'avatar' | 'publish' | 'reference'
@@ -20,6 +20,7 @@ export interface UploadedStorageFile {
 export const uploadStorageFile = async (
   file: File,
   category: StorageUploadCategory = 'general',
+  messageOptions: ApiMessageOptions = {},
 ) => {
   // 以原始二进制方式发给后端，避免额外 multipart 依赖。
   const response = await fetch(buildApiUrl('/api/storage/upload'), {
@@ -34,7 +35,8 @@ export const uploadStorageFile = async (
 
   // 返回后端保存结果。
   return readApiData<UploadedStorageFile>(response, {
-    showSuccessMessage: true,
+    showSuccessMessage: false,
     showErrorMessage: true,
+    ...messageOptions,
   })
 }

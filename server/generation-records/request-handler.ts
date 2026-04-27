@@ -10,6 +10,11 @@ const logGenerationRecordsRequestError = (detail: Record<string, unknown>) => {
   console.error('[generation-records][request-error]', JSON.stringify(detail))
 }
 
+// 请求体尚未读完就被客户端中断时，单独记录为链路中断，避免误判成业务写库异常。
+const logGenerationRecordsRequestAbort = (detail: Record<string, unknown>) => {
+  console.warn('[generation-records][request-aborted]', JSON.stringify(detail))
+}
+
 // 处理生成记录的列表、创建与更新请求
 export const handleGenerationRecordsRequest = async (req: any, res: any) => {
   const requestUrl = String(req.url || '').split('?')[0]
@@ -76,7 +81,7 @@ export const handleGenerationRecordsRequest = async (req: any, res: any) => {
 
     sendGenerationRecordError(res, 405, 'Method Not Allowed')
   } catch (error: any) {
-    logGenerationRecordsRequestError({
+    const detail = {
       method: req.method,
       requestUrl,
       recordId: recordId || null,
@@ -84,7 +89,14 @@ export const handleGenerationRecordsRequest = async (req: any, res: any) => {
       payloadSummary,
       errorMessage: error?.message || '处理生成记录失败',
       errorStack: error?.stack || null,
-    })
+    }
+
+    if (error?.message === 'aborted') {
+      logGenerationRecordsRequestAbort(detail)
+      return
+    }
+
+    logGenerationRecordsRequestError(detail)
     sendGenerationRecordError(res, 500, error?.message || '处理生成记录失败')
   }
 }

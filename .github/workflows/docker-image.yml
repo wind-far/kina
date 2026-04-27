@@ -60,6 +60,8 @@ jobs:
           sbom: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             VITE_API_BASE_URL=${{ env.VITE_API_BASE_URL }}
             VITE_PROVIDER_DEFAULT_BASE_URL=${{ env.VITE_PROVIDER_DEFAULT_BASE_URL }}

@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1.7
 
+ARG BUILDPLATFORM
+ARG TARGETPLATFORM
+
 # ==================== Stage 1: 依赖安装 ====================
-FROM node:22-bookworm-slim AS deps
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS deps
 
 # 设置工作目录。
 WORKDIR /app
@@ -13,7 +16,7 @@ COPY package.json ./
 RUN --mount=type=cache,target=/root/.npm \
   npm install --include=dev --no-fund --no-audit
 # ==================== Stage 2: 构建产物 ====================
-FROM node:22-bookworm-slim AS builder
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS builder
 
 # 设置工作目录。
 WORKDIR /app
@@ -39,7 +42,7 @@ RUN npm run build:client
 RUN node scripts/build-server-service.mjs
 
 # ==================== Stage 3: 生产运行 ====================
-FROM node:22-bookworm-slim AS runner
+FROM --platform=$TARGETPLATFORM node:22-bookworm-slim AS runner
 
 # 设置工作目录。
 WORKDIR /app

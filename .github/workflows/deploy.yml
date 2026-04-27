@@ -1,59 +1,21 @@
-name: 前端静态资源部署
+name: Docker 部署
 
 on:
-  push:
-    branches:
-      - master
-    tags:
-      - 'v*'
-  workflow_dispatch:  # 允许手动触发
+  workflow_run:
+    workflows:
+      - Docker 镜像发布
+    types:
+      - completed
+  workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  deploy:
+    name: 拉取最新镜像并重启容器
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    name: 构建前端并部署 dist
-    env:
-      VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
 
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 设置 Node.js 环境
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: 校验前端环境变量
-        run: |
-          if [ -z "${VITE_API_BASE_URL}" ]; then
-            echo "缺少 GitHub Actions 密钥 VITE_API_BASE_URL"
-            exit 1
-          fi
-
-      - name: 安装依赖
-        run: npm install --include=dev
-
-      - name: 构建前端静态资源
-        env:
-          NODE_ENV: production
-        run: npm run build:client
-
-      - name: 打包 dist 目录
-        run: tar -czf frontend-dist.tar.gz -C dist .
-
-      - name: 上传 dist 部署包到服务器
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: ${{ secrets.SERVER_PORT || 22 }}
-          source: "frontend-dist.tar.gz"
-          target: "/tmp/"
-
-      - name: 在服务器发布 dist 目录
+      - name: 通过 SSH 部署 Docker 容器
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -61,32 +23,21 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
           script: |
+            set -eux
+
             DEPLOY_DIR="${{ secrets.DEPLOY_PATH }}"
-            DIST_DIR="${DEPLOY_DIR}/dist"
 
-            if [ -d "$DIST_DIR" ]; then
-              echo "正在备份当前 dist..."
-              BACKUP_DIR="${DEPLOY_DIR}/dist_backup_$(date +%Y%m%d_%H%M%S)"
-              cp -r "$DIST_DIR" "$BACKUP_DIR"
-              echo "备份已创建: $BACKUP_DIR"
-            fi
-
-            echo "正在发布新的 dist..."
-            rm -rf "$DIST_DIR"
-            mkdir -p "$DIST_DIR"
-            tar -xzf /tmp/frontend-dist.tar.gz -C "$DIST_DIR"
-            rm -f /tmp/frontend-dist.tar.gz
-
-            chown -R www-data:www-data "$DIST_DIR"
-            chmod -R 755 "$DIST_DIR"
-
-            echo "dist 发布完成！"
+            cd "$DEPLOY_DIR"
+            docker compose pull
+            docker compose up -d --force-recreate --remove-orphans
+            docker image prune -f
+            docker ps
 
       - name: 发送部署通知
         if: always()
         run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ 前端 dist 部署成功！"
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Docker 部署成功！"
           else
-            echo "❌ 前端 dist 部署失败！"
+            echo "❌ Docker 部署失败！"
           fi

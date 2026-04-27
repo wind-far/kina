@@ -1,8 +1,5 @@
 # syntax=docker/dockerfile:1.7
 
-ARG BUILDPLATFORM
-ARG TARGETPLATFORM
-
 # ==================== Stage 1: 依赖安装 ====================
 FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS deps
 

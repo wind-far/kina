@@ -6,8 +6,10 @@ FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS deps
 # 设置工作目录。
 WORKDIR /app
 
-# 复制依赖声明文件。
+# 复制依赖声明文件与 Prisma 生成所需元数据。
 COPY package.json ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./
 
 # 安装构建阶段所需依赖。
 RUN --mount=type=cache,target=/root/.npm \

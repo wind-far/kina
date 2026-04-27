@@ -15,6 +15,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: 校验部署密钥
+        run: |
+          if [ -z "${{ secrets.DATABASE_URL }}" ]; then
+            echo "缺少 GitHub Secrets: DATABASE_URL"
+            exit 1
+          fi
+
+          if [ -z "${{ secrets.PROVIDER_CONFIG_SECRET }}" ]; then
+            echo "缺少 GitHub Secrets: PROVIDER_CONFIG_SECRET"
+            exit 1
+          fi
+
+          if [ -z "${{ secrets.VITE_API_BASE_URL }}" ]; then
+            echo "缺少 GitHub Secrets: VITE_API_BASE_URL"
+            exit 1
+          fi
+
       - name: 通过 SSH 部署 Docker 容器
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -26,8 +43,25 @@ jobs:
             set -eux
 
             DEPLOY_DIR="${{ secrets.DEPLOY_PATH }}"
-
+            mkdir -p "$DEPLOY_DIR"
             cd "$DEPLOY_DIR"
+
+            cat > .env <<'EOF'
+            APP_PORT=5409
+            SERVER_PORT=5409
+            VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
+            VITE_PROVIDER_DEFAULT_BASE_URL=https://api.chatfire.site/v1
+            PROVIDER_DEFAULT_BASE_URL=https://api.chatfire.site/v1
+            STATIC_DIST_DIR=/app/dist
+            UPLOADS_DIR=/app/uploads
+            CORS_ALLOWED_ORIGINS=${{ secrets.VITE_API_BASE_URL }}
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            PROVIDER_CONFIG_SECRET=${{ secrets.PROVIDER_CONFIG_SECRET }}
+            STORAGE_CONFIG_SECRET=${{ secrets.STORAGE_CONFIG_SECRET }}
+            AUTH_LOGIN_CODE_EXPIRE_MINUTES=5
+            AUTH_SESSION_EXPIRE_DAYS=30
+            EOF
+
             docker compose pull
             docker compose up -d --force-recreate --remove-orphans
             docker image prune -f

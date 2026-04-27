@@ -1,8 +1,8 @@
 services:
   # 应用服务，同时承载前端与后端。
   app:
-    image: ${APP_IMAGE:-couei/canana-vue:latest}
-    container_name: ${APP_CONTAINER_NAME:-canana-vue-app}
+    image: couei/canana-vue:latest
+    container_name: canana-vue-app
     restart: unless-stopped
     env_file:
       # 默认读取根目录 .env，也可通过 APP_ENV_FILE 覆盖。

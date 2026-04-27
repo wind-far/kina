@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # ==================== Stage 1: 依赖安装 ====================
 FROM node:22-bookworm-slim AS deps
 
@@ -8,24 +10,8 @@ WORKDIR /app
 COPY package.json ./
 
 # 安装构建阶段所需依赖。
-# 额外补装前端构建链路中的 Linux 原生包，规避 npm 漏装 optionalDependencies 的问题。
-RUN set -eux; \
-  npm install --include=dev --no-fund --no-audit; \
-  ARCH="$(dpkg --print-architecture)"; \
-  if [ "$ARCH" = "amd64" ]; then \
-    ROLLUP_PACKAGE='@rollup/rollup-linux-x64-gnu@4.56.0'; \
-    LIGHTNINGCSS_PACKAGE='lightningcss-linux-x64-gnu@1.30.2'; \
-    TAILWIND_PACKAGE='@tailwindcss/oxide-linux-x64-gnu@4.1.18'; \
-  elif [ "$ARCH" = "arm64" ]; then \
-    ROLLUP_PACKAGE='@rollup/rollup-linux-arm64-gnu@4.56.0'; \
-    LIGHTNINGCSS_PACKAGE='lightningcss-linux-arm64-gnu@1.30.2'; \
-    TAILWIND_PACKAGE='@tailwindcss/oxide-linux-arm64-gnu@4.1.18'; \
-  else \
-    echo "不支持的 Docker 构建架构: $ARCH"; \
-    exit 1; \
-  fi; \
-  npm install "$ROLLUP_PACKAGE" "$LIGHTNINGCSS_PACKAGE" "$TAILWIND_PACKAGE" --no-save --no-fund --no-audit
-
+RUN --mount=type=cache,target=/root/.npm \
+  npm install --include=dev --no-fund --no-audit
 # ==================== Stage 2: 构建产物 ====================
 FROM node:22-bookworm-slim AS builder
 
@@ -70,7 +56,8 @@ COPY --from=builder /app/dist-service/ ./
 
 # 安装后端运行时依赖，并补齐 Prisma 所需的 OpenSSL 运行库。
 # 同时显式生成 Prisma Client，确保运行时能正确导出 PrismaClient。
-RUN apt-get update \
+RUN --mount=type=cache,target=/root/.npm \
+  apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
   && npm install --omit=dev --no-fund --no-audit \

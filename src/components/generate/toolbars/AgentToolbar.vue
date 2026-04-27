@@ -3,7 +3,7 @@
 // 包含自动（生成偏好）、灵感搜索、创意设计三个功能按钮
 // 支持弹出方向设置和纯图标模式
 
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import PreferencePanel from '../common/PreferencePanel.vue'
 import SelectPopup from '../common/SelectPopup.vue'
 import { getAllChatModels } from '@/config/models'
@@ -11,6 +11,8 @@ import { getAgentModel, setAgentModel } from '@/api/agent'
 
 // 弹出方向类型
 type Placement = 'top' | 'bottom' | 'auto'
+
+const AGENT_TOOLBAR_STORAGE_KEY = 'canana:generator:agent-toolbar'
 
 // Props 定义
 interface Props {
@@ -51,7 +53,20 @@ const skillOptions: AgentSkillOption[] = [
   { value: 'poster-design', label: '海报设计', description: '生成更有创意的海报内容，擅长营销场景和节日热点' },
   { value: 'brand-design', label: '品牌设计', description: '根据公司名称、业务与客群，生成品牌 Logo 与视觉方案' }
 ]
-const currentSkill = ref('general')
+const readStoredAgentToolbarState = () => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    return JSON.parse(window.localStorage.getItem(AGENT_TOOLBAR_STORAGE_KEY) || 'null')
+  } catch {
+    return null
+  }
+}
+
+const storedAgentToolbarState = readStoredAgentToolbarState()
+const currentSkill = ref(typeof storedAgentToolbarState?.skill === 'string' ? storedAgentToolbarState.skill : 'general')
 const isSkillSelectOpen = ref(false)
 const skillTriggerRef = ref<HTMLElement | null>(null)
 
@@ -79,6 +94,15 @@ const currentModelLabel = computed(() => {
   const m = chatModels.value.find(v => v.value === currentModel.value)
   return m?.label || currentModel.value
 })
+
+watch(
+  currentSkill,
+  (skill) => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(AGENT_TOOLBAR_STORAGE_KEY, JSON.stringify({ skill }))
+  },
+  { immediate: true },
+)
 
 // 统一关闭 Agent 工具栏内部所有浮层
 const closeAllPopups = () => {

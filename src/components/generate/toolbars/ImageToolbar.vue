@@ -3,12 +3,14 @@
 // 包含模型版本选择、尺寸选择、文字工具按钮
 // 支持弹出方向设置
 
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import SelectPopup from '../common/SelectPopup.vue'
 import { getAllImageModels, DEFAULT_IMAGE_MODEL } from '@/config/models'
 
 // 弹出方向类型
 type Placement = 'top' | 'bottom' | 'auto'
+
+const IMAGE_TOOLBAR_STORAGE_KEY = 'canana:generator:image-toolbar'
 
 // Props 定义
 interface Props {
@@ -37,11 +39,31 @@ const sizeOptions = [
   { value: '9:16', label: '9:16', quality: '高清 2K' }
 ]
 
+const readStoredImageToolbarState = () => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    return JSON.parse(window.localStorage.getItem(IMAGE_TOOLBAR_STORAGE_KEY) || 'null')
+  } catch {
+    return null
+  }
+}
+
+const storedToolbarState = readStoredImageToolbarState()
+const validImageModelValues = modelVersions.value.map(item => item.value)
+const validImageSizeValues = sizeOptions.map(item => item.value)
+
 // 当前选中的模型版本
-const currentModelVersion = ref(DEFAULT_IMAGE_MODEL)
+const currentModelVersion = ref(
+  validImageModelValues.includes(storedToolbarState?.model) ? storedToolbarState.model : DEFAULT_IMAGE_MODEL,
+)
 
 // 当前选中的尺寸
-const currentSize = ref('1:1')
+const currentSize = ref(
+  validImageSizeValues.includes(storedToolbarState?.size) ? storedToolbarState.size : '1:1',
+)
 
 // 弹窗状态
 const isModelSelectOpen = ref(false)
@@ -87,6 +109,15 @@ const currentModelLabel = computed(() => {
 const currentSizeConfig = () => {
   return sizeOptions.find(s => s.value === currentSize.value) || sizeOptions[0]
 }
+
+watch(
+  [currentModelVersion, currentSize],
+  ([model, size]) => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(IMAGE_TOOLBAR_STORAGE_KEY, JSON.stringify({ model, size }))
+  },
+  { immediate: true },
+)
 
 defineExpose({
   currentModelVersion,

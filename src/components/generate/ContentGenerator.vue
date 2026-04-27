@@ -14,6 +14,8 @@ type Placement = 'top' | 'bottom' | 'auto'
 type LayoutMode = 'default' | 'sidebar'
 type SurfaceVariant = 'default' | 'home'
 
+const GENERATOR_CREATION_TYPE_STORAGE_KEY = 'canana:generator:creation-type'
+
 // Props 定义
 interface Props {
   // 布局模式：default-画布中央, sidebar-侧边栏
@@ -76,8 +78,18 @@ const inputValue = ref('')
 const authStore = useAuthStore()
 const { openLoginModal } = useLoginModalStore()
 
+// 从本地恢复最近一次创作类型，详情页等显式传入初始值时优先使用外部值。
+const readStoredCreationType = (): CreationType | null => {
+  if (typeof window === 'undefined') return null
+
+  const rawValue = String(window.localStorage.getItem(GENERATOR_CREATION_TYPE_STORAGE_KEY) || '').trim()
+  return ['agent', 'image', 'video', 'digital-human'].includes(rawValue)
+    ? rawValue as CreationType
+    : null
+}
+
 // 当前创作类型（有 initialCreationType 时与之一致，避免先闪默认 Agent）
-const currentType = ref<CreationType>(props.initialCreationType ?? 'agent')
+const currentType = ref<CreationType>(props.initialCreationType ?? readStoredCreationType() ?? 'agent')
 
 // 组件引用（用于弹窗互斥）
 const typeSelectorRef = ref<InstanceType<typeof TypeSelector> | null>(null)
@@ -116,6 +128,15 @@ watch(
   (t) => {
     if (t) currentType.value = t
   }
+)
+
+watch(
+  currentType,
+  (type) => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(GENERATOR_CREATION_TYPE_STORAGE_KEY, type)
+  },
+  { immediate: true }
 )
 
 watch(

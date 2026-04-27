@@ -653,6 +653,18 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
           },
         })
 
+        // Prisma create 正常情况下必须返回带 id 的记录；若返回异常，立即打点并终止事务。
+        if (!createdOutput || !createdOutput.id) {
+          logGenerationRecordError('create_generation_record:create_output_invalid', new Error('generationOutput.create 返回空结果'), {
+            currentUserId,
+            generationRecordId: createdRecord.id,
+            outputIndex: index,
+            outputType: output.outputType,
+            createdOutput: createdOutput || null,
+          })
+          throw new Error('生成输出写入成功，但返回结果异常')
+        }
+
         createdOutputs.push({
           id: createdOutput.id,
           outputType: output.outputType,
@@ -860,6 +872,18 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
             metaJson: (output.metaJson as any) || undefined,
           },
         })
+
+        // Prisma create 正常情况下必须返回带 id 的记录；若返回异常，立即打点并终止事务。
+        if (!createdOutput || !createdOutput.id) {
+          logGenerationRecordError('update_generation_record:create_output_invalid', new Error('generationOutput.create 返回空结果'), {
+            currentUserId,
+            generationRecordId: id,
+            outputIndex: index,
+            outputType: output.outputType,
+            createdOutput: createdOutput || null,
+          })
+          throw new Error('生成输出写入成功，但返回结果异常')
+        }
 
         createdOutputs.push({
           id: createdOutput.id,

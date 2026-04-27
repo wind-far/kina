@@ -35,9 +35,7 @@ export const getPrismaClient = () => {
 
   const prisma = createPrismaClient()
 
-  if (process.env.NODE_ENV !== 'production') {
-    globalThis.__cananaPrisma__ = prisma
-  }
+  globalThis.__cananaPrisma__ = prisma
 
   return prisma
 }

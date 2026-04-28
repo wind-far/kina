@@ -10,7 +10,7 @@ import {
   AUTH_SESSION_PATH,
   AUTH_VERIFICATION_CODE_PATH,
 } from './constants'
-import { readSessionTokenFromRequest } from './session'
+import { readSessionTokenFromRequest, requireAdminSessionUser } from './session'
 import { getAuthStrategy } from './strategies'
 import { getAuthMethodConfig, getSessionCookieMaxAge, getUserBySessionToken, listAuthMethodConfigs, listEnabledAuthMethods, revokeSessionToken, saveAuthMethodConfigs, AUTH_SESSION_COOKIE_NAME } from './service'
 import { type AuthLoginPayload, type AuthMethodConfigSavePayload, type AuthOAuthAuthorizePayload, type AuthVerificationCodePayload, normalizeAuthMethodConfigList, readAuthBody, sendAuthError } from './shared'
@@ -87,12 +87,22 @@ export const handleAuthRequest = async (req: any, res: any) => {
     }
 
     if (req.method === 'GET' && requestUrl === AUTH_CONFIGS_PATH) {
+      const currentUser = await requireAdminSessionUser(req, res)
+      if (!currentUser) {
+        return
+      }
+
       const data = await listAuthMethodConfigs()
       sendJson(res, 200, { data })
       return
     }
 
     if (req.method === 'PUT' && requestUrl === AUTH_CONFIGS_PATH) {
+      const currentUser = await requireAdminSessionUser(req, res)
+      if (!currentUser) {
+        return
+      }
+
       const payload = await readAuthBody<AuthMethodConfigSavePayload>(req)
       const data = await saveAuthMethodConfigs(normalizeAuthMethodConfigList(payload.methods))
       sendJson(res, 200, { data, message: '登录方式配置已保存' })

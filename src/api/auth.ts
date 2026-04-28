@@ -22,6 +22,7 @@ export interface AuthUserProfile {
   maskedPhone: string
   maskedEmail: string
   avatarUrl: string
+  role: 'USER' | 'ADMIN'
   loginMethodType: AuthMethodType
 }
 

@@ -1,4 +1,4 @@
-import type { AuthMethodCategory, AuthMethodType, VerificationChannel } from '@prisma/client'
+import type { AuthMethodCategory, AuthMethodType, UserRole, VerificationChannel } from '@prisma/client'
 
 // 登录用户资料。
 export interface AuthUserProfile {
@@ -9,6 +9,7 @@ export interface AuthUserProfile {
   maskedPhone: string
   maskedEmail: string
   avatarUrl: string
+  role: UserRole
   loginMethodType: AuthMethodType
 }
 

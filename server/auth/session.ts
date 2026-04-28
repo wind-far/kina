@@ -1,31 +1,50 @@
 import { AUTH_SESSION_COOKIE_NAME } from './service'
 import { getUserBySessionToken } from './service'
-import { sendAuthError } from './shared'
 
-// 解析请求头中的 Cookie 键值对。
-export const parseCookieMap = (cookieHeader: string) => {
+const parseCookieMap = (cookieHeader: string) => {
   return cookieHeader
     .split(';')
-    .map(item => item.trim())
+    .map((item) => item.trim())
     .filter(Boolean)
     .reduce<Record<string, string>>((result, item) => {
-      const splitIndex = item.indexOf('=')
-      if (splitIndex <= 0) {
+      const separatorIndex = item.indexOf('=')
+      if (separatorIndex <= 0) {
         return result
       }
 
-      const key = item.slice(0, splitIndex).trim()
-      const value = item.slice(splitIndex + 1).trim()
-      if (key) {
-        result[key] = decodeURIComponent(value)
-      }
+      const key = item.slice(0, separatorIndex).trim()
+      const value = item.slice(separatorIndex + 1).trim()
+      result[key] = decodeURIComponent(value)
       return result
     }, {})
 }
 
-// 从请求中提取当前会话令牌。
+const sendUnauthorizedError = (res: any) => {
+  res.statusCode = 401
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  res.end(JSON.stringify({
+    message: '当前未登录或登录已失效',
+    error: {
+      type: 'unauthorized',
+      message: '当前未登录或登录已失效',
+    },
+  }))
+}
+
+const sendForbiddenError = (res: any) => {
+  res.statusCode = 403
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  res.end(JSON.stringify({
+    message: '当前账号没有后台管理权限',
+    error: {
+      type: 'forbidden',
+      message: '当前账号没有后台管理权限',
+    },
+  }))
+}
+
 export const readSessionTokenFromRequest = (req: any) => {
-  const cookieHeader = String(req.headers.cookie || '').trim()
+  const cookieHeader = String(req.headers?.cookie || '').trim()
   if (!cookieHeader) {
     return ''
   }
@@ -33,7 +52,6 @@ export const readSessionTokenFromRequest = (req: any) => {
   return parseCookieMap(cookieHeader)[AUTH_SESSION_COOKIE_NAME] || ''
 }
 
-// 从请求中识别当前登录用户。
 export const readCurrentSessionUser = async (req: any) => {
   const sessionToken = readSessionTokenFromRequest(req)
   if (!sessionToken) {
@@ -43,11 +61,25 @@ export const readCurrentSessionUser = async (req: any) => {
   return getUserBySessionToken(sessionToken)
 }
 
-// 断言当前请求已登录，否则直接返回 401。
 export const requireCurrentSessionUser = async (req: any, res: any) => {
   const currentUser = await readCurrentSessionUser(req)
   if (!currentUser?.id) {
-    sendAuthError(res, 401, '当前操作需要先登录')
+    sendUnauthorizedError(res)
+    return null
+  }
+
+  return currentUser
+}
+
+// 要求当前会话用户必须具备管理员角色。
+export const requireAdminSessionUser = async (req: any, res: any) => {
+  const currentUser = await requireCurrentSessionUser(req, res)
+  if (!currentUser) {
+    return null
+  }
+
+  if (currentUser.role !== 'ADMIN') {
+    sendForbiddenError(res)
     return null
   }
 

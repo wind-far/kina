@@ -6,6 +6,11 @@ datasource db {
   provider = "mysql"
 }
 
+enum UserRole {
+  USER
+  ADMIN
+}
+
 /// 第一版用户表。
 /// 作为登录、资源、生成、配置等模块的统一用户实体。
 model AppUser {
@@ -14,6 +19,7 @@ model AppUser {
   avatarUrl         String?            @map("avatar_url") @db.Text
   email             String?            @unique(map: "uk_app_users_email") @db.VarChar(191)
   phone             String?            @unique(map: "uk_app_users_phone") @db.VarChar(32)
+  role              UserRole           @default(USER)
   status            UserStatus         @default(ANONYMOUS)
   createdAt         DateTime           @default(now()) @map("created_at")
   updatedAt         DateTime           @updatedAt @map("updated_at")
@@ -176,6 +182,58 @@ model AiProviderCustomModel {
   @@unique([providerConfigId, category, modelKey], map: "uk_ai_provider_custom_models_config_category_key")
   @@index([providerConfigId, category, sortOrder], map: "idx_ai_provider_custom_models_config_category_sort")
   @@map("ai_provider_custom_models")
+}
+
+/// 正式 AI 厂商实体。
+/// 对齐 BuildingAI 的 provider / model 双实体思路，后续后台与运行时都基于这里派生。
+model AiProvider {
+  id                 String    @id @default(cuid()) @db.VarChar(36)
+  code               String    @unique(map: "uk_ai_providers_code") @db.VarChar(50)
+  name               String    @db.VarChar(100)
+  description        String?   @db.VarChar(255)
+  iconUrl            String?   @map("icon_url") @db.Text
+  baseUrl            String    @map("base_url") @db.Text
+  apiKeyEncrypted    String?   @map("api_key_encrypted") @db.LongText
+  apiKeyHint         String?   @map("api_key_hint") @db.VarChar(64)
+  chatEndpoint       String    @default("/chat/completions") @map("chat_endpoint") @db.VarChar(255)
+  imageEndpoint      String    @default("/images/generations") @map("image_endpoint") @db.VarChar(255)
+  videoEndpoint      String    @default("/videos") @map("video_endpoint") @db.VarChar(255)
+  defaultChatModel   String?   @map("default_chat_model") @db.VarChar(191)
+  supportedTypesJson Json?     @map("supported_types_json")
+  isEnabled          Boolean   @default(true) @map("is_enabled")
+  isBuiltIn          Boolean   @default(false) @map("is_built_in")
+  sortOrder          Int       @default(0) @map("sort_order")
+  extraJson          Json?     @map("extra_json")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  models             AiModel[]
+
+  @@index([isEnabled, sortOrder], map: "idx_ai_providers_enabled_sort")
+  @@map("ai_providers")
+}
+
+/// 正式 AI 模型实体。
+/// 与厂商拆表后，模型具备独立的启停、排序、能力和默认参数配置。
+model AiModel {
+  id                String        @id @default(cuid()) @db.VarChar(36)
+  providerId        String        @map("provider_id") @db.VarChar(36)
+  category          ModelCategory
+  name              String        @db.VarChar(100)
+  modelKey          String        @map("model_key") @db.VarChar(191)
+  description       String?       @db.VarChar(255)
+  capabilityJson    Json?         @map("capability_json")
+  defaultParamsJson Json?         @map("default_params_json")
+  sortOrder         Int           @default(0) @map("sort_order")
+  isEnabled         Boolean       @default(true) @map("is_enabled")
+  isBuiltIn         Boolean       @default(false) @map("is_built_in")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  provider          AiProvider    @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, category, modelKey], map: "uk_ai_models_provider_category_key")
+  @@index([providerId, category, sortOrder], map: "idx_ai_models_provider_category_sort")
+  @@index([isEnabled, category], map: "idx_ai_models_enabled_category")
+  @@map("ai_models")
 }
 
 /// 对象存储配置表。

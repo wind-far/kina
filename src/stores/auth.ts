@@ -49,6 +49,9 @@ export const useAuthStore = () => {
   // 当前是否已登录。
   const isLoggedIn = computed(() => Boolean(currentUser.value?.id))
 
+  // 当前是否具备后台管理员权限。
+  const isAdmin = computed(() => currentUser.value?.role === 'ADMIN')
+
   // 当前用户按钮文案。
   const loginButtonText = computed(() => {
     return currentUser.value?.maskedPhone || currentUser.value?.maskedEmail || '登录'
@@ -119,6 +122,7 @@ export const useAuthStore = () => {
     currentUser,
     enabledMethods,
     isLoggedIn,
+    isAdmin,
     loginButtonText,
     sessionLoading,
     sessionInitialized,

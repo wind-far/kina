@@ -521,6 +521,7 @@ export const toAuthUserProfile = (user: {
   phone: string | null
   email: string | null
   avatarUrl: string | null
+  role: 'USER' | 'ADMIN' | null
 }, loginMethodType: AuthMethodType): AuthUserProfile => {
   const phone = String(user.phone || '').trim()
   const email = String(user.email || '').trim()
@@ -533,6 +534,7 @@ export const toAuthUserProfile = (user: {
     maskedPhone: maskPhone(phone),
     maskedEmail: maskEmail(email),
     avatarUrl: String(user.avatarUrl || '').trim(),
+    role: user.role === 'ADMIN' ? 'ADMIN' : 'USER',
     loginMethodType,
   }
 }
@@ -562,6 +564,7 @@ export const getUserBySessionToken = async (sessionToken: string) => {
           phone: true,
           email: true,
           avatarUrl: true,
+          role: true,
         },
       },
     },

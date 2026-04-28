@@ -1,5 +1,6 @@
 import { sendJson } from '../ai-gateway/shared'
 import { isPrismaConfigured } from '../db/prisma'
+import { requireAdminSessionUser } from '../auth/session'
 import { STORAGE_CONFIGS_BASE_PATH } from './constants'
 import { readStorageConfigBody, sendStorageConfigError } from './shared'
 import {
@@ -14,6 +15,11 @@ export const handleStorageConfigRequest = async (req: any, res: any) => {
   try {
     if (!isPrismaConfigured()) {
       sendStorageConfigError(res, 500, '缺少 DATABASE_URL，暂时无法使用对象存储配置。')
+      return
+    }
+
+    const currentUser = await requireAdminSessionUser(req, res)
+    if (!currentUser) {
       return
     }
 

@@ -1,5 +1,8 @@
-export const PROVIDER_CONFIG_RUNTIME_PATH = '/api/provider-config/runtime'
+export const PROVIDER_CONFIG_BASE_PATH = '/api/provider-config'
+export const PROVIDER_CONFIG_RUNTIME_PATH = `${PROVIDER_CONFIG_BASE_PATH}/runtime`
+export const PROVIDER_CONFIG_PROVIDERS_PATH = `${PROVIDER_CONFIG_BASE_PATH}/providers`
 
 export const PROVIDER_CONFIG_MATCH_PATHS = [
   PROVIDER_CONFIG_RUNTIME_PATH,
+  PROVIDER_CONFIG_PROVIDERS_PATH,
 ] as const

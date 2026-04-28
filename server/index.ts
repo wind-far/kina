@@ -7,6 +7,10 @@ import { isAuthPath } from './auth/constants'
 import { handleAuthRequest } from './auth/request-handler'
 import { isAssetItemsPath } from './asset-items/constants'
 import { handleAssetItemsRequest } from './asset-items/request-handler'
+import { isAdminUsersPath } from './admin-users/constants'
+import { handleAdminUsersRequest } from './admin-users/request-handler'
+import { isAdminDashboardPath } from './admin-dashboard/constants'
+import { handleAdminDashboardRequest } from './admin-dashboard/request-handler'
 import { isGenerationRecordsPath } from './generation-records/constants'
 import { handleGenerationRecordsRequest } from './generation-records/request-handler'
 import { PROVIDER_CONFIG_MATCH_PATHS } from './provider-config/constants'
@@ -90,8 +94,8 @@ const isAiGatewayPath = (requestPath: string) => {
 
 // 判断当前路径是否命中厂商配置接口。
 const isProviderConfigPath = (requestPath: string) => {
-  // 复用现有路径常量统一判断。
-  return PROVIDER_CONFIG_MATCH_PATHS.includes(requestPath as (typeof PROVIDER_CONFIG_MATCH_PATHS)[number])
+  // runtime 走精确匹配，models 兼容带 id 的子路径。
+  return PROVIDER_CONFIG_MATCH_PATHS.some((path) => requestPath === path || requestPath.startsWith(path + '/'))
 }
 
 // 处理上传目录中的公开文件访问。
@@ -343,6 +347,18 @@ const dispatchRequest = async (req: any, res: any) => {
   // 命中资源接口时走资源逻辑。
   if (isAssetItemsPath(requestPath)) {
     await handleAssetItemsRequest(req, res)
+    return
+  }
+
+  // 命中后台仪表盘接口时返回统计数据。
+  if (isAdminDashboardPath(requestPath)) {
+    await handleAdminDashboardRequest(req, res)
+    return
+  }
+
+  // 命中后台用户管理接口时返回用户与角色数据。
+  if (isAdminUsersPath(requestPath)) {
+    await handleAdminUsersRequest(req, res)
     return
   }
 

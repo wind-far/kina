@@ -5,6 +5,7 @@
 
 import { request, getEndpoint } from './request'
 import { getUpstreamRequestConfig } from '@/api/provider-config'
+import { loadPublicModelCatalog, resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 import { AI_GATEWAY_REQUEST_PATH } from '@/api/ai-gateway'
 import { handleUnauthorizedResponse } from '@/api/response'
 
@@ -36,19 +37,32 @@ async function generateImageViaChat(data: any, endpoint: string) {
     stream: true
   }
 
+  await loadPublicModelCatalog()
+  const providerId = resolveRequestProviderId(String(data.model || '').trim(), 'IMAGE')
+  const requestModelKey = resolveRequestModelKey(String(data.model || '').trim(), 'IMAGE')
+
   const response = await fetch(AI_GATEWAY_REQUEST_PATH, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      upstream: getUpstreamRequestConfig('image', endpoint),
+      upstream: providerId
+        ? {
+            providerId,
+            endpointType: 'image',
+            modelKey: requestModelKey,
+          }
+        : getUpstreamRequestConfig('image', endpoint),
       request: {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body,
+        body: {
+          ...body,
+          model: requestModelKey,
+        },
       },
     }),
   })

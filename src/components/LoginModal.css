@@ -668,3 +668,16 @@ body[lv-theme='light'] .login-modal-host {
     top: 20px;
   }
 }
+
+
+.login-subtitle-canana {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+html[data-theme='light'] .login-subtitle-canana,
+body[lv-theme='light'] .login-subtitle-canana {
+  color: rgba(15, 23, 42, 0.62);
+}

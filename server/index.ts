@@ -11,6 +11,8 @@ import { isAdminUsersPath } from './admin-users/constants'
 import { handleAdminUsersRequest } from './admin-users/request-handler'
 import { isAdminDashboardPath } from './admin-dashboard/constants'
 import { handleAdminDashboardRequest } from './admin-dashboard/request-handler'
+import { isSystemConfigPath } from './system-config/constants'
+import { handleSystemConfigRequest } from './system-config/request-handler'
 import { isGenerationRecordsPath } from './generation-records/constants'
 import { handleGenerationRecordsRequest } from './generation-records/request-handler'
 import { PROVIDER_CONFIG_MATCH_PATHS } from './provider-config/constants'
@@ -261,7 +263,7 @@ const applyCorsHeaders = (req: any, res: any) => {
   // 声明允许的请求头。
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'Content-Type,Authorization,x-upstream-base-url,x-upstream-endpoint,x-upstream-api-key,x-upstream-method',
+    'Content-Type,Authorization,x-upstream-base-url,x-upstream-endpoint,x-upstream-api-key,x-upstream-provider-id,x-upstream-endpoint-type,x-upstream-model-key,x-upstream-method',
   )
 
   // 允许跨域请求携带 Cookie。
@@ -359,6 +361,12 @@ const dispatchRequest = async (req: any, res: any) => {
   // 命中后台用户管理接口时返回用户与角色数据。
   if (isAdminUsersPath(requestPath)) {
     await handleAdminUsersRequest(req, res)
+    return
+  }
+
+  // 命中系统设置接口时返回系统配置数据。
+  if (isSystemConfigPath(requestPath)) {
+    await handleSystemConfigRequest(req, res)
     return
   }
 

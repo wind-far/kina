@@ -10,18 +10,20 @@
 </template>
 
 <script setup lang="ts">
-import { watch } from 'vue'
+import { onMounted, watch } from 'vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import LoginModal from '@/components/LoginModal.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
+import { useSystemSettingsStore } from '@/stores/system-settings'
 
 // 读取全局登录态与登录弹窗状态。
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const { loginModalVisible, openLoginModal, setLoginModalVisible } = useLoginModalStore()
+const systemSettingsStore = useSystemSettingsStore()
 
 // 通过路由 query 统一拉起全局登录弹窗，兼容守卫回跳场景。
 watch(() => route.query.login, (loginFlag) => {
@@ -39,6 +41,10 @@ watch(() => route.query.login, (loginFlag) => {
   })
 }, {
   immediate: true,
+})
+
+onMounted(() => {
+  void systemSettingsStore.loadPublicSettings()
 })
 </script>
 

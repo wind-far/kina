@@ -113,6 +113,7 @@ body [data-lv-theme-force=dark],body [lv-theme=dark],body body[lv-theme-version=
     --stroke-primary: #ccddff1a;
     --stroke-secondary: #ccddff0f;
     --stroke-tertiary: #ccddff14;
+    --line-divider: rgba(224, 245, 255, 0.16);
     --inverse-text-primary: #15161a;
     --inverse-text-secondary: #2c3137;
     --inverse-text-tertiary: #5d6268;
@@ -267,6 +268,7 @@ body body[lv-theme-version="2.0"][lv-theme=light],html body[lv-theme-version="2.
     --canvas-frame: #fff;
     --canvas-image-loading-end: #e9eaeb;
     --canvas-image-loading-start: #f9f9f9;
+    --line-divider: rgba(15, 20, 25, 0.12);
     --text-primary: #0f1419;
     --text-secondary: #536471;
     --text-tertiary: #72808a;

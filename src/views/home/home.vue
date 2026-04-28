@@ -69,6 +69,7 @@ import SideMenu from '../../components/home/components/SideMenu.vue'
 import HomeHeader from '../../components/home/components/HomeHeader.vue'
 import TabsSection from '@components/home/components/TabsSection.vue'
 import HomeDetailModalFrom from '@components/home/components/HomeDetailModalFrom.vue'
+import HomeFooter from '@components/home/components/HomeFooter.vue'
 import { applyAssetAction } from '@/api/asset-items'
 
 const handleTabChange = (index) => {

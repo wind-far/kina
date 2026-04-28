@@ -7,6 +7,7 @@ import PublishCenter from '../views/publish/PublishCenter.vue'
 import AssetManagement from '../views/asset/AssetManagement.vue'
 import { useAuthStore } from '../stores/auth'
 const Workflow = () => import('../views/workflow/index.vue')
+const PolicyDetail = () => import('../views/policies/PolicyDetail.vue')
 const AdminLayout = () => import('../components/admin/layout/AdminLayout.vue')
 const AdminDashboard = () => import('../views/admin/dashboard/AdminDashboard.vue')
 const AdminAssets = () => import('../views/admin/assets/AdminAssets.vue')
@@ -56,6 +57,11 @@ const routes: RouteRecordRaw[] = [
     path: '/workflow',
     name: 'Workflow',
     component: Workflow,
+  },
+  {
+    path: '/policies/:type',
+    name: 'PolicyDetail',
+    component: PolicyDetail,
   },
   {
     path: '/admin-forbidden',

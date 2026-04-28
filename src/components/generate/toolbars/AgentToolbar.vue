@@ -3,10 +3,10 @@
 // 包含自动（生成偏好）、灵感搜索、创意设计三个功能按钮
 // 支持弹出方向设置和纯图标模式
 
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import PreferencePanel from '../common/PreferencePanel.vue'
 import SelectPopup from '../common/SelectPopup.vue'
-import { getAllChatModels } from '@/config/models'
+import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
 import { getAgentModel, setAgentModel } from '@/api/agent'
 
 // 弹出方向类型
@@ -93,6 +93,22 @@ const modelTriggerRef = ref<HTMLElement | null>(null)
 const currentModelLabel = computed(() => {
   const m = chatModels.value.find(v => v.value === currentModel.value)
   return m?.label || currentModel.value
+})
+
+watch(
+  chatModels,
+  (options) => {
+    const values = options.map(item => item.value)
+    if (!values.length) return
+    if (!values.includes(currentModel.value)) {
+      currentModel.value = getAgentModel() || getDefaultChatModelKey() || values[0]
+    }
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  void loadPublicModelCatalog()
 })
 
 watch(

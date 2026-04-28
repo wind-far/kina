@@ -17,6 +17,7 @@ import {
   createGatewayPayload,
   normalizeGatewayMethod,
 } from './ai-gateway'
+import { loadPublicModelCatalog, resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 import { buildApiUrl } from './http'
 import { handleUnauthorizedResponse } from './response'
 
@@ -45,16 +46,27 @@ export const request = async (
   type: AiEndpointType = 'video',
 ) => {
   if (isFormData(options.data)) {
-    const payload = createGatewayPayload(type, options)
+    await loadPublicModelCatalog()
+    const formData = new FormData()
+    options.data.forEach((value, key) => {
+      formData.append(key, value)
+    })
+    const originalModel = String(formData.get('model') || '').trim()
+    const providerId = resolveRequestProviderId(originalModel, type.toUpperCase() as 'CHAT' | 'IMAGE' | 'VIDEO')
+    const modelKey = resolveRequestModelKey(originalModel, type.toUpperCase() as 'CHAT' | 'IMAGE' | 'VIDEO')
+    if (providerId && modelKey) {
+      formData.set('model', modelKey)
+    }
     const response = await fetch(buildApiUrl(AI_GATEWAY_REQUEST_PATH), {
       method: 'POST',
       headers: {
-        'x-upstream-base-url': payload.upstream.baseUrl,
-        'x-upstream-endpoint': payload.upstream.endpoint,
+        ...(providerId ? { 'x-upstream-provider-id': providerId } : { 'x-upstream-base-url': getBaseUrl(), 'x-upstream-endpoint': getEndpoint(type) }),
+        ...(providerId ? { 'x-upstream-endpoint-type': type } : {}),
+        ...(providerId && modelKey ? { 'x-upstream-model-key': modelKey } : {}),
         'x-upstream-method': normalizeGatewayMethod(options.method),
-        ...(payload.upstream.apiKey ? { 'x-upstream-api-key': payload.upstream.apiKey } : {}),
+        ...(!providerId && getApiKey() ? { 'x-upstream-api-key': getApiKey() } : {}),
       },
-      body: options.data,
+      body: formData,
     })
 
     if (!response.ok) {
@@ -72,7 +84,7 @@ export const request = async (
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(createGatewayPayload(type, options)),
+    body: JSON.stringify(await createGatewayPayload(type, options)),
   })
 
   if (!response.ok) {

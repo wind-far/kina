@@ -27,8 +27,9 @@
                 <span>
                   <div class="title-UZtkUa">
 <!--                    <img class="title-logo-xhenXQ" :src="titleLogoSrc" alt="">-->
-                    <div class="title-text-byG0WC">欢迎登录</div>
+                    <div class="title-text-byG0WC">{{ welcomeTitle }}</div>
                   </div>
+                  <div v-if="welcomeSubtitle" class="login-subtitle-canana">{{ welcomeSubtitle }}</div>
                 </span>
               </div>
             </div>
@@ -132,12 +133,12 @@
                     </span>
                     <span class="lv-checkbox-text">
                       <span class="agreement-text-zcf5TA">
-                        <span>已阅读并同意</span>
-                        <span class="link-text-OuVqYF">用户服务协议</span>
+                        <span>{{ agreementTextPrefix }}</span>
+                        <a class="link-text-OuVqYF" :href="userAgreementHref" :target="policySettings.userAgreementUrl ? '_blank' : undefined" rel="noreferrer">{{ policySettings.userAgreementTitle }}</a>
                         <span>、</span>
-                        <span class="link-text-OuVqYF">隐私政策</span>
+                        <a class="link-text-OuVqYF" :href="privacyPolicyHref" :target="policySettings.privacyPolicyUrl ? '_blank' : undefined" rel="noreferrer">{{ policySettings.privacyPolicyTitle }}</a>
                         <span>、</span>
-                        <span class="link-text-OuVqYF">AI功能使用须知</span>
+                        <a class="link-text-OuVqYF" :href="aiNoticeHref" :target="policySettings.aiNoticeUrl ? '_blank' : undefined" rel="noreferrer">{{ policySettings.aiNoticeTitle }}</a>
                       </span>
                     </span>
                   </label>
@@ -180,6 +181,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { AuthMethodType } from '@/api/auth'
 import { createOAuthAuthorizeUrl, requestAuthVerificationCode } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
+import { useSystemSettingsStore } from '@/stores/system-settings'
 
 const props = defineProps<{
   visible: boolean
@@ -225,12 +227,21 @@ let countdownTimer: number | null = null
 
 // 认证状态管理。
 const authStore = useAuthStore()
+const systemSettingsStore = useSystemSettingsStore()
 
 // 所有验证码类登录方式。
 const codeMethods = computed(() => authStore.enabledMethods.value.filter(item => item.category === 'CODE'))
 
 // 所有 OAuth 类登录方式。
 const oauthMethods = computed(() => authStore.enabledMethods.value.filter(item => item.category === 'OAUTH'))
+const publicSettings = computed(() => systemSettingsStore.publicSystemSettings.value)
+const policySettings = computed(() => publicSettings.value.policySettings)
+const agreementTextPrefix = computed(() => policySettings.value.agreementTextPrefix || '已阅读并同意')
+const welcomeTitle = computed(() => publicSettings.value.loginSettings.welcomeTitle || publicSettings.value.siteInfo.siteName || '欢迎登录')
+const welcomeSubtitle = computed(() => publicSettings.value.loginSettings.welcomeSubtitle || '')
+const userAgreementHref = computed(() => policySettings.value.userAgreementUrl || '/policies/user-agreement')
+const privacyPolicyHref = computed(() => policySettings.value.privacyPolicyUrl || '/policies/privacy-policy')
+const aiNoticeHref = computed(() => policySettings.value.aiNoticeUrl || '/policies/ai-notice')
 
 // 当前选中的验证码登录方式。
 const currentCodeMethod = computed(() => {
@@ -291,7 +302,7 @@ const canSubmit = computed(() => {
   return Boolean(currentCodeMethod.value)
     && isTargetValid.value
     && isCodeValid.value
-    && agreementChecked.value
+    && (!policySettings.value.agreementRequired || agreementChecked.value)
     && !isSubmitting.value
 })
 
@@ -447,7 +458,7 @@ watch(
   async (visible) => {
     syncBodyScrollLock(visible)
     if (visible) {
-      await authStore.loadMethods(true)
+      await Promise.all([authStore.loadMethods(true), systemSettingsStore.loadPublicSettings(true)])
       syncActiveMethod()
       resetForm()
     } else {

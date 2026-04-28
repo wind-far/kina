@@ -22,6 +22,53 @@ const DEFAULT_RUNTIME_CONFIG = {
 
 const LEGACY_DEFAULT_SCENE = 'generate'
 
+const MODEL_CATEGORY_TO_ENDPOINT_TYPE = {
+  CHAT: 'chat',
+  IMAGE: 'image',
+  VIDEO: 'video',
+} as const
+
+export interface PublicProviderCatalogItem {
+  id: string
+  code: string
+  name: string
+  iconUrl: string
+  supportedTypes: string[]
+  sortOrder: number
+}
+
+export interface PublicModelCatalogItem {
+  id: string
+  selectionKey: string
+  providerId: string
+  providerCode: string
+  providerName: string
+  category: 'CHAT' | 'IMAGE' | 'VIDEO'
+  label: string
+  modelKey: string
+  description: string
+  capabilityJson: Record<string, any> | null
+  defaultParamsJson: Record<string, any> | null
+  sortOrder: number
+  isDefault: boolean
+}
+
+export interface PublicModelCatalogResult {
+  providers: PublicProviderCatalogItem[]
+  models: {
+    chat: PublicModelCatalogItem[]
+    image: PublicModelCatalogItem[]
+    video: PublicModelCatalogItem[]
+  }
+  defaults: {
+    chat: string
+    image: string
+    video: string
+  }
+}
+
+const buildModelSelectionKey = (providerId: string, category: string, modelKey: string) => `${providerId}::${category}::${modelKey}`
+
 export interface AdminProviderPayload {
   code?: string
   name?: string
@@ -527,6 +574,146 @@ export const deleteAdminProvider = async (id: string) => {
   return {
     id: providerId,
     deletedModelCount: existingProvider._count.models,
+  }
+}
+
+
+export const getPublicModelCatalog = async (): Promise<PublicModelCatalogResult> => {
+  await ensureProviderSeedData()
+
+  const providers = await prisma.aiProvider.findMany({
+    where: { isEnabled: true },
+    include: {
+      models: {
+        where: { isEnabled: true },
+        orderBy: [
+          { category: 'asc' },
+          { sortOrder: 'asc' },
+          { createdAt: 'asc' },
+        ],
+      },
+    },
+    orderBy: [
+      { sortOrder: 'asc' },
+      { createdAt: 'asc' },
+    ],
+  })
+
+  const providerItems: PublicProviderCatalogItem[] = []
+  const chatModels: PublicModelCatalogItem[] = []
+  const imageModels: PublicModelCatalogItem[] = []
+  const videoModels: PublicModelCatalogItem[] = []
+
+  for (const provider of providers) {
+    const supportedTypes = Array.isArray(provider.supportedTypesJson)
+      ? provider.supportedTypesJson.map(item => String(item || '').trim()).filter(Boolean)
+      : []
+
+    providerItems.push({
+      id: provider.id,
+      code: provider.code,
+      name: provider.name,
+      iconUrl: provider.iconUrl || '',
+      supportedTypes,
+      sortOrder: provider.sortOrder,
+    })
+
+    for (const model of provider.models) {
+      const currentItem: PublicModelCatalogItem = {
+        id: model.id,
+        selectionKey: buildModelSelectionKey(provider.id, model.category, model.modelKey),
+        providerId: provider.id,
+        providerCode: provider.code,
+        providerName: provider.name,
+        category: model.category,
+        label: model.name,
+        modelKey: model.modelKey,
+        description: model.description || '',
+        capabilityJson: model.capabilityJson && typeof model.capabilityJson === 'object' ? model.capabilityJson as Record<string, any> : null,
+        defaultParamsJson: model.defaultParamsJson && typeof model.defaultParamsJson === 'object' ? model.defaultParamsJson as Record<string, any> : null,
+        sortOrder: model.sortOrder,
+        isDefault: model.category === 'CHAT' && provider.defaultChatModel === model.modelKey,
+      }
+
+      if (model.category === 'CHAT') {
+        chatModels.push(currentItem)
+      } else if (model.category === 'IMAGE') {
+        imageModels.push(currentItem)
+      } else if (model.category === 'VIDEO') {
+        videoModels.push(currentItem)
+      }
+    }
+  }
+
+  const defaults = {
+    chat: chatModels.find(item => item.isDefault)?.selectionKey || chatModels[0]?.selectionKey || '',
+    image: imageModels[0]?.selectionKey || '',
+    video: videoModels[0]?.selectionKey || '',
+  }
+
+  return {
+    providers: providerItems,
+    models: {
+      chat: chatModels,
+      image: imageModels,
+      video: videoModels,
+    },
+    defaults,
+  }
+}
+
+export const resolveGatewayProviderUpstream = async (input: {
+  providerId?: string
+  endpointType?: 'chat' | 'image' | 'video'
+  modelKey?: string
+}) => {
+  const providerId = String(input.providerId || '').trim()
+  const endpointType = String(input.endpointType || '').trim().toLowerCase()
+  const modelKey = String(input.modelKey || '').trim()
+
+  if (!providerId) {
+    throw new Error('缺少厂商 ID')
+  }
+
+  if (endpointType !== 'chat' && endpointType !== 'image' && endpointType !== 'video') {
+    throw new Error('缺少有效的上游接口类型')
+  }
+
+  const provider = await prisma.aiProvider.findUnique({
+    where: { id: providerId },
+  })
+
+  if (!provider || !provider.isEnabled) {
+    throw new Error('厂商不可用或未启用')
+  }
+
+  if (modelKey) {
+    const category = endpointType.toUpperCase()
+    const model = await prisma.aiModel.findFirst({
+      where: {
+        providerId,
+        isEnabled: true,
+        modelKey,
+        category: category as any,
+      },
+      select: { id: true },
+    })
+
+    if (!model) {
+      throw new Error('模型不存在或未启用')
+    }
+  }
+
+  const endpoint = endpointType === 'chat'
+    ? provider.chatEndpoint
+    : endpointType === 'image'
+      ? provider.imageEndpoint
+      : provider.videoEndpoint
+
+  return {
+    baseUrl: provider.baseUrl,
+    apiKey: decryptProviderApiKey(provider.apiKeyEncrypted),
+    endpoint,
   }
 }
 

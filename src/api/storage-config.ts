@@ -44,6 +44,9 @@ const STORAGE_CONFIGS_API_PATH = '/api/storage/configs'
 export const listStorageConfigs = async () => {
   const response = await fetch(buildApiUrl(STORAGE_CONFIGS_API_PATH), {
     method: 'GET',
+    // 后台接口依赖会话 Cookie 鉴权，这里必须显式携带登录态。
+    credentials: 'include',
+    cache: 'no-store',
   })
   return readApiData<StorageConfigItem[]>(response)
 }
@@ -52,6 +55,8 @@ export const listStorageConfigs = async () => {
 export const createStorageConfig = async (payload: StorageConfigPayload) => {
   const response = await fetch(buildApiUrl(STORAGE_CONFIGS_API_PATH), {
     method: 'POST',
+    // 管理端创建配置时需要带上当前登录会话。
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
     },
@@ -67,6 +72,8 @@ export const createStorageConfig = async (payload: StorageConfigPayload) => {
 export const updateStorageConfig = async (id: string, payload: Partial<StorageConfigPayload>) => {
   const response = await fetch(buildApiUrl(`${STORAGE_CONFIGS_API_PATH}/${encodeURIComponent(id)}`), {
     method: 'PUT',
+    // 更新存储配置同样走后台鉴权。
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
     },
@@ -82,6 +89,8 @@ export const updateStorageConfig = async (id: string, payload: Partial<StorageCo
 export const activateStorageConfig = async (id: string) => {
   const response = await fetch(buildApiUrl(`${STORAGE_CONFIGS_API_PATH}/${encodeURIComponent(id)}/activate`), {
     method: 'POST',
+    // 启用配置会修改服务端状态，必须携带管理员会话。
+    credentials: 'include',
   })
   return readApiData<StorageConfigItem>(response, {
     showSuccessMessage: true,

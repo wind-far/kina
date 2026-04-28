@@ -5,6 +5,9 @@ export interface GatewayForwardBody {
     baseUrl?: string
     apiKey?: string
     endpoint?: string
+    providerId?: string
+    endpointType?: 'chat' | 'image' | 'video'
+    modelKey?: string
   }
   request?: {
     method?: string
@@ -76,17 +79,15 @@ export const joinUpstreamUrl = (baseUrl: string, endpoint: string) => {
 export const normalizeGatewayPayload = (payload: GatewayForwardBody) => {
   const baseUrl = payload.upstream?.baseUrl?.trim() || ''
   const endpoint = payload.upstream?.endpoint?.trim() || ''
-
-  if (!baseUrl) {
-    throw new Error('缺少上游 baseUrl 配置')
-  }
-
-  if (!endpoint) {
-    throw new Error('缺少上游 endpoint 配置')
-  }
+  const providerId = payload.upstream?.providerId?.trim() || ''
+  const endpointType = payload.upstream?.endpointType || undefined
+  const modelKey = payload.upstream?.modelKey?.trim() || ''
 
   return {
-    upstreamUrl: joinUpstreamUrl(baseUrl, endpoint),
+    providerId,
+    endpointType,
+    modelKey,
+    upstreamUrl: baseUrl && endpoint ? joinUpstreamUrl(baseUrl, endpoint) : '',
     apiKey: payload.upstream?.apiKey?.trim() || '',
     method: (payload.request?.method || 'GET').toUpperCase(),
     headers: payload.request?.headers || {},

@@ -4,12 +4,17 @@
  */
 
 import { getUpstreamRequestConfig, type AiEndpointType, type UpstreamRequestConfig } from './provider-config'
+import { loadPublicModelCatalog, resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 
 export const AI_GATEWAY_REQUEST_PATH = '/api/ai/request'
 export const LEGACY_AI_GATEWAY_REQUEST_PATH = '/__workflow_gateway/request'
 
 export interface GatewayRequestPayload {
-  upstream: UpstreamRequestConfig
+  upstream: UpstreamRequestConfig & {
+    providerId?: string
+    endpointType?: AiEndpointType
+    modelKey?: string
+  }
   request: {
     method: string
     headers?: Record<string, string>
@@ -26,13 +31,29 @@ export interface GatewayRequestOptions {
 
 export const normalizeGatewayMethod = (method?: string) => (method || 'GET').toUpperCase()
 
-export const createGatewayPayload = (
+export const createGatewayPayload = async (
   type: AiEndpointType,
   options: GatewayRequestOptions,
-): GatewayRequestPayload => {
+): Promise<GatewayRequestPayload> => {
   const method = normalizeGatewayMethod(options.method)
   const headers = { ...(options.headers || {}) }
-  const upstream = getUpstreamRequestConfig(type, options.url)
+
+  await loadPublicModelCatalog()
+
+  const rawBody = options.data
+  const modelValue = rawBody && typeof rawBody === 'object' && !Array.isArray(rawBody)
+    ? String((rawBody as Record<string, unknown>).model || '').trim()
+    : ''
+  const providerId = resolveRequestProviderId(modelValue, type.toUpperCase() as 'CHAT' | 'IMAGE' | 'VIDEO')
+  const modelKey = resolveRequestModelKey(modelValue, type.toUpperCase() as 'CHAT' | 'IMAGE' | 'VIDEO')
+  const upstream = providerId
+    ? {
+        ...getUpstreamRequestConfig(type, options.url),
+        providerId,
+        endpointType: type,
+        modelKey,
+      }
+    : getUpstreamRequestConfig(type, options.url)
 
   const payload: GatewayRequestPayload = {
     upstream,
@@ -45,8 +66,15 @@ export const createGatewayPayload = (
     payload.request.headers = headers
   }
 
-  if (options.data !== undefined && method !== 'GET') {
-    payload.request.body = options.data
+  if (rawBody !== undefined && method !== 'GET') {
+    if (providerId && rawBody && typeof rawBody === 'object' && !Array.isArray(rawBody)) {
+      payload.request.body = {
+        ...(rawBody as Record<string, unknown>),
+        model: modelKey || modelValue,
+      }
+    } else {
+      payload.request.body = rawBody
+    }
   }
 
   return payload

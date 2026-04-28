@@ -6,13 +6,14 @@ import {
   deleteAdminProvider,
   getAdminProviderDetail,
   getProviderRuntimeConfig,
+  getPublicModelCatalog,
   listAdminProviders,
   saveProviderRuntimeConfig,
   updateAdminProvider,
 } from './service'
 import { createProviderModel, deleteProviderModel, listProviderModels, updateProviderModel } from './model-service'
 import { readProviderRuntimeBody, sendProviderRuntimeError } from './shared'
-import { PROVIDER_CONFIG_PROVIDERS_PATH, PROVIDER_CONFIG_RUNTIME_PATH } from './constants'
+import { PROVIDER_CONFIG_CATALOG_PATH, PROVIDER_CONFIG_PROVIDERS_PATH, PROVIDER_CONFIG_RUNTIME_PATH } from './constants'
 
 const matchProviderDetailPath = (requestPath: string) => {
   const matched = requestPath.match(/^\/api\/provider-config\/providers\/([^/]+)$/)
@@ -63,6 +64,12 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
 
     if (req.method === 'GET' && requestPath === PROVIDER_CONFIG_RUNTIME_PATH) {
       const data = await getProviderRuntimeConfig()
+      sendJson(res, 200, { data })
+      return
+    }
+
+    if (req.method === 'GET' && requestPath === PROVIDER_CONFIG_CATALOG_PATH) {
+      const data = await getPublicModelCatalog()
       sendJson(res, 200, { data })
       return
     }

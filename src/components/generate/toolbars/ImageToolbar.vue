@@ -3,9 +3,9 @@
 // 包含模型版本选择、尺寸选择、文字工具按钮
 // 支持弹出方向设置
 
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import SelectPopup from '../common/SelectPopup.vue'
-import { getAllImageModels, DEFAULT_IMAGE_MODEL } from '@/config/models'
+import { getAllImageModels, getDefaultImageModelKey, loadPublicModelCatalog } from '@/config/models'
 
 // 弹出方向类型
 type Placement = 'top' | 'bottom' | 'auto'
@@ -57,7 +57,7 @@ const validImageSizeValues = sizeOptions.map(item => item.value)
 
 // 当前选中的模型版本
 const currentModelVersion = ref(
-  validImageModelValues.includes(storedToolbarState?.model) ? storedToolbarState.model : DEFAULT_IMAGE_MODEL,
+  validImageModelValues.includes(storedToolbarState?.model) ? storedToolbarState.model : getDefaultImageModelKey(),
 )
 
 // 当前选中的尺寸
@@ -109,6 +109,22 @@ const currentModelLabel = computed(() => {
 const currentSizeConfig = () => {
   return sizeOptions.find(s => s.value === currentSize.value) || sizeOptions[0]
 }
+
+watch(
+  modelVersions,
+  (options) => {
+    const values = options.map(item => item.value)
+    if (!values.length) return
+    if (!values.includes(currentModelVersion.value)) {
+      currentModelVersion.value = getDefaultImageModelKey() || values[0]
+    }
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  void loadPublicModelCatalog()
+})
 
 watch(
   [currentModelVersion, currentSize],

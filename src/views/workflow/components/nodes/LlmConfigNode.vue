@@ -2,12 +2,11 @@
 /**
  * LLM 配置节点 - 文本生成（故事拆分等）
  */
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { updateNode, removeNode, duplicateNode, nodes, edges } from '../../composables/useWorkflowCanvas'
 import { streamChatCompletions } from '../../api/chat'
-import { getApiKey } from '../../api/request'
-import { getAllChatModels } from '@/config/models'
+import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
 import WfSelect from '@/components/common/WfSelect.vue'
 
 const props = defineProps({ id: String, data: Object })
@@ -16,7 +15,7 @@ const { updateNodeInternals } = useVueFlow()
 const showActions = ref(false)
 const isGenerating = ref(false)
 const systemPrompt = ref(props.data?.systemPrompt || '')
-const model = ref(props.data?.model || 'gemini-3-flash-preview')
+const model = ref(props.data?.model || getDefaultChatModelKey())
 const outputContent = ref(props.data?.outputContent || '')
 const outputFormat = ref(props.data?.outputFormat || 'text')
 
@@ -27,6 +26,23 @@ const outputFormatOptions = [
 ]
 
 const modelOptions = computed(() => getAllChatModels().map(m => ({ label: m.label, value: m.key })))
+
+watch(
+  modelOptions,
+  (options) => {
+    const values = options.map(item => item.value)
+    if (!values.length) return
+    if (!values.includes(model.value)) {
+      model.value = getDefaultChatModelKey() || values[0]
+      updateConfig()
+    }
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  void loadPublicModelCatalog()
+})
 
 watch(() => props.data, (d) => {
   if (d?.systemPrompt !== undefined) systemPrompt.value = d.systemPrompt
@@ -53,7 +69,6 @@ const getInput = () => {
 }
 
 const handleGenerate = async () => {
-  if (!getApiKey()) return
   const input = getInput()
   if (!input && !systemPrompt.value) return
 

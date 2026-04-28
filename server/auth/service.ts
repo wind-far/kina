@@ -248,41 +248,55 @@ export const getAuthMethodConfig = async (methodType: AuthMethodType) => {
 export const saveAuthMethodConfigs = async (payload: AuthMethodConfigPayload[]) => {
   await ensureDefaultAuthMethodConfigs()
 
-  for (const rawItem of payload) {
-    const item = normalizeAuthMethodConfigPayload(rawItem)
-    await prisma.authMethodConfig.upsert({
-      where: {
-        methodType: item.methodType,
-      },
-      update: {
-        category: item.category,
-        displayName: item.displayName,
-        description: item.description || null,
-        iconType: item.iconType || null,
-        iconUrl: item.iconUrl || null,
-        isEnabled: item.isEnabled !== false,
-        isVisible: item.isVisible !== false,
-        sortOrder: item.sortOrder || 0,
-        allowAutoFill: item.allowAutoFill !== false,
-        allowSignUp: item.allowSignUp !== false,
-        configJson: item.config || {},
-      },
-      create: {
-        methodType: item.methodType,
-        category: item.category,
-        displayName: item.displayName,
-        description: item.description || null,
-        iconType: item.iconType || null,
-        iconUrl: item.iconUrl || null,
-        isEnabled: item.isEnabled !== false,
-        isVisible: item.isVisible !== false,
-        sortOrder: item.sortOrder || 0,
-        allowAutoFill: item.allowAutoFill !== false,
-        allowSignUp: item.allowSignUp !== false,
-        configJson: item.config || {},
-      },
-    })
-  }
+  const normalizedItems = payload.map(normalizeAuthMethodConfigPayload)
+  const methodTypes = normalizedItems.map(item => item.methodType)
+
+  await prisma.$transaction(async (tx) => {
+    if (methodTypes.length) {
+      await tx.authMethodConfig.deleteMany({
+        where: {
+          methodType: {
+            notIn: methodTypes,
+          },
+        },
+      })
+    }
+
+    for (const item of normalizedItems) {
+      await tx.authMethodConfig.upsert({
+        where: {
+          methodType: item.methodType,
+        },
+        update: {
+          category: item.category,
+          displayName: item.displayName,
+          description: item.description || null,
+          iconType: item.iconType || null,
+          iconUrl: item.iconUrl || null,
+          isEnabled: item.isEnabled !== false,
+          isVisible: item.isVisible !== false,
+          sortOrder: item.sortOrder || 0,
+          allowAutoFill: item.allowAutoFill !== false,
+          allowSignUp: item.allowSignUp !== false,
+          configJson: item.config || {},
+        },
+        create: {
+          methodType: item.methodType,
+          category: item.category,
+          displayName: item.displayName,
+          description: item.description || null,
+          iconType: item.iconType || null,
+          iconUrl: item.iconUrl || null,
+          isEnabled: item.isEnabled !== false,
+          isVisible: item.isVisible !== false,
+          sortOrder: item.sortOrder || 0,
+          allowAutoFill: item.allowAutoFill !== false,
+          allowSignUp: item.allowSignUp !== false,
+          configJson: item.config || {},
+        },
+      })
+    }
+  })
 
   return listAuthMethodConfigs()
 }

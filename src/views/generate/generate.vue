@@ -7,11 +7,10 @@ import ContentGenerator from '../../components/generate/ContentGenerator.vue'
 import ImageLoadingRecord from '../../components/generate/common/ImageLoadingRecord.vue'
 import AgentLoadingRecord from '../../components/generate/common/AgentLoadingRecord.vue'
 import ImagePreview from '@/components/ImagePreview.vue'
-import ApiSettingsDialog from '@/components/common/ApiSettingsDialog.vue'
 import { streamChatCompletions } from '@/api/chat'
 import { getAgentModel } from '@/api/agent'
 import { generateImage } from '@/views/workflow/api/image'
-import { getAllImageModels } from '@/config/models'
+import { getModelByName, loadPublicModelCatalog, resolveModelLabel, type ImageModel } from '@/config/models'
 import { buildAgentChatMessages } from '@/config/agentSkills'
 import {
   createGenerationRecord as createGenerationRecordRequest,
@@ -92,6 +91,11 @@ const previewVisible = ref(false)
 const previewIndex = ref(0)
 const previewImages = ref<GeneratePreviewImageItem[]>([])
 
+// 页面进入时预加载后台公开模型目录，确保工具栏与生成请求使用同一份模型清单。
+onMounted(() => {
+  void loadPublicModelCatalog()
+})
+
 const feedImagePool: AgentImageResult[] = (discoverContent.feedItems || []).map((item, index) => ({
   id: item.id || `feed-image-${index + 1}`,
   imageSrc: item.imageSrc,
@@ -103,7 +107,7 @@ const buildPreviewImagesFromRecord = (record: GeneratingRecord): GeneratePreview
     id: `${record.id}-${index + 1}`,
     src: imageUrl,
     promptText: record.prompt,
-    modelLabel: record.model,
+    modelLabel: resolveModelLabel(record.modelKey || record.model, 'IMAGE') || record.model,
     aspectRatioLabel: record.ratio,
     resolutionLabel: record.resolution,
     featureLabel: record.feature,
@@ -563,9 +567,6 @@ const toGenerationRecordPayload = (record: GeneratingRecord): GenerationRecordUp
   agentRun: record.agentRun,
 })
 
-// 设置弹窗
-const showSettings = ref(false)
-
 // 格式化时间分组标签
 const formatGroupLabel = (date: Date): string => {
   const now = new Date()
@@ -589,7 +590,11 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
   type: record.type,
   prompt: record.prompt,
   time: formatGroupLabel(new Date(record.createdAt)),
-  model: record.model,
+  // 后端若返回旧的 model 文本，这里统一按最新后台模型目录重新解析展示名称。
+  model: resolveModelLabel(
+    record.modelKey || record.model,
+    record.type === 'image' ? 'IMAGE' : record.type === 'agent' ? 'CHAT' : 'VIDEO',
+  ) || record.model,
   modelKey: record.modelKey,
   ratio: record.ratio,
   resolution: record.resolution,
@@ -710,7 +715,7 @@ const handleSend = (message: string, type: CreationType, options?: { model?: str
     type,
     prompt: message,
     time: formatGroupLabel(new Date()),
-    model: options?.model || '',
+    model: options?.model || resolveModelLabel(options?.modelKey || '', type === 'image' ? 'IMAGE' : type === 'agent' ? 'CHAT' : 'VIDEO') || '',
     modelKey: options?.modelKey || '',
     ratio: options?.ratio || '',
     resolution: options?.resolution || '',
@@ -743,10 +748,10 @@ const handleSend = (message: string, type: CreationType, options?: { model?: str
 // 图片生成
 const runImageGeneration = async (record: GeneratingRecord) => {
   try {
-    // 根据模型配置构建请求参数
-    const modelConfig = getAllImageModels().find(m => m.key === record.modelKey)
+    // 根据后台模型目录构建请求参数
+    const modelConfig = getModelByName(record.modelKey) as ImageModel | null
     const sizeKey = modelConfig?.sizes?.length
-      ? (modelConfig.sizes.find(s => s.includes(record.ratio.replace(':', 'x'))) || modelConfig.defaultParams?.size || '')
+      ? (modelConfig.sizes.find((sizeItem: string) => sizeItem.includes(record.ratio.replace(':', 'x'))) || modelConfig.defaultParams?.size || '')
       : ''
 
     const data: any = {
@@ -1537,19 +1542,10 @@ onMounted(() => {
                               data-follow-fill=currentColor
                               fill=currentColor
                               fill-rule=evenodd></path></g></svg></span></div>
-                          <!-- API 设置按钮 -->
-                          <button class="agent-settings-btn" @click="showSettings = true">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                              <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="2"/>
-                              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" stroke-width="2"/>
-                            </svg>
-                          </button>
                         </div>
                       </div>
                       <!-- 内容生成器输入框组件 -->
                       <ContentGenerator ref="contentGeneratorRef" @send="handleSend"/>
-                      <!-- API 设置弹窗 -->
-                      <ApiSettingsDialog :visible="showSettings" @update:visible="showSettings = $event" />
                       <div style=height:1px></div>
                     </div>
                   </div>

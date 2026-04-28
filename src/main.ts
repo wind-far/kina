@@ -5,7 +5,6 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import '@styles/styles.css'
 import App from './App.vue'
 import router from './router'
-import { loadProviderRuntimeConfig } from './api/provider-config'
 import { useAuthStore } from './stores/auth'
 
 const app = createApp(App)
@@ -22,7 +21,6 @@ app.use(router)
 const authStore = useAuthStore()
 
 void Promise.allSettled([
-  loadProviderRuntimeConfig(),
   authStore.loadSession(),
   authStore.loadMethods(),
 ]).finally(() => {

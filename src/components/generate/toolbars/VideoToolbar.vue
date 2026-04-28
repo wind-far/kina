@@ -3,9 +3,9 @@
 // 包含模型版本选择、功能选择、尺寸选择、时长选择
 // 支持弹出方向设置
 
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import SelectPopup from '../common/SelectPopup.vue'
-import { getAllVideoModels, DEFAULT_VIDEO_MODEL } from '@/config/models'
+import { getAllVideoModels, getDefaultVideoModelKey, loadPublicModelCatalog } from '@/config/models'
 
 // 弹出方向类型
 type Placement = 'top' | 'bottom' | 'auto'
@@ -70,7 +70,7 @@ const validVideoDurationValues = durationOptions.map(item => item.value)
 
 // 当前选中状态
 const currentModelVersion = ref(
-  validVideoModelValues.includes(storedVideoToolbarState?.model) ? storedVideoToolbarState.model : DEFAULT_VIDEO_MODEL,
+  validVideoModelValues.includes(storedVideoToolbarState?.model) ? storedVideoToolbarState.model : getDefaultVideoModelKey(),
 )
 const currentFeature = ref(
   validVideoFeatureValues.includes(storedVideoToolbarState?.feature) ? storedVideoToolbarState.feature : 'first-last-frame',
@@ -81,6 +81,22 @@ const currentSize = ref(
 const currentDuration = ref(
   validVideoDurationValues.includes(storedVideoToolbarState?.duration) ? storedVideoToolbarState.duration : '5s',
 )
+
+watch(
+  modelVersions,
+  (options) => {
+    const values = options.map(item => item.value)
+    if (!values.length) return
+    if (!values.includes(currentModelVersion.value)) {
+      currentModelVersion.value = getDefaultVideoModelKey() || values[0]
+    }
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  void loadPublicModelCatalog()
+})
 
 // 弹窗状态
 const isModelSelectOpen = ref(false)

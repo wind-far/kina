@@ -8,7 +8,7 @@
         placeholder="搜索供应商名称或厂商标识"
       >
       <select v-model="providerStatus" class="admin-input admin-provider-toolbar__status">
-        <option value="ALL">全部状态</option>
+        <option value="ALL">供应商状态</option>
         <option value="ENABLED">已启用</option>
         <option value="DISABLED">已禁用</option>
       </select>
@@ -22,7 +22,8 @@
         <div class="admin-provider-create-card__plus">+</div>
         <div class="admin-provider-create-card__title">新增厂商</div>
         <div class="admin-provider-create-card__desc">添加新的自定义模型厂商</div>
-        <div class="admin-provider-create-card__actions">
+        <div class="admin-provider-create-card__footer-actions">
+          <span class="admin-provider-create-card__action admin-provider-create-card__action--muted">从配置文件导入</span>
           <span class="admin-provider-create-card__action">手动创建</span>
         </div>
       </button>
@@ -41,9 +42,23 @@
               </button>
             </div>
           </div>
-          <div class="admin-provider-tile__actions">
-            <button class="admin-icon-button" type="button" title="编辑厂商" @click="openEditProviderDialog(provider.id)">✎</button>
-            <button class="admin-icon-button admin-icon-button--danger" type="button" title="删除厂商" @click="handleDeleteProvider(provider)">🗑</button>
+          <div class="admin-provider-tile__actions" @click.stop>
+            <button class="admin-icon-button" type="button" title="厂商操作" @click="toggleProviderMenu(provider.id)"><el-icon><MoreFilled /></el-icon></button>
+            <div v-if="activeProviderMenuId === provider.id" class="admin-provider-menu">
+              <button class="admin-provider-menu__item" type="button" @click="handleProviderMenuEdit(provider.id)">
+                <span class="admin-provider-menu__icon"><el-icon><Edit /></el-icon></span>
+                <span>编辑厂商</span>
+              </button>
+              <button class="admin-provider-menu__item" type="button" @click="handleProviderMenuManageModels(provider)">
+                <span class="admin-provider-menu__icon"><el-icon><Setting /></el-icon></span>
+                <span>管理模型</span>
+              </button>
+              <div class="admin-provider-menu__divider"></div>
+              <button class="admin-provider-menu__item admin-provider-menu__item--danger" type="button" @click="handleProviderMenuDelete(provider)">
+                <span class="admin-provider-menu__icon"><el-icon><Delete /></el-icon></span>
+                <span>删除</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -51,10 +66,6 @@
           <span class="admin-status" :class="provider.isEnabled ? 'admin-status--success' : 'admin-status--warning'">
             {{ provider.isEnabled ? '已启用' : '已禁用' }}
           </span>
-          <label class="admin-switch">
-            <input :checked="provider.isEnabled" type="checkbox" @change="toggleProviderEnabled(provider)">
-            <span class="admin-switch__slider" />
-          </label>
         </div>
 
         <div class="admin-provider-tile__chips">
@@ -74,41 +85,52 @@
       <div class="admin-dialog__header">
         <div>
           <h3 class="admin-dialog__title">{{ editingProviderId ? '编辑供应商' : '新增供应商' }}</h3>
-          <div class="admin-dialog__desc">添加一个新的 AI 模型供应商，并配置基础地址、密钥与能力范围。</div>
+          <div class="admin-dialog__desc">添加一个新的 AI 模型供应商</div>
         </div>
         <button class="admin-dialog__close" type="button" @click="closeProviderDialog">×</button>
       </div>
 
       <form class="admin-form admin-dialog__body" @submit.prevent="handleSaveProvider">
-        <div class="admin-form__grid">
-          <div class="admin-form__field">
-            <label class="admin-form__label" for="provider-icon-url">图标地址</label>
-            <input id="provider-icon-url" v-model.trim="providerForm.iconUrl" class="admin-input" type="text" placeholder="https://example.com/icon.png">
-          </div>
-
-          <div class="admin-form__field">
-            <label class="admin-form__label">启用状态</label>
-            <div class="admin-radio-group">
-              <label class="admin-radio-item">
-                <input v-model="providerForm.isEnabled" :value="true" type="radio">
-                <span>启用</span>
-              </label>
-              <label class="admin-radio-item">
-                <input v-model="providerForm.isEnabled" :value="false" type="radio">
-                <span>禁用</span>
-              </label>
+        <div class="admin-provider-form-layout">
+          <div class="admin-provider-form-layout__left">
+            <label class="admin-form__label">图标</label>
+            <div class="admin-provider-icon-panel">
+              <div class="admin-provider-icon-panel__preview">
+                <img v-if="providerForm.iconUrl" :src="providerForm.iconUrl" :alt="providerForm.name || providerForm.code || 'provider'">
+                <span v-else>✦</span>
+              </div>
+              <input v-model.trim="providerForm.iconUrl" class="admin-input" type="text" placeholder="图标 URL（可选）">
             </div>
           </div>
 
+          <div class="admin-provider-form-layout__right">
+            <div class="admin-form__field">
+              <label class="admin-form__label">启用状态</label>
+              <div class="admin-radio-group">
+                <label class="admin-radio-item">
+                  <input v-model="providerForm.isEnabled" :value="true" type="radio">
+                  <span>启用</span>
+                </label>
+                <label class="admin-radio-item">
+                  <input v-model="providerForm.isEnabled" :value="false" type="radio">
+                  <span>禁用</span>
+                </label>
+              </div>
+              <div class="admin-form__hint">请先选择密钥并配置厂商参数，再决定是否启用。</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-form__grid">
           <div class="admin-form__field admin-form__field--full">
             <label class="admin-form__label" for="provider-code">供应商标识</label>
-            <input id="provider-code" v-model.trim="providerForm.code" class="admin-input" type="text" placeholder="例如：openai、deepseek、doubao">
-            <div class="admin-form__hint">唯一标识符，建议使用英文、小写与中划线组合。</div>
+            <input id="provider-code" v-model.trim="providerForm.code" class="admin-input" type="text" placeholder="例如: openai, deepseek, doubao">
+            <div class="admin-form__hint">唯一标识符，创建后建议不要频繁变更。</div>
           </div>
 
           <div class="admin-form__field admin-form__field--full">
             <label class="admin-form__label" for="provider-name">供应商名称</label>
-            <input id="provider-name" v-model.trim="providerForm.name" class="admin-input" type="text" placeholder="例如：OpenAI、DeepSeek、字节豆包">
+            <input id="provider-name" v-model.trim="providerForm.name" class="admin-input" type="text" placeholder="例如: OpenAI, DeepSeek, 字节豆包">
           </div>
 
           <div class="admin-form__field admin-form__field--full">
@@ -117,13 +139,8 @@
           </div>
 
           <div class="admin-form__field admin-form__field--full">
-            <label class="admin-form__label" for="provider-base-url">基础地址</label>
-            <input id="provider-base-url" v-model.trim="providerForm.baseUrl" class="admin-input" type="text" placeholder="https://api.example.com/v1">
-          </div>
-
-          <div class="admin-form__field admin-form__field--full">
             <label class="admin-form__label" for="provider-api-key">绑定密钥</label>
-            <input id="provider-api-key" v-model.trim="providerForm.apiKey" class="admin-input" type="password" placeholder="请输入厂商 API Key">
+            <input id="provider-api-key" v-model.trim="providerForm.apiKey" class="admin-input" type="password" placeholder="选择或填写密钥配置">
           </div>
 
           <div class="admin-form__field admin-form__field--full">
@@ -134,6 +151,11 @@
                 <span>{{ option.label }}</span>
               </label>
             </div>
+          </div>
+
+          <div class="admin-form__field admin-form__field--full">
+            <label class="admin-form__label" for="provider-base-url">基础地址</label>
+            <input id="provider-base-url" v-model.trim="providerForm.baseUrl" class="admin-input" type="text" placeholder="https://api.example.com/v1">
           </div>
 
           <div class="admin-form__field">
@@ -153,10 +175,10 @@
 
           <div class="admin-form__field">
             <label class="admin-form__label" for="provider-default-chat-model">默认对话模型</label>
-            <input id="provider-default-chat-model" v-model.trim="providerForm.defaultChatModel" class="admin-input" type="text" placeholder="例如 gpt-4.1-mini">
+            <input id="provider-default-chat-model" v-model.trim="providerForm.defaultChatModel" class="admin-input" type="text" placeholder="例如: gpt-4.1-mini">
           </div>
 
-          <div class="admin-form__field">
+          <div class="admin-form__field admin-form__field--full">
             <label class="admin-form__label" for="provider-sort-order">排序权重</label>
             <input id="provider-sort-order" v-model.number="providerForm.sortOrder" class="admin-input" type="number" min="0" placeholder="0">
           </div>
@@ -175,9 +197,15 @@
   <div v-if="modelManagerVisible" class="admin-dialog-mask" @click="closeModelManager">
     <div class="admin-dialog admin-dialog--model-manager" @click.stop>
       <div class="admin-dialog__header">
-        <div>
-          <h3 class="admin-dialog__title">{{ selectedProvider?.name || '模型管理' }}</h3>
-          <div class="admin-dialog__desc">{{ selectedProvider?.baseUrl || '请先选择厂商' }}</div>
+        <div class="admin-model-manager__title-wrap">
+          <div class="admin-provider-avatar admin-provider-avatar--small">
+            <img v-if="selectedProvider?.iconUrl" :src="selectedProvider.iconUrl" :alt="selectedProvider.name">
+            <span v-else>{{ getProviderInitial(selectedProvider?.name || '') }}</span>
+          </div>
+          <div>
+            <h3 class="admin-dialog__title">{{ selectedProvider?.name || '模型管理' }}</h3>
+            <div class="admin-dialog__desc">{{ selectedProvider?.baseUrl || '请先选择厂商' }}</div>
+          </div>
         </div>
         <div class="admin-dialog__header-actions">
           <button class="admin-button admin-button--primary" type="button" @click="openCreateModelDialog" :disabled="!selectedProvider">添加模型</button>
@@ -213,11 +241,12 @@
                 <span v-if="readCapabilityFlag(model.capabilityJson, 'supportsToolCall')" class="admin-chip">工具</span>
                 <span v-if="readCapabilityFlag(model.capabilityJson, 'supportsReasoning')" class="admin-chip">推理</span>
                 <span v-if="readCapabilityFlag(model.capabilityJson, 'supportsStructuredOutput')" class="admin-chip">结构化</span>
+                <span v-if="readModelPrice(model) === 0" class="admin-chip">免费</span>
               </div>
             </div>
             <div class="admin-model-row__right">
-              <button class="admin-inline-button" type="button" @click="openEditModelDialog(model)">配置</button>
               <button class="admin-inline-button admin-inline-button--danger" type="button" @click="handleDeleteModel(model)">删除</button>
+              <button class="admin-inline-button" type="button" @click="openEditModelDialog(model)">配置</button>
               <label class="admin-switch">
                 <input :checked="model.isEnabled" type="checkbox" @change="toggleModelEnabled(model)">
                 <span class="admin-switch__slider" />
@@ -233,8 +262,8 @@
     <div class="admin-dialog admin-dialog--model-form" @click.stop>
       <div class="admin-dialog__header">
         <div>
-          <h3 class="admin-dialog__title">{{ editingModelId ? '编辑模型' : '添加模型' }}</h3>
-          <div class="admin-dialog__desc">为当前供应商添加一个新的 AI 模型。</div>
+          <h3 class="admin-dialog__title">{{ editingModelId ? '添加模型配置' : '添加模型' }}</h3>
+          <div class="admin-dialog__desc">为当前供应商添加一个新的 AI 模型</div>
         </div>
         <button class="admin-dialog__close" type="button" @click="closeModelDialog">×</button>
       </div>
@@ -243,13 +272,13 @@
         <div class="admin-form__grid">
           <div class="admin-form__field admin-form__field--full">
             <label class="admin-form__label" for="model-label">模型名称</label>
-            <input id="model-label" v-model.trim="modelForm.label" class="admin-input" type="text" placeholder="例如：GPT-4o、DeepSeek-V3">
+            <input id="model-label" v-model.trim="modelForm.label" class="admin-input" type="text" placeholder="例如: GPT-4o, DeepSeek-V3">
           </div>
 
           <div class="admin-form__field admin-form__field--full">
             <label class="admin-form__label" for="model-key">模型标识符</label>
-            <input id="model-key" v-model.trim="modelForm.modelKey" class="admin-input" type="text" placeholder="例如：gpt-4o、deepseek-chat">
-            <div class="admin-form__hint">API 调用时使用的模型标识。</div>
+            <input id="model-key" v-model.trim="modelForm.modelKey" class="admin-input" type="text" placeholder="例如: gpt-4o, deepseek-chat">
+            <div class="admin-form__hint">API 调用时使用的模型标识</div>
           </div>
 
           <div class="admin-form__field">
@@ -260,13 +289,22 @@
           </div>
 
           <div class="admin-form__field">
-            <label class="admin-form__label" for="model-sort-order">排序权重</label>
-            <input id="model-sort-order" v-model.number="modelForm.sortOrder" class="admin-input" type="number" min="0" placeholder="0">
-          </div>
-
-          <div class="admin-form__field admin-form__field--full">
             <label class="admin-form__label" for="model-description">描述</label>
             <textarea id="model-description" v-model="modelForm.description" class="admin-textarea" placeholder="模型描述信息（可选）"></textarea>
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="model-billing-power">计费规则</label>
+            <div class="admin-composite-input">
+              <input id="model-billing-power" v-model.number="modelForm.billingPower" class="admin-input" type="number" min="0" placeholder="请输入模型计费">
+              <span class="admin-composite-input__suffix">积分 / {{ modelForm.billingTokens || 1000 }} Tokens</span>
+            </div>
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="model-membership-levels">指定会员可用</label>
+            <input id="model-membership-levels" v-model.trim="modelForm.membershipLevelsText" class="admin-input" type="text" placeholder="选择会员等级（逗号分隔，可选）">
+            <div class="admin-form__hint">例如: vip, pro。为空表示所有用户可用。</div>
           </div>
 
           <div class="admin-form__field admin-form__field--full">
@@ -280,10 +318,34 @@
           </div>
 
           <div class="admin-form__field">
-            <label class="admin-form__label admin-form__label--inline">
-              <input v-model="modelForm.isEnabled" type="checkbox">
-              <span>已启用</span>
-            </label>
+            <label class="admin-form__label" for="model-max-context">最大上下文条数</label>
+            <input id="model-max-context" v-model.number="modelForm.maxContext" class="admin-input" type="number" min="1" placeholder="3">
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="model-sort-order">排序权重</label>
+            <input id="model-sort-order" v-model.number="modelForm.sortOrder" class="admin-input" type="number" min="0" placeholder="0">
+          </div>
+
+          <div class="admin-form__field admin-form__field--full">
+            <div class="admin-check-grid admin-check-grid--two">
+              <label class="admin-check-item admin-check-item--switch">
+                <input v-model="modelForm.isEnabled" type="checkbox">
+                <span>已启用</span>
+              </label>
+              <label class="admin-check-item admin-check-item--switch">
+                <input v-model="modelForm.supportsReasoning" type="checkbox">
+                <span>允许深度思考</span>
+              </label>
+              <label class="admin-check-item admin-check-item--switch">
+                <input v-model="modelForm.enableThinkingParam" type="checkbox">
+                <span>传递思考参数</span>
+              </label>
+              <label class="admin-check-item admin-check-item--switch">
+                <input v-model="modelForm.isDefault" type="checkbox">
+                <span>设为默认</span>
+              </label>
+            </div>
           </div>
 
           <div class="admin-form__field admin-form__field--full">
@@ -304,7 +366,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { Edit, MoreFilled, Setting, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
 import {
@@ -329,12 +392,12 @@ import {
 
 const providerTypeOptions = [
   { label: 'LLM', value: 'CHAT' },
-  { label: '图片生成', value: 'IMAGE' },
-  { label: '视频生成', value: 'VIDEO' },
   { label: 'TEXT EMBEDDING', value: 'TEXT_EMBEDDING' },
   { label: 'RERANK', value: 'RERANK' },
   { label: 'TTS', value: 'TTS' },
   { label: 'SPEECH2TEXT', value: 'SPEECH2TEXT' },
+  { label: '图片生成', value: 'IMAGE' },
+  { label: '视频生成', value: 'VIDEO' },
 ]
 
 const modelCategoryOptions: Array<{ label: string; value: AdminModelCategory }> = [
@@ -344,7 +407,7 @@ const modelCategoryOptions: Array<{ label: string; value: AdminModelCategory }> 
 ]
 
 const modelCapabilityOptions = [
-  { key: 'supportsVision', label: '视觉理解' },
+  { key: 'supportsVision', label: '视觉能力' },
   { key: 'supportsToolCall', label: '工具调用' },
   { key: 'supportsReasoning', label: '深度思考' },
   { key: 'supportsStructuredOutput', label: '结构化输出' },
@@ -364,6 +427,7 @@ const modelManagerVisible = ref(false)
 const modelDialogVisible = ref(false)
 const editingProviderId = ref('')
 const editingModelId = ref('')
+const activeProviderMenuId = ref('')
 
 const modelKeyword = ref('')
 const modelStatus = ref<'ALL' | 'ENABLED' | 'DISABLED'>('ALL')
@@ -395,6 +459,13 @@ const modelForm = reactive({
   isEnabled: true,
   capabilityJson: {} as Record<string, any>,
   defaultParamsJsonText: '',
+  billingPower: 0,
+  billingTokens: 1000,
+  membershipLevelsText: '',
+  maxContext: 3,
+  supportsReasoning: false,
+  enableThinkingParam: false,
+  isDefault: false,
 })
 
 const filteredProviders = computed(() => {
@@ -487,6 +558,13 @@ const parseOptionalJson = (value: string, fieldLabel: string) => {
   }
 }
 
+const normalizeMembershipLevels = (value: string) => {
+  return String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
 const resetModelForm = () => {
   editingModelId.value = ''
   modelForm.category = 'CHAT'
@@ -497,6 +575,13 @@ const resetModelForm = () => {
   modelForm.isEnabled = true
   modelForm.capabilityJson = {}
   modelForm.defaultParamsJsonText = ''
+  modelForm.billingPower = 0
+  modelForm.billingTokens = 1000
+  modelForm.membershipLevelsText = ''
+  modelForm.maxContext = 3
+  modelForm.supportsReasoning = false
+  modelForm.enableThinkingParam = false
+  modelForm.isDefault = false
 }
 
 // 编辑模型时统一回填，避免能力字段和默认参数丢失。
@@ -508,8 +593,22 @@ const applyModelForm = (model: AdminProviderModelItem) => {
   modelForm.description = model.description || ''
   modelForm.sortOrder = model.sortOrder
   modelForm.isEnabled = model.isEnabled
-  modelForm.capabilityJson = { ...(model.capabilityJson || {}) }
-  modelForm.defaultParamsJsonText = stringifyJson(model.defaultParamsJson || null)
+
+  const capabilityJson = { ...(model.capabilityJson || {}) }
+  const defaultParamsJson = (model.defaultParamsJson || {}) as Record<string, any>
+  const billingRule = (defaultParamsJson.billingRule || {}) as Record<string, any>
+
+  modelForm.capabilityJson = capabilityJson
+  modelForm.defaultParamsJsonText = stringifyJson(defaultParamsJson)
+  modelForm.billingPower = Number(billingRule.power || 0) || 0
+  modelForm.billingTokens = Number(billingRule.tokens || 1000) || 1000
+  modelForm.membershipLevelsText = Array.isArray(defaultParamsJson.membershipLevels)
+    ? defaultParamsJson.membershipLevels.join(', ')
+    : ''
+  modelForm.maxContext = Number(defaultParamsJson.maxContext || 3) || 3
+  modelForm.supportsReasoning = Boolean(capabilityJson.supportsReasoning)
+  modelForm.enableThinkingParam = Boolean(defaultParamsJson.enableThinkingParam)
+  modelForm.isDefault = Boolean(defaultParamsJson.isDefault)
 }
 
 const loadProviders = async () => {
@@ -623,24 +722,27 @@ const toggleSupportedType = (value: string) => {
   providerForm.supportedTypes = [...providerForm.supportedTypes, value]
 }
 
-const toggleProviderEnabled = async (provider: AdminProviderItem) => {
-  const detail = await getAdminProviderDetail(provider.id)
-  await updateAdminProvider(provider.id, {
-    code: detail.code,
-    name: detail.name,
-    description: detail.description,
-    iconUrl: detail.iconUrl,
-    baseUrl: detail.baseUrl,
-    apiKey: detail.apiKey,
-    chatEndpoint: detail.chatEndpoint,
-    imageEndpoint: detail.imageEndpoint,
-    videoEndpoint: detail.videoEndpoint,
-    defaultChatModel: detail.defaultChatModel,
-    supportedTypes: detail.supportedTypes,
-    isEnabled: !provider.isEnabled,
-    sortOrder: detail.sortOrder,
-  })
-  await loadProviders()
+const closeProviderMenu = () => {
+  activeProviderMenuId.value = ''
+}
+
+const toggleProviderMenu = (providerId: string) => {
+  activeProviderMenuId.value = activeProviderMenuId.value === providerId ? '' : providerId
+}
+
+const handleProviderMenuEdit = async (providerId: string) => {
+  closeProviderMenu()
+  await openEditProviderDialog(providerId)
+}
+
+const handleProviderMenuManageModels = async (provider: AdminProviderItem) => {
+  closeProviderMenu()
+  await openModelManager(provider)
+}
+
+const handleProviderMenuDelete = async (provider: AdminProviderItem) => {
+  closeProviderMenu()
+  await handleDeleteProvider(provider)
 }
 
 const handleDeleteProvider = async (provider: AdminProviderItem) => {
@@ -656,6 +758,7 @@ const handleDeleteProvider = async (provider: AdminProviderItem) => {
 }
 
 const openModelManager = async (provider: AdminProviderItem) => {
+  closeProviderMenu()
   selectedProvider.value = provider
   modelKeyword.value = ''
   modelStatus.value = 'ALL'
@@ -699,16 +802,45 @@ const toggleModelCapability = (key: string) => {
   modelForm.capabilityJson = nextCapabilityJson
 }
 
-const buildModelPayload = (): AdminProviderModelPayload => ({
-  category: modelForm.category,
-  label: modelForm.label,
-  modelKey: modelForm.modelKey,
-  description: modelForm.description,
-  sortOrder: Number(modelForm.sortOrder) || 0,
-  isEnabled: Boolean(modelForm.isEnabled),
-  capabilityJson: Object.keys(modelForm.capabilityJson || {}).length ? modelForm.capabilityJson : null,
-  defaultParamsJson: parseOptionalJson(modelForm.defaultParamsJsonText, '默认参数 JSON'),
-})
+const mergeModelDefaultParams = () => {
+  const parsedDefaultParams = parseOptionalJson(modelForm.defaultParamsJsonText, '默认参数 JSON') || {}
+
+  return {
+    ...parsedDefaultParams,
+    billingRule: {
+      power: Number(modelForm.billingPower) || 0,
+      tokens: Number(modelForm.billingTokens) || 1000,
+    },
+    membershipLevels: normalizeMembershipLevels(modelForm.membershipLevelsText),
+    maxContext: Number(modelForm.maxContext) || 3,
+    enableThinkingParam: Boolean(modelForm.enableThinkingParam),
+    isDefault: Boolean(modelForm.isDefault),
+  }
+}
+
+const buildModelPayload = (): AdminProviderModelPayload => {
+  const capabilityJson = {
+    ...(modelForm.capabilityJson || {}),
+    supportsReasoning: Boolean(modelForm.supportsReasoning || modelForm.capabilityJson.supportsReasoning),
+  }
+
+  return {
+    category: modelForm.category,
+    label: modelForm.label,
+    modelKey: modelForm.modelKey,
+    description: modelForm.description,
+    sortOrder: Number(modelForm.sortOrder) || 0,
+    isEnabled: Boolean(modelForm.isEnabled),
+    capabilityJson: Object.keys(capabilityJson).length ? capabilityJson : null,
+    defaultParamsJson: mergeModelDefaultParams(),
+  }
+}
+
+const readModelPrice = (model: AdminProviderModelItem) => {
+  const defaultParams = (model.defaultParamsJson || {}) as Record<string, any>
+  const billingRule = (defaultParams.billingRule || {}) as Record<string, any>
+  return Number(billingRule.power || 0) || 0
+}
 
 const handleSaveModel = async () => {
   if (!selectedProvider.value) {
@@ -767,7 +899,16 @@ const handleDeleteModel = async (model: AdminProviderModelItem) => {
   await loadProviders()
 }
 
+const handleWindowClick = () => {
+  closeProviderMenu()
+}
+
 onMounted(() => {
+  window.addEventListener('click', handleWindowClick)
   void loadProviders()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('click', handleWindowClick)
 })
 </script>

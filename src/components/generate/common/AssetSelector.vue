@@ -3,22 +3,7 @@
 // 支持选择图片和视频资产
 
 import { ref, computed, watch, nextTick } from 'vue'
-
-// 资产类型
-export type AssetType = 'image' | 'video'
-
-// 资产项接口
-export interface AssetItem {
-  id: string
-  url: string
-  thumbnailUrl?: string
-  type: AssetType
-  name?: string
-  width?: number
-  height?: number
-  duration?: number // 仅视频有
-  createdAt?: string
-}
+import type { AssetItem, AssetType } from './AssetSelector.types'
 
 // Tab 配置接口
 interface TabConfig {

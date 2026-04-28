@@ -6,4 +6,4 @@ export { default as PreferencePanel } from './PreferencePanel.vue'
 export { default as AssetSelector } from './AssetSelector.vue'
 
 // 导出 AssetSelector 相关类型
-export type { AssetType, AssetItem } from './AssetSelector.vue'
+export type { AssetType, AssetItem } from './AssetSelector.types'

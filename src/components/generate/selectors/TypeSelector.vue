@@ -4,9 +4,7 @@
 
 import { ref, computed } from 'vue'
 import SelectPopup from '../common/SelectPopup.vue'
-
-// 创作类型枚举
-export type CreationType = 'agent' | 'image' | 'video' | 'digital-human' | 'motion'
+import type { CreationType } from './TypeSelector.types'
 
 // 弹出方向类型
 type Placement = 'top' | 'bottom' | 'auto'

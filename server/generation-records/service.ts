@@ -40,6 +40,8 @@ const mapGenerationStatus = (payload: GenerationRecordPayload) => {
     }
   }
 
+  // 图片直连生成没有 agentRun，显式停止时也要能落成 STOPPED。
+  if (payload.stopped) return 'STOPPED'
   if (payload.error) return 'FAILED'
   if (payload.done) return 'COMPLETED'
   return 'RUNNING'
@@ -489,6 +491,7 @@ const serializeGenerationRecord = (record: any) => ({
   feature: record.feature || '',
   skill: record.skill || 'general',
   done: ['COMPLETED', 'FAILED', 'STOPPED'].includes(record.status),
+  stopped: record.status === 'STOPPED',
   agentTaskId: record.agentTaskId || undefined,
   createdAt: record.createdAt,
   outputs: (record.outputs || []).map((output: any) => ({

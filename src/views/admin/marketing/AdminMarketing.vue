@@ -413,6 +413,10 @@
               <textarea v-model.trim="packageForm.description" class="admin-textarea" placeholder="说明套餐定位和活动力度"></textarea>
             </div>
             <div class="admin-form__field admin-form__field--full">
+              <label class="admin-form__label">底部权益文案</label>
+              <textarea v-model.trim="packageForm.benefitsText" class="admin-textarea" placeholder="每行一条，例如：&#10;充值后即时到账&#10;支持多充多送&#10;可用于图片与视频生成"></textarea>
+            </div>
+            <div class="admin-form__field admin-form__field--full">
               <label class="admin-form__label">扩展 JSON</label>
               <textarea v-model.trim="packageForm.metaJsonText" class="admin-textarea admin-system-json" placeholder='例如：{"tagColor":"gold"}'></textarea>
             </div>
@@ -737,6 +741,8 @@ const createPackageForm = () => ({
   price: '0',
   originalPrice: '0',
   badgeText: '',
+  // 充值卡片底部权益文案按行编辑，提交时写入 metaJson.benefits。
+  benefitsText: '',
   isEnabled: true,
   sortOrder: packages.value.length,
   metaJsonText: '{}',
@@ -814,6 +820,41 @@ const formatJsonText = (value: unknown, fallback = '{}') => {
   } catch {
     return fallback
   }
+}
+
+
+// 充值套餐底部权益文案统一读写 metaJson.benefits，后台按多行文本编辑更直观。
+const parsePackageBenefitsText = (metaJson: unknown) => {
+  if (!metaJson || typeof metaJson !== 'object') {
+    return ''
+  }
+  const benefits = (metaJson as Record<string, unknown>).benefits
+  if (!Array.isArray(benefits)) {
+    return ''
+  }
+  return benefits
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .join('\n')
+}
+
+const mergePackageMetaJson = (metaJsonText: string, benefitsText: string) => {
+  const parsed = parseJsonText(metaJsonText, {})
+  const base = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? { ...(parsed as Record<string, unknown>) }
+    : {}
+  const benefits = String(benefitsText || '')
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  if (benefits.length) {
+    base.benefits = benefits
+  } else {
+    delete base.benefits
+  }
+
+  return base
 }
 
 const toDatetimeLocalValue = (value: string | null | undefined) => {
@@ -1069,6 +1110,7 @@ const openPackageDialog = (item?: RechargePackageItem) => {
     price: String(item.price ?? 0),
     originalPrice: String(item.originalPrice ?? 0),
     badgeText: item.badgeText || '',
+    benefitsText: parsePackageBenefitsText(item.metaJson),
     isEnabled: item.isEnabled,
     sortOrder: item.sortOrder,
     metaJsonText: formatJsonText(item.metaJson, '{}'),
@@ -1096,7 +1138,7 @@ const handleSubmitPackage = async () => {
       badgeText: packageForm.badgeText || '',
       isEnabled: Boolean(packageForm.isEnabled),
       sortOrder: Number(packageForm.sortOrder || 0),
-      metaJson: parseJsonText(packageForm.metaJsonText, {}),
+      metaJson: mergePackageMetaJson(packageForm.metaJsonText, packageForm.benefitsText),
     }
     if (packageEditingId.value) {
       await updateRechargePackage(packageEditingId.value, payload)

@@ -27,12 +27,27 @@ export interface SystemPolicyPayload {
 export interface SystemLoginSettingsPayload {
   welcomeTitle?: string
   welcomeSubtitle?: string
+  generationProgressSettings?: SystemGenerationProgressSettingsPayload
+}
+
+export interface SystemGenerationProgressStagePayload {
+  key?: string
+  label?: string
+  percent?: number
+  showPercent?: boolean
+  description?: string
+}
+
+export interface SystemGenerationProgressSettingsPayload {
+  enabled?: boolean
+  stages?: SystemGenerationProgressStagePayload[]
 }
 
 export interface SystemConfigPayload {
   siteInfo?: SystemSiteInfoPayload
   policySettings?: SystemPolicyPayload
   loginSettings?: SystemLoginSettingsPayload
+  generationProgressSettings?: SystemGenerationProgressSettingsPayload
 }
 
 // 读取系统设置请求体。

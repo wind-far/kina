@@ -87,17 +87,6 @@
                             </div>
                           </div>
 
-                          <div class="creditsContainer-kZN4Fp">
-                            <div class="creditsContent-piPVgX">
-                              <div class="creditsInnerContent-ybfrhd">
-                                <span>赠送</span>
-                                <span class="creditsNumber-em42d3">{{ Number(plan.bonusPoints || 0) }}</span>
-                                <span>积分</span>
-                              </div>
-                            </div>
-                            <div class="creditsDesc-irHa5p">{{ getMembershipCreditDesc(plan) }}</div>
-                          </div>
-
                           <div class="btnContainer-lv1ARI btnContainerWithoutAutoRenewDesc-f6J_Ai">
                             <div class="btnContainer-lv1ARI">
                               <button
@@ -110,6 +99,17 @@
                                 {{ getPlanButtonText(plan, planIndex) }}
                               </button>
                             </div>
+                          </div>
+
+                          <div class="creditsContainer-kZN4Fp">
+                            <div class="creditsContent-piPVgX">
+                              <div class="creditsInnerContent-ybfrhd">
+                                <span>赠送</span>
+                                <span class="creditsNumber-em42d3">{{ Number(plan.bonusPoints || 0) }}</span>
+                                <span>积分</span>
+                              </div>
+                            </div>
+                            <div class="creditsDesc-irHa5p">{{ getMembershipCreditDesc(plan) }}</div>
                           </div>
 
                           <div class="benefitsDesc-qy_Zwm">
@@ -147,17 +147,6 @@
                             </div>
                           </div>
 
-                          <div class="creditsContainer-kZN4Fp">
-                            <div class="creditsContent-piPVgX">
-                              <div class="creditsInnerContent-ybfrhd">
-                                <span>赠送</span>
-                                <span class="creditsNumber-em42d3">{{ Number(item.bonusPoints || 0) }}</span>
-                                <span>积分</span>
-                              </div>
-                            </div>
-                            <div class="creditsDesc-irHa5p">{{ getRechargeCreditDesc(item) }}</div>
-                          </div>
-
                           <div class="btnContainer-lv1ARI btnContainerWithoutAutoRenewDesc-f6J_Ai">
                             <div class="btnContainer-lv1ARI">
                               <button
@@ -170,6 +159,17 @@
                                 立即充值
                               </button>
                             </div>
+                          </div>
+
+                          <div class="creditsContainer-kZN4Fp">
+                            <div class="creditsContent-piPVgX">
+                              <div class="creditsInnerContent-ybfrhd">
+                                <span>赠送</span>
+                                <span class="creditsNumber-em42d3">{{ Number(item.bonusPoints || 0) }}</span>
+                                <span>积分</span>
+                              </div>
+                            </div>
+                            <div class="creditsDesc-irHa5p">{{ getRechargeCreditDesc(item) }}</div>
                           </div>
 
                           <div class="benefitsDesc-qy_Zwm">

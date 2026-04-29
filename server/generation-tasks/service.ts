@@ -7,7 +7,7 @@ import { consumeGenerationPoints, refundGenerationPoints, resolveGenerationPoint
 interface RunningGenerationTask {
   recordId: string
   userId: string
-  type: 'image'
+  type: 'image' | 'agent'
   abortController: AbortController
   associationNo: string
   billedPointCost: number
@@ -73,13 +73,31 @@ const emitTaskProgressEvent = (recordId: string, input: {
   })
 }
 
+// 向前端推送文本增量，供通用对话任务直接流式展示。
+const emitTaskContentDeltaEvent = (recordId: string, input: {
+  stage: string
+  delta: string
+  content: string
+}) => {
+  emitTaskStreamEvent(recordId, {
+    type: 'content_delta',
+    recordId,
+    done: false,
+    stopped: false,
+    stage: input.stage,
+    delta: input.delta,
+    content: input.content,
+    message: '对话内容持续生成中',
+  })
+}
+
 // 当服务端内存里已经没有运行中的任务，但数据库里仍是未完成态时，
 // 说明它多半是旧实例遗留或异常中断，需要主动回收，避免前端一直订阅。
 const resolveTaskRecordSnapshot = async (recordId: string, currentUserId: string) => {
   let record = await getGenerationRecordById(recordId, currentUserId)
 
   if (
-    record.type === 'image'
+    (record.type === 'image' || (record.type === 'agent' && !record.agentRun))
     && !record.done
     && !record.stopped
     && !runningGenerationTasks.has(recordId)
@@ -395,6 +413,369 @@ const executeImageGenerationTask = async (task: RunningGenerationTask, payload: 
   })
 }
 
+const persistAgentTaskContentIfNeeded = async (input: {
+  task: RunningGenerationTask
+  payload: GenerationTaskStartPayload
+  content: string
+  force?: boolean
+}, state: {
+  lastPersistAt: number
+  lastPersistContentLength: number
+}) => {
+  const now = Date.now()
+  const shouldPersist = Boolean(input.force)
+    || (input.content.length - state.lastPersistContentLength >= 24)
+    || (now - state.lastPersistAt >= 400)
+
+  if (!shouldPersist) {
+    return
+  }
+
+  await updateGenerationRecord(input.task.recordId, {
+    ...buildInitialRecordPayload(input.payload),
+    content: input.content,
+    done: false,
+    stopped: false,
+  }, input.task.userId)
+
+  state.lastPersistAt = now
+  state.lastPersistContentLength = input.content.length
+}
+
+const extractChatTextFromNonStreamResponse = async (response: Response) => {
+  const result = await response.json().catch(() => null as any)
+  const messageContent = result?.choices?.[0]?.message?.content
+  if (typeof messageContent === 'string' && messageContent.trim()) {
+    return messageContent
+  }
+  return ''
+}
+
+const extractChatTextFromJsonPayload = (result: any) => {
+  const normalizeContentValue = (value: unknown): string => {
+    if (typeof value === 'string' && value.trim()) {
+      return value
+    }
+
+    if (Array.isArray(value)) {
+      const joined = value
+        .map((item) => {
+          if (typeof item === 'string') {
+            return item
+          }
+          if (item && typeof item === 'object') {
+            const record = item as Record<string, unknown>
+            if (typeof record.text === 'string') {
+              return record.text
+            }
+            if (typeof record.content === 'string') {
+              return record.content
+            }
+          }
+          return ''
+        })
+        .filter(Boolean)
+        .join('')
+      if (joined.trim()) {
+        return joined
+      }
+    }
+
+    return ''
+  }
+
+  const candidates = [
+    result?.choices?.[0]?.message?.content,
+    result?.choices?.[0]?.delta?.content,
+    result?.choices?.[0]?.delta?.reasoning_content,
+    result?.choices?.[0]?.text,
+    result?.message?.content,
+    result?.delta?.content,
+    result?.content,
+    result?.text,
+    result?.response,
+  ]
+
+  for (const candidate of candidates) {
+    const normalized = normalizeContentValue(candidate)
+    if (normalized) {
+      return normalized
+    }
+  }
+
+  return ''
+}
+
+const parseChatChunkText = (chunk: string) => {
+  try {
+    const parsed = JSON.parse(chunk)
+    return extractChatTextFromJsonPayload(parsed)
+  } catch {
+    return ''
+  }
+}
+
+const parseChatChunkError = (chunk: string) => {
+  try {
+    const parsed = JSON.parse(chunk)
+    const errorMessage = parsed?.error?.message
+    if (typeof errorMessage === 'string' && errorMessage.trim()) {
+      return errorMessage.trim()
+    }
+    return ''
+  } catch {
+    return ''
+  }
+}
+
+const executeAgentChatTask = async (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
+  const modelKey = String(payload.modelKey || '').trim()
+  if (!modelKey) {
+    throw new Error('缺少对话模型标识')
+  }
+
+  const providerId = String((payload.requestBody || {}).providerId || '').trim()
+  if (!providerId) {
+    throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
+  }
+
+  const upstream = await resolveGatewayProviderUpstream({
+    providerId,
+    endpointType: 'chat',
+    modelKey,
+  })
+  emitTaskProgressEvent(task.recordId, {
+    stage: 'resolved_provider',
+    message: '已解析厂商与模型配置，准备请求上游对话模型',
+  })
+
+  const headers = new Headers({
+    'Content-Type': 'application/json',
+  })
+  if (upstream.apiKey) {
+    headers.set('Authorization', `Bearer ${upstream.apiKey}`)
+  }
+
+  const requestBody = {
+    ...(payload.requestBody || {}),
+    model: modelKey,
+    stream: true,
+  }
+  delete (requestBody as Record<string, unknown>).providerId
+
+  const upstreamUrl = `${upstream.baseUrl.replace(/\/+$/, '')}/${upstream.endpoint.replace(/^\/+/, '')}`
+  logGenerationTask('agent_task:request_start', {
+    recordId: task.recordId,
+    userId: task.userId,
+    upstreamUrl,
+    modelKey,
+  })
+
+  emitTaskProgressEvent(task.recordId, {
+    stage: 'requesting_upstream',
+    message: '已开始请求上游对话模型',
+  })
+
+  const response = await fetch(upstreamUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(requestBody),
+    signal: task.abortController.signal,
+  })
+
+  if (!response.ok) {
+    const responseText = await response.text().catch(() => '')
+    throw new Error(responseText || `对话生成失败 (${response.status})`)
+  }
+
+  emitTaskProgressEvent(task.recordId, {
+    stage: 'receiving_upstream_result',
+    message: '上游已开始返回内容，正在持续生成对话',
+  })
+
+  const responseContentType = String(response.headers.get('content-type') || '').toLowerCase()
+  logGenerationTask('agent_task:response_headers', {
+    recordId: task.recordId,
+    userId: task.userId,
+    contentType: responseContentType,
+  })
+
+  if (!response.body) {
+    const content = await extractChatTextFromNonStreamResponse(response)
+    await updateGenerationRecord(task.recordId, {
+      ...buildInitialRecordPayload(payload),
+      content,
+      done: true,
+      stopped: false,
+    }, task.userId)
+    const completedRecord = await getGenerationRecordById(task.recordId, task.userId)
+    emitTaskStreamEvent(task.recordId, {
+      type: 'completed',
+      recordId: task.recordId,
+      done: true,
+      stopped: false,
+      record: completedRecord,
+      stage: 'completed',
+      message: '对话生成完成，结果已写入记录',
+    })
+    return
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let fullContent = ''
+  let rawResponseText = ''
+  let hasSseDelta = false
+  let streamErrorMessage = ''
+  const rawDataSamples: string[] = []
+  const persistState = {
+    lastPersistAt: Date.now(),
+    lastPersistContentLength: 0,
+  }
+
+  while (!task.abortController.signal.aborted) {
+    const { done, value } = await reader.read()
+    if (done) {
+      break
+    }
+
+    const decodedChunk = decoder.decode(value, { stream: true })
+    rawResponseText += decodedChunk
+    buffer += decodedChunk
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || !trimmed.startsWith('data:')) continue
+
+      const chunk = trimmed.slice(5).trim()
+      if (chunk === '[DONE]') {
+        continue
+      }
+
+      if (rawDataSamples.length < 5) {
+        rawDataSamples.push(chunk.slice(0, 500))
+      }
+
+      const chunkError = parseChatChunkError(chunk)
+      if (chunkError) {
+        streamErrorMessage = chunkError
+        break
+      }
+
+      try {
+        const delta = parseChatChunkText(chunk)
+        if (!delta) continue
+
+        hasSseDelta = true
+        fullContent += delta
+        emitTaskContentDeltaEvent(task.recordId, {
+          stage: 'receiving_upstream_result',
+          delta,
+          content: fullContent,
+        })
+        await persistAgentTaskContentIfNeeded({
+          task,
+          payload,
+          content: fullContent,
+        }, persistState)
+      } catch {
+        // 跳过无效 SSE 数据块，继续处理后续消息。
+      }
+    }
+
+    if (streamErrorMessage) {
+      break
+    }
+  }
+
+  if (streamErrorMessage) {
+    throw new Error(streamErrorMessage)
+  }
+
+  if (!hasSseDelta && rawResponseText.trim()) {
+    const trimmedText = rawResponseText.trim()
+    const parsedFromWholeJson = (() => {
+      try {
+        return extractChatTextFromJsonPayload(JSON.parse(trimmedText))
+      } catch {
+        return ''
+      }
+    })()
+
+    if (parsedFromWholeJson) {
+      fullContent = parsedFromWholeJson
+      emitTaskContentDeltaEvent(task.recordId, {
+        stage: 'receiving_upstream_result',
+        delta: parsedFromWholeJson,
+        content: fullContent,
+      })
+    } else {
+      const fallbackText = trimmedText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          if (line.startsWith('data:')) {
+            return parseChatChunkText(line.slice(5).trim())
+          }
+          return ''
+        })
+        .join('')
+
+      if (fallbackText) {
+        fullContent = fallbackText
+        emitTaskContentDeltaEvent(task.recordId, {
+          stage: 'receiving_upstream_result',
+          delta: fallbackText,
+          content: fullContent,
+        })
+      }
+    }
+  }
+
+  if (!fullContent.trim()) {
+    logGenerationTask('agent_task:empty_stream_debug', {
+      recordId: task.recordId,
+      userId: task.userId,
+      sampleCount: rawDataSamples.length,
+      dataSamples: rawDataSamples,
+      rawResponseSnippet: rawResponseText.slice(0, 1200),
+    })
+    throw new Error('上游未返回有效对话内容')
+  }
+
+  emitTaskProgressEvent(task.recordId, {
+    stage: 'syncing_record',
+    message: '对话内容已生成，正在同步记录',
+  })
+
+  await updateGenerationRecord(task.recordId, {
+    ...buildInitialRecordPayload(payload),
+    content: fullContent,
+    done: true,
+    stopped: false,
+  }, task.userId)
+  const completedRecord = await getGenerationRecordById(task.recordId, task.userId)
+  emitTaskStreamEvent(task.recordId, {
+    type: 'completed',
+    recordId: task.recordId,
+    done: true,
+    stopped: false,
+    record: completedRecord,
+    stage: 'completed',
+    message: '对话生成完成，结果已写入记录',
+  })
+
+  logGenerationTask('agent_task:request_success', {
+    recordId: task.recordId,
+    userId: task.userId,
+    contentLength: fullContent.length,
+  })
+}
+
 const refundTaskPointsIfNeeded = async (task: RunningGenerationTask, reason: string) => {
   if (!task.billedPointCost || task.refundCommitted) {
     return
@@ -489,10 +870,128 @@ const runImageTaskInBackground = (task: RunningGenerationTask, payload: Generati
   })()
 }
 
+const runAgentTaskInBackground = (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
+  void (async () => {
+    try {
+      await executeAgentChatTask(task, payload)
+    } catch (error) {
+      const isAbortError = error instanceof DOMException
+        ? error.name === 'AbortError'
+        : error instanceof Error && /abort/i.test(String(error.name || error.message || ''))
+
+      if (isAbortError) {
+        emitTaskProgressEvent(task.recordId, {
+          stage: 'stopping',
+          stopped: true,
+          message: '任务已收到停止指令，正在收口状态',
+        })
+        const currentRecord = await getGenerationRecordById(task.recordId, task.userId)
+        await updateGenerationRecord(task.recordId, {
+          ...buildInitialRecordPayload(payload),
+          content: currentRecord.content,
+          done: true,
+          stopped: true,
+          error: '',
+        }, task.userId)
+        const stoppedRecord = await getGenerationRecordById(task.recordId, task.userId)
+        emitTaskStreamEvent(task.recordId, {
+          type: 'stopped',
+          recordId: task.recordId,
+          done: true,
+          stopped: true,
+          record: stoppedRecord,
+          stage: 'stopped',
+          message: '任务已停止',
+        })
+      } else {
+        const errorMessage = error instanceof Error ? error.message : '对话生成失败'
+        emitTaskProgressEvent(task.recordId, {
+          stage: 'failing',
+          message: '任务执行异常，正在写入失败状态',
+        })
+        const currentRecord = await getGenerationRecordById(task.recordId, task.userId)
+        await updateGenerationRecord(task.recordId, {
+          ...buildInitialRecordPayload(payload),
+          content: currentRecord.content,
+          done: true,
+          stopped: false,
+          error: errorMessage,
+        }, task.userId)
+        const failedRecord = await getGenerationRecordById(task.recordId, task.userId)
+        emitTaskStreamEvent(task.recordId, {
+          type: 'failed',
+          recordId: task.recordId,
+          done: true,
+          stopped: false,
+          record: failedRecord,
+          stage: 'failed',
+          message: errorMessage,
+        })
+        logGenerationTaskError('agent_task:failed', error, {
+          recordId: task.recordId,
+          userId: task.userId,
+        })
+      }
+    } finally {
+      runningGenerationTasks.delete(task.recordId)
+    }
+  })()
+}
+
 // 创建新的生成任务，并立即把运行态记录持久化。
 export const startGenerationTask = async (payload: GenerationTaskStartPayload, currentUserId: string) => {
-  if (String(payload.type || '').trim() !== 'image') {
-    throw new Error('当前仅支持图片生成任务化')
+  const taskType = String(payload.type || '').trim()
+  if (taskType !== 'image' && taskType !== 'agent') {
+    throw new Error('当前仅支持图片与通用对话任务化')
+  }
+
+  if (taskType === 'agent') {
+    const providerId = String((payload.requestBody || {}).providerId || '').trim()
+    const modelKey = String(payload.modelKey || '').trim()
+
+    if (!providerId) {
+      throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
+    }
+
+    if (!modelKey) {
+      throw new Error('缺少对话模型标识')
+    }
+
+    const createdRecord = await createGenerationRecord(buildInitialRecordPayload(payload), currentUserId)
+    const task: RunningGenerationTask = {
+      recordId: createdRecord.id,
+      userId: currentUserId,
+      type: 'agent',
+      abortController: new AbortController(),
+      associationNo: buildGatewayAssociationNo(),
+      billedPointCost: 0,
+      billedProviderId: providerId,
+      billedModelKey: modelKey,
+      billedModelName: String(payload.model || '').trim(),
+      refundCommitted: true,
+    }
+
+    runningGenerationTasks.set(createdRecord.id, task)
+    emitTaskStreamEvent(createdRecord.id, {
+      type: 'progress',
+      recordId: createdRecord.id,
+      done: false,
+      stopped: false,
+      record: createdRecord as unknown as Record<string, unknown>,
+      stage: 'queued',
+      message: '任务已创建，等待服务端执行',
+    })
+
+    logGenerationTask('task_created', {
+      recordId: createdRecord.id,
+      userId: currentUserId,
+      type: payload.type,
+      providerId,
+      modelKey,
+    })
+
+    runAgentTaskInBackground(task, payload)
+    return createdRecord
   }
 
   const providerId = String((payload.requestBody || {}).providerId || '').trim()

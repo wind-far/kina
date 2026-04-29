@@ -4,7 +4,7 @@ import type { PersistedGenerationRecord } from './generation-records'
 import { consumeSseStream, type SseMessage } from '@/utils/sse'
 
 export interface GenerationTaskStartPayload {
-  type: 'image'
+  type: 'image' | 'agent'
   prompt: string
   model?: string
   modelKey?: string
@@ -21,13 +21,15 @@ interface RequestOptions {
 }
 
 export interface GenerationTaskStreamEvent {
-  type: 'connected' | 'snapshot' | 'progress' | 'completed' | 'failed' | 'stopped'
+  type: 'connected' | 'snapshot' | 'progress' | 'content_delta' | 'completed' | 'failed' | 'stopped'
   recordId: string
   done: boolean
   stopped?: boolean
   record?: PersistedGenerationRecord | null
   stage?: string
   message?: string
+  delta?: string
+  content?: string
 }
 
 const GENERATION_TASKS_API_PATH = '/api/generation-tasks'
@@ -97,7 +99,7 @@ export const subscribeGenerationTaskEvents = async (
   }
 
   await consumeSseStream(response, (message: SseMessage) => {
-    if (!['connected', 'snapshot', 'progress', 'completed', 'failed', 'stopped'].includes(message.event)) {
+    if (!['connected', 'snapshot', 'progress', 'content_delta', 'completed', 'failed', 'stopped'].includes(message.event)) {
       return
     }
 

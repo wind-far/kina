@@ -14,13 +14,15 @@ export interface GenerationTaskStartPayload {
 }
 
 export interface GenerationTaskStreamEvent {
-  type: 'connected' | 'snapshot' | 'progress' | 'completed' | 'failed' | 'stopped'
+  type: 'connected' | 'snapshot' | 'progress' | 'content_delta' | 'completed' | 'failed' | 'stopped'
   recordId: string
   done: boolean
   stopped?: boolean
   record?: Record<string, unknown> | null
   stage?: string
   message?: string
+  delta?: string
+  content?: string
 }
 
 // 读取生成任务请求体。

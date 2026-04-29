@@ -7,7 +7,6 @@ import ContentGenerator from '../../components/generate/ContentGenerator.vue'
 import ImageLoadingRecord from '../../components/generate/common/ImageLoadingRecord.vue'
 import AgentLoadingRecord from '../../components/generate/common/AgentLoadingRecord.vue'
 import ImagePreview from '@/components/ImagePreview.vue'
-import { streamChatCompletions } from '@/api/chat'
 import { getAgentModel } from '@/api/agent'
 import { getModelByName, loadPublicModelCatalog, resolveModelLabel, resolveRequestModelKey, resolveRequestProviderId, type ImageModel } from '@/config/models'
 import { buildAgentChatMessages } from '@/config/agentSkills'
@@ -695,15 +694,21 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
   duration: record.duration,
   feature: record.feature,
   skill: record.skill,
-  content: record.content || (!record.done ? '[[queued]]任务已创建，等待服务端执行' : ''),
+  content: record.type === 'image'
+    ? (record.content || (!record.done ? '[[queued]]任务已创建，等待服务端执行' : ''))
+    : record.content,
   images: record.images,
   done: record.done,
   stopped: Boolean(record.stopped),
-  progressStage: record.done ? (record.stopped ? 'stopped' : 'completed') : 'queued',
-  progressMessage: record.done
-    ? resolveTaskStageLabel(record.stopped ? 'stopped' : 'completed', record.stopped ? '任务已停止' : '任务已完成')
-    : resolveTaskStageLabel('queued', '任务已创建，等待服务端执行'),
-  progressPercent: record.done ? 100 : 5,
+  progressStage: record.type === 'image'
+    ? (record.done ? (record.stopped ? 'stopped' : 'completed') : 'queued')
+    : undefined,
+  progressMessage: record.type === 'image'
+    ? (record.done
+      ? resolveTaskStageLabel(record.stopped ? 'stopped' : 'completed', record.stopped ? '任务已停止' : '任务已完成')
+      : resolveTaskStageLabel('queued', '任务已创建，等待服务端执行'))
+    : undefined,
+  progressPercent: record.type === 'image' ? (record.done ? 100 : 5) : 0,
   error: record.error,
   agentTaskId: record.agentTaskId,
   agentRun: record.agentRun,
@@ -797,6 +802,7 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     return
   }
 
+  const isImageTaskRecord = targetRecord.type === 'image'
   let stageConversationChanged = false
 
   if (event.record) {
@@ -811,11 +817,24 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
       targetRecord.progressPercent || 0,
       mapTaskStageToProgressPercent(event.stage),
     )
-    stageConversationChanged = upsertRecordStageConversation(
-      targetRecord,
-      targetRecord.progressStage || event.stage || 'queued',
-      `${targetRecord.progressMessage}：${event.message}`,
-    ) || stageConversationChanged
+    if (isImageTaskRecord) {
+      stageConversationChanged = upsertRecordStageConversation(
+        targetRecord,
+        targetRecord.progressStage || event.stage || 'queued',
+        `${targetRecord.progressMessage}：${event.message}`,
+      ) || stageConversationChanged
+    }
+  }
+
+  if (event.type === 'content_delta') {
+    targetRecord.error = ''
+    if (typeof event.content === 'string') {
+      targetRecord.content = event.content
+    } else if (typeof event.delta === 'string') {
+      targetRecord.content += event.delta
+    }
+    targetRecord.progressStage = event.stage || targetRecord.progressStage || 'receiving_upstream_result'
+    targetRecord.progressMessage = resolveTaskStageLabel(event.stage, '内容生成中')
   }
 
   if (event.type === 'connected' && event.message) {
@@ -825,40 +844,48 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
       targetRecord.progressPercent || 0,
       mapTaskStageToProgressPercent(event.stage),
     )
-    stageConversationChanged = upsertRecordStageConversation(
-      targetRecord,
-      targetRecord.progressStage || event.stage || 'queued',
-      event.message,
-    ) || stageConversationChanged
+    if (isImageTaskRecord) {
+      stageConversationChanged = upsertRecordStageConversation(
+        targetRecord,
+        targetRecord.progressStage || event.stage || 'queued',
+        event.message,
+      ) || stageConversationChanged
+    }
   }
 
   if (event.type === 'completed') {
     targetRecord.progressStage = 'completed'
     targetRecord.progressMessage = resolveTaskStageLabel('completed', event.message || '图片生成完成')
     targetRecord.progressPercent = 100
-    stageConversationChanged = upsertRecordStageConversation(
-      targetRecord,
-      'completed',
-      `${targetRecord.progressMessage}：${event.message || '图片生成完成'}`,
-    ) || stageConversationChanged
+    if (isImageTaskRecord) {
+      stageConversationChanged = upsertRecordStageConversation(
+        targetRecord,
+        'completed',
+        `${targetRecord.progressMessage}：${event.message || '图片生成完成'}`,
+      ) || stageConversationChanged
+    }
   } else if (event.type === 'failed') {
     targetRecord.progressStage = 'failed'
     targetRecord.progressMessage = resolveTaskStageLabel('failed', event.message || '任务执行失败')
     targetRecord.progressPercent = 100
-    stageConversationChanged = upsertRecordStageConversation(
-      targetRecord,
-      'failed',
-      `${targetRecord.progressMessage}：${event.message || '任务执行失败'}`,
-    ) || stageConversationChanged
+    if (isImageTaskRecord) {
+      stageConversationChanged = upsertRecordStageConversation(
+        targetRecord,
+        'failed',
+        `${targetRecord.progressMessage}：${event.message || '任务执行失败'}`,
+      ) || stageConversationChanged
+    }
   } else if (event.type === 'stopped') {
     targetRecord.progressStage = 'stopped'
     targetRecord.progressMessage = resolveTaskStageLabel('stopped', event.message || '任务已停止')
     targetRecord.progressPercent = 100
-    stageConversationChanged = upsertRecordStageConversation(
-      targetRecord,
-      'stopped',
-      `${targetRecord.progressMessage}：${event.message || '任务已停止'}`,
-    ) || stageConversationChanged
+    if (isImageTaskRecord) {
+      stageConversationChanged = upsertRecordStageConversation(
+        targetRecord,
+        'stopped',
+        `${targetRecord.progressMessage}：${event.message || '任务已停止'}`,
+      ) || stageConversationChanged
+    }
   }
 
   if (stageConversationChanged) {
@@ -876,7 +903,11 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
 
 // 连接单个任务的 SSE 事件流，断线后自动重连，直到任务完成。
 const connectGenerationTaskStream = (record: GeneratingRecord) => {
-  if (!record.dbId || record.type !== 'image' || record.done) {
+  if (!record.dbId || record.done) {
+    return
+  }
+
+  if (record.type === 'agent' && record.agentRun) {
     return
   }
 
@@ -977,14 +1008,50 @@ const handleSend = (message: string, type: CreationType, options?: { model?: str
 
   // 根据类型触发不同的生成逻辑
   if (type === 'agent') {
-    schedulePersistRecord(record, true)
     if (record.agentRun) {
+      schedulePersistRecord(record, true)
       runAgentExecution(generatingRecords.value[0])
     } else {
-      runAgentStream(generatingRecords.value[0])
+      void startGeneralAgentTask(generatingRecords.value[0])
     }
   } else if (type === 'image') {
     void startImageGenerationTask(generatingRecords.value[0])
+  }
+}
+
+// 通用 AI 对话同样提交到服务端任务，由后端持续执行并通过 SSE 回推文本增量。
+const startGeneralAgentTask = async (record: GeneratingRecord) => {
+  try {
+    const currentModelKey = resolveRequestModelKey(record.modelKey || getAgentModel(), 'CHAT')
+    const providerId = resolveRequestProviderId(record.modelKey || currentModelKey, 'CHAT')
+    if (!providerId) {
+      throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
+    }
+    if (!currentModelKey) {
+      throw new Error('缺少对话模型标识')
+    }
+
+    const saved = await createGenerationTask({
+      type: 'agent',
+      prompt: record.prompt,
+      model: record.model,
+      modelKey: currentModelKey,
+      skill: record.skill,
+      requestBody: {
+        providerId,
+        model: currentModelKey,
+        messages: buildAgentChatMessages(record.skill, record.prompt),
+        stream: true,
+      },
+    })
+
+    syncRecordWithPersisted(record, saved)
+    connectGenerationTaskStream(record)
+  } catch (error: unknown) {
+    record.done = true
+    record.stopped = false
+    record.error = error instanceof Error ? error.message : '对话生成失败'
+    schedulePersistRecord(record, true)
   }
 }
 
@@ -1526,53 +1593,6 @@ const handleMockAgentEvent = (
   }
 
   schedulePersistRecord(record, event.type === 'run_completed')
-}
-
-// 通用助手沿用原先的流式对话逻辑。
-const runAgentStream = async (record: GeneratingRecord) => {
-  let buffer = ''
-  let flushing = false
-  let streamDone = false
-
-  const flush = () => {
-    if (flushing) return
-    flushing = true
-    const step = () => {
-      if (buffer.length > 0) {
-        const chars = Math.min(buffer.length, Math.ceil(Math.random() * 2) + 1)
-        record.content += buffer.slice(0, chars)
-        buffer = buffer.slice(chars)
-        schedulePersistRecord(record)
-        requestAnimationFrame(step)
-      } else {
-        flushing = false
-        if (streamDone) record.done = true
-      }
-    }
-    requestAnimationFrame(step)
-  }
-
-  try {
-    const stream = streamChatCompletions({
-      model: getAgentModel(),
-      messages: buildAgentChatMessages(record.skill, record.prompt),
-    })
-    for await (const chunk of stream) {
-      buffer += chunk
-      flush()
-    }
-  } catch (e: unknown) {
-    record.error = e instanceof Error ? e.message : '请求失败'
-    schedulePersistRecord(record)
-  }
-
-  streamDone = true
-  if (!buffer.length) {
-    record.done = true
-    schedulePersistRecord(record, true)
-  } else {
-    flush()
-  }
 }
 
 // 上一次滚动位置

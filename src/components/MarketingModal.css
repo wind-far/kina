@@ -163,3 +163,13 @@ html[data-theme='light'] .domesticModalWrapper-G4rAI_ .redeemInputRow-canana inp
 .priceListItem-jmLrWu .recommendButton-DTYbz5:not(.disabled):hover{background:#33c9db}
 .priceListItem-jmLrWu .recommendButton-DTYbz5:not(.disabled):active{background:#11b1c4}
 html[data-theme='light'] .domesticModalWrapper-G4rAI_ .priceListItem-jmLrWu .mweb-button-default.disabled,body[lv-theme='light'] .domesticModalWrapper-G4rAI_ .priceListItem-jmLrWu .mweb-button-default.disabled,html[data-theme='light'] .domesticModalWrapper-G4rAI_ .priceListItem-jmLrWu .mweb-button-default:disabled,body[lv-theme='light'] .domesticModalWrapper-G4rAI_ .priceListItem-jmLrWu .mweb-button-default:disabled{background:rgba(15,20,25,.12);color:rgba(15,20,25,.3)}
+
+.priceListItem-jmLrWu .creditsContainer-kZN4Fp{background:rgba(255,255,255,.05);border:.5px solid rgba(255,255,255,.04);border-radius:14px;gap:3px;min-height:62px;padding:12px 16px}
+.priceListItem-jmLrWu .creditsContent-piPVgX{font-size:13px;font-weight:600;line-height:20px}
+.priceListItem-jmLrWu .creditsContent-piPVgX .creditsInnerContent-ybfrhd{gap:5px}
+.priceListItem-jmLrWu .creditsContent-piPVgX .creditsInnerContent-ybfrhd .creditsNumber-em42d3{font-size:15px;font-weight:700;margin-right:0}
+.priceListItem-jmLrWu .creditsDesc-irHa5p{font-size:11px;line-height:1.45;opacity:.92}
+.priceListItem-jmLrWu .benefitsDesc-qy_Zwm{font-size:11px;line-height:18px}
+.priceListItem-jmLrWu .benefitsDesc-qy_Zwm>div svg{height:18px;margin-right:7px;transform:translateY(1px)}
+.priceListItem-jmLrWu .benefitsDesc-qy_Zwm>div+div{margin-top:1px}
+html[data-theme='light'] .domesticModalWrapper-G4rAI_ .priceListItem-jmLrWu .creditsContainer-kZN4Fp,body[lv-theme='light'] .domesticModalWrapper-G4rAI_ .priceListItem-jmLrWu .creditsContainer-kZN4Fp{background:rgba(15,20,25,.04);border-color:rgba(15,20,25,.05)}

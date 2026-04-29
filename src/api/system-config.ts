@@ -30,10 +30,24 @@ export interface SystemLoginSettingsConfig {
   welcomeSubtitle: string
 }
 
+export interface SystemGenerationProgressStageConfig {
+  key: string
+  label: string
+  percent: number
+  showPercent: boolean
+  description: string
+}
+
+export interface SystemGenerationProgressSettingsConfig {
+  enabled: boolean
+  stages: SystemGenerationProgressStageConfig[]
+}
+
 export interface SystemConfigPayload {
   siteInfo: SystemSiteInfoConfig
   policySettings: SystemPolicyConfig
   loginSettings: SystemLoginSettingsConfig
+  generationProgressSettings: SystemGenerationProgressSettingsConfig
 }
 
 const SYSTEM_CONFIG_PUBLIC_API_PATH = '/api/system-config/public'

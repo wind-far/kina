@@ -31,6 +31,7 @@ import type {
 import { useWorkflowOrchestrator } from '@/views/workflow/composables/useWorkflowOrchestrator'
 import { AUTH_LOGIN_SUCCESS_EVENT, useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
+import { useSystemSettingsStore } from '@/stores/system-settings'
 import GenerateAgentRecord from './components/GenerateAgentRecord.vue'
 import {
   clearMockAgentTask,
@@ -46,6 +47,7 @@ const router = useRouter()
 const { analyzeIntent } = useWorkflowOrchestrator()
 const authStore = useAuthStore()
 const { openLoginModal } = useLoginModalStore()
+const { publicSystemSettings, loadPublicSettings } = useSystemSettingsStore()
 
 // ContentGenerator 组件引用
 const contentGeneratorRef = ref<InstanceType<typeof ContentGenerator> | null>(null)
@@ -97,6 +99,11 @@ const previewImages = ref<GeneratePreviewImageItem[]>([])
 
 // 将服务端阶段映射成前台百分比，避免继续显示固定 99%。
 const mapTaskStageToProgressPercent = (stage?: string) => {
+  const configuredStage = publicSystemSettings.value.generationProgressSettings?.stages?.find(item => item.key === String(stage || '').trim())
+  if (configuredStage && Number.isFinite(Number(configuredStage.percent))) {
+    return Math.max(0, Math.min(100, Number(configuredStage.percent)))
+  }
+
   switch (String(stage || '').trim()) {
     case 'queued':
       return 5
@@ -121,9 +128,22 @@ const mapTaskStageToProgressPercent = (stage?: string) => {
   }
 }
 
+// 根据后台配置解析当前阶段展示文案。
+const resolveTaskStageLabel = (stage?: string, fallback = '造梦中') => {
+  if (publicSystemSettings.value.generationProgressSettings?.enabled !== false) {
+    const configuredStage = publicSystemSettings.value.generationProgressSettings?.stages?.find(item => item.key === String(stage || '').trim())
+    if (configuredStage?.label) {
+      return configuredStage.label
+    }
+  }
+
+  return fallback
+}
+
 // 页面进入时预加载后台公开模型目录，确保工具栏与生成请求使用同一份模型清单。
 onMounted(() => {
   void loadPublicModelCatalog()
+  void loadPublicSettings()
 })
 
 const feedImagePool: AgentImageResult[] = (discoverContent.feedItems || []).map((item, index) => ({
@@ -610,8 +630,8 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
   stopped: Boolean(record.stopped),
   progressStage: record.done ? (record.stopped ? 'stopped' : 'completed') : 'queued',
   progressMessage: record.done
-    ? (record.stopped ? '任务已停止' : '任务已完成')
-    : '任务已创建，等待服务端执行',
+    ? resolveTaskStageLabel(record.stopped ? 'stopped' : 'completed', record.stopped ? '任务已停止' : '任务已完成')
+    : resolveTaskStageLabel('queued', '任务已创建，等待服务端执行'),
   progressPercent: record.done ? 100 : 5,
   error: record.error,
   agentTaskId: record.agentTaskId,
@@ -630,8 +650,11 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
     ? (saved.stopped ? 'stopped' : saved.error ? 'failed' : 'completed')
     : (record.progressStage || 'queued')
   record.progressMessage = saved.done
-    ? (saved.stopped ? '任务已停止' : saved.error ? saved.error : '任务已完成')
-    : (record.progressMessage || '任务执行中')
+    ? resolveTaskStageLabel(
+      saved.stopped ? 'stopped' : saved.error ? 'failed' : 'completed',
+      saved.stopped ? '任务已停止' : saved.error ? saved.error : '任务已完成',
+    )
+    : resolveTaskStageLabel(record.progressStage || 'queued', record.progressMessage || '任务执行中')
   record.progressPercent = saved.done
     ? 100
     : Math.max(record.progressPercent || 0, mapTaskStageToProgressPercent(record.progressStage))
@@ -706,7 +729,7 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
   if (event.type === 'progress' && event.message) {
     targetRecord.error = ''
     targetRecord.progressStage = event.stage || targetRecord.progressStage || 'queued'
-    targetRecord.progressMessage = event.message
+    targetRecord.progressMessage = resolveTaskStageLabel(event.stage, event.message)
     targetRecord.progressPercent = Math.max(
       targetRecord.progressPercent || 0,
       mapTaskStageToProgressPercent(event.stage),
@@ -715,7 +738,7 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
 
   if (event.type === 'connected' && event.message) {
     targetRecord.progressStage = event.stage || targetRecord.progressStage || 'queued'
-    targetRecord.progressMessage = '造梦中'
+    targetRecord.progressMessage = resolveTaskStageLabel(event.stage, '造梦中')
     targetRecord.progressPercent = Math.max(
       targetRecord.progressPercent || 0,
       mapTaskStageToProgressPercent(event.stage),
@@ -728,15 +751,15 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
 
   if (event.type === 'completed') {
     targetRecord.progressStage = 'completed'
-    targetRecord.progressMessage = event.message || '图片生成完成'
+    targetRecord.progressMessage = resolveTaskStageLabel('completed', event.message || '图片生成完成')
     targetRecord.progressPercent = 100
   } else if (event.type === 'failed') {
     targetRecord.progressStage = 'failed'
-    targetRecord.progressMessage = event.message || '任务执行失败'
+    targetRecord.progressMessage = resolveTaskStageLabel('failed', event.message || '任务执行失败')
     targetRecord.progressPercent = 100
   } else if (event.type === 'stopped') {
     targetRecord.progressStage = 'stopped'
-    targetRecord.progressMessage = event.message || '任务已停止'
+    targetRecord.progressMessage = resolveTaskStageLabel('stopped', event.message || '任务已停止')
     targetRecord.progressPercent = 100
   }
 
@@ -841,7 +864,7 @@ const handleSend = (message: string, type: CreationType, options?: { model?: str
     done: false,
     stopped: false,
     progressStage: type === 'image' ? 'queued' : undefined,
-    progressMessage: type === 'image' ? '任务已创建，等待服务端执行' : undefined,
+    progressMessage: type === 'image' ? resolveTaskStageLabel('queued', '任务已创建，等待服务端执行') : undefined,
     progressPercent: type === 'image' ? 5 : 0,
     error: '',
     agentRun: type === 'agent' && shouldUseAgentWorkspaceFlow(options?.skill)
@@ -908,7 +931,7 @@ const startImageGenerationTask = async (record: GeneratingRecord) => {
     record.done = true
     record.stopped = false
     record.progressStage = 'failed'
-    record.progressMessage = error instanceof Error ? error.message : '图片生成失败'
+    record.progressMessage = resolveTaskStageLabel('failed', error instanceof Error ? error.message : '图片生成失败')
     record.progressPercent = 100
     record.error = error instanceof Error ? error.message : '图片生成失败'
   }

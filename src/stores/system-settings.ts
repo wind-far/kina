@@ -28,6 +28,21 @@ const createDefaultSettings = (): SystemConfigPayload => ({
     welcomeTitle: '欢迎登录',
     welcomeSubtitle: '',
   },
+  generationProgressSettings: {
+    enabled: true,
+    stages: [
+      { key: 'queued', label: '排队中', percent: 5, showPercent: true, description: '任务已创建，等待服务端执行' },
+      { key: 'resolved_provider', label: '准备中', percent: 12, showPercent: true, description: '已解析厂商与模型配置' },
+      { key: 'requesting_upstream', label: '生成中', percent: 35, showPercent: true, description: '已开始请求上游图片模型' },
+      { key: 'receiving_upstream_result', label: '解析中', percent: 72, showPercent: true, description: '上游已返回结果，正在解析图片内容' },
+      { key: 'syncing_record', label: '同步中', percent: 92, showPercent: true, description: '图片结果已解析，正在同步记录与资源信息' },
+      { key: 'completed', label: '已完成', percent: 100, showPercent: false, description: '任务执行完成' },
+      { key: 'failing', label: '收尾中', percent: 96, showPercent: true, description: '任务执行异常，正在写入失败状态' },
+      { key: 'failed', label: '生成失败', percent: 100, showPercent: false, description: '任务执行失败' },
+      { key: 'stopping', label: '停止中', percent: 98, showPercent: true, description: '任务已收到停止指令，正在收口状态' },
+      { key: 'stopped', label: '已停止', percent: 100, showPercent: false, description: '任务已停止' },
+    ],
+  },
 })
 
 const publicSystemSettings = ref<SystemConfigPayload>(createDefaultSettings())

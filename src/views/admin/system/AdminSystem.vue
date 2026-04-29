@@ -161,6 +161,89 @@
       </div>
     </div>
 
+    <div v-else-if="currentTab === 'progress'" class="admin-system-panel">
+      <div class="admin-card">
+        <div class="admin-card__header">
+          <div>
+            <h4 class="admin-card__title">生成进度文案</h4>
+            <div class="admin-card__desc">按阶段配置“造梦中”徽章的展示文案、百分比和说明，前端会自动按 SSE 阶段映射显示。</div>
+          </div>
+          <div class="admin-page__actions">
+            <button class="admin-button admin-button--secondary" type="button" @click="expandAllProgressStages">全部展开</button>
+            <button class="admin-button admin-button--secondary" type="button" @click="collapseAllProgressStages">全部折叠</button>
+            <button class="admin-button admin-button--secondary" type="button" @click="resetGenerationProgressSettings">恢复默认文案</button>
+          </div>
+        </div>
+        <div class="admin-card__content">
+          <form class="admin-form" @submit.prevent="handleSaveSystemSettings">
+            <div class="admin-form__grid">
+              <div class="admin-form__field admin-form__field--full">
+                <label class="admin-form__label">配置开关</label>
+                <label class="admin-switch-row">
+                  <input v-model="systemForm.generationProgressSettings.enabled" type="checkbox">
+                  <span>启用后台生成进度文案配置</span>
+                </label>
+              </div>
+              <div
+                v-for="stage in systemForm.generationProgressSettings.stages"
+                :key="stage.key"
+                class="admin-form__field admin-form__field--full"
+              >
+                <div class="admin-system-stage-card">
+                  <div class="admin-system-stage-card__header">
+                    <div>
+                      <div class="admin-system-stage-card__title-row">
+                        <div class="admin-system-stage-card__title">{{ stage.label || stage.key }}</div>
+                        <span class="admin-chip admin-system-stage-card__key">{{ stage.key }}</span>
+                      </div>
+                      <div class="admin-system-stage-card__desc">{{ stage.description || '未填写阶段说明' }}</div>
+                    </div>
+                    <div class="admin-system-stage-card__header-actions">
+                      <span class="admin-status" :class="stage.showPercent ? 'admin-status--success' : 'admin-status--muted'">
+                        {{ stage.showPercent ? '显示进度' : '纯文案' }}
+                      </span>
+                      <label class="admin-switch-row">
+                        <input v-model="stage.showPercent" type="checkbox">
+                        <span>显示百分比</span>
+                      </label>
+                      <button class="admin-inline-button" type="button" @click="toggleProgressStageCollapse(stage.key)">
+                        {{ collapsedProgressStages.has(stage.key) ? '展开' : '折叠' }}
+                      </button>
+                    </div>
+                  </div>
+                  <div v-if="!collapsedProgressStages.has(stage.key)" class="admin-system-stage-card__preview">
+                    <span class="admin-system-stage-card__preview-label">前台预览</span>
+                    <span class="admin-system-stage-card__badge">
+                      {{ buildProgressStagePreview(stage) }}
+                    </span>
+                  </div>
+                  <div v-if="!collapsedProgressStages.has(stage.key)" class="admin-form__grid admin-system-stage-card__body">
+                    <div class="admin-form__field">
+                      <label class="admin-form__label">展示文案</label>
+                      <input v-model.trim="stage.label" class="admin-input" type="text" placeholder="例如：生成中">
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-form__label">展示百分比</label>
+                      <input v-model.number="stage.percent" class="admin-input" type="number" min="0" max="100" placeholder="0-100">
+                    </div>
+                    <div class="admin-form__field admin-form__field--full">
+                      <label class="admin-form__label">阶段说明</label>
+                      <textarea v-model.trim="stage.description" class="admin-textarea" placeholder="用于后台识别当前阶段含义"></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="admin-form__footer">
+              <button class="admin-button admin-button--primary" type="submit" :disabled="systemSaving || loading">
+                {{ systemSaving ? '保存中...' : '保存生成文案' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <div v-else class="admin-system-panel">
       <div class="admin-card">
         <div class="admin-card__header">
@@ -549,10 +632,11 @@ interface AuthMethodTemplate {
 }
 
 const loading = ref(false)
-const currentTab = ref<'site' | 'policy' | 'login'>('site')
+const currentTab = ref<'site' | 'policy' | 'progress' | 'login'>('site')
 const tabItems = [
   { key: 'site', label: '站点信息', description: '品牌、标题、页脚与备案信息' },
   { key: 'policy', label: '政策协议', description: '协议文案、正文与登录提示' },
+  { key: 'progress', label: '生成文案', description: '进度阶段、百分比与徽章文案' },
   { key: 'login', label: '登录方式', description: '启用状态、排序与登录字段' },
 ] as const
 const systemSaving = ref(false)
@@ -561,6 +645,7 @@ const methodDialogVisible = ref(false)
 const activeMethodMenuType = ref<AuthMethodType | ''>('')
 const editingMethodType = ref<AuthMethodType | ''>('')
 const authMethods = ref<EditableAuthMethod[]>([])
+const collapsedProgressStages = ref<Set<string>>(new Set())
 const { applyPublicSystemSettings } = useSystemSettingsStore()
 
 const AUTH_METHOD_TEMPLATES: AuthMethodTemplate[] = [
@@ -733,7 +818,24 @@ const createDefaultSystemForm = (): SystemConfigPayload => ({
     welcomeTitle: '欢迎登录',
     welcomeSubtitle: '',
   },
+  generationProgressSettings: {
+    enabled: true,
+    stages: [
+      { key: 'queued', label: '排队中', percent: 5, showPercent: true, description: '任务已创建，等待服务端执行' },
+      { key: 'resolved_provider', label: '准备中', percent: 12, showPercent: true, description: '已解析厂商与模型配置' },
+      { key: 'requesting_upstream', label: '生成中', percent: 35, showPercent: true, description: '已开始请求上游图片模型' },
+      { key: 'receiving_upstream_result', label: '解析中', percent: 72, showPercent: true, description: '上游已返回结果，正在解析图片内容' },
+      { key: 'syncing_record', label: '同步中', percent: 92, showPercent: true, description: '图片结果已解析，正在同步记录与资源信息' },
+      { key: 'completed', label: '已完成', percent: 100, showPercent: false, description: '任务执行完成' },
+      { key: 'failing', label: '收尾中', percent: 96, showPercent: true, description: '任务执行异常，正在写入失败状态' },
+      { key: 'failed', label: '生成失败', percent: 100, showPercent: false, description: '任务执行失败' },
+      { key: 'stopping', label: '停止中', percent: 98, showPercent: true, description: '任务已收到停止指令，正在收口状态' },
+      { key: 'stopped', label: '已停止', percent: 100, showPercent: false, description: '任务已停止' },
+    ],
+  },
 })
+
+const createDefaultGenerationProgressStages = () => createDefaultSystemForm().generationProgressSettings.stages.map(item => ({ ...item }))
 
 const systemForm = reactive<SystemConfigPayload>(createDefaultSystemForm())
 const methodForm = reactive<EditableAuthMethod>(createEditableAuthMethod(AUTH_METHOD_TEMPLATES[0]))
@@ -766,6 +868,8 @@ const applySystemForm = (value: SystemConfigPayload) => {
   systemForm.policySettings.aiNoticeContent = value.policySettings.aiNoticeContent
   systemForm.loginSettings.welcomeTitle = value.loginSettings.welcomeTitle
   systemForm.loginSettings.welcomeSubtitle = value.loginSettings.welcomeSubtitle
+  systemForm.generationProgressSettings.enabled = value.generationProgressSettings.enabled
+  systemForm.generationProgressSettings.stages = value.generationProgressSettings.stages.map(item => ({ ...item }))
 }
 
 // 把后端登录方式配置映射成后台表单结构。
@@ -1071,7 +1175,57 @@ const buildSystemPayload = (): SystemConfigPayload => ({
     welcomeTitle: systemForm.loginSettings.welcomeTitle,
     welcomeSubtitle: systemForm.loginSettings.welcomeSubtitle,
   },
+  generationProgressSettings: {
+    enabled: systemForm.generationProgressSettings.enabled,
+    stages: systemForm.generationProgressSettings.stages.map(item => ({
+      key: item.key,
+      label: item.label,
+      percent: item.percent,
+      showPercent: item.showPercent,
+      description: item.description,
+    })),
+  },
 })
+
+// 生成文案配置在后台实时预览成前台徽章文案，便于运营直接确认效果。
+const buildProgressStagePreview = (stage: {
+  label: string
+  percent: number
+  showPercent: boolean
+}) => {
+  const label = String(stage.label || '').trim() || '未命名阶段'
+  const percent = Number.isFinite(Number(stage.percent)) ? Math.max(0, Math.min(100, Number(stage.percent))) : 0
+  return stage.showPercent ? `${percent}%${label}` : label
+}
+
+// 切换单个生成阶段卡片折叠状态，方便批量配置时聚焦当前项。
+const toggleProgressStageCollapse = (stageKey: string) => {
+  const next = new Set(collapsedProgressStages.value)
+  if (next.has(stageKey)) {
+    next.delete(stageKey)
+  } else {
+    next.add(stageKey)
+  }
+  collapsedProgressStages.value = next
+}
+
+// 全部折叠生成文案配置卡片。
+const collapseAllProgressStages = () => {
+  collapsedProgressStages.value = new Set(systemForm.generationProgressSettings.stages.map(item => item.key))
+}
+
+// 全部展开生成文案配置卡片。
+const expandAllProgressStages = () => {
+  collapsedProgressStages.value = new Set()
+}
+
+// 恢复默认生成文案配置，便于快速回退到系统推荐值。
+const resetGenerationProgressSettings = () => {
+  systemForm.generationProgressSettings.enabled = true
+  systemForm.generationProgressSettings.stages = createDefaultGenerationProgressStages()
+  collapsedProgressStages.value = new Set()
+  ElMessage.success('已恢复默认生成文案')
+}
 
 // 把后台表单重新合并成后端可直接保存的配置结构。
 const buildAuthMethodPayload = (): AuthMethodConfigPayload[] => {
@@ -1219,3 +1373,111 @@ onMounted(() => {
   void loadPageData()
 })
 </script>
+
+<style scoped>
+.admin-system-stage-card {
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 18px;
+  padding: 18px;
+  background: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.admin-system-stage-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--brand-main-default) 16%, var(--line-divider, #00000014));
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
+}
+
+.admin-system-stage-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-system-stage-card__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.admin-system-stage-card__title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-system-stage-card__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.admin-system-stage-card__key {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.admin-system-stage-card__desc {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-tertiary);
+}
+
+.admin-system-stage-card__preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--bg-block-primary-default, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--stroke-secondary, rgba(255, 255, 255, 0.08));
+}
+
+.admin-system-stage-card__preview-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.admin-system-stage-card__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-main-block-default) 72%, var(--bg-surface));
+  color: var(--brand-main-default);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--brand-main-default) 18%, transparent);
+}
+
+.admin-system-stage-card__body {
+  padding-top: 2px;
+}
+
+@media (max-width: 900px) {
+  .admin-system-stage-card__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .admin-system-stage-card__header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+</style>

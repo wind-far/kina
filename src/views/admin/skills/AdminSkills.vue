@@ -1,36 +1,56 @@
 <template>
   <AdminPageContainer title="技能配置" description="统一维护技能目录、工作台模式、提示词模板、工作流模板与阶段文案。">
-    <div class="admin-provider-toolbar">
-      <input
-        v-model.trim="keyword"
-        class="admin-input admin-provider-toolbar__search"
-        type="text"
-        placeholder="搜索技能名称、标识或分类"
-      >
-      <select v-model="statusFilter" class="admin-input admin-provider-toolbar__status">
-        <option value="ALL">技能状态</option>
-        <option value="ENABLED">已启用</option>
-        <option value="DISABLED">已禁用</option>
-      </select>
-      <select v-model="uiModeFilter" class="admin-input admin-provider-toolbar__status">
-        <option value="ALL">界面模式</option>
-        <option value="WORKSPACE">工作台</option>
-        <option value="PLAIN_CHAT">普通对话</option>
-      </select>
-      <select v-model="executionModeFilter" class="admin-input admin-provider-toolbar__status">
-        <option value="ALL">执行模式</option>
-        <option v-for="item in executionModeOptions" :key="item" :value="item">{{ item }}</option>
-      </select>
-      <select v-model="categoryFilter" class="admin-input admin-provider-toolbar__status">
-        <option value="ALL">技能分类</option>
-        <option v-for="item in categoryOptions" :key="item" :value="item">{{ item }}</option>
-      </select>
-      <button class="admin-button admin-button--secondary" type="button" @click="loadSkillList" :disabled="loading || saving">
-        {{ loading ? '刷新中...' : '刷新列表' }}
-      </button>
-      <button class="admin-button admin-button--primary" type="button" @click="openCreateDialog" :disabled="saving">
-        新增技能
-      </button>
+    <div class="admin-provider-toolbar admin-skill-toolbar">
+      <div class="admin-skill-toolbar__filters">
+        <div class="admin-skill-toolbar__search-wrap">
+          <input
+            v-model.trim="keyword"
+            class="admin-input admin-provider-toolbar__search"
+            type="text"
+            placeholder="搜索技能名称、标识或分类"
+          >
+        </div>
+        <select v-model="statusFilter" class="admin-input admin-provider-toolbar__status">
+          <option value="ALL">技能状态</option>
+          <option value="ENABLED">已启用</option>
+          <option value="DISABLED">已禁用</option>
+        </select>
+        <select v-model="uiModeFilter" class="admin-input admin-provider-toolbar__status">
+          <option value="ALL">界面模式</option>
+          <option value="WORKSPACE">工作台</option>
+          <option value="PLAIN_CHAT">普通对话</option>
+        </select>
+        <select v-model="executionModeFilter" class="admin-input admin-provider-toolbar__status">
+          <option value="ALL">执行模式</option>
+          <option v-for="item in executionModeOptions" :key="item" :value="item">{{ item }}</option>
+        </select>
+        <select v-model="categoryFilter" class="admin-input admin-provider-toolbar__status">
+          <option value="ALL">技能分类</option>
+          <option v-for="item in categoryOptions" :key="item" :value="item">{{ item }}</option>
+        </select>
+      </div>
+      <div class="admin-skill-toolbar__meta">
+        <span class="admin-skill-toolbar__summary">
+          共 {{ filteredSkills.length }} 个技能
+          <em v-if="activeFilterCount">，已启用 {{ activeFilterCount }} 个筛选</em>
+        </span>
+        <button
+          v-if="activeFilterCount"
+          class="admin-inline-button"
+          type="button"
+          @click="resetListFilters"
+        >
+          清空筛选
+        </button>
+      </div>
+      <div class="admin-skill-toolbar__actions">
+        <button class="admin-button admin-button--secondary" type="button" @click="loadSkillList" :disabled="loading || saving">
+          {{ loading ? '刷新中...' : '刷新列表' }}
+        </button>
+        <button class="admin-button admin-button--primary" type="button" @click="openCreateDialog" :disabled="saving">
+          新增技能
+        </button>
+      </div>
     </div>
 
     <div v-if="loading" class="admin-empty">正在加载技能列表...</div>
@@ -127,26 +147,32 @@
                   {{ isSectionCollapsed('basic') ? '展开' : '折叠' }}
                 </button>
               </div>
-              <div v-if="!isSectionCollapsed('basic')" class="admin-form__grid">
-                <div class="admin-form__field">
-                  <label class="admin-form__label">技能标识</label>
-                  <input v-model.trim="skillForm.skillKey" class="admin-input" type="text" placeholder="例如 ecommerce-pack">
+              <div v-if="!isSectionCollapsed('basic')" class="admin-skill-field-group">
+                <div class="admin-skill-field-group__header">
+                  <h5>展示信息</h5>
+                  <span>前台名称、分类与描述</span>
                 </div>
-                <div class="admin-form__field">
-                  <label class="admin-form__label">技能名称</label>
-                  <input v-model.trim="skillForm.label" class="admin-input" type="text" placeholder="例如 电商套图">
-                </div>
-                <div class="admin-form__field">
-                  <label class="admin-form__label">分类</label>
-                  <input v-model.trim="skillForm.category" class="admin-input" type="text" placeholder="例如 commerce">
-                </div>
-                <div class="admin-form__field">
-                  <label class="admin-form__label">图标类型</label>
-                  <input v-model.trim="skillForm.iconType" class="admin-input" type="text" placeholder="例如 shop">
-                </div>
-                <div class="admin-form__field admin-form__field--full">
-                  <label class="admin-form__label">描述</label>
-                  <textarea v-model="skillForm.description" class="admin-textarea" placeholder="技能用途描述"></textarea>
+                <div class="admin-form__grid">
+                  <div class="admin-form__field">
+                    <label class="admin-form__label">技能标识</label>
+                    <input v-model.trim="skillForm.skillKey" class="admin-input" type="text" placeholder="例如 ecommerce-pack">
+                  </div>
+                  <div class="admin-form__field">
+                    <label class="admin-form__label">技能名称</label>
+                    <input v-model.trim="skillForm.label" class="admin-input" type="text" placeholder="例如 电商套图">
+                  </div>
+                  <div class="admin-form__field">
+                    <label class="admin-form__label">分类</label>
+                    <input v-model.trim="skillForm.category" class="admin-input" type="text" placeholder="例如 commerce">
+                  </div>
+                  <div class="admin-form__field">
+                    <label class="admin-form__label">图标类型</label>
+                    <input v-model.trim="skillForm.iconType" class="admin-input" type="text" placeholder="例如 shop">
+                  </div>
+                  <div class="admin-form__field admin-form__field--full">
+                    <label class="admin-form__label">描述</label>
+                    <textarea v-model="skillForm.description" class="admin-textarea" placeholder="技能用途描述"></textarea>
+                  </div>
                 </div>
               </div>
             </section>
@@ -161,61 +187,77 @@
                   {{ isSectionCollapsed('runtime') ? '展开' : '折叠' }}
                 </button>
               </div>
-              <div v-if="!isSectionCollapsed('runtime')" class="admin-form__grid">
-                <div class="admin-form__field">
-                  <label class="admin-form__label">默认厂商</label>
-                  <select v-model="skillForm.providerId" class="admin-input">
-                    <option value="">不绑定</option>
-                    <option v-for="provider in providerOptions" :key="provider.id" :value="provider.id">{{ provider.name }}</option>
-                  </select>
+              <div v-if="!isSectionCollapsed('runtime')" class="admin-skill-field-stack">
+                <div class="admin-skill-field-group">
+                  <div class="admin-skill-field-group__header">
+                    <h5>执行参数</h5>
+                    <span>运行模式、规划模型与工作流入口</span>
+                  </div>
+                  <div class="admin-form__grid">
+                    <div class="admin-form__field">
+                      <label class="admin-form__label">默认厂商</label>
+                      <select v-model="skillForm.providerId" class="admin-input">
+                        <option value="">不绑定</option>
+                        <option v-for="provider in providerOptions" :key="provider.id" :value="provider.id">{{ provider.name }}</option>
+                      </select>
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-form__label">界面模式</label>
+                      <select v-model="skillForm.uiMode" class="admin-input">
+                        <option value="PLAIN_CHAT">普通对话</option>
+                        <option value="WORKSPACE">工作台</option>
+                      </select>
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-form__label">执行模式</label>
+                      <select v-model="skillForm.executionMode" class="admin-input">
+                        <option value="CHAT_ONLY">仅对话</option>
+                        <option value="PLANNER_THEN_GENERATE">规划后生成</option>
+                        <option value="PLANNER_THEN_STORYBOARD">规划后分镜</option>
+                        <option value="DIRECT_GENERATE">直接生成</option>
+                      </select>
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-form__label">规划器模型类型</label>
+                      <select v-model="skillForm.plannerModelCategory" class="admin-input">
+                        <option value="CHAT">CHAT</option>
+                        <option value="IMAGE">IMAGE</option>
+                        <option value="VIDEO">VIDEO</option>
+                      </select>
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-form__label">默认工作流类型</label>
+                      <input v-model.trim="skillForm.workflowType" class="admin-input" type="text" placeholder="例如 text_to_image">
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-form__label">默认图片数量</label>
+                      <input v-model.number="skillForm.expectedImageCount" class="admin-input" type="number" min="0">
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-form__label">排序值</label>
+                      <input v-model.number="skillForm.sortOrder" class="admin-input" type="number" min="0">
+                    </div>
+                  </div>
                 </div>
-                <div class="admin-form__field">
-                  <label class="admin-form__label">界面模式</label>
-                  <select v-model="skillForm.uiMode" class="admin-input">
-                    <option value="PLAIN_CHAT">普通对话</option>
-                    <option value="WORKSPACE">工作台</option>
-                  </select>
-                </div>
-                <div class="admin-form__field">
-                  <label class="admin-form__label">执行模式</label>
-                  <select v-model="skillForm.executionMode" class="admin-input">
-                    <option value="CHAT_ONLY">仅对话</option>
-                    <option value="PLANNER_THEN_GENERATE">规划后生成</option>
-                    <option value="PLANNER_THEN_STORYBOARD">规划后分镜</option>
-                    <option value="DIRECT_GENERATE">直接生成</option>
-                  </select>
-                </div>
-                <div class="admin-form__field">
-                  <label class="admin-form__label">规划器模型类型</label>
-                  <select v-model="skillForm.plannerModelCategory" class="admin-input">
-                    <option value="CHAT">CHAT</option>
-                    <option value="IMAGE">IMAGE</option>
-                    <option value="VIDEO">VIDEO</option>
-                  </select>
-                </div>
-                <div class="admin-form__field">
-                  <label class="admin-form__label">默认工作流类型</label>
-                  <input v-model.trim="skillForm.workflowType" class="admin-input" type="text" placeholder="例如 text_to_image">
-                </div>
-                <div class="admin-form__field">
-                  <label class="admin-form__label">默认图片数量</label>
-                  <input v-model.number="skillForm.expectedImageCount" class="admin-input" type="number" min="0">
-                </div>
-                <div class="admin-form__field">
-                  <label class="admin-form__label">排序值</label>
-                  <input v-model.number="skillForm.sortOrder" class="admin-input" type="number" min="0">
-                </div>
-                <div class="admin-form__field">
-                  <label class="admin-form__label">运行时技能键</label>
-                  <input v-model.trim="skillForm.workspaceSkillKey" class="admin-input" type="text" placeholder="例如 image-poster">
-                </div>
-                <div class="admin-form__field admin-form__field--full">
-                  <label class="admin-form__label">依赖技能键（逗号分隔）</label>
-                  <input v-model.trim="skillForm.dependencySkillKeysText" class="admin-input" type="text" placeholder="例如 image-main,image-style">
-                </div>
-                <div class="admin-form__field admin-form__field--full">
-                  <label class="admin-form__label">扩展配置 JSON</label>
-                  <textarea v-model="skillForm.configJsonText" class="admin-textarea" placeholder='例如 {"result_parser":"text_to_image_default"}'></textarea>
+                <div class="admin-skill-field-group">
+                  <div class="admin-skill-field-group__header">
+                    <h5>运行时扩展</h5>
+                    <span>技能键、依赖链与扩展配置</span>
+                  </div>
+                  <div class="admin-form__grid">
+                    <div class="admin-form__field">
+                      <label class="admin-form__label">运行时技能键</label>
+                      <input v-model.trim="skillForm.workspaceSkillKey" class="admin-input" type="text" placeholder="例如 image-poster">
+                    </div>
+                    <div class="admin-form__field admin-form__field--full">
+                      <label class="admin-form__label">依赖技能键（逗号分隔）</label>
+                      <input v-model.trim="skillForm.dependencySkillKeysText" class="admin-input" type="text" placeholder="例如 image-main,image-style">
+                    </div>
+                    <div class="admin-form__field admin-form__field--full">
+                      <label class="admin-form__label">扩展配置 JSON</label>
+                      <textarea v-model="skillForm.configJsonText" class="admin-textarea" placeholder='例如 {"result_parser":"text_to_image_default"}'></textarea>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
@@ -810,6 +852,15 @@ const executionModeOptions = computed(() => {
 const categoryOptions = computed(() => {
   return Array.from(new Set(skills.value.map(item => item.category).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'zh-CN'))
 })
+const activeFilterCount = computed(() => {
+  let count = 0
+  if (keyword.value.trim()) count += 1
+  if (statusFilter.value !== 'ALL') count += 1
+  if (uiModeFilter.value !== 'ALL') count += 1
+  if (executionModeFilter.value !== 'ALL') count += 1
+  if (categoryFilter.value !== 'ALL') count += 1
+  return count
+})
 const visibleSectionNavItems = computed(() => {
   const currentTab = editorTabs.find(item => item.key === activeEditorTab.value)
   if (!currentTab) {
@@ -984,6 +1035,14 @@ const getTabCountText = (tabKey: SkillEditorTabKey) => {
     default:
       return ''
   }
+}
+
+const resetListFilters = () => {
+  keyword.value = ''
+  statusFilter.value = 'ALL'
+  uiModeFilter.value = 'ALL'
+  executionModeFilter.value = 'ALL'
+  categoryFilter.value = 'ALL'
 }
 
 const resetForm = () => {
@@ -1373,6 +1432,49 @@ onMounted(async () => {
   font-size: 12px;
 }
 
+.admin-skill-toolbar {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  padding: 18px 20px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 18px;
+  background: var(--bg-surface);
+  box-shadow: 0 8px 30px rgba(15, 15, 18, 0.04);
+}
+
+.admin-skill-toolbar__filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.admin-skill-toolbar__search-wrap {
+  position: relative;
+}
+
+.admin-skill-toolbar__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-skill-toolbar__summary {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.admin-skill-toolbar__summary em {
+  color: var(--text-tertiary);
+  font-style: normal;
+}
+
+.admin-skill-toolbar__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .admin-dialog--skill-form {
   width: min(1120px, calc(100vw - 40px));
   max-height: calc(100vh - 32px);
@@ -1393,31 +1495,38 @@ onMounted(async () => {
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 18px;
+  padding: 8px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg-surface) 86%, var(--bg-block-secondary-default));
 }
 
 .admin-skill-tabs__item {
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   min-height: 40px;
   padding: 0 14px;
-  border: 1px solid var(--line-divider, #00000014);
-  border-radius: 999px;
-  background: var(--bg-block-secondary-default);
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background-color .2s ease, color .2s ease, border-color .2s ease, transform .2s ease;
+  transition: background-color .2s ease, color .2s ease, border-color .2s ease, transform .2s ease, box-shadow .2s ease;
 }
 
 .admin-skill-tabs__item:hover {
+  background: var(--bg-block-secondary-default);
   color: var(--text-primary);
   transform: translateY(-1px);
 }
 
 .admin-skill-tabs__item.is-active {
   border-color: color-mix(in srgb, var(--brand-main-default) 30%, transparent);
-  background: color-mix(in srgb, var(--brand-main-default) 14%, transparent);
+  background: color-mix(in srgb, var(--brand-main-default) 16%, transparent);
   color: var(--brand-main-default);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-main-default) 14%, transparent);
 }
 
 .admin-skill-tabs__item span {
@@ -1428,6 +1537,39 @@ onMounted(async () => {
 .admin-skill-tabs__item small {
   color: inherit;
   opacity: .78;
+  font-size: 12px;
+}
+
+.admin-skill-field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.admin-skill-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.admin-skill-field-group__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--line-divider, #00000014);
+}
+
+.admin-skill-field-group__header h5 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-skill-field-group__header span {
+  color: var(--text-tertiary);
   font-size: 12px;
 }
 
@@ -1859,6 +2001,10 @@ onMounted(async () => {
 }
 
 @media (max-width: 1100px) {
+  .admin-skill-toolbar__filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .admin-skill-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1869,6 +2015,16 @@ onMounted(async () => {
 }
 
 @media (max-width: 768px) {
+  .admin-skill-toolbar {
+    padding: 16px;
+  }
+
+  .admin-skill-toolbar__filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-skill-toolbar__meta,
+  .admin-skill-toolbar__actions,
   .admin-skill-tabs {
     flex-direction: column;
   }
@@ -1878,7 +2034,8 @@ onMounted(async () => {
   }
 
   .admin-skill-panel__header,
-  .admin-skill-section__header {
+  .admin-skill-section__header,
+  .admin-skill-field-group__header {
     flex-direction: column;
     align-items: stretch;
   }

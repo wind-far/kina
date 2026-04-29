@@ -66,21 +66,24 @@
                         <div class="priceListItemContent-f8yA2T">
                           <div class="priceTopWrapper-PO1sPk">
                             <div class="priceTop-FYHAcm">
-                              <div class="priceTitle-xo_cbl">
-                                <div class="levelName-kcprWP">{{ getPlanLevelName(plan) }}</div>
+                              <div class="priceTitle-xo_cbl membershipTitleRow-canana">
+                                <div class="membershipTitleMain-canana">
+                                  <span v-if="!isZeroPricePlan(plan)" class="membershipSpark-canana">✦</span>
+                                  <div class="levelName-kcprWP">{{ getPlanLevelName(plan) }}</div>
+                                </div>
                                 <div v-if="isFeaturedPlan(plan, planIndex)" class="bestPlan-fJd80q">最划算</div>
                               </div>
-                              <div class="priceContainer-EtMXeH">
+                              <div class="priceContainer-EtMXeH membershipPriceRow-canana">
                                 <div
-                                  class="priceTips-dLW7oc priceTipsWithFixedCurrencySymbolSize-XQdawj"
+                                  class="priceTips-dLW7oc priceTipsWithFixedCurrencySymbolSize-XQdawj membershipPriceMain-canana"
                                   :class="{ 'priceTipsFree-T3GkW0': isZeroPricePlan(plan) }"
                                 >
                                   <span>¥</span>
                                   <span>{{ formatPriceInteger(plan.salesPrice) }}</span>
                                 </div>
-                                <div class="cycleTips-r_gMtv">{{ getPlanDurationText(plan) }}</div>
+                                <div class="cycleTips-r_gMtv membershipCycleTips-canana">{{ getPlanPriceUnitText(plan) }}</div>
                               </div>
-                              <div class="priceDesc-yOCFse">{{ getMembershipDesc(plan) }}</div>
+                              <div class="priceDesc-yOCFse membershipSubDesc-canana">{{ getMembershipDesc(plan) }}</div>
                             </div>
                           </div>
 
@@ -104,7 +107,7 @@
                                 :disabled="submitting || isZeroPricePlan(plan)"
                                 @click="handlePurchaseMembership(String(plan.id))"
                               >
-                                {{ getPlanButtonText(plan) }}
+                                {{ getPlanButtonText(plan, planIndex) }}
                               </button>
                             </div>
                           </div>
@@ -524,6 +527,25 @@ const getPlanDurationText = (plan: Record<string, any>) => {
   if (unit === 'DAY') return `${value}天`
   return `${value}个月`
 }
+
+const getPlanPriceUnitText = (plan: Record<string, any>) => {
+  if (isZeroPricePlan(plan)) {
+    return '每月'
+  }
+  const durationType = String(plan.durationType || '').toUpperCase()
+  const unit = String(plan.durationUnit || 'MONTH').toUpperCase()
+  const value = Number(plan.durationValue || 1)
+  if (durationType === 'YEAR' || unit === 'YEAR' || (unit === 'MONTH' && value >= 12)) {
+    return '每年'
+  }
+  if (durationType === 'MONTH' || unit === 'MONTH') {
+    return '每月'
+  }
+  if (unit === 'DAY') {
+    return '每天'
+  }
+  return getPlanDurationText(plan)
+}
 const isActiveMembershipPlan = (plan: Record<string, any>) => Boolean(activeSubscription.value?.levelId) && String(activeSubscription.value?.levelId) === String(plan.levelId)
 const isZeroPricePlan = (plan: Record<string, any>) => Number(plan.salesPrice || 0) <= 0
 
@@ -544,14 +566,18 @@ const isFeaturedRecharge = (item: Record<string, any>, itemIndex: number) => {
   return Number(item.bonusPoints || 0) === maxBonus && itemIndex === rechargePackages.value.findIndex((current) => Number(current.bonusPoints || 0) === maxBonus)
 }
 
-const getPlanButtonText = (plan: Record<string, any>) => {
+const getPlanButtonText = (plan: Record<string, any>, planIndex: number) => {
   if (isZeroPricePlan(plan)) {
     return '当前计划'
   }
+  const priceText = formatPrice(plan.salesPrice)
   if (isActiveMembershipPlan(plan)) {
-    return `续费${getPlanLevelName(plan)}`
+    return `${priceText} 立即续费`
   }
-  return `开通${getPlanLevelName(plan)}`
+  if (isFeaturedPlan(plan, planIndex)) {
+    return `${priceText} ${String(plan.label || '立即开通')}`
+  }
+  return `${priceText} ${String(plan.label || '立即开通')}`
 }
 
 // 按参考稿的主按钮、普通按钮、禁用按钮三种状态映射。
@@ -578,8 +604,13 @@ const getPlanBenefits = (plan: Record<string, any>) => {
 }
 
 const getRechargeBenefits = (item: Record<string, any>) => {
-  const benefits = getBenefits(item.benefitsJson)
-  return benefits.length ? benefits : ['充值后即时到账', '支持多充多送', '可用于图片与视频生成']
+  // 充值套餐的底部权益文案优先读取后台配置的 metaJson.benefits，未配置时再回退默认文案。
+  const metaBenefits = getBenefits(item.metaJson)
+  if (metaBenefits.length) {
+    return metaBenefits
+  }
+  const fallbackBenefits = getBenefits(item.benefitsJson)
+  return fallbackBenefits.length ? fallbackBenefits : ['充值后即时到账', '支持多充多送', '可用于图片与视频生成']
 }
 
 const getRewardBenefits = (rule: Record<string, any>) => {
@@ -587,12 +618,20 @@ const getRewardBenefits = (rule: Record<string, any>) => {
   return benefits.length ? benefits : ['每日登录可领取', '奖励自动发放到账户', '支持后台灵活配置规则']
 }
 
-const getMembershipDesc = (plan: Record<string, any>) => String(plan.name || '解锁更多会员权益')
-const getMembershipCreditDesc = (plan: Record<string, any>) => {
-  if (plan.originalPrice !== null && plan.originalPrice !== undefined && Number(plan.originalPrice) > Number(plan.salesPrice || 0)) {
-    return `原价 ${formatPrice(plan.originalPrice)}`
+const getMembershipDesc = (plan: Record<string, any>) => {
+  if (isZeroPricePlan(plan)) {
+    return '永久'
   }
-  return '解锁更多会员权益'
+  return String(plan.description || plan.name || '解锁更多会员权益')
+}
+const getMembershipCreditDesc = (plan: Record<string, any>) => {
+  if (isZeroPricePlan(plan)) {
+    return '当前默认权益立即生效'
+  }
+  if (plan.originalPrice !== null && plan.originalPrice !== undefined && Number(plan.originalPrice) > Number(plan.salesPrice || 0)) {
+    return `首购 ${formatPrice(plan.salesPrice)} · 原价 ${formatPrice(plan.originalPrice)}`
+  }
+  return '开通后权益立即生效'
 }
 
 const getRechargeDesc = (item: Record<string, any>) => String(item.label || item.description || '多充多送，立即到账')

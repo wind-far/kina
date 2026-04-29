@@ -24,7 +24,7 @@
                   </div>
                 </div>
                 <div class="rightButtonContainer-CRWw92">
-                  <button class="creditBtn-Todove" type="button" @click="switchTab('checkin')">积分详情</button>
+                  <button class="creditBtn-Todove" type="button" @click="openPointsDetailModal">积分详情</button>
                 </div>
               </div>
 
@@ -357,10 +357,17 @@
       </div>
     </div>
   </Teleport>
+  <PointsDetailModal
+    v-model:visible="pointsDetailVisible"
+    :balance="Number(pointsBalance || 0)"
+    :available="Number(pointsBalance || 0)"
+    :logs="pointLogs"
+  />
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import PointsDetailModal from './PointsDetailModal.vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
@@ -439,6 +446,8 @@ const primaryRewardRule = computed(() => rewardDisplayRules.value[0] || {
 })
 const secondaryRewardRules = computed(() => rewardDisplayRules.value.slice(1))
 const currentCheckinRecord = computed(() => marketingCenterStore.overview.value?.checkin.currentRecord as Record<string, any> | null)
+const pointLogs = computed(() => (marketingCenterStore.overview.value?.points.logs || []) as Array<Record<string, any>>)
+const pointsDetailVisible = ref(false)
 
 const redeemDisplayRecords = computed(() => cardRedeemRecords.value.slice(0, 3))
 
@@ -472,7 +481,13 @@ const heroDescription = computed(() => {
 })
 
 const closeModal = () => {
+  pointsDetailVisible.value = false
   emit('update:visible', false)
+}
+
+const openPointsDetailModal = () => {
+  if (!ensureLoggedInForAction()) return
+  pointsDetailVisible.value = true
 }
 
 const switchTab = (tab: MarketingModalTab) => {
@@ -721,6 +736,9 @@ const setScrollLock = (locked: boolean) => {
 
 watch(() => props.visible, (visible) => {
   setScrollLock(visible)
+  if (!visible) {
+    pointsDetailVisible.value = false
+  }
   if (visible && authStore.isLoggedIn.value) {
     void marketingCenterStore.loadOverview(true)
   }

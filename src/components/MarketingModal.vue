@@ -191,9 +191,9 @@
                             <div class="priceTop-FYHAcm checkinDashboardHead-canana">
                               <div class="priceTitle-xo_cbl">
                                 <div class="levelName-kcprWP">{{ getRewardRuleName(primaryRewardRule) }}</div>
-                                <div class="bestPlan-fJd80q">每日签到</div>
+                                <div class="bestPlan-fJd80q">限时可领</div>
                               </div>
-                              <div class="priceDesc-yOCFse checkinDashboardDesc-canana">{{ hasCheckedInToday ? '今日签到已完成，明天继续来领取积分奖励。' : '每天签到一次即可领取积分，奖励实时到账。' }}</div>
+                              <div class="priceDesc-yOCFse checkinDashboardDesc-canana">{{ hasCheckedInToday ? '今日福利已到账，明日 0 点后可继续领取签到积分。' : '每日签到可领专属积分，连续参与更有日常活跃氛围。' }}</div>
                             </div>
                           </div>
 
@@ -202,7 +202,7 @@
                               <div class="priceTips-dLW7oc priceTipsWithFixedCurrencySymbolSize-XQdawj">
                                 <span>{{ Number(primaryRewardRule.rewardPoints || 0) }}</span>
                               </div>
-                              <div class="cycleTips-r_gMtv">今日可领积分</div>
+                              <div class="cycleTips-r_gMtv">今日签到礼包</div>
                             </div>
                             <div class="checkinDashboardMeta-canana">
                               <div class="creditsContent-piPVgX">
@@ -211,7 +211,7 @@
                                   <span class="creditsNumber-em42d3">{{ Number(pointsBalance || 0) }}</span>
                                 </div>
                               </div>
-                              <div class="creditsDesc-irHa5p">{{ currentCheckinRecord ? `最近签到：${formatDate(currentCheckinRecord.createdAt || currentCheckinRecord.checkinAt)}` : '今日尚未签到，点击右侧按钮立即领取。' }}</div>
+                              <div class="creditsDesc-irHa5p">{{ currentCheckinRecord ? `最近领取：${formatDate(currentCheckinRecord.createdAt || currentCheckinRecord.checkinAt)}` : '今日福利待领取，点击右侧按钮立即到账。' }}</div>
                             </div>
                             <div class="checkinDashboardAction-canana">
                               <button
@@ -221,9 +221,9 @@
                                 :disabled="submitting || hasCheckedInToday"
                                 @click="handleCheckin"
                               >
-                                {{ hasCheckedInToday ? '今日已签到' : '立即签到' }}
+                                {{ hasCheckedInToday ? '今日已领取' : '立即领取' }}
                               </button>
-                              <div class="creditsDesc-irHa5p">{{ hasCheckedInToday ? '奖励已到账，明天再来。' : '签到成功后将自动刷新积分余额。' }}</div>
+                              <div class="creditsDesc-irHa5p">{{ hasCheckedInToday ? '今日奖励已发放，明天记得再来打卡。' : '领取成功后积分将实时发放到账户。' }}</div>
                             </div>
                           </div>
 
@@ -442,19 +442,25 @@ const rechargeDisplayPackages = computed(() => rechargePackages.value.length ? r
   benefitsJson: ['后台暂未配置充值套餐', '支持多充多送策略', '配置后自动同步展示'],
 }])
 
-const rewardDisplayRules = computed(() => rewardRules.value.length ? rewardRules.value : [{
+// 签到页只展示签到类规则，避免把登录奖励、注册奖励误展示到当前面板。
+const checkinRewardRules = computed(() => rewardRules.value.filter((rule) => {
+  const triggerType = String(rule.triggerType || rule.code || '').toUpperCase()
+  return triggerType.includes('CHECKIN')
+}))
+
+const rewardDisplayRules = computed(() => checkinRewardRules.value.length ? checkinRewardRules.value : [{
   id: 'placeholder-reward',
-  name: '每日签到',
+  name: '每日签到福利',
   rewardPoints: 0,
-  description: '后台暂未配置签到奖励',
-  benefitsJson: ['支持每日签到送积分', '支持注册奖励与登录奖励', '配置后自动同步展示'],
+  description: '后台暂未配置签到活动规则',
+  benefitsJson: ['每日打卡即可领取', '奖励实时发放到账户', '支持后台灵活配置活动规则'],
 }])
 const primaryRewardRule = computed(() => rewardDisplayRules.value[0] || {
   id: 'placeholder-reward',
-  name: '每日签到',
+  name: '每日签到福利',
   rewardPoints: 0,
-  description: '后台暂未配置签到奖励',
-  benefitsJson: ['支持每日签到送积分', '支持注册奖励与登录奖励', '配置后自动同步展示'],
+  description: '后台暂未配置签到活动规则',
+  benefitsJson: ['每日打卡即可领取', '奖励实时发放到账户', '支持后台灵活配置活动规则'],
 })
 const secondaryRewardRules = computed(() => rewardDisplayRules.value.slice(1))
 const currentCheckinRecord = computed(() => marketingCenterStore.overview.value?.checkin.currentRecord as Record<string, any> | null)
@@ -646,7 +652,7 @@ const getRechargeBenefits = (item: Record<string, any>) => {
 
 const getRewardBenefits = (rule: Record<string, any>) => {
   const benefits = getBenefits(rule.benefitsJson)
-  return benefits.length ? benefits : ['每日登录可领取', '奖励自动发放到账户', '支持后台灵活配置规则']
+  return benefits.length ? benefits : ['每日打卡即可领取', '奖励实时发放到账户', '支持后台灵活配置活动规则']
 }
 
 const getMembershipDesc = (plan: Record<string, any>) => {
@@ -674,7 +680,7 @@ const getRechargeCreditDesc = (item: Record<string, any>) => {
 }
 
 const getRewardRuleName = (rule: Record<string, any>) => String(rule.name || rule.code || '奖励规则')
-const getRewardRuleMeta = (rule: Record<string, any>) => `${Number(rule.rewardPoints || 0)} 积分 · ${String(rule.description || '') || '按后台规则自动发放'}`
+const getRewardRuleMeta = (rule: Record<string, any>) => `${Number(rule.rewardPoints || 0)} 积分 · ${String(rule.description || '') || '活动奖励按配置自动发放'}`
 
 const getRedeemRecordTitle = (record: Record<string, any>) => {
   if (record.rewardType === 'MEMBERSHIP') {

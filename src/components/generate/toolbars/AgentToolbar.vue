@@ -7,6 +7,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import PreferencePanel from '../common/PreferencePanel.vue'
 import SelectPopup from '../common/SelectPopup.vue'
 import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
+import { listEnabledAgentSkills, loadPublicSkillCatalog } from '@/config/agentSkills'
 import { getAgentModel, setAgentModel } from '@/api/agent'
 
 // 弹出方向类型
@@ -45,14 +46,7 @@ const inspirationSearchEnabled = ref(true)
 const creativeDesignEnabled = ref(true)
 
 // 技能选择
-const skillOptions: AgentSkillOption[] = [
-  { value: 'general', label: '通用助手', description: '适合日常问答、创意发想和通用生成任务' },
-  { value: 'story-short', label: '剧情短片', description: '帮你自动生成故事大纲、分镜脚本并产出短片' },
-  { value: 'marketing-video', label: '营销视频', description: '一句话帮你生成营销推广视频' },
-  { value: 'ecommerce-pack', label: '电商套图', description: '生成风格统一的商品全套视觉素材，适用于各大电商平台' },
-  { value: 'poster-design', label: '海报设计', description: '生成更有创意的海报内容，擅长营销场景和节日热点' },
-  { value: 'brand-design', label: '品牌设计', description: '根据公司名称、业务与客群，生成品牌 Logo 与视觉方案' }
-]
+const skillOptions = ref<AgentSkillOption[]>(listEnabledAgentSkills())
 const readStoredAgentToolbarState = () => {
   if (typeof window === 'undefined') {
     return null
@@ -71,15 +65,15 @@ const isSkillSelectOpen = ref(false)
 const skillTriggerRef = ref<HTMLElement | null>(null)
 
 const currentSkillLabel = computed(() => {
-  const skill = skillOptions.find(option => option.value === currentSkill.value)
+  const skill = skillOptions.value.find(option => option.value === currentSkill.value)
   return skill?.label || '使用技能'
 })
 
 const visibleSkillOptions = computed(() => {
   if (currentSkill.value === 'general') {
-    return skillOptions.filter(option => option.value !== 'general')
+    return skillOptions.value.filter(option => option.value !== 'general')
   }
-  return skillOptions
+  return skillOptions.value
 })
 
 // 模型选择
@@ -109,6 +103,12 @@ watch(
 
 onMounted(() => {
   void loadPublicModelCatalog()
+  void loadPublicSkillCatalog().then((skills) => {
+    skillOptions.value = listEnabledAgentSkills()
+    if (!skills.some(item => item.skillKey === currentSkill.value)) {
+      currentSkill.value = skills[0]?.skillKey || 'general'
+    }
+  })
 })
 
 watch(

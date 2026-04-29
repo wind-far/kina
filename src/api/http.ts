@@ -15,9 +15,17 @@ const readRuntimeApiBaseUrl = () => {
   return String(window.__CANANA_RUNTIME_CONFIG__?.VITE_API_BASE_URL || '').trim()
 }
 
+const readViteApiBaseUrl = () => {
+  const viteEnv = typeof import.meta !== 'undefined'
+    ? (import.meta as ImportMeta & { env?: Record<string, unknown> }).env
+    : undefined
+
+  return String(viteEnv?.VITE_API_BASE_URL || '').trim()
+}
+
 // 统一的前端后端接口基址。
 export const API_BASE_URL = readRuntimeApiBaseUrl().replace(/\/+$/, '')
-  || String(import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '')
+  || readViteApiBaseUrl().replace(/\/+$/, '')
 
 // 将相对接口路径拼成可请求的完整地址。
 export const buildApiUrl = (path: string) => {

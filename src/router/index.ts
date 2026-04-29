@@ -14,6 +14,7 @@ const AdminAssets = () => import('../views/admin/assets/AdminAssets.vue')
 const AdminGenerations = () => import('../views/admin/generations/AdminGenerations.vue')
 const AdminMarketing = () => import('../views/admin/marketing/AdminMarketing.vue')
 const AdminPublish = () => import('../views/admin/publish/AdminPublish.vue')
+const AdminSkills = () => import('../views/admin/skills/AdminSkills.vue')
 const AdminProviders = () => import('../views/admin/providers/AdminProviders.vue')
 const AdminStorage = () => import('../views/admin/storage/AdminStorage.vue')
 const AdminSystem = () => import('../views/admin/system/AdminSystem.vue')
@@ -124,6 +125,15 @@ const routes: RouteRecordRaw[] = [
         path: 'marketing',
         name: 'AdminMarketing',
         component: AdminMarketing,
+        meta: {
+          requiresAuth: true,
+          requiresAdmin: true,
+        },
+      },
+      {
+        path: 'skills',
+        name: 'AdminSkills',
+        component: AdminSkills,
         meta: {
           requiresAuth: true,
           requiresAdmin: true,

@@ -1,4 +1,5 @@
 import { buildAgentWorkflowStrategy, getAgentSkillConfig } from '../../src/config/agentSkills'
+import { getWorkspaceSkillRuntimeConfig, type SkillPlanTemplateItem } from '../skill-config/service'
 
 export interface AgentWorkspaceTaskPayload {
   prompt: string
@@ -15,6 +16,13 @@ export interface AgentWorkspacePlan {
   workflowParams: Record<string, unknown>
   planItems: string[]
   imageTasks: AgentWorkspacePlannedImageTask[]
+}
+
+export interface AgentWorkspaceSkillRuntimeMeta {
+  skill: string
+  skillLabel: string
+  workspaceSkillKey: string
+  dependencySkillKeys: string[]
 }
 
 export const workspaceTimingProfile = {
@@ -44,6 +52,42 @@ const workflowTitleMap: Record<string, string> = {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+// 海报类技能底层工作台技能键兜底。
+const workspaceSkillKeyMap: Record<string, string> = {
+  'poster-design': 'image-poster',
+}
+
+// 海报类技能依赖链兜底。
+const workspaceDependencySkillKeyMap: Record<string, string[]> = {
+  'poster-design': ['image-main'],
+  'image-poster': ['image-main'],
+}
+
+const interpolateTemplateString = (template: string, variables: Record<string, string>) => {
+  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_matched, key: string) => {
+    return variables[key] ?? ''
+  })
+}
+
+const renderTemplateValue = (value: unknown, variables: Record<string, string>): unknown => {
+  if (typeof value === 'string') {
+    return interpolateTemplateString(value, variables)
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item => renderTemplateValue(item, variables))
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>).reduce<Record<string, unknown>>((result, [key, item]) => {
+      result[key] = renderTemplateValue(item, variables)
+      return result
+    }, {})
+  }
+
+  return value
+}
+
 export const assertWorkspaceNotAborted = (signal: AbortSignal) => {
   if (signal.aborted) {
     throw new AgentWorkspaceStoppedError()
@@ -64,23 +108,6 @@ export const sleepWithWorkspaceAbort = async (signal: AbortSignal, ms: number) =
 export const getWorkspaceRandomDelay = ([min, max]: readonly [number, number]) => {
   if (min >= max) return min
   return Math.round(min + Math.random() * (max - min))
-}
-
-const workspaceSkillKeyMap: Record<string, string> = {
-  'poster-design': 'image-poster',
-}
-
-const workspaceDependencySkillKeyMap: Record<string, string> = {
-  'poster-design': 'image-main',
-  'image-poster': 'image-main',
-}
-
-export const getWorkspaceSkillKey = (skill: string) => {
-  return workspaceSkillKeyMap[skill] || skill || 'general'
-}
-
-export const getWorkspaceDependencySkillLabel = (skill: string) => {
-  return workspaceDependencySkillKeyMap[skill] || ''
 }
 
 const inferStoryboardShots = (prompt: string) => {
@@ -129,7 +156,11 @@ const analyzeWorkflowParams = (skill: string, prompt: string) => {
   }
 }
 
-const getWorkflowExecutionLabel = (params: Record<string, unknown>) => {
+const getWorkflowExecutionLabel = (params: Record<string, unknown>, fallbackLabel = '') => {
+  if (fallbackLabel) {
+    return fallbackLabel
+  }
+
   const workflowType = String(params.workflow_type || 'text_to_image')
   return workflowTitleMap[workflowType] || '创作任务'
 }
@@ -225,6 +256,49 @@ const buildImageTasksFromWorkflow = (skill: string, workflowParams: Record<strin
   return buildGenericImageTasks(basePrompt)
 }
 
+const buildImageTasksFromPlanTemplates = (
+  planTemplates: SkillPlanTemplateItem[],
+  workflowParams: Record<string, unknown>,
+  prompt: string,
+) => {
+  const basePrompt = String(
+    workflowParams.image_prompt
+    || workflowParams.video_prompt
+    || workflowParams.prompt
+    || prompt,
+  ).trim()
+
+  const variables = {
+    input: prompt.trim(),
+    base_prompt: basePrompt,
+    basePrompt,
+  }
+
+  return planTemplates.map(item => ({
+    label: interpolateTemplateString(item.titleTemplate, variables).trim() || item.titleTemplate,
+    promptText: interpolateTemplateString(item.promptTemplate, variables).trim(),
+  })).filter(item => item.label && item.promptText)
+}
+
+const buildPlanFromRuntimeConfig = (input: {
+  skill: string
+  prompt: string
+  workflowLabel: string
+  workflowParams: Record<string, unknown>
+  planTemplates: SkillPlanTemplateItem[]
+}) => {
+  const imageTasks = input.planTemplates.length
+    ? buildImageTasksFromPlanTemplates(input.planTemplates, input.workflowParams, input.prompt)
+    : buildImageTasksFromWorkflow(input.skill, input.workflowParams)
+
+  return {
+    workflowLabel: input.workflowLabel,
+    workflowParams: input.workflowParams,
+    planItems: imageTasks.map(item => item.label),
+    imageTasks,
+  }
+}
+
 export const buildWorkspaceCompletionSummary = (options: {
   title?: string
   prompt: string
@@ -245,21 +319,63 @@ export const buildWorkspaceCompletionSummary = (options: {
   return `${subject}任务已完成。`
 }
 
-export const planAgentWorkspace = (payload: AgentWorkspaceTaskPayload): AgentWorkspacePlan => {
-  const skill = String(payload.skill || '').trim() || 'general'
-  const workflowParams = analyzeWorkflowParams(skill, payload.prompt)
-  const workflowLabel = getWorkflowExecutionLabel(workflowParams)
-  const imageTasks = buildImageTasksFromWorkflow(skill, workflowParams)
-  const planItems = imageTasks.map(item => item.label)
+// 获取工作台执行所需的技能运行时元信息。
+export const getAgentWorkspaceSkillMeta = async (skill: string): Promise<AgentWorkspaceSkillRuntimeMeta> => {
+  const normalizedSkill = String(skill || '').trim() || 'general'
+  const runtimeConfig = await getWorkspaceSkillRuntimeConfig(normalizedSkill)
+  const fallbackConfig = getAgentSkillConfig(normalizedSkill)
 
+  return {
+    skill: normalizedSkill,
+    skillLabel: runtimeConfig?.label || fallbackConfig.label,
+    workspaceSkillKey: runtimeConfig?.workspaceSkillKey
+      || workspaceSkillKeyMap[normalizedSkill]
+      || normalizedSkill,
+    dependencySkillKeys: runtimeConfig?.dependencySkillKeys?.length
+      ? runtimeConfig.dependencySkillKeys
+      : (workspaceDependencySkillKeyMap[normalizedSkill] || []),
+  }
+}
+
+export const planAgentWorkspace = async (payload: AgentWorkspaceTaskPayload): Promise<AgentWorkspacePlan> => {
+  const skill = String(payload.skill || '').trim() || 'general'
+  const runtimeConfig = await getWorkspaceSkillRuntimeConfig(skill)
+  const strategyParams = analyzeWorkflowParams(skill, payload.prompt)
+
+  const variables = {
+    input: payload.prompt.trim(),
+    prompt: payload.prompt.trim(),
+  }
+
+  const workflowParams = runtimeConfig?.workflowTemplate?.workflowParamsTemplateJson
+    ? renderTemplateValue(runtimeConfig.workflowTemplate.workflowParamsTemplateJson, variables) as Record<string, unknown>
+    : strategyParams
+
+  const workflowLabel = getWorkflowExecutionLabel(
+    workflowParams,
+    runtimeConfig?.workflowTemplate?.workflowLabel || '',
+  )
+
+  if (runtimeConfig) {
+    return buildPlanFromRuntimeConfig({
+      skill,
+      prompt: payload.prompt,
+      workflowLabel,
+      workflowParams,
+      planTemplates: runtimeConfig.planTemplates,
+    })
+  }
+
+  const imageTasks = buildImageTasksFromWorkflow(skill, workflowParams)
   return {
     workflowLabel,
     workflowParams,
-    planItems,
+    planItems: imageTasks.map(item => item.label),
     imageTasks,
   }
 }
 
-export const getAgentWorkspaceSkillLabel = (skill: string) => {
-  return getAgentSkillConfig(skill as any).label
+export const getAgentWorkspaceSkillLabel = async (skill: string) => {
+  const meta = await getAgentWorkspaceSkillMeta(skill)
+  return meta.skillLabel
 }

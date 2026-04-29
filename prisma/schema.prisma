@@ -215,6 +215,7 @@ model AiProvider {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
   models             AiModel[]
+  skills             AiSkill[]
 
   @@index([isEnabled, sortOrder], map: "idx_ai_providers_enabled_sort")
   @@map("ai_providers")
@@ -242,6 +243,130 @@ model AiModel {
   @@index([providerId, category, sortOrder], map: "idx_ai_models_provider_category_sort")
   @@index([isEnabled, category], map: "idx_ai_models_enabled_category")
   @@map("ai_models")
+}
+
+/// 技能配置主表。
+/// 用于统一管理前台技能、工作台模式、执行模式和规划器行为。
+model AiSkill {
+  id                   String                      @id @default(cuid()) @db.VarChar(36)
+  providerId           String?                     @map("provider_id") @db.VarChar(36)
+  skillKey             String                      @unique(map: "uk_ai_skills_skill_key") @map("skill_key") @db.VarChar(100)
+  label                String                      @db.VarChar(100)
+  description          String?                     @db.VarChar(255)
+  iconType             String?                     @map("icon_type") @db.VarChar(50)
+  category             String?                     @db.VarChar(50)
+  uiMode               AiSkillUiMode               @default(WORKSPACE) @map("ui_mode")
+  executionMode        AiSkillExecutionMode        @default(PLANNER_THEN_GENERATE) @map("execution_mode")
+  workflowType         String?                     @map("workflow_type") @db.VarChar(50)
+  plannerModelCategory AiSkillPlannerModelCategory @default(CHAT) @map("planner_model_category")
+  expectedImageCount   Int                         @default(4) @map("expected_image_count")
+  isEnabled            Boolean                     @default(true) @map("is_enabled")
+  isBuiltIn            Boolean                     @default(false) @map("is_built_in")
+  sortOrder            Int                         @default(0) @map("sort_order")
+  configJson           Json?                       @map("config_json")
+  createdAt            DateTime                    @default(now()) @map("created_at")
+  updatedAt            DateTime                    @updatedAt @map("updated_at")
+  provider             AiProvider?                 @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  prompts              AiSkillPromptTemplate[]
+  dependencies         AiSkillDependency[]         @relation("AiSkillDependencies")
+  dependedBy           AiSkillDependency[]         @relation("AiSkillDependents")
+  workflowTemplates    AiSkillWorkflowTemplate[]
+  planTemplates        AiSkillPlanTemplate[]
+  stageTemplates       AiSkillStageTemplate[]
+
+  @@index([providerId], map: "idx_ai_skills_provider_id")
+  @@index([isEnabled, sortOrder], map: "idx_ai_skills_enabled_sort")
+  @@map("ai_skills")
+}
+
+/// 技能依赖关系表。
+/// 用于定义主技能运行前必须先加载的依赖技能链。
+model AiSkillDependency {
+  id                String   @id @default(cuid()) @db.VarChar(36)
+  skillId           String   @map("skill_id") @db.VarChar(36)
+  dependencySkillId String   @map("dependency_skill_id") @db.VarChar(36)
+  sortOrder         Int      @default(0) @map("sort_order")
+  createdAt         DateTime @default(now()) @map("created_at")
+  skill             AiSkill  @relation("AiSkillDependencies", fields: [skillId], references: [id], onDelete: Cascade)
+  dependencySkill   AiSkill  @relation("AiSkillDependents", fields: [dependencySkillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, dependencySkillId], map: "uk_ai_skill_dependencies_skill_dependency")
+  @@index([skillId, sortOrder], map: "idx_ai_skill_dependencies_skill_sort")
+  @@map("ai_skill_dependencies")
+}
+
+/// 技能提示词模板表。
+/// 区分通用对话提示词与规划器提示词，便于后台独立配置。
+model AiSkillPromptTemplate {
+  id                 String             @id @default(cuid()) @db.VarChar(36)
+  skillId            String             @map("skill_id") @db.VarChar(36)
+  scene              AiSkillPromptScene
+  systemPrompt       String             @map("system_prompt") @db.LongText
+  userPromptTemplate String             @map("user_prompt_template") @db.LongText
+  isEnabled          Boolean            @default(true) @map("is_enabled")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  skill              AiSkill            @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, scene], map: "uk_ai_skill_prompt_templates_skill_scene")
+  @@map("ai_skill_prompt_templates")
+}
+
+/// 技能工作流模板表。
+/// 用于保存默认工作流标签、类型和工作流参数模板。
+model AiSkillWorkflowTemplate {
+  id                         String   @id @default(cuid()) @db.VarChar(36)
+  skillId                    String   @map("skill_id") @db.VarChar(36)
+  workflowLabel              String   @map("workflow_label") @db.VarChar(100)
+  workflowType               String   @map("workflow_type") @db.VarChar(50)
+  expectedImageCount         Int      @default(4) @map("expected_image_count")
+  workflowParamsTemplateJson Json?    @map("workflow_params_template_json")
+  isEnabled                  Boolean  @default(true) @map("is_enabled")
+  createdAt                  DateTime @default(now()) @map("created_at")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
+  skill                      AiSkill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@index([skillId], map: "idx_ai_skill_workflow_templates_skill")
+  @@map("ai_skill_workflow_templates")
+}
+
+/// 技能计划项模板表。
+/// 每一个计划项同时提供展示标题和对应的提示词模板。
+model AiSkillPlanTemplate {
+  id             String   @id @default(cuid()) @db.VarChar(36)
+  skillId        String   @map("skill_id") @db.VarChar(36)
+  itemKey        String   @map("item_key") @db.VarChar(100)
+  titleTemplate  String   @map("title_template") @db.VarChar(255)
+  promptTemplate String   @map("prompt_template") @db.LongText
+  sortOrder      Int      @default(0) @map("sort_order")
+  isEnabled      Boolean  @default(true) @map("is_enabled")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  skill          AiSkill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, itemKey], map: "uk_ai_skill_plan_templates_skill_item_key")
+  @@index([skillId, sortOrder], map: "idx_ai_skill_plan_templates_skill_sort")
+  @@map("ai_skill_plan_templates")
+}
+
+/// 技能阶段文案模板表。
+/// 用于后台配置不同阶段的标题、标签和指示器说明文案。
+model AiSkillStageTemplate {
+  id                           String   @id @default(cuid()) @db.VarChar(36)
+  skillId                      String   @map("skill_id") @db.VarChar(36)
+  stageKey                     String   @map("stage_key") @db.VarChar(100)
+  stageLabel                   String   @map("stage_label") @db.VarChar(100)
+  indicatorTitle               String?  @map("indicator_title") @db.VarChar(100)
+  indicatorDescriptionTemplate String?  @map("indicator_description_template") @db.LongText
+  sortOrder                    Int      @default(0) @map("sort_order")
+  isEnabled                    Boolean  @default(true) @map("is_enabled")
+  createdAt                    DateTime @default(now()) @map("created_at")
+  updatedAt                    DateTime @updatedAt @map("updated_at")
+  skill                        AiSkill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, stageKey], map: "uk_ai_skill_stage_templates_skill_stage_key")
+  @@index([skillId, sortOrder], map: "idx_ai_skill_stage_templates_skill_sort")
+  @@map("ai_skill_stage_templates")
 }
 
 /// 对象存储配置表。
@@ -851,6 +976,33 @@ enum ModelCategory {
   CHAT
   IMAGE
   VIDEO
+}
+
+/// 技能前端交互模式。
+enum AiSkillUiMode {
+  PLAIN_CHAT
+  WORKSPACE
+}
+
+/// 技能执行模式。
+enum AiSkillExecutionMode {
+  CHAT_ONLY
+  PLANNER_THEN_GENERATE
+  PLANNER_THEN_STORYBOARD
+  DIRECT_GENERATE
+}
+
+/// 技能规划器优先使用的模型分类。
+enum AiSkillPlannerModelCategory {
+  CHAT
+  IMAGE
+  VIDEO
+}
+
+/// 技能提示词模板使用场景。
+enum AiSkillPromptScene {
+  CHAT
+  PLANNER
 }
 
 enum GenerationType {

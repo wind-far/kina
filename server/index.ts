@@ -28,6 +28,8 @@ import { handleStorageConfigRequest } from './storage-config/request-handler'
 import { isStorageUploadPath } from './storage/constants'
 import { handleStorageUploadRequest } from './storage/request-handler'
 import { getUploadsDir } from './storage/service'
+import { isSkillConfigPath } from './skill-config/constants'
+import { handleSkillConfigRequest } from './skill-config/request-handler'
 
 // 后端服务默认监听端口。
 const DEFAULT_SERVER_PORT = 5409
@@ -329,10 +331,15 @@ const dispatchRequest = async (req: any, res: any) => {
   }
 
   // 命中厂商配置接口时走配置逻辑。
-  if (isProviderConfigPath(requestPath)) {
-    await handleProviderConfigRequest(req, res)
-    return
-  }
+    if (isProviderConfigPath(requestPath)) {
+      await handleProviderConfigRequest(req, res)
+      return
+    }
+
+    if (isSkillConfigPath(requestPath)) {
+      await handleSkillConfigRequest(req, res)
+      return
+    }
 
   // 命中文件上传接口时走本地存储逻辑。
   if (isStorageUploadPath(requestPath)) {

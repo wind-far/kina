@@ -49,6 +49,11 @@ export const adminNavGroups: AdminNavGroup[] = [
     title: '系统配置',
     items: [
       {
+        label: '技能配置',
+        path: '/admin/skills',
+        description: '管理技能目录、提示词模板与工作流模板',
+      },
+      {
         label: '厂商配置',
         path: '/admin/providers',
         description: '管理 AI 厂商地址、密钥与请求端点',

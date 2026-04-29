@@ -7,10 +7,8 @@ import { resolveGenerationTaskStrategy, type GenerationTaskStrategyKey } from '.
 import { buildAgentChatMessages } from '../../src/config/agentSkills'
 import {
   AgentWorkspaceStoppedError,
+  getAgentWorkspaceSkillMeta,
   buildWorkspaceCompletionSummary,
-  getAgentWorkspaceSkillLabel,
-  getWorkspaceSkillKey,
-  getWorkspaceDependencySkillLabel,
   getWorkspaceRandomDelay,
   planAgentWorkspace,
   sleepWithWorkspaceAbort,
@@ -736,7 +734,7 @@ const requestAgentWorkspaceModelPlan = async (input: {
   skill: string
   skillLabel: string
   workspaceSkillKey: string
-  dependencySkillKey?: string
+  dependencySkillKeys?: string[]
   prompt: string
 }) => {
   const upstream = await resolveGatewayProviderUpstream({
@@ -763,7 +761,7 @@ const requestAgentWorkspaceModelPlan = async (input: {
         'JSON 字段固定为：analysis_lines, workflow_label, workflow_params, plan_items, image_tasks, submit_lines。',
         'analysis_lines 至少 3 条，用中文简洁说明：需求理解、技能匹配、执行策略。',
         `当前技能展示名：${input.skillLabel}。当前技能键：${input.workspaceSkillKey}。`,
-        input.dependencySkillKey ? `依赖技能键：${input.dependencySkillKey}。` : '当前无依赖技能。',
+        input.dependencySkillKeys?.length ? `依赖技能键：${input.dependencySkillKeys.join('、')}。` : '当前无依赖技能。',
         'workflow_params.workflow_type 当前仅允许 text_to_image。',
         'plan_items 和 image_tasks 默认给 4 项，并保持一一对应。',
         '每个 image_tasks 元素必须包含 label 和 promptText；promptText 要适合直接用于图片生成，必须中文，且彼此有明确差异。',
@@ -1137,8 +1135,9 @@ const persistAgentWorkspaceRecord = async (input: {
 const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
   const skill = String(payload.skill || '').trim() || 'general'
   const skillPrompt = String(payload.prompt || '').trim()
-  const workspaceSkillKey = getWorkspaceSkillKey(skill)
-  const dependencySkillKey = getWorkspaceDependencySkillLabel(skill)
+  const skillMeta = await getAgentWorkspaceSkillMeta(skill)
+  const workspaceSkillKey = skillMeta.workspaceSkillKey
+  const dependencySkillKeys = skillMeta.dependencySkillKeys
   const plannerProviderId = String((payload.requestBody || {}).providerId || '').trim()
   const plannerModelKey = String(payload.modelKey || '').trim()
   let currentRun = buildAgentPendingRun(task.recordId, String(payload.prompt || '').trim(), skill)
@@ -1236,7 +1235,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
     await sleepWithWorkspaceAbort(task.abortController.signal, workspaceTimingProfile.preAnalyzeDelay)
     await emitWorkspaceEvent({ type: 'run_started', taskId: task.recordId })
 
-    const skillLabel = getAgentWorkspaceSkillLabel(skill)
+    const skillLabel = skillMeta.skillLabel
     await emitWorkspaceReasoningBatch({
       stageKey: 'reasoning-analyze',
       stageLabel: '需求分析',
@@ -1267,45 +1266,47 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
       type: 'skill_loaded',
       taskId: task.recordId,
       skillLabel,
-      dependencySkillLabel: dependencySkillKey,
+      dependencySkillLabel: dependencySkillKeys[0] || '',
       sectionKey: 'skill-guide-primary',
       label: `已加载技能：${workspaceSkillKey}`,
     })
 
-    if (dependencySkillKey) {
+    if (dependencySkillKeys.length) {
       await emitWorkspaceReasoningBatch({
         stageKey: 'reasoning-dependency',
         stageLabel: '依赖技能',
         lines: [
           `已完成 ${workspaceSkillKey} 技能加载。`,
-          `根据技能依赖规则，还需要继续加载 ${dependencySkillKey}，这样后续的图片生成策略、提示词结构和结果数量才能保持完整。`,
-          `接下来继续调用 activate_skill，补齐依赖技能 ${dependencySkillKey}。`,
+          `根据技能依赖规则，还需要继续加载 ${dependencySkillKeys.join('、')}，这样后续的图片生成策略、提示词结构和结果数量才能保持完整。`,
+          '接下来继续调用 activate_skill，补齐依赖技能链。',
         ],
       })
 
-      await emitActivateSkillToolCall(
-        dependencySkillKey,
-        `调用技能：${dependencySkillKey}`,
-        'tool-call-dependency-skill',
-      )
+      for (const dependencySkillKey of dependencySkillKeys) {
+        await emitActivateSkillToolCall(
+          dependencySkillKey,
+          `调用技能：${dependencySkillKey}`,
+          'tool-call-dependency-skill',
+        )
 
-      await emitWorkspaceEvent({
-        type: 'skill_loaded',
-        taskId: task.recordId,
-        skillLabel: dependencySkillKey,
-        sectionKey: 'skill-guide-dependency',
-        label: `已加载依赖技能：${dependencySkillKey}`,
-      })
+        await emitWorkspaceEvent({
+          type: 'skill_loaded',
+          taskId: task.recordId,
+          skillLabel: dependencySkillKey,
+          sectionKey: 'skill-guide-dependency',
+          label: `已加载依赖技能：${dependencySkillKey}`,
+        })
+      }
     }
 
     await sleepWithWorkspaceAbort(task.abortController.signal, getWorkspaceRandomDelay(workspaceTimingProfile.analyzeDelayRange))
-    let plan = planAgentWorkspace({
+    let plan = await planAgentWorkspace({
       prompt: skillPrompt,
       skill,
     })
 
     let planningReasoningLines = [
-      `现在我已经具备主技能${dependencySkillKey ? `与依赖技能` : ''}的执行上下文，开始整理最终工作流。`,
+      `现在我已经具备主技能${dependencySkillKeys.length ? '与依赖技能' : ''}的执行上下文，开始整理最终工作流。`,
       plan.imageTasks.length > 1
         ? `本次会默认生成 ${plan.imageTasks.length} 张结果，确保方向差异、构图变化和传播可选性。`
         : '本次将生成单张结果，并优先保证主题聚焦与完成度。',
@@ -1334,7 +1335,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
           skill,
           skillLabel,
           workspaceSkillKey,
-          dependencySkillKey,
+          dependencySkillKeys,
           prompt: skillPrompt,
         })
 

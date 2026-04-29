@@ -9,7 +9,7 @@ import AgentLoadingRecord from '../../components/generate/common/AgentLoadingRec
 import ImagePreview from '@/components/ImagePreview.vue'
 import { getAgentModel } from '@/api/agent'
 import { getModelByName, loadPublicModelCatalog, resolveModelLabel, resolveRequestModelKey, resolveRequestProviderId, type ImageModel } from '@/config/models'
-import { buildAgentChatMessages } from '@/config/agentSkills'
+import { buildAgentChatMessages, isAgentWorkspaceSkill, loadPublicSkillCatalog } from '@/config/agentSkills'
 import {
   createGenerationRecord as createGenerationRecordRequest,
   listGenerationRecords as listGenerationRecordsRequest,
@@ -203,6 +203,7 @@ const resolveTaskStageLabel = (stage?: string, fallback = '造梦中') => {
 // 页面进入时预加载后台公开模型目录，确保工具栏与生成请求使用同一份模型清单。
 onMounted(() => {
   void loadPublicModelCatalog()
+  void loadPublicSkillCatalog()
   void loadPublicSettings()
 })
 
@@ -255,7 +256,7 @@ const handlePreviewEditInCanvas = () => {
 
 // 只有显式选择技能时，才进入工作台式 Agent 流程；通用助手仍保留原流式对话体验。
 const shouldUseAgentWorkspaceFlow = (skill?: string) => {
-  return Boolean(skill && skill !== 'general')
+  return isAgentWorkspaceSkill(skill)
 }
 
 // 将页面内的记录结构转换为后端持久化结构。

@@ -152,9 +152,9 @@ html[data-theme='light'] .domesticModalWrapper-G4rAI_ .redeemInputRow-canana inp
 .membershipCycleTips-canana{margin-left:8px;transform:translateY(-2px)}
 .membershipSubDesc-canana{line-height:1.55;min-height:44px}
 .membershipSubDesc-canana br{display:none}
-.priceListItem-jmLrWu .creditsContainer-kZN4Fp{margin-bottom:18px}
-.priceListItem-jmLrWu .btnContainer-lv1ARI{margin-bottom:16px}
-.priceListItem-jmLrWu .benefitsDesc-qy_Zwm{gap:10px}
+.priceListItem-jmLrWu .creditsContainer-kZN4Fp{margin-bottom:0}
+.priceListItem-jmLrWu .btnContainer-lv1ARI{margin-bottom:14px}
+.priceListItem-jmLrWu .benefitsDesc-qy_Zwm{gap:10px;margin-top:14px;flex:0 0 auto}
 .priceListItem-jmLrWu .benefitsDesc-qy_Zwm>div{align-items:flex-start}
 .priceListItem-jmLrWu .benefitsDesc-qy_Zwm>div span{flex:1 1 auto}
 .priceListItem-jmLrWu .bestPlan-fJd80q{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.12);color:var(--text-primary);height:20px;padding:0 8px}

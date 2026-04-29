@@ -8,6 +8,7 @@ import {
   getSkillDefinitionDetail,
   listAdminSkills,
   listPublicEnabledSkills,
+  setAdminSkillEnabled,
   updateAdminSkill,
 } from './service'
 
@@ -92,6 +93,18 @@ export const handleSkillConfigRequest = async (req: any, res: any) => {
       const payload = await readJsonBody(req)
       const data = await updateAdminSkill(skillDetailMatch.skillKey, payload as any)
       sendJson(res, 200, { data, message: '技能已更新' })
+      return
+    }
+
+    if (req.method === 'PATCH' && skillDetailMatch) {
+      const currentUser = await requireAdminSessionUser(req, res)
+      if (!currentUser) {
+        return
+      }
+
+      const payload = await readJsonBody(req)
+      const data = await setAdminSkillEnabled(skillDetailMatch.skillKey, Boolean((payload as any)?.isEnabled))
+      sendJson(res, 200, { data, message: '技能状态已更新' })
       return
     }
 

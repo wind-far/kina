@@ -167,6 +167,206 @@ export interface AdminSkillPayload {
   stageTemplates?: AdminSkillStageTemplatePayload[]
 }
 
+interface BuiltInSkillSeedDefinition {
+  payload: AdminSkillPayload
+}
+
+const DEFAULT_WORKSPACE_STAGE_TEMPLATES: AdminSkillStageTemplatePayload[] = [
+  {
+    stageKey: 'analyze',
+    stageLabel: '解析需求',
+    indicatorTitle: '解析需求',
+    indicatorDescriptionTemplate: '正在理解你的需求，并匹配合适的技能与工作流。',
+    sortOrder: 10,
+    isEnabled: true,
+  },
+  {
+    stageKey: 'plan',
+    stageLabel: '确定工作流',
+    indicatorTitle: '准备生成方案',
+    indicatorDescriptionTemplate: '已根据技能指南确定工作流：{{workflow_type}}。',
+    sortOrder: 20,
+    isEnabled: true,
+  },
+  {
+    stageKey: 'submit',
+    stageLabel: '提交生成任务',
+    indicatorTitle: '提交生成任务',
+    indicatorDescriptionTemplate: '正在提交生成任务，请稍候。',
+    sortOrder: 30,
+    isEnabled: true,
+  },
+  {
+    stageKey: 'generate',
+    stageLabel: '结果生成中',
+    indicatorTitle: '结果生成中',
+    indicatorDescriptionTemplate: '正在生成结果，请等待服务端逐步返回。',
+    sortOrder: 40,
+    isEnabled: true,
+  },
+]
+
+const BUILT_IN_SKILL_SEEDS: BuiltInSkillSeedDefinition[] = [
+  {
+    payload: {
+      skillKey: 'general',
+      label: '通用助手',
+      description: '适合日常问答、创意发想和通用生成任务',
+      iconType: 'sparkles',
+      category: 'general',
+      uiMode: 'PLAIN_CHAT',
+      executionMode: 'CHAT_ONLY',
+      workflowType: '',
+      plannerModelCategory: 'CHAT',
+      expectedImageCount: 1,
+      isEnabled: true,
+      isBuiltIn: true,
+      sortOrder: 0,
+      configJson: null,
+      dependencySkillKeys: [],
+      promptTemplates: [
+        {
+          scene: 'CHAT',
+          systemPrompt: '你是一个中文创作助理。请准确理解用户需求，优先给出结构清晰、直接可执行的结果。',
+          userPromptTemplate: '{{input}}',
+          isEnabled: true,
+        },
+      ],
+      workflowTemplates: [],
+      planTemplates: [],
+      stageTemplates: [],
+    },
+  },
+  {
+    payload: {
+      skillKey: 'story-short',
+      label: '剧情短片',
+      description: '帮你自动生成故事大纲、分镜脚本并产出短片',
+      iconType: 'film',
+      category: 'story',
+      uiMode: 'WORKSPACE',
+      executionMode: 'PLANNER_THEN_STORYBOARD',
+      workflowType: 'storyboard',
+      plannerModelCategory: 'CHAT',
+      expectedImageCount: 4,
+      isEnabled: true,
+      isBuiltIn: true,
+      sortOrder: 5,
+      configJson: {
+        result_parser: 'storyboard_default',
+      },
+      dependencySkillKeys: [],
+      promptTemplates: [
+        {
+          scene: 'CHAT',
+          systemPrompt: '你是一名擅长短片策划的中文导演与编剧。你需要把用户的创意扩展为适合短视频生产的结构化方案，优先输出故事概述、角色设定、分镜节奏、关键画面、镜头语言与可直接用于生成的提示词。',
+          userPromptTemplate: '请将下面的创意扩展为适合 AI 剧情短片制作的方案。\n\n需求：{{input}}',
+          isEnabled: true,
+        },
+        {
+          scene: 'PLANNER',
+          systemPrompt: '你是一个剧情短片工作流规划助手。无论用户输入是否明确提到分镜，都优先将需求转成 storyboard 工作流，并输出适合后续视觉生成的结构化结果。',
+          userPromptTemplate: '请将下面需求转成剧情短片分镜工作流，并补充角色设定与镜头节奏。\n\n需求：{{input}}',
+          isEnabled: true,
+        },
+      ],
+      workflowTemplates: [
+        {
+          workflowLabel: '剧情分镜',
+          workflowType: 'storyboard',
+          expectedImageCount: 4,
+          workflowParamsTemplateJson: null,
+          isEnabled: true,
+        },
+      ],
+      planTemplates: [],
+      stageTemplates: DEFAULT_WORKSPACE_STAGE_TEMPLATES,
+    },
+  },
+  {
+    payload: {
+      skillKey: 'marketing-video',
+      label: '营销视频',
+      description: '一句话帮你生成营销推广视频',
+      iconType: 'play',
+      category: 'marketing',
+      uiMode: 'WORKSPACE',
+      executionMode: 'DIRECT_GENERATE',
+      workflowType: 'text_to_image_to_video',
+      plannerModelCategory: 'CHAT',
+      expectedImageCount: 4,
+      isEnabled: true,
+      isBuiltIn: true,
+      sortOrder: 15,
+      configJson: {
+        result_parser: 'image_to_video_default',
+      },
+      dependencySkillKeys: [],
+      promptTemplates: [
+        {
+          scene: 'CHAT',
+          systemPrompt: '你是一名擅长电商与品牌投放的中文营销视频策划。请把用户需求转成更适合广告视频生产的脚本、卖点结构和视觉提示词，强调卖点、目标受众、展示场景与转化导向。',
+          userPromptTemplate: '请将下面需求整理成营销视频创意方案。\n\n需求：{{input}}',
+          isEnabled: true,
+        },
+      ],
+      workflowTemplates: [
+        {
+          workflowLabel: '营销视频',
+          workflowType: 'text_to_image_to_video',
+          expectedImageCount: 4,
+          workflowParamsTemplateJson: null,
+          isEnabled: true,
+        },
+      ],
+      planTemplates: [],
+      stageTemplates: DEFAULT_WORKSPACE_STAGE_TEMPLATES,
+    },
+  },
+  {
+    payload: {
+      skillKey: 'brand-design',
+      label: '品牌设计',
+      description: '根据公司名称、业务与客群，生成品牌 Logo 与视觉方案',
+      iconType: 'badge',
+      category: 'branding',
+      uiMode: 'WORKSPACE',
+      executionMode: 'DIRECT_GENERATE',
+      workflowType: 'text_to_image',
+      plannerModelCategory: 'CHAT',
+      expectedImageCount: 4,
+      isEnabled: true,
+      isBuiltIn: true,
+      sortOrder: 25,
+      configJson: {
+        result_parser: 'text_to_image_default',
+      },
+      dependencySkillKeys: [],
+      promptTemplates: [
+        {
+          scene: 'CHAT',
+          systemPrompt: '你是一名品牌策略与视觉识别设计顾问。请根据用户需求输出适合品牌设计的定位、视觉方向、Logo 灵感与应用场景建议，兼顾行业属性、受众气质和品牌记忆点。',
+          userPromptTemplate: '请将下面需求整理成品牌设计方向建议。\n\n需求：{{input}}',
+          isEnabled: true,
+        },
+      ],
+      workflowTemplates: [
+        {
+          workflowLabel: '品牌视觉方案',
+          workflowType: 'text_to_image',
+          expectedImageCount: 4,
+          workflowParamsTemplateJson: null,
+          isEnabled: true,
+        },
+      ],
+      planTemplates: [],
+      stageTemplates: DEFAULT_WORKSPACE_STAGE_TEMPLATES,
+    },
+  },
+]
+
+let ensureBuiltInSkillsPromise: Promise<void> | null = null
+
 const normalizeJsonObject = (value: unknown) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null
@@ -640,10 +840,72 @@ const buildRuntimeSkillDefinition = (skill: {
   }
 }
 
+const ensureBuiltInSkillSeeds = async () => {
+  if (!isPrismaConfigured()) {
+    return
+  }
+
+  if (ensureBuiltInSkillsPromise) {
+    return ensureBuiltInSkillsPromise
+  }
+
+  ensureBuiltInSkillsPromise = (async () => {
+    const skillKeys = BUILT_IN_SKILL_SEEDS.map(item => normalizeTrimmedString(item.payload.skillKey))
+    const existingSkills = await prisma.aiSkill.findMany({
+      where: {
+        skillKey: {
+          in: skillKeys,
+        },
+      },
+      select: {
+        skillKey: true,
+      },
+    })
+
+    const existingSkillKeySet = new Set(existingSkills.map(item => item.skillKey))
+    const missingSeeds = BUILT_IN_SKILL_SEEDS.filter(item => {
+      return !existingSkillKeySet.has(normalizeTrimmedString(item.payload.skillKey))
+    })
+
+    for (const seed of missingSeeds) {
+      const normalizedPayload = normalizeSkillPayload(seed.payload)
+      await prisma.$transaction(async (tx) => {
+        const skill = await tx.aiSkill.create({
+          data: {
+            providerId: normalizedPayload.providerId || null,
+            skillKey: normalizedPayload.skillKey,
+            label: normalizedPayload.label,
+            description: normalizedPayload.description || null,
+            iconType: normalizedPayload.iconType || null,
+            category: normalizedPayload.category || null,
+            uiMode: normalizedPayload.uiMode,
+            executionMode: normalizedPayload.executionMode,
+            workflowType: normalizedPayload.workflowType || null,
+            plannerModelCategory: normalizedPayload.plannerModelCategory,
+            expectedImageCount: normalizedPayload.expectedImageCount,
+            isEnabled: normalizedPayload.isEnabled,
+            isBuiltIn: true,
+            sortOrder: normalizedPayload.sortOrder,
+            configJson: normalizedPayload.configJson,
+          },
+        })
+
+        await replaceSkillTemplates(tx, skill.id, normalizedPayload)
+      })
+    }
+  })().finally(() => {
+    ensureBuiltInSkillsPromise = null
+  })
+
+  return ensureBuiltInSkillsPromise
+}
+
 const loadSkillWithTemplates = async (skillKey: string, enabledOnly: boolean) => {
   if (!isPrismaConfigured()) {
     return null
   }
+
+  await ensureBuiltInSkillSeeds()
 
   const normalizedSkillKey = String(skillKey || '').trim()
   if (!normalizedSkillKey) {
@@ -695,6 +957,7 @@ const loadSkillWithTemplates = async (skillKey: string, enabledOnly: boolean) =>
 
 // 列出后台可维护的全部技能定义。
 export const listAdminSkills = async () => {
+  await ensureBuiltInSkillSeeds()
   const skills = await prisma.aiSkill.findMany({
     orderBy: [
       { sortOrder: 'asc' },
@@ -763,6 +1026,8 @@ export const listPublicEnabledSkills = async () => {
   if (!isPrismaConfigured()) {
     return []
   }
+
+  await ensureBuiltInSkillSeeds()
 
   const skills = await prisma.aiSkill.findMany({
     where: {
@@ -1032,6 +1297,32 @@ export const updateAdminSkill = async (skillKey: string, payload: AdminSkillPayl
     await replaceSkillTemplates(tx, existing.id, normalizedPayload)
   })
   return getSkillDefinitionDetail(normalizedPayload.skillKey)
+}
+
+// 快捷切换技能启用状态，避免后台列表页必须进入详情后再保存。
+export const setAdminSkillEnabled = async (skillKey: string, isEnabled: boolean) => {
+  const normalizedSkillKey = normalizeTrimmedString(skillKey)
+  if (!normalizedSkillKey) {
+    throw new Error('缺少技能标识')
+  }
+
+  const existing = await prisma.aiSkill.findFirst({
+    where: { skillKey: normalizedSkillKey },
+    select: { id: true },
+  })
+
+  if (!existing) {
+    throw new Error('技能不存在')
+  }
+
+  await prisma.aiSkill.update({
+    where: { id: existing.id },
+    data: {
+      isEnabled: normalizeBoolean(isEnabled, true),
+    },
+  })
+
+  return getSkillDefinitionDetail(normalizedSkillKey)
 }
 
 // 删除技能配置。

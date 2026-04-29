@@ -19,7 +19,12 @@ html[data-theme='light'] .domesticModalWrapper-G4rAI_ .selectedTabItem-aDidmJ,bo
 .domesticModalWrapper-G4rAI_ input:focus{border-color:var(--brand-main-hover);box-shadow:0 0 0 2px rgba(0,193,205,.2);color:var(--text-primary)}
 .defaultContentContainer-ZsT7nd{margin:0 auto;max-width:var(--price-list-max-width,none);position:relative;width:100%}
 .rightButtonContainer-CRWw92{bottom:-28px;position:absolute;right:12px}
-.creditBtn-Todove{align-items:center;display:inline-flex;font-family:PingFang SC;font-size:13px;font-style:Medium;font-weight:500;justify-content:center;letter-spacing:0;line-height:20px;min-height:20px;text-align:center;text-transform:capitalize;vertical-align:middle}
+.domesticModalWrapper-G4rAI_ .creditBtn-Todove{align-items:center;background:transparent;border:none;color:rgba(224,245,255,.6);cursor:pointer;display:inline-flex;font-family:PingFang SC;font-size:13px;font-style:Medium;font-weight:500;justify-content:center;letter-spacing:0;line-height:20px;min-height:20px;padding:0;text-align:center;text-transform:capitalize;transition:color .16s ease,opacity .16s ease;vertical-align:middle}
+.domesticModalWrapper-G4rAI_ .creditBtn-Todove:hover{color:#f5fbff}
+.domesticModalWrapper-G4rAI_ .creditBtn-Todove:active{color:#f5fbff;opacity:.82}
+html[data-theme='light'] .domesticModalWrapper-G4rAI_ .creditBtn-Todove,body[lv-theme='light'] .domesticModalWrapper-G4rAI_ .creditBtn-Todove{color:#536471}
+html[data-theme='light'] .domesticModalWrapper-G4rAI_ .creditBtn-Todove:hover,body[lv-theme='light'] .domesticModalWrapper-G4rAI_ .creditBtn-Todove:hover{color:#0f1419}
+html[data-theme='light'] .domesticModalWrapper-G4rAI_ .creditBtn-Todove:active,body[lv-theme='light'] .domesticModalWrapper-G4rAI_ .creditBtn-Todove:active{color:#0f1419;opacity:.82}
 .outerWrapper-YDl043{display:flex;flex-direction:row;justify-content:center;width:100vw}
 .wrapper-dTloRs{align-items:center;background:var(--bg-commerce-popup,#09080b);border:.5px solid var(--stroke-primary,rgba(204,221,255,.16));border-radius:28px;box-sizing:border-box;display:flex;flex-direction:column;flex-shrink:0;max-width:1352px;padding:var(--commerce-vip-modal-wrapper-padding);position:relative;width:calc(max(100vw,1000px) - 88px);--commerce-vip-modal-wrapper-padding:48px 36px 36px;--commerce-vip-modal-price-item-padding:28px;--commerce-vip-modal-price-credit-info-padding:12px 16px;--price-list-max-width:1280px}
 .closeBtnContainer-S1G3nv{flex-shrink:0;overflow:visible;width:24px}

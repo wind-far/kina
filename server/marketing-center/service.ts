@@ -45,6 +45,11 @@ const serializeMarketingCenterRecord = <T>(value: T): T => {
     return Number(value) as T
   }
 
+  // Date 需要优先转成 ISO 字符串，否则继续走对象递归时会被展开成空对象。
+  if (value instanceof Date) {
+    return value.toISOString() as T
+  }
+
   if (Array.isArray(value)) {
     return value.map((item) => serializeMarketingCenterRecord(item)) as T
   }

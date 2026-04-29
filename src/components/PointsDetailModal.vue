@@ -16,15 +16,53 @@
 
         <div class="header-r0c3rN">
           <div class="credit-info-wrapper-JL8SoI">
-            <div v-for="item in summaryItems" :key="item.label" class="credit-info-item-rnrl9v">
-              <div class="credit-info-item-title-pOA0Rt">
-                {{ item.label }}
-                <span v-if="item.hint" class="credit-info-item-hint-canana">ⓘ</span>
+            <template v-for="(item, index) in summaryItems" :key="item.label">
+              <div class="credit-info-item-rnrl9v">
+                <div class="credit-info-item-title-pOA0Rt">{{ item.label }}</div>
+                <div class="creditInfoItemAmount-scwpa1">
+                  <div class="creditInfoItemNum-XNF6AK">{{ formatAmount(item.value) }}</div>
+                  <span
+                    v-if="item.hint"
+                    class="credit-info-item-hint-wrapper-canana"
+                    @mouseleave="hintVisible = false"
+                  >
+                    <button
+                      class="creditInfoItemDetailIcon-aeEiG7"
+                      type="button"
+                      aria-label="查看赠送积分说明"
+                      :aria-expanded="hintVisible ? 'true' : 'false'"
+                      @mouseenter="hintVisible = true"
+                      @focus="hintVisible = true"
+                      @blur="hintVisible = false"
+                      @click.stop="hintVisible = !hintVisible"
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <path
+                          d="M7.333 5c0-.184.15-.333.333-.333h.667c.184 0 .333.15.333.333v.667A.333.333 0 0 1 8.333 6h-.667a.333.333 0 0 1-.333-.333V5Zm-.667 5a.333.333 0 0 0-.333.334V11c0 .184.15.334.333.334h2.667c.184 0 .333-.15.333-.334v-.666A.333.333 0 0 0 9.333 10h-.667V7a.333.333 0 0 0-.333-.333H7A.333.333 0 0 0 6.666 7v.667c0 .184.15.333.334.333h.333v2h-.667Z"
+                          fill="currentColor"
+                        />
+                        <path
+                          d="M8 14.667A6.667 6.667 0 1 0 8 1.334a6.667 6.667 0 0 0 0 13.333Zm0-1.333A5.333 5.333 0 1 0 8 2.667a5.333 5.333 0 0 0 0 10.667Z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                    </button>
+                    <div
+                      v-if="hintVisible"
+                      class="credit-info-item-tooltip-canana"
+                      role="tooltip"
+                    >
+                      {{ giftPointsHintText }}
+                    </div>
+                  </span>
+                </div>
               </div>
-              <div class="creditInfoItemAmount-scwpa1">
-                <div class="creditInfoItemNum-XNF6AK">{{ formatAmount(item.value) }}</div>
+              <div v-if="index < summarySeparators.length" class="creditCalcSymbolWrapper-E7Gkm5" aria-hidden="true">
+                <div class="creditCalcSymbolLeft-Ey6Xen"></div>
+                <div class="creditCalcSymbol-Qm_Hbs">{{ summarySeparators[index] }}</div>
+                <div class="creditCalcSymbolRight-TE2RHM"></div>
               </div>
-            </div>
+            </template>
           </div>
         </div>
 
@@ -75,7 +113,16 @@
         </div>
 
         <div class="bottomTips-CGxOKY">
-          <span class="delayTips-s4D_mE">仅展示最近 1 个月明细，数据更新可能有延时，请以实际到账为准</span>
+          <span class="delayTips-s4D_mE">仅展示近1个月明细，数据更新可能有延时</span>
+          <a
+            v-if="rulesHref"
+            class="creditRules-l2dCEq"
+            :href="rulesHref"
+            :target="isExternalRulesHref ? '_blank' : undefined"
+            rel="noreferrer"
+          >
+            {{ rulesLabel }}
+          </a>
         </div>
       </div>
     </div>
@@ -91,6 +138,8 @@ const props = defineProps<{
   balance: number
   available?: number
   logs?: Array<Record<string, any>>
+  rulesHref?: string
+  rulesLabel?: string
 }>()
 
 const emit = defineEmits<{
@@ -98,9 +147,15 @@ const emit = defineEmits<{
 }>()
 
 const activeTab = ref<'all' | 'expense' | 'income'>('all')
+const hintVisible = ref(false)
+const giftPointsHintText = '赠送积分包含签到奖励、活动赠送、卡密兑换等，不包含订阅积分与充值积分。'
+const summarySeparators = ['=', '+', '+'] as const
+const rulesHref = computed(() => String(props.rulesHref || '').trim())
+const rulesLabel = computed(() => String(props.rulesLabel || '积分规则').trim() || '积分规则')
+const isExternalRulesHref = computed(() => /^https?:\/\//i.test(rulesHref.value))
 
 const tabs = [
-  { key: 'all' as const, label: '全部明细' },
+  { key: 'all' as const, label: '全部' },
   { key: 'expense' as const, label: '消耗' },
   { key: 'income' as const, label: '获得' },
 ]
@@ -199,6 +254,7 @@ const closeModal = () => {
 watch(() => props.visible, (visible) => {
   if (visible) {
     activeTab.value = 'all'
+    hintVisible.value = false
   }
 })
 </script>

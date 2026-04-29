@@ -28,6 +28,76 @@
             </div>
           </div>
         </div>
+        <div
+          v-if="renderedConversationEntries.length"
+          class="process-group-NFyTkD completed-Mr7mg1 image-stage-process-group"
+          :class="{ 'expanded-bG3kBU': conversationExpanded }"
+        >
+          <div class="header-fE7Yzl" @click="conversationExpanded = !conversationExpanded">
+            <div class="header-left-OUNZfc">
+              <div class="chevron-wrapper-TUhGYt" :class="{ 'collapsed-yhY7l2': !conversationExpanded }">
+                <svg width="14" height="14" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="chevron-icon-OYUM9U">
+                  <g>
+                    <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M21.01 7.982A1.2 1.2 0 0 1 21 9.679l-8.156 8.06a1.2 1.2 0 0 1-1.688 0L3 9.68a1.2 1.2 0 0 1 1.687-1.707L12 15.199l7.313-7.227a1.2 1.2 0 0 1 1.697.01Z" fill="currentColor"></path>
+                  </g>
+                </svg>
+              </div>
+              <div class="title-lQ3lE5">生成进度</div>
+            </div>
+            <div class="image-stage-process-group__summary">
+              {{ renderedConversationEntries[currentStageIndex]?.text || '等待进度更新' }}
+            </div>
+          </div>
+          <div class="content-wrapper-WwWXWE" :class="{ 'collapsed-yhY7l2': !conversationExpanded }">
+            <div class="content-e0iN2u">
+              <div class="visible-messages-wrapper-EhNsCk">
+                <div
+                  v-for="(entry, index) in renderedConversationEntries"
+                  :key="`${index}-${entry.stageKey}-${entry.text}`"
+                  class="message-item-Tg244V"
+                >
+                  <div class="connector-LIfXJO"></div>
+                  <div class="message-collapse-wrapper-zmpysd">
+                    <div class="node-viewport-KqQuYn">
+                      <div
+                        class="reasoning-message-ZytEV8 reasoning-message-expanded node-enter-g30LTv image-stage-reasoning-message"
+                        :class="[
+                          `reasoning-tone-${resolveStageTone(entry.stageKey)}`,
+                          { 'image-stage-reasoning-message--current': index === currentStageIndex },
+                        ]"
+                      >
+                        <div class="header-k72pQ0" :class="`header-tone-${resolveStageTone(entry.stageKey)}`">
+                          <div class="header-main-vvvpuW">
+                            <span class="status-icon-Pd0hvq">
+                              <span class="image-stage-conversation-item__dot" :class="{ 'image-stage-conversation-item__dot--active': index === currentStageIndex }"></span>
+                            </span>
+                            <span class="title-zHQmQJ image-stage-title-zHQmQJ">
+                              {{ resolveStageTitle(entry.stageKey, index) }}
+                            </span>
+                            <span
+                              v-if="index === currentStageIndex"
+                              class="section-tone-badge-q2Ks9n image-stage-current-badge"
+                              :class="`section-tone-badge-${resolveStageTone(entry.stageKey)}`"
+                            >
+                              当前
+                            </span>
+                          </div>
+                        </div>
+                        <div class="body-wrapper-K5fjb4" :style="{ maxHeight: 'none' }">
+                          <div class="body-KixLFC">
+                            <div class="content-dherTv image-stage-content-dherTv">
+                              <div class="image-stage-conversation-item__text">{{ entry.text }}</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="record-box-wrapper-MDgaBP">
           <!-- 错误状态 -->
           <div v-if="error" class="image-error-container">
@@ -184,9 +254,18 @@
   </div>
 </template>
 
-<script setup>
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+<script setup lang="ts">
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import loadingVideoUrl from '@/assets/animations/record-loading-animation.mp4'
+
+/**
+ * 图片生成阶段对话节点。
+ * stageKey 用于映射节点标题与状态色，text 用于展示实际阶段文案。
+ */
+interface ConversationEntry {
+  stageKey?: string
+  text?: string
+}
 
 const props = defineProps({
   /** 分组时间 */
@@ -218,7 +297,9 @@ const props = defineProps({
   /** 生成的图片 URL 列表 */
   images: { type: Array, default: () => [] },
   /** 错误信息 */
-  error: { type: String, default: '' }
+  error: { type: String, default: '' },
+  /** 阶段对话列表 */
+  conversationEntries: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits(['edit', 'regenerate', 'more', 'preview', 'stop'])
@@ -229,7 +310,76 @@ const handlePreview = (index) => {
 
 const currentProgress = ref(props.progress)
 const currentProgressText = ref(props.progressText)
+const conversationExpanded = ref(true)
+const currentStageTypedText = ref('')
 let timer = null
+let typingTimer: ReturnType<typeof setInterval> | null = null
+
+// 按真实执行顺序展示阶段，便于从上到下阅读完整流程。
+const orderedConversationEntries = computed(() => {
+  const items = Array.isArray(props.conversationEntries) ? props.conversationEntries as ConversationEntry[] : []
+  return [...items]
+    .map(item => ({
+      stageKey: String(item?.stageKey || '').trim(),
+      text: String(item?.text || '').trim(),
+    }))
+    .filter(item => item.text)
+})
+
+// 当前阶段始终取最后一个节点。
+const currentStageIndex = computed(() => Math.max(orderedConversationEntries.value.length - 1, 0))
+
+// 仅当前阶段走打字机效果，历史阶段直接展示完整文本。
+const renderedConversationEntries = computed(() => {
+  return orderedConversationEntries.value.map((entry, index) => (
+    index === currentStageIndex.value
+      ? { ...entry, text: currentStageTypedText.value || '' }
+      : entry
+  ))
+})
+
+// 复用后台阶段键作为标题来源，让图片流程和配置中心保持一致。
+const resolveStageTitle = (stageKey: string, index: number) => {
+  switch (stageKey) {
+    case 'queued':
+      return '排队中'
+    case 'resolved_provider':
+      return '准备中'
+    case 'requesting_upstream':
+      return '生成中'
+    case 'receiving_upstream_result':
+      return '解析中'
+    case 'syncing_record':
+      return '同步中'
+    case 'completed':
+      return '已完成'
+    case 'failed':
+      return '生成失败'
+    case 'failing':
+      return '失败收尾'
+    case 'stopping':
+      return '停止中'
+    case 'stopped':
+      return '已停止'
+    default:
+      return index === 0 ? '当前阶段' : '阶段更新'
+  }
+}
+
+// 为流程节点补上运行态、成功态和异常态，和技能流程保持一致。
+const resolveStageTone = (stageKey: string) => {
+  switch (stageKey) {
+    case 'completed':
+      return 'success'
+    case 'failed':
+    case 'failing':
+    case 'stopped':
+    case 'stopping':
+      return 'warning'
+    default:
+      return 'running'
+  }
+}
 
 // 当父级已经通过 SSE 提供明确进度时，当前卡片不再使用本地假进度动画。
 const hasControlledProgress = () => Number(props.progress) > 0 || Boolean(String(props.progressText || '').trim())
@@ -249,6 +399,45 @@ const startTimer = () => {
 
 const stopTimer = () => {
   if (timer) { clearInterval(timer); timer = null }
+}
+
+const stopTypingTimer = () => {
+  if (typingTimer) {
+    clearInterval(typingTimer)
+    typingTimer = null
+  }
+}
+
+// 当前阶段文案使用轻量打字机效果，模拟 SSE 流式吐字感。
+const syncCurrentStageTypingText = () => {
+  const currentEntry = orderedConversationEntries.value[currentStageIndex.value]
+  const nextText = String(currentEntry?.text || '')
+  if (!nextText) {
+    stopTypingTimer()
+    currentStageTypedText.value = ''
+    return
+  }
+
+  const baseText = nextText.startsWith(currentStageTypedText.value)
+    ? currentStageTypedText.value
+    : ''
+
+  stopTypingTimer()
+  currentStageTypedText.value = baseText
+
+  if (currentStageTypedText.value === nextText) {
+    return
+  }
+
+  typingTimer = setInterval(() => {
+    const currentLength = currentStageTypedText.value.length
+    if (currentLength >= nextText.length) {
+      stopTypingTimer()
+      return
+    }
+
+    currentStageTypedText.value = nextText.slice(0, currentLength + 1)
+  }, 18)
 }
 
 // 完成时停止进度条
@@ -282,16 +471,28 @@ watch(() => props.progressText, (val) => {
   }
 })
 
+watch(
+  () => orderedConversationEntries.value.map(item => `${item.stageKey}:${item.text}`).join('\n'),
+  () => {
+    syncCurrentStageTypingText()
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
   if (!props.done && !props.error) startTimer()
+  syncCurrentStageTypingText()
 })
 
 onUnmounted(() => {
   stopTimer()
+  stopTypingTimer()
 })
 </script>
 
 <style scoped>
+@import "@/views/generate/components/generate-agent-record.css";
+
 /* 修正长提示词头部被绝对定位撑出后覆盖图片区的问题 */
 :deep(.record-header-E91Dfj .record-header-content-Lkk9CM) {
   align-items: flex-start;
@@ -415,5 +616,44 @@ onUnmounted(() => {
 
 .stop-generate-button-canana:hover {
   background: rgba(0, 0, 0, 0.58);
+}
+
+.image-stage-process-group {
+  margin-top: 10px;
+  margin-bottom: 18px;
+}
+
+.image-stage-reasoning-message {
+  margin-bottom: 10px;
+}
+
+.image-stage-process-group :deep(.content-wrapper-WwWXWE .content-e0iN2u:before) {
+  padding-top: 2px;
+}
+
+.image-stage-conversation-item__dot {
+  background: var(--brand-main-default, #4c8dff);
+  border-radius: 999px;
+  display: inline-flex;
+  height: 6px;
+  width: 6px;
+}
+
+.image-stage-conversation-item__dot--active {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-main-default, #4c8dff) 16%, transparent);
+}
+
+.image-stage-title-zHQmQJ {
+  color: var(--text-primary);
+}
+
+.image-stage-content-dherTv {
+  color: var(--text-secondary, #83929d);
+}
+
+.image-stage-conversation-item__text {
+  font-size: 14px;
+  line-height: 22px;
+  word-break: break-word;
 }
 </style>

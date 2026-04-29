@@ -97,6 +97,77 @@ const previewVisible = ref(false)
 const previewIndex = ref(0)
 const previewImages = ref<GeneratePreviewImageItem[]>([])
 
+interface StageConversationEntry {
+  stageKey: string
+  text: string
+}
+
+// 用现有 content 字段持久化图片任务阶段对话，避免额外改表。
+const parseStageConversationEntries = (content: string): StageConversationEntry[] => {
+  return String(content || '')
+    .split('\n')
+    .map(item => item.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(/^\[\[(.+?)\]\](.+)$/)
+      if (!match) {
+        return {
+          stageKey: '',
+          text: line,
+        }
+      }
+      return {
+        stageKey: String(match[1] || '').trim(),
+        text: String(match[2] || '').trim(),
+      }
+    })
+    .filter(item => item.text)
+}
+
+// 把阶段对话序列化回 content，便于刷新后恢复。
+const stringifyStageConversationEntries = (entries: StageConversationEntry[]) => {
+  return entries
+    .map(item => item.stageKey ? `[[${item.stageKey}]]${item.text}` : item.text)
+    .join('\n')
+}
+
+// 生成当前记录在对话区展示的阶段文案。
+const getRecordConversationEntries = (record: GeneratingRecord) => {
+  return parseStageConversationEntries(record.content)
+}
+
+// 某个阶段重复到达时只覆盖该阶段文案，不重复堆积。
+const upsertRecordStageConversation = (record: GeneratingRecord, stageKey: string, text: string) => {
+  const normalizedStageKey = String(stageKey || '').trim()
+  const normalizedText = String(text || '').trim()
+  if (!normalizedText) {
+    return false
+  }
+
+  const nextEntries = parseStageConversationEntries(record.content)
+  const currentIndex = normalizedStageKey
+    ? nextEntries.findIndex(item => item.stageKey === normalizedStageKey)
+    : -1
+
+  if (currentIndex >= 0) {
+    if (nextEntries[currentIndex].text === normalizedText) {
+      return false
+    }
+    nextEntries[currentIndex] = {
+      stageKey: normalizedStageKey,
+      text: normalizedText,
+    }
+  } else {
+    nextEntries.push({
+      stageKey: normalizedStageKey,
+      text: normalizedText,
+    })
+  }
+
+  record.content = stringifyStageConversationEntries(nextEntries)
+  return true
+}
+
 // 将服务端阶段映射成前台百分比，避免继续显示固定 99%。
 const mapTaskStageToProgressPercent = (stage?: string) => {
   const configuredStage = publicSystemSettings.value.generationProgressSettings?.stages?.find(item => item.key === String(stage || '').trim())
@@ -624,7 +695,7 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
   duration: record.duration,
   feature: record.feature,
   skill: record.skill,
-  content: record.content,
+  content: record.content || (!record.done ? '[[queued]]任务已创建，等待服务端执行' : ''),
   images: record.images,
   done: record.done,
   stopped: Boolean(record.stopped),
@@ -642,7 +713,7 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
 // 将后端持久化后的正式资源地址回写到当前记录，避免重复提交 base64 或上游临时链接。
 const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGenerationRecord) => {
   record.dbId = saved.id
-  record.content = saved.content
+  record.content = saved.content || record.content
   record.error = saved.error
   record.done = saved.done
   record.stopped = Boolean(saved.stopped)
@@ -726,6 +797,12 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     return
   }
 
+  let stageConversationChanged = false
+
+  if (event.record) {
+    syncRecordWithPersisted(targetRecord, event.record)
+  }
+
   if (event.type === 'progress' && event.message) {
     targetRecord.error = ''
     targetRecord.progressStage = event.stage || targetRecord.progressStage || 'queued'
@@ -734,6 +811,11 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
       targetRecord.progressPercent || 0,
       mapTaskStageToProgressPercent(event.stage),
     )
+    stageConversationChanged = upsertRecordStageConversation(
+      targetRecord,
+      targetRecord.progressStage || event.stage || 'queued',
+      `${targetRecord.progressMessage}：${event.message}`,
+    ) || stageConversationChanged
   }
 
   if (event.type === 'connected' && event.message) {
@@ -743,24 +825,44 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
       targetRecord.progressPercent || 0,
       mapTaskStageToProgressPercent(event.stage),
     )
-  }
-
-  if (event.record) {
-    syncRecordWithPersisted(targetRecord, event.record)
+    stageConversationChanged = upsertRecordStageConversation(
+      targetRecord,
+      targetRecord.progressStage || event.stage || 'queued',
+      event.message,
+    ) || stageConversationChanged
   }
 
   if (event.type === 'completed') {
     targetRecord.progressStage = 'completed'
     targetRecord.progressMessage = resolveTaskStageLabel('completed', event.message || '图片生成完成')
     targetRecord.progressPercent = 100
+    stageConversationChanged = upsertRecordStageConversation(
+      targetRecord,
+      'completed',
+      `${targetRecord.progressMessage}：${event.message || '图片生成完成'}`,
+    ) || stageConversationChanged
   } else if (event.type === 'failed') {
     targetRecord.progressStage = 'failed'
     targetRecord.progressMessage = resolveTaskStageLabel('failed', event.message || '任务执行失败')
     targetRecord.progressPercent = 100
+    stageConversationChanged = upsertRecordStageConversation(
+      targetRecord,
+      'failed',
+      `${targetRecord.progressMessage}：${event.message || '任务执行失败'}`,
+    ) || stageConversationChanged
   } else if (event.type === 'stopped') {
     targetRecord.progressStage = 'stopped'
     targetRecord.progressMessage = resolveTaskStageLabel('stopped', event.message || '任务已停止')
     targetRecord.progressPercent = 100
+    stageConversationChanged = upsertRecordStageConversation(
+      targetRecord,
+      'stopped',
+      `${targetRecord.progressMessage}：${event.message || '任务已停止'}`,
+    ) || stageConversationChanged
+  }
+
+  if (stageConversationChanged) {
+    schedulePersistRecord(targetRecord)
   }
 
   if (event.done) {
@@ -859,7 +961,7 @@ const handleSend = (message: string, type: CreationType, options?: { model?: str
     duration: options?.duration || '',
     feature: options?.feature || '',
     skill: options?.skill || 'general',
-    content: '',
+    content: type === 'image' ? '[[queued]]任务已创建，等待服务端执行' : '',
     images: [],
     done: false,
     stopped: false,
@@ -1634,6 +1736,7 @@ onMounted(() => {
                                         :done="record.done"
                                         :stopped="Boolean(record.stopped)"
                                         :images="record.images"
+                                        :conversation-entries="getRecordConversationEntries(record)"
                                         :error="record.error"
                                         @preview="handlePreviewRecordImage(record, $event)"
                                         @stop="handleStopImageGeneration(record)"

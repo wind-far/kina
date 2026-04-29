@@ -236,7 +236,7 @@
           <div v-if="showNotice" class="ai-generated-notice-PjZsIx">
             以上内容由 AI 生成
             <div class="divider-mrF2Mr"></div>
-            <div class="costed-credit-mqLJHq">{{ costText }}</div>
+            <div v-if="costText" class="costed-credit-mqLJHq">{{ costText }}</div>
           </div>
           <div v-if="showActions" class="record-bottom-slots-wtfgFX">
             <div>
@@ -499,7 +499,12 @@ const workflowLabel = computed(() => {
 })
 const imageCountLabel = computed(() => `${expectedImageCount.value || images.value.length} 张`)
 const groupTitle = computed(() => `${skillLabel.value} 执行过程`)
-const costText = computed(() => `本次消耗 ${images.value.length ? images.value.length * 3 : 12} 积分`)
+// 这里只展示后端或任务结果明确返回的真实积分，避免继续展示前端写死的假消耗。
+const costText = computed(() => {
+  const pointCost = Math.max(0, Number(props.run.result?.pointCost || 0))
+  if (pointCost <= 0) return ''
+  return `本次消耗 ${pointCost} 积分`
+})
 const mediaStatusText = computed(() => {
   if (!expectedImageCount.value) return ''
 

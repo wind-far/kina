@@ -2,6 +2,7 @@
 import { ref, computed, onUnmounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
+import { getModelByName } from '@/config/models'
 
 // 导入子组件
 import { TypeSelector, type CreationType } from './selectors'
@@ -287,12 +288,27 @@ const showPrice = computed(() => {
 })
 
 // 获取价格文本
+const readCurrentModelPointCost = () => {
+  const currentModelKey = currentType.value === 'image'
+    ? imageToolbarRef.value?.currentModelVersion
+    : currentType.value === 'video'
+      ? videoToolbarRef.value?.currentModelVersion
+      : ''
+
+  if (!currentModelKey) return 0
+
+  const model = getModelByName(currentModelKey) as { defaultParams?: Record<string, any> } | null
+  return Math.max(0, Number(model?.defaultParams?.billingRule?.power || 0))
+}
+
 const priceText = computed(() => {
+  const pointCost = readCurrentModelPointCost()
+
   switch (currentType.value) {
     case 'image':
-      return '1 / 张'
+      return `${pointCost || 0} / 张`
     case 'video':
-      return '10'
+      return String(pointCost || 0)
     default:
       return ''
   }

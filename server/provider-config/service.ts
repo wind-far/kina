@@ -1,25 +1,9 @@
 import { prisma } from '../db/prisma'
 import { decryptProviderApiKey, encryptProviderApiKey, maskApiKey } from './crypto'
-import { normalizeCustomModelList, type ProviderRuntimePayload } from './shared'
 
 const DEFAULT_PROVIDER_CODE = 'default-generate-provider'
 const DEFAULT_PROVIDER_NAME = '默认生成厂商'
 const DEFAULT_SUPPORTED_TYPES = ['CHAT', 'IMAGE', 'VIDEO']
-const DEFAULT_RUNTIME_CONFIG = {
-  baseUrl: process.env.PROVIDER_DEFAULT_BASE_URL || 'https://api.chatfire.site/v1',
-  apiKey: '',
-  apiKeyHint: '',
-  chatEndpoint: '/chat/completions',
-  imageEndpoint: '/images/generations',
-  videoEndpoint: '/videos',
-  defaultChatModel: '',
-  customModels: {
-    image: [] as Array<{ label: string; key: string }>,
-    video: [] as Array<{ label: string; key: string }>,
-    chat: [] as Array<{ label: string; key: string }>,
-  },
-}
-
 const LEGACY_DEFAULT_SCENE = 'generate'
 
 const MODEL_CATEGORY_TO_ENDPOINT_TYPE = {
@@ -210,39 +194,6 @@ const buildProviderListItem = (provider: {
   }
 }
 
-const toRuntimeConfig = async (provider: Awaited<ReturnType<typeof prisma.aiProvider.findFirst>>) => {
-  if (!provider) {
-    return DEFAULT_RUNTIME_CONFIG
-  }
-
-  const models = await prisma.aiModel.findMany({
-    where: {
-      providerId: provider.id,
-      isEnabled: true,
-    },
-    orderBy: [
-      { category: 'asc' },
-      { sortOrder: 'asc' },
-      { createdAt: 'asc' },
-    ],
-  })
-
-  return {
-    baseUrl: provider.baseUrl,
-    apiKey: decryptProviderApiKey(provider.apiKeyEncrypted),
-    apiKeyHint: provider.apiKeyHint || '',
-    chatEndpoint: provider.chatEndpoint,
-    imageEndpoint: provider.imageEndpoint,
-    videoEndpoint: provider.videoEndpoint,
-    defaultChatModel: provider.defaultChatModel || '',
-    customModels: {
-      image: models.filter(item => item.category === 'IMAGE').map(item => ({ label: item.name, key: item.modelKey })),
-      video: models.filter(item => item.category === 'VIDEO').map(item => ({ label: item.name, key: item.modelKey })),
-      chat: models.filter(item => item.category === 'CHAT').map(item => ({ label: item.name, key: item.modelKey })),
-    },
-  }
-}
-
 // 首次读取时若新表为空，则把旧的默认配置物化到新厂商表，避免线上旧数据丢失。
 const materializeLegacyProvider = async () => {
   const legacyConfig = await getLegacyDefaultConfigRecord()
@@ -328,72 +279,6 @@ export const getRuntimeProviderRecord = async () => {
   }
 
   return getFirstProviderRecord(false)
-}
-
-export const getProviderRuntimeConfig = async () => {
-  const provider = await getRuntimeProviderRecord()
-  return toRuntimeConfig(provider)
-}
-
-// 运行时保存接口仍保留给现有业务使用，但其目标改为“当前生效厂商”。
-export const saveProviderRuntimeConfig = async (payload: ProviderRuntimePayload) => {
-  const baseUrl = String(payload.baseUrl || '').trim()
-  if (!baseUrl) {
-    throw new Error('API 地址不能为空')
-  }
-
-  const data = {
-    baseUrl,
-    apiKey: String(payload.apiKey || '').trim(),
-    chatEndpoint: String(payload.chatEndpoint || '/chat/completions').trim() || '/chat/completions',
-    imageEndpoint: String(payload.imageEndpoint || '/images/generations').trim() || '/images/generations',
-    videoEndpoint: String(payload.videoEndpoint || '/videos').trim() || '/videos',
-    defaultChatModel: String(payload.defaultChatModel || '').trim(),
-    customModels: {
-      image: normalizeCustomModelList(payload.customModels?.image),
-      video: normalizeCustomModelList(payload.customModels?.video),
-      chat: normalizeCustomModelList(payload.customModels?.chat),
-    },
-  }
-
-  const currentProvider = await getRuntimeProviderRecord()
-  const encryptedApiKey = encryptProviderApiKey(data.apiKey)
-
-  if (currentProvider) {
-    await prisma.aiProvider.update({
-      where: { id: currentProvider.id },
-      data: {
-        baseUrl: data.baseUrl,
-        apiKeyEncrypted: encryptedApiKey,
-        apiKeyHint: maskApiKey(data.apiKey),
-        chatEndpoint: data.chatEndpoint,
-        imageEndpoint: data.imageEndpoint,
-        videoEndpoint: data.videoEndpoint,
-        defaultChatModel: data.defaultChatModel || null,
-        isEnabled: true,
-      },
-    })
-  } else {
-    await prisma.aiProvider.create({
-      data: {
-        code: DEFAULT_PROVIDER_CODE,
-        name: DEFAULT_PROVIDER_NAME,
-        description: '运行时默认厂商',
-        baseUrl: data.baseUrl,
-        apiKeyEncrypted: encryptedApiKey,
-        apiKeyHint: maskApiKey(data.apiKey),
-        chatEndpoint: data.chatEndpoint,
-        imageEndpoint: data.imageEndpoint,
-        videoEndpoint: data.videoEndpoint,
-        defaultChatModel: data.defaultChatModel || null,
-        supportedTypesJson: DEFAULT_SUPPORTED_TYPES,
-        isEnabled: true,
-        sortOrder: 0,
-      },
-    })
-  }
-
-  return getProviderRuntimeConfig()
 }
 
 export const listAdminProviders = async () => {

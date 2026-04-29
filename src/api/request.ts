@@ -4,12 +4,6 @@
  */
 
 import {
-  getApiKey,
-  getBaseUrl,
-  getEndpoint,
-  setApiKey,
-  setBaseUrl,
-  setEndpoint,
   type AiEndpointType,
 } from './provider-config'
 import {
@@ -20,23 +14,24 @@ import {
 import { loadPublicModelCatalog, resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 import { buildApiUrl } from './http'
 import { handleUnauthorizedResponse } from './response'
-
-export {
-  getApiKey,
-  getBaseUrl,
-  getEndpoint,
-  setApiKey,
-  setBaseUrl,
-  setEndpoint,
-}
+import { MARKETING_POINTS_UPDATED_EVENT } from '@/stores/marketing-center'
 
 interface RequestOptions {
   url: string
   method?: string
   data?: unknown
   headers?: Record<string, string>
+  providerId?: string
+  modelKey?: string
 }
 const isFormData = (value: unknown): value is FormData => typeof FormData !== 'undefined' && value instanceof FormData
+
+
+const notifyMarketingPointsUpdated = (response: Response) => {
+  if (typeof window === 'undefined') return
+  if (response.headers.get('x-marketing-points-updated') !== '1') return
+  window.dispatchEvent(new CustomEvent(MARKETING_POINTS_UPDATED_EVENT))
+}
 
 /**
  * 通用 JSON/表单请求，统一走同源 AI 网关。
@@ -52,22 +47,30 @@ export const request = async (
       formData.append(key, value)
     })
     const originalModel = String(formData.get('model') || '').trim()
-    const providerId = resolveRequestProviderId(originalModel, type.toUpperCase() as 'CHAT' | 'IMAGE' | 'VIDEO')
-    const modelKey = resolveRequestModelKey(originalModel, type.toUpperCase() as 'CHAT' | 'IMAGE' | 'VIDEO')
-    if (providerId && modelKey) {
+    const providerId = String(options.providerId || '').trim()
+      || resolveRequestProviderId(originalModel, type.toUpperCase() as 'CHAT' | 'IMAGE' | 'VIDEO')
+    const modelKey = String(options.modelKey || '').trim()
+      || resolveRequestModelKey(originalModel, type.toUpperCase() as 'CHAT' | 'IMAGE' | 'VIDEO')
+    if (!providerId) {
+      throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
+    }
+    if (modelKey) {
       formData.set('model', modelKey)
     }
     const response = await fetch(buildApiUrl(AI_GATEWAY_REQUEST_PATH), {
       method: 'POST',
+      // AI 网关依赖会话 Cookie 判断登录态，这里必须显式携带凭证。
+      credentials: 'include',
       headers: {
-        ...(providerId ? { 'x-upstream-provider-id': providerId } : { 'x-upstream-base-url': getBaseUrl(), 'x-upstream-endpoint': getEndpoint(type) }),
-        ...(providerId ? { 'x-upstream-endpoint-type': type } : {}),
-        ...(providerId && modelKey ? { 'x-upstream-model-key': modelKey } : {}),
+        'x-upstream-provider-id': providerId,
+        'x-upstream-endpoint-type': type,
+        ...(modelKey ? { 'x-upstream-model-key': modelKey } : {}),
         'x-upstream-method': normalizeGatewayMethod(options.method),
-        ...(!providerId && getApiKey() ? { 'x-upstream-api-key': getApiKey() } : {}),
       },
       body: formData,
     })
+
+    notifyMarketingPointsUpdated(response)
 
     if (!response.ok) {
       handleUnauthorizedResponse(response.status, 'gateway-form-request')
@@ -81,11 +84,15 @@ export const request = async (
 
   const response = await fetch(buildApiUrl(AI_GATEWAY_REQUEST_PATH), {
     method: 'POST',
+    // AI 网关依赖会话 Cookie 判断登录态，这里必须显式携带凭证。
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(await createGatewayPayload(type, options)),
   })
+
+  notifyMarketingPointsUpdated(response)
 
   if (!response.ok) {
     handleUnauthorizedResponse(response.status, 'gateway-json-request')

@@ -12,6 +12,8 @@ import { handleUnauthorizedResponse } from './response'
 export async function* streamChatCompletions(data: Record<string, unknown>, signal?: AbortSignal) {
   const response = await fetch(AI_GATEWAY_REQUEST_PATH, {
     method: 'POST',
+    // 对话同样通过会话 Cookie 识别当前用户，避免网关误判未登录。
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
     },

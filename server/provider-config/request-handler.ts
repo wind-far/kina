@@ -5,15 +5,13 @@ import {
   createAdminProvider,
   deleteAdminProvider,
   getAdminProviderDetail,
-  getProviderRuntimeConfig,
   getPublicModelCatalog,
   listAdminProviders,
-  saveProviderRuntimeConfig,
   updateAdminProvider,
 } from './service'
 import { createProviderModel, deleteProviderModel, listProviderModels, updateProviderModel } from './model-service'
-import { readProviderRuntimeBody, sendProviderRuntimeError } from './shared'
-import { PROVIDER_CONFIG_CATALOG_PATH, PROVIDER_CONFIG_PROVIDERS_PATH, PROVIDER_CONFIG_RUNTIME_PATH } from './constants'
+import { sendProviderRuntimeError } from './shared'
+import { PROVIDER_CONFIG_CATALOG_PATH, PROVIDER_CONFIG_PROVIDERS_PATH } from './constants'
 
 const matchProviderDetailPath = (requestPath: string) => {
   const matched = requestPath.match(/^\/api\/provider-config\/providers\/([^/]+)$/)
@@ -62,27 +60,9 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
     const providerModelsMatch = matchProviderModelsPath(requestPath)
     const providerModelDetailMatch = matchProviderModelDetailPath(requestPath)
 
-    if (req.method === 'GET' && requestPath === PROVIDER_CONFIG_RUNTIME_PATH) {
-      const data = await getProviderRuntimeConfig()
-      sendJson(res, 200, { data })
-      return
-    }
-
     if (req.method === 'GET' && requestPath === PROVIDER_CONFIG_CATALOG_PATH) {
       const data = await getPublicModelCatalog()
       sendJson(res, 200, { data })
-      return
-    }
-
-    if (req.method === 'PUT' && requestPath === PROVIDER_CONFIG_RUNTIME_PATH) {
-      const currentUser = await requireAdminSessionUser(req, res)
-      if (!currentUser) {
-        return
-      }
-
-      const payload = await readProviderRuntimeBody(req)
-      const data = await saveProviderRuntimeConfig(payload)
-      sendJson(res, 200, { data, message: '配置已保存' })
       return
     }
 

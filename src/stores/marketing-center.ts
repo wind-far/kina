@@ -9,6 +9,8 @@ import {
 } from '@/api/marketing-center'
 import { AUTH_LOGIN_SUCCESS_EVENT } from '@/stores/auth'
 
+export const MARKETING_POINTS_UPDATED_EVENT = 'marketing:points-updated'
+
 const overview = ref<MarketingCenterOverviewResponse | null>(null)
 const loading = ref(false)
 const submitting = ref(false)
@@ -31,6 +33,9 @@ export const useMarketingCenterStore = () => {
     }
     authEventBound = true
     window.addEventListener(AUTH_LOGIN_SUCCESS_EVENT, () => {
+      void loadOverview(true)
+    })
+    window.addEventListener(MARKETING_POINTS_UPDATED_EVENT, () => {
       void loadOverview(true)
     })
   }

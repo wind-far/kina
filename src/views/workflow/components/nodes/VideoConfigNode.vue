@@ -5,7 +5,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes, edges } from '../../composables/useWorkflowCanvas'
-import { VIDEO_RATIO_LIST, getAllVideoModels, getDefaultVideoModelKey, getModelByName, loadPublicModelCatalog, resolveRequestModelKey } from '@/config/models'
+import { VIDEO_RATIO_LIST, getAllVideoModels, getDefaultVideoModelKey, getModelByName, loadPublicModelCatalog, resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 import { createVideoTask, pollVideoTask } from '../../api/video'
 import WfSelect from '@/components/common/WfSelect.vue'
 
@@ -94,9 +94,10 @@ const handleGenerate = async () => {
 
     const task = await createVideoTask(formData)
     const taskId = task?.id || task?.task_id
+    const providerId = resolveRequestProviderId(model.value, 'VIDEO')
 
-    if (taskId) {
-      const result = await pollVideoTask(taskId)
+    if (taskId && providerId) {
+      const result = await pollVideoTask(taskId, providerId)
       const videoUrl = result?.data?.[0]?.url || result?.url
 
       if (videoUrl) {
@@ -106,6 +107,9 @@ const handleGenerate = async () => {
         updateNode(outputNodeId, { label: '生成失败', loading: false, error: '未返回视频' })
         updateNode(props.id, { error: '未返回视频' })
       }
+    } else if (taskId) {
+      updateNode(outputNodeId, { label: '生成失败', loading: false, error: '未匹配到视频厂商配置' })
+      updateNode(props.id, { error: '未匹配到视频厂商配置' })
     } else {
       updateNode(outputNodeId, { label: '生成失败', loading: false, error: '任务创建失败' })
       updateNode(props.id, { error: '任务创建失败' })

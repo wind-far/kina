@@ -172,6 +172,161 @@ const appendPointLog = async (tx: any, input: {
   })
 }
 
+
+const readModelBillingPower = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return 0
+  }
+
+  const defaultParams = value as Record<string, unknown>
+  const billingRule = defaultParams.billingRule
+  if (!billingRule || typeof billingRule !== 'object' || Array.isArray(billingRule)) {
+    return 0
+  }
+
+  return Math.max(0, Number((billingRule as Record<string, unknown>).power || 0))
+}
+
+// 读取后台模型配置中的积分消耗规则，统一给生成链路使用。
+export const resolveGenerationPointCost = async (input: {
+  providerId: string
+  modelKey: string
+  endpointType: 'image' | 'video'
+}) => {
+  const providerId = String(input.providerId || '').trim()
+  const modelKey = String(input.modelKey || '').trim()
+  const category = String(input.endpointType || '').trim().toUpperCase()
+
+  if (!providerId || !modelKey || (category !== 'IMAGE' && category !== 'VIDEO')) {
+    return {
+      pointCost: 0,
+      modelId: '',
+      modelName: '',
+    }
+  }
+
+  const model = await prisma.aiModel.findFirst({
+    where: {
+      providerId,
+      modelKey,
+      category: category as any,
+      isEnabled: true,
+    },
+    select: {
+      id: true,
+      name: true,
+      defaultParamsJson: true,
+    },
+  })
+
+  if (!model) {
+    return {
+      pointCost: 0,
+      modelId: '',
+      modelName: '',
+    }
+  }
+
+  return {
+    pointCost: readModelBillingPower(model.defaultParamsJson),
+    modelId: model.id,
+    modelName: model.name,
+  }
+}
+
+// 在真正发起图片/视频生成前扣减积分，并落一条可追踪的消费流水。
+export const consumeGenerationPoints = async (input: {
+  userId: string
+  pointCost: number
+  sourceId: string
+  associationNo: string
+  endpointType: 'image' | 'video'
+  providerId: string
+  modelKey: string
+  modelName?: string
+  metaJson?: unknown
+}) => {
+  const pointCost = Math.max(0, Number(input.pointCost || 0))
+  if (pointCost <= 0) {
+    return null
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const currentBalance = await readCurrentPointBalance(input.userId, tx)
+    if (currentBalance < pointCost) {
+      const error = new Error(`积分不足，当前剩余 ${currentBalance}，需要 ${pointCost}`) as Error & {
+        code?: string
+        currentBalance?: number
+        requiredPoints?: number
+      }
+      error.code = 'INSUFFICIENT_POINTS'
+      error.currentBalance = currentBalance
+      error.requiredPoints = pointCost
+      throw error
+    }
+
+    return appendPointLog(tx, {
+      userId: input.userId,
+      changeType: 'CONSUME',
+      action: 'DECREASE',
+      changeAmount: pointCost,
+      sourceType: 'GENERATION_CONSUME',
+      sourceId: input.sourceId,
+      associationNo: input.associationNo,
+      remark: input.endpointType === 'video' ? '视频生成消耗积分' : '图片生成消耗积分',
+      metaJson: {
+        endpointType: input.endpointType,
+        providerId: input.providerId,
+        modelKey: input.modelKey,
+        modelName: input.modelName || '',
+        ...(input.metaJson && typeof input.metaJson === 'object' && !Array.isArray(input.metaJson)
+          ? input.metaJson as Record<string, unknown>
+          : {}),
+      },
+    })
+  })
+}
+
+// 上游请求失败时自动退回本次生成消耗，避免用户为失败结果付费。
+export const refundGenerationPoints = async (input: {
+  userId: string
+  pointCost: number
+  sourceId: string
+  associationNo: string
+  endpointType: 'image' | 'video'
+  providerId: string
+  modelKey: string
+  modelName?: string
+  metaJson?: unknown
+}) => {
+  const pointCost = Math.max(0, Number(input.pointCost || 0))
+  if (pointCost <= 0) {
+    return null
+  }
+
+  return prisma.$transaction(async (tx) => {
+    return appendPointLog(tx, {
+      userId: input.userId,
+      changeType: 'REFUND',
+      action: 'INCREASE',
+      changeAmount: pointCost,
+      sourceType: 'GENERATION_CONSUME',
+      sourceId: input.sourceId,
+      associationNo: input.associationNo,
+      remark: input.endpointType === 'video' ? '视频生成失败，积分已退回' : '图片生成失败，积分已退回',
+      metaJson: {
+        endpointType: input.endpointType,
+        providerId: input.providerId,
+        modelKey: input.modelKey,
+        modelName: input.modelName || '',
+        ...(input.metaJson && typeof input.metaJson === 'object' && !Array.isArray(input.metaJson)
+          ? input.metaJson as Record<string, unknown>
+          : {}),
+      },
+    })
+  })
+}
+
 const addDuration = (startTime: Date, durationUnit: string, durationValue: number) => {
   const nextDate = new Date(startTime)
   const normalizedUnit = String(durationUnit || 'MONTH').toUpperCase()

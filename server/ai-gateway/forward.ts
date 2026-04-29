@@ -30,6 +30,11 @@ const logGatewayResponse = async (payload: {
   )
 }
 
+interface ForwardLifecycleParams {
+  beforeProxy?: (payload: { upstreamResponse: Response; res: any; upstreamUrl: string; method: string }) => Promise<void> | void
+  onError?: (error: unknown) => Promise<void> | void
+}
+
 export const forwardMultipartRequest = async (params: {
   req: any
   res: any
@@ -37,7 +42,7 @@ export const forwardMultipartRequest = async (params: {
   endpoint: string
   apiKey?: string
   method: string
-}) => {
+} & ForwardLifecycleParams) => {
   const headers = new Headers()
   const contentType = String(params.req.headers['content-type'] || '').trim()
   if (contentType) {
@@ -47,30 +52,36 @@ export const forwardMultipartRequest = async (params: {
     headers.set('Authorization', `Bearer ${params.apiKey}`)
   }
 
-  const bodyBuffer = params.method === 'GET' ? undefined : await readRawBuffer(params.req)
-  const upstreamUrl = joinUpstreamUrl(params.baseUrl, params.endpoint)
-  logGatewayForward({
-    method: params.method,
-    upstreamUrl,
-  })
+  try {
+    const bodyBuffer = params.method === 'GET' ? undefined : await readRawBuffer(params.req)
+    const upstreamUrl = joinUpstreamUrl(params.baseUrl, params.endpoint)
+    logGatewayForward({
+      method: params.method,
+      upstreamUrl,
+    })
 
-  const upstreamResponse = await fetch(upstreamUrl, {
-    method: params.method,
-    headers,
-    body: bodyBuffer as unknown as BodyInit,
-  })
+    const upstreamResponse = await fetch(upstreamUrl, {
+      method: params.method,
+      headers,
+      body: bodyBuffer as unknown as BodyInit,
+    })
 
-  setGatewayDebugHeaders(params.res, {
-    upstreamUrl,
-    upstreamMethod: params.method,
-    upstreamStatus: upstreamResponse.status,
-  })
-  await logGatewayResponse({
-    method: params.method,
-    upstreamUrl,
-    upstreamResponse,
-  })
-  await proxyUpstreamResponse(upstreamResponse, params.res)
+    setGatewayDebugHeaders(params.res, {
+      upstreamUrl,
+      upstreamMethod: params.method,
+      upstreamStatus: upstreamResponse.status,
+    })
+    await logGatewayResponse({
+      method: params.method,
+      upstreamUrl,
+      upstreamResponse,
+    })
+    await params.beforeProxy?.({ upstreamResponse, res: params.res, upstreamUrl, method: params.method })
+    await proxyUpstreamResponse(upstreamResponse, params.res)
+  } catch (error) {
+    await params.onError?.(error)
+    throw error
+  }
 }
 
 export const forwardGatewayPayload = async (params: {
@@ -80,7 +91,7 @@ export const forwardGatewayPayload = async (params: {
   method: string
   headers?: Record<string, string>
   body?: unknown
-}) => {
+} & ForwardLifecycleParams) => {
   logGatewayForward({
     method: params.method,
     upstreamUrl: params.upstreamUrl,
@@ -115,21 +126,27 @@ export const forwardGatewayPayload = async (params: {
     }
   }
 
-  const upstreamResponse = await fetch(params.upstreamUrl, {
-    method: params.method,
-    headers,
-    body,
-  })
+  try {
+    const upstreamResponse = await fetch(params.upstreamUrl, {
+      method: params.method,
+      headers,
+      body,
+    })
 
-  setGatewayDebugHeaders(params.res, {
-    upstreamUrl: params.upstreamUrl,
-    upstreamMethod: params.method,
-    upstreamStatus: upstreamResponse.status,
-  })
-  await logGatewayResponse({
-    method: params.method,
-    upstreamUrl: params.upstreamUrl,
-    upstreamResponse,
-  })
-  await proxyUpstreamResponse(upstreamResponse, params.res)
+    setGatewayDebugHeaders(params.res, {
+      upstreamUrl: params.upstreamUrl,
+      upstreamMethod: params.method,
+      upstreamStatus: upstreamResponse.status,
+    })
+    await logGatewayResponse({
+      method: params.method,
+      upstreamUrl: params.upstreamUrl,
+      upstreamResponse,
+    })
+    await params.beforeProxy?.({ upstreamResponse, res: params.res, upstreamUrl: params.upstreamUrl, method: params.method })
+    await proxyUpstreamResponse(upstreamResponse, params.res)
+  } catch (error) {
+    await params.onError?.(error)
+    throw error
+  }
 }

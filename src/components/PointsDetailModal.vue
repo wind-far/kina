@@ -166,8 +166,14 @@ const getLogTitle = (item: Record<string, any>) => {
   if (sourceType === 'CARD_REDEEM' || changeType === 'CARD_REDEEM') return '卡密兑换奖励'
   if (sourceType === 'CHECKIN') return '每日免费积分'
   if (sourceType === 'REWARD_RULE') return '活动赠送积分'
-  if (changeType === 'CONSUME') return '图片生成'
-  if (changeType === 'REFUND') return '积分退回'
+  if (changeType === 'CONSUME') {
+    const endpointType = String(item.metaJson?.endpointType || '').toLowerCase()
+    return endpointType === 'video' ? '视频生成' : '图片生成'
+  }
+  if (changeType === 'REFUND') {
+    const endpointType = String(item.metaJson?.endpointType || '').toLowerCase()
+    return endpointType === 'video' ? '视频生成退回' : '图片生成退回'
+  }
   return '积分变动'
 }
 

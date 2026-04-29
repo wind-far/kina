@@ -22,6 +22,7 @@ export interface AgentRunResult {
   images?: AgentImageResult[]
   expectedImageCount?: number
   outputVisible?: boolean
+  pointCost?: number
 }
 
 export interface AgentTaskIndicatorState {

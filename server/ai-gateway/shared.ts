@@ -60,6 +60,10 @@ export const setGatewayDebugHeaders = (res: any, input: {
   upstreamMethod: string
   upstreamStatus?: number
 }) => {
+  // 默认关闭调试响应头，避免在浏览器网络面板暴露真实上游地址。
+  if (String(process.env.AI_GATEWAY_DEBUG_HEADERS || '').trim() !== 'true') {
+    return
+  }
   res.setHeader('x-ai-gateway-upstream-url', input.upstreamUrl)
   res.setHeader('x-ai-gateway-upstream-method', input.upstreamMethod)
   if (typeof input.upstreamStatus === 'number') {

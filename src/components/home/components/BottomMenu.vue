@@ -249,11 +249,6 @@ const navigateToAccount = () => {
   border: 1px solid transparent;
 }
 
-.login-menu-wrapper-TcQfJd .lv-menu-item:hover {
-  background-color: var(--bg-block-primary-default);
-  border-radius: 14px;
-}
-
 .avatar-container-Od1Q_g {
   align-items: center;
   display: flex;

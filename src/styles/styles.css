@@ -2318,9 +2318,9 @@ body,html {
             width: 56px
         }
 
-        .credit-display-container-EgNfse:active,.credit-display-container-EgNfse:focus,.credit-display-container-EgNfse:hover {
-            background-color: var(--bg-block-primary-hover)
-        }
+        /*.credit-display-container-EgNfse:active,.credit-display-container-EgNfse:focus,.credit-display-container-EgNfse:hover {*/
+        /*    background-color: var(--bg-block-primary-hover)*/
+        /*}*/
 
         .credit-amount-text-H7jPQp {
             font-family: Montserrat;

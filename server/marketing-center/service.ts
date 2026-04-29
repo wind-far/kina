@@ -39,10 +39,26 @@ const formatWeekKey = (date: Date) => {
   return String(current.getUTCFullYear()) + '-W' + String(weekNo).padStart(2, '0')
 }
 
-// 将用户侧营销接口返回中的 BigInt 递归转换为普通 number，避免 JSON 序列化失败。
+// Prisma Decimal 在用户侧接口里也统一转成字符串金额，保证与后台返回格式一致。
+const isDecimalLike = (value: unknown): value is { toNumber?: () => number; toString: () => string } => {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && (
+      typeof (value as { toNumber?: () => number }).toNumber === 'function'
+      || (value as { constructor?: { name?: string } }).constructor?.name === 'Decimal'
+    ),
+  )
+}
+
+// 将用户侧营销接口返回中的 BigInt / Decimal 递归转换为可序列化值。
 const serializeMarketingCenterRecord = <T>(value: T): T => {
   if (typeof value === 'bigint') {
     return Number(value) as T
+  }
+
+  if (isDecimalLike(value)) {
+    return value.toString() as T
   }
 
   // Date 需要优先转成 ISO 字符串，否则继续走对象递归时会被展开成空对象。

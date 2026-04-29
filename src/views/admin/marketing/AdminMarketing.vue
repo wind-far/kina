@@ -141,7 +141,7 @@
             </div>
             <div class="admin-provider-tile__endpoint">
               <span>售价</span>
-              <strong>{{ formatPrice(item.price) }}</strong>
+              <strong>{{ formatMoney(item.price) }}</strong>
             </div>
             <div class="admin-provider-tile__actions">
               <button class="admin-inline-button" type="button" @click="openPackageDialog(item)">编辑</button>
@@ -650,6 +650,7 @@ import {
   type RechargePackageItem,
   type RewardRuleItem,
 } from '@/api/admin-marketing'
+import { formatMoney, normalizeMoneyString, toMoneyNumber } from '@/utils/money'
 
 // 营销中心四个核心工具，结构参考 BuildingAI 的运营工具卡片入口。
 type MarketingToolKey = 'membership' | 'recharge' | 'rewards' | 'cdk'
@@ -869,16 +870,10 @@ const toDatetimeLocalValue = (value: string | null | undefined) => {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16)
 }
 
-const formatPrice = (value: number | string | null | undefined) => {
-  const numeric = Number(value || 0)
-  return `¥${numeric.toFixed(2)}`
-}
-
 // 统一解析价格输入，兼容字符串小数、空值和中文逗号。
 const parseDecimalInput = (value: string | number | null | undefined) => {
-  const normalized = String(value ?? '').trim().replace(/，/g, '.').replace(/[^\d.-]/g, '')
-  const numeric = Number(normalized)
-  return Number.isFinite(numeric) ? numeric : 0
+  const normalized = normalizeMoneyString(value, '').replace(/，/g, '.').replace(/[^\d.-]/g, '')
+  return toMoneyNumber(normalized, 0)
 }
 
 // 原价允许留空，不强制回落为 0。
@@ -908,7 +903,7 @@ const getPlanBillingSummary = (billingRules?: MembershipPlanBillingItem[]) => {
   if (!enabledRules.length) {
     return '暂无计费规则'
   }
-  return `计费 ${enabledRules.length} 档 · ${enabledRules.map((item) => `${item.level?.name || '未命名等级'} ${formatPrice(item.salesPrice)}`).join(' / ')}`
+  return `计费 ${enabledRules.length} 档 · ${enabledRules.map((item) => `${item.level?.name || '未命名等级'} ${formatMoney(item.salesPrice)}`).join(' / ')}`
 }
 
 const formatDateText = (value: string | null | undefined) => {
@@ -1038,8 +1033,8 @@ const openPlanDialog = (item?: MembershipPlanItem) => {
     billingRules: Array.isArray(item.billingRules) && item.billingRules.length
       ? item.billingRules.map((rule) => ({
           levelId: rule.levelId || '',
-          salesPrice: String(rule.salesPrice ?? 0),
-          originalPrice: rule.originalPrice === null || rule.originalPrice === undefined ? '' : String(rule.originalPrice),
+          salesPrice: normalizeMoneyString(rule.salesPrice),
+          originalPrice: rule.originalPrice === null || rule.originalPrice === undefined ? '' : normalizeMoneyString(rule.originalPrice),
           label: rule.label || '',
           status: rule.status !== false,
         }))
@@ -1107,8 +1102,8 @@ const openPackageDialog = (item?: RechargePackageItem) => {
     description: item.description || '',
     points: item.points,
     bonusPoints: item.bonusPoints,
-    price: String(item.price ?? 0),
-    originalPrice: String(item.originalPrice ?? 0),
+    price: normalizeMoneyString(item.price),
+    originalPrice: item.originalPrice === null || item.originalPrice === undefined ? '' : normalizeMoneyString(item.originalPrice),
     badgeText: item.badgeText || '',
     benefitsText: parsePackageBenefitsText(item.metaJson),
     isEnabled: item.isEnabled,

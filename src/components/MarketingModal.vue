@@ -79,7 +79,7 @@
                                   :class="{ 'priceTipsFree-T3GkW0': isZeroPricePlan(plan) }"
                                 >
                                   <span>¥</span>
-                                  <span>{{ formatPriceInteger(plan.salesPrice) }}</span>
+                                  <span>{{ formatMoneyDisplay(plan.salesPrice) }}</span>
                                 </div>
                                 <div class="cycleTips-r_gMtv membershipCycleTips-canana">{{ getPlanPriceUnitText(plan) }}</div>
                               </div>
@@ -94,7 +94,7 @@
                                 :class="getPlanButtonClass(plan, planIndex)"
                                 type="button"
                                 :disabled="submitting || isZeroPricePlan(plan)"
-                                @click="handlePurchaseMembership(String(plan.id))"
+                                @click="handlePurchaseMembership(plan)"
                               >
                                 {{ getPlanButtonText(plan, planIndex) }}
                               </button>
@@ -141,7 +141,7 @@
                                 <div class="priceTips-dLW7oc priceTipsWithFixedCurrencySymbolSize-XQdawj">
                                   <span>{{ Number(item.points || 0) }}</span>
                                 </div>
-                                <div class="cycleTips-r_gMtv">售价 {{ formatPrice(item.price) }}</div>
+                                <div class="cycleTips-r_gMtv">售价 {{ formatMoney(item.price) }}</div>
                               </div>
                               <div class="priceDesc-yOCFse">{{ getRechargeDesc(item) }}</div>
                             </div>
@@ -154,7 +154,7 @@
                                 :class="getRechargeButtonClass(item, itemIndex)"
                                 type="button"
                                 :disabled="submitting"
-                                @click="handlePurchaseRecharge(String(item.id))"
+                                @click="handlePurchaseRecharge(item)"
                               >
                                 立即充值
                               </button>
@@ -363,16 +363,27 @@
     :available="Number(pointsBalance || 0)"
     :logs="pointLogs"
   />
+  <ScanPayModal
+    v-model:visible="scanPayVisible"
+    :amount="scanPayAmount"
+    :agreement-href="paymentAgreementHref"
+    :agreement-label="paymentAgreementLabel"
+    :submitting="submitting"
+    @confirm="handleConfirmScanPay"
+  />
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import PointsDetailModal from './PointsDetailModal.vue'
+import ScanPayModal from './ScanPayModal.vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
 import { useMarketingCenterStore } from '@/stores/marketing-center'
 import { useMarketingModalStore, type MarketingModalTab } from '@/stores/marketing-modal'
+import { useSystemSettingsStore } from '@/stores/system-settings'
+import { formatMoney, formatMoneyDisplay, isHigherOriginalPrice, toMoneyNumber } from '@/utils/money'
 import './MarketingModal.css'
 
 const props = defineProps<{
@@ -387,6 +398,7 @@ const authStore = useAuthStore()
 const { openLoginModal } = useLoginModalStore()
 const { marketingModalTab, setMarketingModalTab } = useMarketingModalStore()
 const marketingCenterStore = useMarketingCenterStore()
+const systemSettingsStore = useSystemSettingsStore()
 
 const redeemCodeValue = ref('')
 const activeTab = computed<MarketingModalTab>(() => marketingModalTab.value)
@@ -448,8 +460,16 @@ const secondaryRewardRules = computed(() => rewardDisplayRules.value.slice(1))
 const currentCheckinRecord = computed(() => marketingCenterStore.overview.value?.checkin.currentRecord as Record<string, any> | null)
 const pointLogs = computed(() => (marketingCenterStore.overview.value?.points.logs || []) as Array<Record<string, any>>)
 const pointsDetailVisible = ref(false)
+const scanPayVisible = ref(false)
+const scanPayAmount = ref(0)
+const scanPayPayload = ref<{ type: 'membership' | 'recharge'; id: string } | null>(null)
 
 const redeemDisplayRecords = computed(() => cardRedeemRecords.value.slice(0, 3))
+const paymentAgreementHref = computed(() => systemSettingsStore.publicSystemSettings.value.policySettings.userAgreementUrl || '/policies/user-agreement')
+const paymentAgreementLabel = computed(() => {
+  const policyTitle = String(systemSettingsStore.publicSystemSettings.value.policySettings.userAgreementTitle || '').trim()
+  return policyTitle ? `《${policyTitle}》` : '《“即梦”付费服务协议（含自动续费条款）》'
+})
 
 const redeemBenefits = [
   '支持兑换会员时长',
@@ -459,7 +479,7 @@ const redeemBenefits = [
 
 const heroPrimaryText = computed(() => {
   const firstPlan = membershipPlans.value[0]
-  return firstPlan ? `¥${formatPriceInteger(firstPlan.salesPrice)} 特惠开通` : '会员权益限时开放'
+  return firstPlan ? `¥${formatMoneyDisplay(firstPlan.salesPrice)} 特惠开通` : '会员权益限时开放'
 })
 
 const heroSecondaryText = computed(() => {
@@ -482,6 +502,8 @@ const heroDescription = computed(() => {
 
 const closeModal = () => {
   pointsDetailVisible.value = false
+  scanPayVisible.value = false
+  scanPayPayload.value = null
   emit('update:visible', false)
 }
 
@@ -501,12 +523,6 @@ const ensureLoggedInForAction = () => {
   openLoginModal('marketing-modal')
   ElMessage.info('请先登录后再使用会员和积分权益')
   return false
-}
-
-const formatPrice = (value: unknown) => `¥${Number(value || 0).toFixed(2)}`
-const formatPriceInteger = (value: unknown) => {
-  const numeric = Number(value || 0)
-  return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(2)
 }
 
 const formatDate = (value: unknown) => {
@@ -562,15 +578,15 @@ const getPlanPriceUnitText = (plan: Record<string, any>) => {
   return getPlanDurationText(plan)
 }
 const isActiveMembershipPlan = (plan: Record<string, any>) => Boolean(activeSubscription.value?.levelId) && String(activeSubscription.value?.levelId) === String(plan.levelId)
-const isZeroPricePlan = (plan: Record<string, any>) => Number(plan.salesPrice || 0) <= 0
+const isZeroPricePlan = (plan: Record<string, any>) => toMoneyNumber(plan.salesPrice, 0) <= 0
 
 // 参考稿右侧高亮卡为主推位，这里使用价格最高的有效套餐对齐展示。
 const isFeaturedPlan = (plan: Record<string, any>, planIndex: number) => {
   if (!membershipPlans.value.length) {
     return planIndex === 0
   }
-  const maxPrice = Math.max(...membershipPlans.value.map((item) => Number(item.salesPrice || 0)))
-  return Number(plan.salesPrice || 0) === maxPrice && planIndex === membershipPlans.value.findIndex((item) => Number(item.salesPrice || 0) === maxPrice)
+  const maxPrice = Math.max(...membershipPlans.value.map((item) => toMoneyNumber(item.salesPrice, 0)))
+  return toMoneyNumber(plan.salesPrice, 0) === maxPrice && planIndex === membershipPlans.value.findIndex((item) => toMoneyNumber(item.salesPrice, 0) === maxPrice)
 }
 
 const isFeaturedRecharge = (item: Record<string, any>, itemIndex: number) => {
@@ -585,7 +601,7 @@ const getPlanButtonText = (plan: Record<string, any>, planIndex: number) => {
   if (isZeroPricePlan(plan)) {
     return '当前计划'
   }
-  const priceText = formatPrice(plan.salesPrice)
+  const priceText = formatMoney(plan.salesPrice)
   if (isActiveMembershipPlan(plan)) {
     return `${priceText} 立即续费`
   }
@@ -643,16 +659,16 @@ const getMembershipCreditDesc = (plan: Record<string, any>) => {
   if (isZeroPricePlan(plan)) {
     return '当前默认权益立即生效'
   }
-  if (plan.originalPrice !== null && plan.originalPrice !== undefined && Number(plan.originalPrice) > Number(plan.salesPrice || 0)) {
-    return `首购 ${formatPrice(plan.salesPrice)} · 原价 ${formatPrice(plan.originalPrice)}`
+  if (isHigherOriginalPrice(plan.originalPrice, plan.salesPrice)) {
+    return `首购 ${formatMoney(plan.salesPrice)} · 原价 ${formatMoney(plan.originalPrice)}`
   }
   return '开通后权益立即生效'
 }
 
 const getRechargeDesc = (item: Record<string, any>) => String(item.label || item.description || '多充多送，立即到账')
 const getRechargeCreditDesc = (item: Record<string, any>) => {
-  if (item.originalPrice !== null && item.originalPrice !== undefined && Number(item.originalPrice) > Number(item.price || 0)) {
-    return `原价 ${formatPrice(item.originalPrice)}`
+  if (isHigherOriginalPrice(item.originalPrice, item.price)) {
+    return `原价 ${formatMoney(item.originalPrice)}`
   }
   return '充值后即时到账'
 }
@@ -676,7 +692,7 @@ const getRedeemRecordBenefits = (record: Record<string, any>) => {
 
 // 价格字号跟随最长价格字符数，贴近参考稿的大数字排版比例。
 const getMaxPriceCharCount = () => {
-  const values = membershipDisplayPlans.value.map((item) => formatPriceInteger(item.salesPrice))
+  const values = membershipDisplayPlans.value.map((item) => formatMoneyDisplay(item.salesPrice))
   return Math.max(...values.map((item) => item.length), 1)
 }
 
@@ -689,14 +705,42 @@ const getGridStyle = (count: number) => {
   }
 }
 
-const handlePurchaseMembership = async (planId: string) => {
-  if (!ensureLoggedInForAction()) return
-  await marketingCenterStore.purchaseMembership(planId)
+// 当前营销下单仍是后端直充直开，这里先复用扫码支付弹窗承接前台支付确认交互。
+const openMembershipScanPay = (plan: Record<string, any>) => {
+  // 直接复用当前点击卡片的数据，避免再次按 id 回查时因数据映射差异导致金额丢失。
+  scanPayAmount.value = toMoneyNumber(plan?.salesPrice, 0)
+  scanPayPayload.value = { type: 'membership', id: String(plan?.id || '') }
+  scanPayVisible.value = true
 }
 
-const handlePurchaseRecharge = async (rechargePackageId: string) => {
+const openRechargeScanPay = (rechargePackage: Record<string, any>) => {
+  // 充值金额也直接取当前卡片，保证弹窗标题和实际购买项完全一致。
+  scanPayAmount.value = toMoneyNumber(rechargePackage?.price, 0)
+  scanPayPayload.value = { type: 'recharge', id: String(rechargePackage?.id || '') }
+  scanPayVisible.value = true
+}
+
+const handlePurchaseMembership = async (plan: Record<string, any>) => {
   if (!ensureLoggedInForAction()) return
-  await marketingCenterStore.purchaseRecharge(rechargePackageId)
+  openMembershipScanPay(plan)
+}
+
+const handlePurchaseRecharge = async (rechargePackage: Record<string, any>) => {
+  if (!ensureLoggedInForAction()) return
+  openRechargeScanPay(rechargePackage)
+}
+
+const handleConfirmScanPay = async () => {
+  if (!scanPayPayload.value) {
+    return
+  }
+  if (scanPayPayload.value.type === 'membership') {
+    await marketingCenterStore.purchaseMembership(scanPayPayload.value.id)
+  } else {
+    await marketingCenterStore.purchaseRecharge(scanPayPayload.value.id)
+  }
+  scanPayVisible.value = false
+  scanPayPayload.value = null
 }
 
 const handleCheckin = async () => {
@@ -738,8 +782,11 @@ watch(() => props.visible, (visible) => {
   setScrollLock(visible)
   if (!visible) {
     pointsDetailVisible.value = false
+    scanPayVisible.value = false
+    scanPayPayload.value = null
   }
-  if (visible && authStore.isLoggedIn.value) {
+  // 营销总览接口支持未登录访问，弹窗打开时始终拉一次，确保前台套餐和活动文案能正常展示。
+  if (visible) {
     void marketingCenterStore.loadOverview(true)
   }
 }, { immediate: true })

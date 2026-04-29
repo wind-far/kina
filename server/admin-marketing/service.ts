@@ -45,10 +45,26 @@ const toDateValue = (value: unknown) => {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-// 将 Prisma 返回结果中的 BigInt 递归转换为普通 number，避免 JSON 序列化报错。
+// Prisma Decimal 在 JSON 序列化前需要先拍平成字符串金额，否则前端会收到对象结构。
+const isDecimalLike = (value: unknown): value is { toNumber?: () => number; toString: () => string } => {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && (
+      typeof (value as { toNumber?: () => number }).toNumber === 'function'
+      || (value as { constructor?: { name?: string } }).constructor?.name === 'Decimal'
+    ),
+  )
+}
+
+// 将 Prisma 返回结果中的 BigInt / Decimal 递归转换为可序列化值，金额统一返回字符串。
 const serializeMarketingRecord = <T>(value: T): T => {
   if (typeof value === 'bigint') {
     return Number(value) as T
+  }
+
+  if (isDecimalLike(value)) {
+    return value.toString() as T
   }
 
   if (Array.isArray(value)) {

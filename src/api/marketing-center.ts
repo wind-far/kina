@@ -26,6 +26,48 @@ export interface MarketingCenterOverviewResponse {
   }
 }
 
+// 用户侧营销总览里的价格字段也统一收口为字符串，避免弹窗内再出现混合类型。
+const normalizeMoneyString = (value: unknown) => {
+  if (value === null || value === undefined) {
+    return null
+  }
+  return String(value)
+}
+
+const normalizeMarketingOverview = (payload: MarketingCenterOverviewResponse): MarketingCenterOverviewResponse => ({
+  ...payload,
+  membershipPlans: Array.isArray(payload.membershipPlans)
+    ? payload.membershipPlans.map((item) => {
+        const record = item as Record<string, unknown>
+        return {
+          ...record,
+          salesPrice: normalizeMoneyString(record.salesPrice) ?? '0',
+          originalPrice: normalizeMoneyString(record.originalPrice),
+          billingRules: Array.isArray(record.billingRules)
+            ? record.billingRules.map((rule) => {
+                const currentRule = rule as Record<string, unknown>
+                return {
+                  ...currentRule,
+                  salesPrice: normalizeMoneyString(currentRule.salesPrice) ?? '0',
+                  originalPrice: normalizeMoneyString(currentRule.originalPrice),
+                }
+              })
+            : [],
+        }
+      })
+    : [],
+  rechargePackages: Array.isArray(payload.rechargePackages)
+    ? payload.rechargePackages.map((item) => {
+        const record = item as Record<string, unknown>
+        return {
+          ...record,
+          price: normalizeMoneyString(record.price) ?? '0',
+          originalPrice: normalizeMoneyString(record.originalPrice),
+        }
+      })
+    : [],
+})
+
 const requestJson = async <T>(path: string, options: RequestInit = {}, successMessage = '') => {
   const response = await fetch(buildApiUrl(path), {
     credentials: 'include',
@@ -45,7 +87,10 @@ const requestJson = async <T>(path: string, options: RequestInit = {}, successMe
 }
 
 // 查询用户营销中心总览。
-export const getMarketingCenterOverview = () => requestJson<MarketingCenterOverviewResponse>('/api/marketing/overview', { method: 'GET' })
+export const getMarketingCenterOverview = async () => {
+  const payload = await requestJson<MarketingCenterOverviewResponse>('/api/marketing/overview', { method: 'GET' })
+  return normalizeMarketingOverview(payload)
+}
 
 // 执行签到。
 export const performMarketingCheckin = () => requestJson('/api/marketing/checkin', { method: 'POST' }, '签到成功')

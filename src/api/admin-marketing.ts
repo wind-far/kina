@@ -37,8 +37,8 @@ export interface MembershipLevelItem {
 
 export interface MembershipPlanBillingItem {
   levelId: string
-  salesPrice: number | string
-  originalPrice?: number | string | null
+  salesPrice: string
+  originalPrice?: string | null
   label?: string | null
   status: boolean
   level?: MembershipLevelItem | null
@@ -54,8 +54,8 @@ export interface MembershipPlanItem {
   durationType: string
   durationValue: number
   durationUnit: string
-  salesPrice: number | string
-  originalPrice: number | string | null
+  salesPrice: string
+  originalPrice: string | null
   bonusPoints: number
   benefitsJson: unknown
   billingRules?: MembershipPlanBillingItem[]
@@ -71,8 +71,8 @@ export interface RechargePackageItem {
   description: string | null
   points: number
   bonusPoints: number
-  price: number | string
-  originalPrice: number | string | null
+  price: string
+  originalPrice: string | null
   badgeText: string | null
   isEnabled: boolean
   sortOrder: number
@@ -140,6 +140,59 @@ const RECHARGE_PACKAGES_PATH = `${ADMIN_MARKETING_BASE_PATH}/recharge-packages`
 const REWARD_RULES_PATH = `${ADMIN_MARKETING_BASE_PATH}/reward-rules`
 const CARD_BATCHES_PATH = `${ADMIN_MARKETING_BASE_PATH}/card-batches`
 
+// 统一把金额字段收口为字符串，避免前端再混用 number / object / string 三种形态。
+const normalizeMoneyString = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (typeof value === 'number') {
+    return String(value)
+  }
+  if (typeof value === 'string') {
+    return value
+  }
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    for (const key of ['$numberDecimal', 'value', 'amount']) {
+      const candidate = record[key]
+      if (typeof candidate === 'number') {
+        return String(candidate)
+      }
+      if (typeof candidate === 'string') {
+        return candidate
+      }
+    }
+    if (typeof (value as { toString?: () => string }).toString === 'function') {
+      const text = (value as { toString: () => string }).toString()
+      if (text && text !== '[object Object]') {
+        return text
+      }
+    }
+  }
+  return String(value)
+}
+
+// 会员计划中的价格字段较多，这里统一拍平，保证展示与编辑回填一致。
+const normalizeMembershipPlanItem = (item: MembershipPlanItem): MembershipPlanItem => ({
+  ...item,
+  salesPrice: normalizeMoneyString(item.salesPrice) ?? '0',
+  originalPrice: normalizeMoneyString(item.originalPrice),
+  billingRules: Array.isArray(item.billingRules)
+    ? item.billingRules.map((rule) => ({
+        ...rule,
+        salesPrice: normalizeMoneyString(rule.salesPrice) ?? '0',
+        originalPrice: normalizeMoneyString(rule.originalPrice),
+      }))
+    : [],
+})
+
+// 积分充值套餐也统一拍平价格字段，避免售价和原价回显异常。
+const normalizeRechargePackageItem = (item: RechargePackageItem): RechargePackageItem => ({
+  ...item,
+  price: normalizeMoneyString(item.price) ?? '0',
+  originalPrice: normalizeMoneyString(item.originalPrice),
+})
+
 interface MarketingRequestMessageOptions {
   showSuccessMessage?: boolean
   successMessage?: string
@@ -173,15 +226,33 @@ export const updateMembershipLevel = (id: string, payload: Partial<MembershipLev
 export const deleteMembershipLevel = (id: string) => requestJson<boolean>(`${MEMBERSHIP_LEVELS_PATH}/${encodeURIComponent(id)}`, { method: 'DELETE' }, { showSuccessMessage: true, successMessage: '会员等级已删除' })
 
 // 查询会员计划列表。
-export const listMembershipPlans = () => requestJson<MembershipPlanItem[]>(MEMBERSHIP_PLANS_PATH, { method: 'GET' })
-export const createMembershipPlan = (payload: Partial<MembershipPlanItem>) => requestJson<MembershipPlanItem>(MEMBERSHIP_PLANS_PATH, { method: 'POST', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '会员计划已创建' })
-export const updateMembershipPlan = (id: string, payload: Partial<MembershipPlanItem>) => requestJson<MembershipPlanItem>(`${MEMBERSHIP_PLANS_PATH}/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '会员计划已更新' })
+export const listMembershipPlans = async () => {
+  const items = await requestJson<MembershipPlanItem[]>(MEMBERSHIP_PLANS_PATH, { method: 'GET' })
+  return Array.isArray(items) ? items.map(normalizeMembershipPlanItem) : []
+}
+export const createMembershipPlan = async (payload: Partial<MembershipPlanItem>) => {
+  const item = await requestJson<MembershipPlanItem>(MEMBERSHIP_PLANS_PATH, { method: 'POST', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '会员计划已创建' })
+  return normalizeMembershipPlanItem(item)
+}
+export const updateMembershipPlan = async (id: string, payload: Partial<MembershipPlanItem>) => {
+  const item = await requestJson<MembershipPlanItem>(`${MEMBERSHIP_PLANS_PATH}/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '会员计划已更新' })
+  return normalizeMembershipPlanItem(item)
+}
 export const deleteMembershipPlan = (id: string) => requestJson<boolean>(`${MEMBERSHIP_PLANS_PATH}/${encodeURIComponent(id)}`, { method: 'DELETE' }, { showSuccessMessage: true, successMessage: '会员计划已删除' })
 
 // 查询充值套餐列表。
-export const listRechargePackages = () => requestJson<RechargePackageItem[]>(RECHARGE_PACKAGES_PATH, { method: 'GET' })
-export const createRechargePackage = (payload: Partial<RechargePackageItem>) => requestJson<RechargePackageItem>(RECHARGE_PACKAGES_PATH, { method: 'POST', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '充值套餐已创建' })
-export const updateRechargePackage = (id: string, payload: Partial<RechargePackageItem>) => requestJson<RechargePackageItem>(`${RECHARGE_PACKAGES_PATH}/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '充值套餐已更新' })
+export const listRechargePackages = async () => {
+  const items = await requestJson<RechargePackageItem[]>(RECHARGE_PACKAGES_PATH, { method: 'GET' })
+  return Array.isArray(items) ? items.map(normalizeRechargePackageItem) : []
+}
+export const createRechargePackage = async (payload: Partial<RechargePackageItem>) => {
+  const item = await requestJson<RechargePackageItem>(RECHARGE_PACKAGES_PATH, { method: 'POST', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '充值套餐已创建' })
+  return normalizeRechargePackageItem(item)
+}
+export const updateRechargePackage = async (id: string, payload: Partial<RechargePackageItem>) => {
+  const item = await requestJson<RechargePackageItem>(`${RECHARGE_PACKAGES_PATH}/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '充值套餐已更新' })
+  return normalizeRechargePackageItem(item)
+}
 export const deleteRechargePackage = (id: string) => requestJson<boolean>(`${RECHARGE_PACKAGES_PATH}/${encodeURIComponent(id)}`, { method: 'DELETE' }, { showSuccessMessage: true, successMessage: '充值套餐已删除' })
 
 // 查询奖励规则列表。

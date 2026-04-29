@@ -2,6 +2,7 @@ import { buildApiUrl } from './http'
 import { readApiData } from './response'
 import type { PersistedGenerationRecord } from './generation-records'
 import { consumeSseStream, type SseMessage } from '@/utils/sse'
+import type { AgentWorkspaceEvent } from '@/shared/agent-workspace'
 
 export interface GenerationTaskStartPayload {
   type: 'image' | 'agent'
@@ -21,7 +22,7 @@ interface RequestOptions {
 }
 
 export interface GenerationTaskStreamEvent {
-  type: 'connected' | 'snapshot' | 'progress' | 'content_delta' | 'completed' | 'failed' | 'stopped'
+  type: 'connected' | 'snapshot' | 'progress' | 'content_delta' | 'agent_event' | 'completed' | 'failed' | 'stopped'
   recordId: string
   done: boolean
   stopped?: boolean
@@ -30,6 +31,7 @@ export interface GenerationTaskStreamEvent {
   message?: string
   delta?: string
   content?: string
+  agentEvent?: AgentWorkspaceEvent
 }
 
 const GENERATION_TASKS_API_PATH = '/api/generation-tasks'
@@ -99,7 +101,7 @@ export const subscribeGenerationTaskEvents = async (
   }
 
   await consumeSseStream(response, (message: SseMessage) => {
-    if (!['connected', 'snapshot', 'progress', 'content_delta', 'completed', 'failed', 'stopped'].includes(message.event)) {
+    if (!['connected', 'snapshot', 'progress', 'content_delta', 'agent_event', 'completed', 'failed', 'stopped'].includes(message.event)) {
       return
     }
 

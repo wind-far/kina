@@ -499,6 +499,7 @@ const serializeGenerationRecord = (record: any) => ({
     url: output.url || '',
     textContent: output.textContent || '',
     sortOrder: output.sortOrder || 0,
+    metaJson: output.metaJson || null,
   })),
   images: (record.outputs || [])
     .filter((output: any) => output.outputType === 'IMAGE' && output.url)
@@ -528,7 +529,7 @@ const serializeGenerationRecord = (record: any) => ({
             .map((output: any, index: number) => ({
               id: `output-image-${index + 1}`,
               imageSrc: output.url,
-              promptText: '',
+              promptText: String(output.metaJson?.promptText || '').trim() || '',
             })),
           expectedImageCount: record.agentRun.expectedImageCount || 0,
           outputVisible: Boolean(record.agentRun.outputVisible),

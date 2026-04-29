@@ -255,7 +255,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted, type PropType } from 'vue'
 import loadingVideoUrl from '@/assets/animations/record-loading-animation.mp4'
 
 /**
@@ -295,16 +295,16 @@ const props = defineProps({
   /** 是否主动停止 */
   stopped: { type: Boolean, default: false },
   /** 生成的图片 URL 列表 */
-  images: { type: Array, default: () => [] },
+  images: { type: Array as PropType<string[]>, default: () => [] },
   /** 错误信息 */
   error: { type: String, default: '' },
   /** 阶段对话列表 */
-  conversationEntries: { type: Array, default: () => [] }
+  conversationEntries: { type: Array as PropType<ConversationEntry[]>, default: () => [] }
 })
 
 const emit = defineEmits(['edit', 'regenerate', 'more', 'preview', 'stop'])
 
-const handlePreview = (index) => {
+const handlePreview = (index: number) => {
   emit('preview', index)
 }
 
@@ -312,7 +312,7 @@ const currentProgress = ref(props.progress)
 const currentProgressText = ref(props.progressText)
 const conversationExpanded = ref(true)
 const currentStageTypedText = ref('')
-let timer = null
+let timer: ReturnType<typeof setInterval> | null = null
 let typingTimer: ReturnType<typeof setInterval> | null = null
 
 // 按真实执行顺序展示阶段，便于从上到下阅读完整流程。

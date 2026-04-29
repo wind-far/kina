@@ -168,7 +168,7 @@
                               <div class="user-avatar-gP6jYP"><img
                                   :src="resolvedAuthorAvatarSrc"
                                   class="avatar-image-Xos7qj"
-                                  crossorigin="anonymous"
+
                                   :alt="authorName"
                                   :style="authorAvatarSrc ? undefined : fallbackAvatarStyle">
                               </div>

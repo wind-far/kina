@@ -68,6 +68,7 @@ interface GeneratingRecord {
   content: string
   images: string[]
   done: boolean
+  stopped?: boolean
   error: string
   agentTaskId?: string
   agentRun?: AgentRunState
@@ -85,6 +86,7 @@ interface GeneratePreviewImageItem {
 }
 const generatingRecords = ref<GeneratingRecord[]>([])
 let nextId = 0
+const imageAbortControllers = new Map<number, AbortController>()
 const recordPersistTimers = new Map<number, ReturnType<typeof setTimeout>>()
 const recordPersistInflight = new Set<number>()
 const previewVisible = ref(false)
@@ -562,6 +564,7 @@ const toGenerationRecordPayload = (record: GeneratingRecord): GenerationRecordUp
   feature: record.feature,
   skill: record.skill,
   done: record.done,
+  stopped: Boolean(record.stopped),
   agentTaskId: record.agentTaskId,
   images: record.images,
   agentRun: record.agentRun,
@@ -604,6 +607,7 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
   content: record.content,
   images: record.images,
   done: record.done,
+  stopped: Boolean(record.stopped),
   error: record.error,
   agentTaskId: record.agentTaskId,
   agentRun: record.agentRun,
@@ -616,6 +620,7 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   record.content = saved.content
   record.error = saved.error
   record.done = saved.done
+  record.stopped = Boolean(saved.stopped)
   record.images = Array.isArray(saved.images) ? [...saved.images] : []
 
   if (!record.agentRun) return
@@ -725,6 +730,7 @@ const handleSend = (message: string, type: CreationType, options?: { model?: str
     content: '',
     images: [],
     done: false,
+    stopped: false,
     error: '',
     agentRun: type === 'agent' && shouldUseAgentWorkspaceFlow(options?.skill)
       ? buildAgentPendingRun(recordId, message, options?.skill || 'general')
@@ -747,6 +753,8 @@ const handleSend = (message: string, type: CreationType, options?: { model?: str
 
 // 图片生成
 const runImageGeneration = async (record: GeneratingRecord) => {
+  const abortController = new AbortController()
+  imageAbortControllers.set(record.id, abortController)
   try {
     // 根据后台模型目录构建请求参数
     const modelConfig = getModelByName(record.modelKey) as ImageModel | null
@@ -761,7 +769,7 @@ const runImageGeneration = async (record: GeneratingRecord) => {
     }
     if (sizeKey) data.size = sizeKey
 
-    const result = await generateImage(data)
+    const result = await generateImage(data, { signal: abortController.signal })
 
     // 提取图片 URL
     const urls: string[] = []
@@ -779,12 +787,30 @@ const runImageGeneration = async (record: GeneratingRecord) => {
     }
     schedulePersistRecord(record)
   } catch (e: unknown) {
-    record.error = e instanceof Error ? e.message : '图片生成失败'
+    const isAbortError = e instanceof DOMException
+      ? e.name === 'AbortError'
+      : e instanceof Error && /abort/i.test(e.name || '')
+
+    if (isAbortError) {
+      record.stopped = true
+      record.error = ''
+    } else {
+      record.error = e instanceof Error ? e.message : '图片生成失败'
+    }
     schedulePersistRecord(record)
   } finally {
+    imageAbortControllers.delete(record.id)
     record.done = true
     schedulePersistRecord(record, true)
   }
+}
+
+// 图片生成支持主动中断，停止后保留当前记录并展示“已停止生成”状态。
+const handleStopImageGeneration = (record: GeneratingRecord) => {
+  if (record.done) return
+  const controller = imageAbortControllers.get(record.id)
+  if (!controller) return
+  controller.abort()
 }
 
 // Agent 在 generate 页内走任务编排流程，而不是单独新开页面。
@@ -1459,9 +1485,11 @@ onMounted(() => {
                                         :duration="record.duration"
                                         :feature="record.feature"
                                         :done="record.done"
+                                        :stopped="Boolean(record.stopped)"
                                         :images="record.images"
                                         :error="record.error"
                                         @preview="handlePreviewRecordImage(record, $event)"
+                                        @stop="handleStopImageGeneration(record)"
                                       />
                                     </div>
                                     <div v-if="record.type === 'agent'" class=item-Xh64V7 :data-index="index * 2 + 2" style=z-index:1>

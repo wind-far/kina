@@ -136,7 +136,7 @@
                     <img
                       :src="item.user.avatarSrc"
                       class="dreamina-component-avatar discover-feed-avatar"
-                      crossorigin="anonymous"
+
                       draggable="false"
                       :alt="item.user.name"
                     >

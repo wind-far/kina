@@ -21,7 +21,6 @@
                     <div style="transition:opacity 300ms;opacity:1">
                       <img
                         draggable="false"
-                        crossorigin="anonymous"
                         data-apm-action="qrcode-img-_pA78x"
                         alt="qr_code_cover_url"
                         fetchpriority="high"
@@ -60,7 +59,6 @@
                   <div style="transition:opacity 300ms;opacity:1">
                     <img
                       draggable="false"
-                      crossorigin="anonymous"
                       data-apm-action="pay-png-c0Civc"
                       alt="zhifubao_cover_url"
                       fetchpriority="high"

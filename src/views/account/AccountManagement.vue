@@ -162,7 +162,7 @@
                                             <div class="content-B9Vipz">
                                               <div class="container-bbbsvQ account-feed-card-shell">
                                                 <img
-                                                  crossorigin="anonymous"
+
                                                   loading="lazy"
                                                   class="cover-Qo4B2U"
                                                   :src="item.imageSrc"

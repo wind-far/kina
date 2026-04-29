@@ -23,6 +23,7 @@ interface RequestOptions {
   headers?: Record<string, string>
   providerId?: string
   modelKey?: string
+  signal?: AbortSignal
 }
 const isFormData = (value: unknown): value is FormData => typeof FormData !== 'undefined' && value instanceof FormData
 
@@ -61,6 +62,7 @@ export const request = async (
       method: 'POST',
       // AI 网关依赖会话 Cookie 判断登录态，这里必须显式携带凭证。
       credentials: 'include',
+      signal: options.signal,
       headers: {
         'x-upstream-provider-id': providerId,
         'x-upstream-endpoint-type': type,
@@ -86,6 +88,7 @@ export const request = async (
     method: 'POST',
     // AI 网关依赖会话 Cookie 判断登录态，这里必须显式携带凭证。
     credentials: 'include',
+    signal: options.signal,
     headers: {
       'Content-Type': 'application/json',
     },

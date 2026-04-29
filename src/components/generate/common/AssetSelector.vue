@@ -266,7 +266,7 @@ defineExpose({
 
                 <!-- 空状态 -->
                 <div v-else-if="assets.length === 0" class="empty-page-Hr0fvP">
-                  <img :src="emptyImage" :alt="emptyText" crossorigin="anonymous" class="image-THKG1x">
+                  <img :src="emptyImage" :alt="emptyText"  class="image-THKG1x">
                   <div class="description-EXt9nY">{{ emptyText }}</div>
                 </div>
 
@@ -295,7 +295,7 @@ defineExpose({
                       </div>
                       <!-- 图片 -->
                       <div class="container-bG3PQ9">
-                        <img crossorigin="anonymous"
+                        <img
                              draggable="false"
                              loading="eager"
                              class="img-bhyNEQ"

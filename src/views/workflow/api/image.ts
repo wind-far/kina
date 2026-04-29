@@ -19,19 +19,20 @@ const DEFAULT_IMAGE_ENDPOINT = '/images/generations'
 
 
 export const generateImage = async (data: any, options: any = {}) => {
-  const { requestType = 'json', endpoint } = options
+  const { requestType = 'json', endpoint, signal } = options
   const url = endpoint || DEFAULT_IMAGE_ENDPOINT
 
   // 如果路径包含 chat/completions，使用 chat 协议
   if (url.includes('chat/completions')) {
-    return generateImageViaChat(data)
+    return generateImageViaChat(data, signal)
   }
 
   return request({
     url,
     method: 'post',
     data,
-    headers: requestType === 'formdata' ? { 'Content-Type': 'multipart/form-data' } : {}
+    headers: requestType === 'formdata' ? { 'Content-Type': 'multipart/form-data' } : {},
+    signal,
   }, 'image')
 }
 
@@ -39,7 +40,7 @@ export const generateImage = async (data: any, options: any = {}) => {
  * 通过 chat completions 接口生成图片
  * 从 SSE 流中提取图片 URL 或 base64
  */
-async function generateImageViaChat(data: any) {
+async function generateImageViaChat(data: any, signal?: AbortSignal) {
   const body = {
     model: data.model,
     messages: [{ role: 'user', content: data.prompt }],
@@ -57,6 +58,7 @@ async function generateImageViaChat(data: any) {
     method: 'POST',
     // 图片生成走同源网关时也要携带会话 Cookie，否则会被后端判未登录。
     credentials: 'include',
+    signal,
     headers: {
       'Content-Type': 'application/json'
     },

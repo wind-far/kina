@@ -38,6 +38,14 @@
               <span>{{ error }}</span>
             </div>
           </div>
+          <div v-else-if="stopped" class="image-error-container">
+            <div class="image-error-content">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M8 8h8v8H8zM21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>已停止生成</span>
+            </div>
+          </div>
           <!-- 生成完成：显示图片 -->
           <div v-else-if="done && images.length" class="image-record-content-TuJi21">
             <div class="responsive-image-grid-WOh0lB">
@@ -52,7 +60,7 @@
                           <div class="container-bG3PQ9 image-GnB1sY">
                             <div style="transition:opacity 300ms;opacity:1">
                               <img class="image-TLmgkP"
-                                   crossorigin="anonymous"
+
                                    draggable="false"
                                    loading="lazy"
                                    :src="url"
@@ -81,7 +89,7 @@
                   <video class="loading-animation-x3v9Mu"
                          autoplay loop muted preload="auto"
                          :src="loadingVideoUrl"
-                         crossorigin="anonymous" />
+                          />
                 </div>
               </div>
               <!-- 网格分割线 -->
@@ -94,6 +102,9 @@
             <div class="progress-badge-RuihdC progress-badge-RQDqWu">
               {{ currentProgress }}%造梦中
             </div>
+            <button class="stop-generate-button-canana" type="button" @click="$emit('stop')">
+              停止生成
+            </button>
           </div>
           <div v-if="done && !error" class="operations-NxPE1B">
             <div class="record-bottom-slots-AYv3JV">
@@ -200,13 +211,15 @@ const props = defineProps({
   progress: { type: Number, default: 0 },
   /** 是否生成完成 */
   done: { type: Boolean, default: false },
+  /** 是否主动停止 */
+  stopped: { type: Boolean, default: false },
   /** 生成的图片 URL 列表 */
   images: { type: Array, default: () => [] },
   /** 错误信息 */
   error: { type: String, default: '' }
 })
 
-const emit = defineEmits(['edit', 'regenerate', 'more', 'preview'])
+const emit = defineEmits(['edit', 'regenerate', 'more', 'preview', 'stop'])
 
 const handlePreview = (index) => {
   emit('preview', index)
@@ -235,6 +248,10 @@ watch(() => props.done, (val) => {
 })
 
 watch(() => props.error, (val) => {
+  if (val) stopTimer()
+})
+
+watch(() => props.stopped, (val) => {
   if (val) stopTimer()
 })
 
@@ -347,5 +364,29 @@ onUnmounted(() => {
   gap: 8px;
   color: var(--functional-danger, #f53f3f);
   font-size: 14px;
+}
+
+.stop-generate-button-canana {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  bottom: 16px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  height: 32px;
+  justify-content: center;
+  left: 50%;
+  padding: 0 14px;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 6;
+}
+
+.stop-generate-button-canana:hover {
+  background: rgba(0, 0, 0, 0.58);
 }
 </style>

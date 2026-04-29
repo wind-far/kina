@@ -1,20 +1,20 @@
 <template>
   <div role="menu" class="lv-menu lv-menu-light lv-menu-vertical bottomMenu-D_sElt login-menu-wrapper-TcQfJd">
     <div class="lv-menu-inner">
-      <!-- 积分显示 -->
-<!--      <div tabindex="0" role="menuitem" class="lv-menu-item lv-menu-item-size-default credit-display-menu-container-vPGgB6" id="SiderMenuCredit">-->
-<!--        <div class="credit-container-vI5rYU">-->
-<!--          <div class="credit-display-container-EgNfse column-mode-GFlEE0">-->
-<!--            <div class="credit-amount-container-SnxCra">-->
-<!--              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 25 24">-->
-<!--                <path fill="currentColor" d="M22.044 12.695a.77.77 0 0 0-.596-.734c-4.688-1.152-7.18-3.92-7.986-9.924l-.006-.033a.573.573 0 0 0-1.137 0l-.007.033c-.805 6.004-3.298 8.772-7.986 9.924a.77.77 0 0 0-.596.734v.033a.82.82 0 0 0 .625.796c3.3.859 6.851 2.872 7.9 6.022.086.26.332.443.613.454h.037a.67.67 0 0 0 .614-.454c1.048-3.15 4.598-5.163 7.9-6.021a.82.82 0 0 0 .625-.797z" data-follow-fill="currentColor"></path>-->
-<!--              </svg>-->
-<!--              <div class="credit-amount-text-H7jPQp column-mode-SHz9kD">80</div>-->
-<!--            </div>-->
-<!--            <div class="upgrade-text-JHUaIS column-mode-vnmqXA">1元会员</div>-->
-<!--          </div>-->
-<!--        </div>-->
-<!--      </div>-->
+      <!-- 积分 / 会员营销入口 -->
+      <div tabindex="0" role="menuitem" class="lv-menu-item lv-menu-item-size-default credit-display-menu-container-vPGgB6" id="SiderMenuCredit" @click="openMarketingEntry">
+        <div class="credit-container-vI5rYU">
+          <div class="credit-display-container-EgNfse column-mode-GFlEE0">
+            <div class="credit-amount-container-SnxCra">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 25 24">
+                <path fill="currentColor" d="M22.044 12.695a.77.77 0 0 0-.596-.734c-4.688-1.152-7.18-3.92-7.986-9.924l-.006-.033a.573.573 0 0 0-1.137 0l-.007.033c-.805 6.004-3.298 8.772-7.986 9.924a.77.77 0 0 0-.596.734v.033a.82.82 0 0 0 .625.796c3.3.859 6.851 2.872 7.9 6.022.086.26.332.443.613.454h.037a.67.67 0 0 0 .614-.454c1.048-3.15 4.598-5.163 7.9-6.021a.82.82 0 0 0 .625-.797z" data-follow-fill="currentColor"></path>
+              </svg>
+              <div class="credit-amount-text-H7jPQp column-mode-SHz9kD">{{ marketingPointsText }}</div>
+            </div>
+            <div class="upgrade-text-JHUaIS column-mode-vnmqXA">{{ isLoggedIn ? '会员中心' : '1元会员' }}</div>
+          </div>
+        </div>
+      </div>
 
       <!-- 登录入口 / 个人中心入口 -->
       <div
@@ -166,10 +166,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRoute, useRouter } from 'vue-router'
 import { useLoginModalStore } from '@/stores/login-modal'
+import { useMarketingCenterStore } from '@/stores/marketing-center'
+import { useMarketingModalStore } from '@/stores/marketing-modal'
 
 // 默认头像占位图，避免登录后无头像时左下角看起来像“消失了”。
 const EMPTY_AVATAR_DATA_URI = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' rx='100' fill='%23E5E7EB'/%3E%3Ccircle cx='100' cy='76' r='30' fill='%239CA3AF'/%3E%3Cpath d='M52 154c8-24 28-38 48-38s40 14 48 38' fill='%239CA3AF'/%3E%3C/svg%3E"
@@ -179,6 +181,8 @@ const authStore = useAuthStore()
 const isLoggedIn = authStore.isLoggedIn
 const loginButtonText = authStore.loginButtonText
 const { openLoginModal } = useLoginModalStore()
+const { openMarketingModal } = useMarketingModalStore()
+const marketingCenterStore = useMarketingCenterStore()
 
 // 路由能力。
 const router = useRouter()
@@ -190,6 +194,25 @@ const currentPath = computed(() => route.path)
 // 登录后头像地址。
 const resolvedAvatarSrc = computed(() => {
   return authStore.currentUser.value?.avatarUrl || EMPTY_AVATAR_DATA_URI
+})
+
+// 左下角营销入口展示文案。
+const marketingPointsText = computed(() => {
+  if (!authStore.isLoggedIn.value) {
+    return '福利'
+  }
+  return String(marketingCenterStore.pointsBalance.value || 0)
+})
+
+const openMarketingEntry = () => {
+  openMarketingModal({
+    source: 'bottom-menu',
+    tab: authStore.isLoggedIn.value ? 'recharge' : 'membership',
+  })
+}
+
+onMounted(() => {
+  void marketingCenterStore.loadOverview()
 })
 
 // 跳转到个人中心。

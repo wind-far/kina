@@ -1,5 +1,8 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { useMarketingCenterStore } from '@/stores/marketing-center'
+import { useMarketingModalStore } from '@/stores/marketing-modal'
 import SettingsModal from './SettingsModal.vue'
 
 const props = defineProps({
@@ -17,6 +20,9 @@ const showMenu = ref(false)
 const menuRef = ref(null)
 const showSettingsModal = ref(false)
 const projectDescription = ref('')
+const authStore = useAuthStore()
+const marketingCenterStore = useMarketingCenterStore()
+const { openMarketingModal } = useMarketingModalStore()
 
 // 主题模式: 'light' | 'dark' | 'system'
 const themeMode = ref(localStorage.getItem('theme-mode') || 'dark')
@@ -40,6 +46,20 @@ const themeLabel = computed(() => {
   const labels = { light: '浅色模式', dark: '深色模式', system: '跟随系统' }
   return labels[themeMode.value]
 })
+
+const marketingBalanceText = computed(() => {
+  if (!authStore.isLoggedIn.value) {
+    return '福利'
+  }
+  return String(marketingCenterStore.pointsBalance.value || 0)
+})
+
+const openMarketingEntry = () => {
+  openMarketingModal({
+    source: 'canana-header',
+    tab: authStore.isLoggedIn.value ? 'recharge' : 'membership',
+  })
+}
 
 // 应用主题
 const applyTheme = (theme) => {
@@ -119,6 +139,7 @@ onMounted(() => {
   applyTheme(currentTheme.value)
   // 监听系统主题变化
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', handleSystemThemeChange)
+  void marketingCenterStore.loadOverview()
 })
 
 onUnmounted(() => {
@@ -251,18 +272,18 @@ onUnmounted(() => {
     <div class="top-bar-right">
       <div class="top-bar-right-inner">
         <!-- 积分显示 -->
-        <div class="credit-display">
+        <button class="credit-display credit-display--button" type="button" @click="openMarketingEntry">
           <div class="credit-display-container">
             <div class="credit-amount-container">
               <svg width="12" height="12" viewBox="0 0 25 24" fill="none">
                 <path fill="currentColor" d="M22.044 12.695a.77.77 0 0 0-.596-.734c-4.688-1.152-7.18-3.92-7.986-9.924l-.006-.033a.573.573 0 0 0-1.137 0l-.007.033c-.805 6.004-3.298 8.772-7.986 9.924a.77.77 0 0 0-.596.734v.033a.82.82 0 0 0 .625.796c3.3.859 6.851 2.872 7.9 6.022.086.26.332.443.613.454h.037a.67.67 0 0 0 .614-.454c1.048-3.15 4.598-5.163 7.9-6.021a.82.82 0 0 0 .625-.797z"/>
               </svg>
-              <div class="credit-amount-text">48</div>
+              <div class="credit-amount-text">{{ marketingBalanceText }}</div>
             </div>
             <div class="divider"></div>
-            <div class="upgrade-text">1元会员</div>
+            <div class="upgrade-text">{{ authStore.isLoggedIn.value ? '会员中心' : '1元会员' }}</div>
           </div>
-        </div>
+        </button>
         
         <!-- 分享按钮 -->
         <button class="share-button" type="button">
@@ -390,6 +411,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.credit-display--button {
+  border: none;
+  padding: 0;
 }
 
 .credit-display {

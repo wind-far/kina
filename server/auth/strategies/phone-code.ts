@@ -1,4 +1,5 @@
 import type { AuthStrategy } from '../types'
+import { grantLoginReward } from '../../marketing-center/service'
 import { attachVerificationCodeUser, consumeVerificationCodeRecord, createUserSession, createVerificationCodeRecord, getAuthMethodConfig, isValidPhone, resolveUserByIdentifier, toAuthUserProfile } from '../service'
 
 // 手机验证码登录策略。
@@ -20,6 +21,7 @@ export const phoneCodeStrategy: AuthStrategy = {
       requesterIp: context.requesterIp,
       userAgent: context.userAgent,
     })
+
 
     return {
       id: record.id,
@@ -48,11 +50,13 @@ export const phoneCodeStrategy: AuthStrategy = {
     })
 
     const currentMethodConfig = await getAuthMethodConfig('PHONE_CODE')
-    const user = await resolveUserByIdentifier({
+    const resolvedUser = await resolveUserByIdentifier({
       methodType: 'PHONE_CODE',
       identifier: phone,
       allowSignUp: currentMethodConfig.allowSignUp,
     })
+
+    const user = resolvedUser.user
 
     await attachVerificationCodeUser(verificationRecord.id, user.id)
 
@@ -63,6 +67,8 @@ export const phoneCodeStrategy: AuthStrategy = {
       requesterIp: context.requesterIp,
       userAgent: context.userAgent,
     })
+
+    await grantLoginReward(user.id)
 
     return {
       token: session.token,

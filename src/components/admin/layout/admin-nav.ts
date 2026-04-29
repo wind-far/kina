@@ -38,6 +38,11 @@ export const adminNavGroups: AdminNavGroup[] = [
         path: '/admin/publish',
         description: '管理首页与展示内容发布状态',
       },
+      {
+        label: '营销中心',
+        path: '/admin/marketing',
+        description: '管理会员订阅、积分充值与奖励活动',
+      },
     ],
   },
   {

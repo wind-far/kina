@@ -11,6 +11,10 @@ import { isAdminUsersPath } from './admin-users/constants'
 import { handleAdminUsersRequest } from './admin-users/request-handler'
 import { isAdminDashboardPath } from './admin-dashboard/constants'
 import { handleAdminDashboardRequest } from './admin-dashboard/request-handler'
+import { isAdminMarketingPath } from './admin-marketing/constants'
+import { handleAdminMarketingRequest } from './admin-marketing/request-handler'
+import { isMarketingCenterPath } from './marketing-center/constants'
+import { handleMarketingCenterRequest } from './marketing-center/request-handler'
 import { isSystemConfigPath } from './system-config/constants'
 import { handleSystemConfigRequest } from './system-config/request-handler'
 import { isGenerationRecordsPath } from './generation-records/constants'
@@ -361,6 +365,17 @@ const dispatchRequest = async (req: any, res: any) => {
   // 命中后台用户管理接口时返回用户与角色数据。
   if (isAdminUsersPath(requestPath)) {
     await handleAdminUsersRequest(req, res)
+    return
+  }
+
+  // 命中营销中心接口时返回营销工具配置与数据。
+  if (isAdminMarketingPath(requestPath)) {
+    await handleAdminMarketingRequest(req, res)
+    return
+  }
+
+  if (isMarketingCenterPath(requestPath)) {
+    await handleMarketingCenterRequest(req, res)
     return
   }
 

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import type { AuthMethodCategory, AuthMethodType, VerificationChannel } from '@prisma/client'
 import prisma from '../db/prisma'
+import { grantRegisterReward } from '../marketing-center/service'
 import type { AuthMethodConfigPayload, AuthUserProfile, PublicAuthMethod } from './types'
 
 // 验证码默认有效期，单位分钟。
@@ -421,7 +422,7 @@ export const resolveUserByIdentifier = async (input: {
   })
 
   if (existingIdentity?.user) {
-    return existingIdentity.user
+    return { user: existingIdentity.user, isNewUser: false }
   }
 
   const existingUser = input.methodType === 'PHONE_CODE'
@@ -459,7 +460,7 @@ export const resolveUserByIdentifier = async (input: {
       },
     })
 
-    return existingUser
+    return { user: existingUser, isNewUser: false }
   }
 
   if (!input.allowSignUp) {
@@ -483,7 +484,9 @@ export const resolveUserByIdentifier = async (input: {
     },
   })
 
-  return nextUser
+  await grantRegisterReward(nextUser.id)
+
+  return { user: nextUser, isNewUser: true }
 }
 
 // 更新验证码记录绑定的用户。

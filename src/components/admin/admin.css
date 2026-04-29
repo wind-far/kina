@@ -2255,3 +2255,175 @@ html[data-theme='dark'] .admin-empty {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.admin-marketing-tools {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.admin-marketing-tool {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 18px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+  text-align: left;
+}
+
+.admin-marketing-tool:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--brand-main-default) 18%, var(--line-divider, #00000014));
+}
+
+.admin-marketing-tool.is-active {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--brand-main-default) 36%, var(--line-divider, #00000014));
+  background: color-mix(in srgb, var(--brand-main-block-default) 30%, var(--bg-surface));
+  box-shadow: 0 16px 38px color-mix(in srgb, var(--brand-main-default) 10%, transparent);
+}
+
+.admin-marketing-tool__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--bg-block-secondary-default);
+  font-size: 22px;
+}
+
+.admin-marketing-tool__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.admin-marketing-tool__desc,
+.admin-marketing-tool__meta {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.admin-marketing-tool__meta {
+  color: var(--text-tertiary);
+}
+
+.admin-marketing-panel-grid {
+  align-items: start;
+}
+
+.admin-marketing-list-item {
+  grid-template-columns: minmax(0, 1.5fr) auto auto;
+}
+
+.admin-marketing-list-item--batch {
+  grid-template-columns: minmax(0, 1.8fr) auto auto;
+}
+
+.admin-marketing-list-item__badges {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.admin-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-marketing-package-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-marketing-package-card {
+  min-height: 220px;
+}
+
+.admin-marketing-code-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.admin-marketing-code-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--bg-block-secondary-default);
+  border: 1px solid var(--line-divider, #00000014);
+}
+
+.admin-marketing-code-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-primary);
+}
+
+.admin-marketing-code-card__meta {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+html[data-theme='dark'] .admin-marketing-tool,
+html[data-theme='dark'] .admin-marketing-code-card,
+html[data-theme='dark'] .admin-marketing-package-card,
+html[data-theme='dark'] .admin-list-item.admin-marketing-list-item {
+  border-color: color-mix(in srgb, var(--text-primary) 14%, transparent);
+}
+
+@media (max-width: 1100px) {
+  .admin-marketing-tools,
+  .admin-marketing-package-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 960px) {
+  .admin-marketing-list-item,
+  .admin-marketing-list-item--batch {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-marketing-list-item__badges,
+  .admin-row-actions {
+    justify-content: flex-start;
+  }
+
+  .admin-marketing-code-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-marketing-tools,
+  .admin-marketing-package-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.admin-form__field--checkbox {
+  justify-content: flex-end;
+}
+
+.admin-form__field--checkbox .admin-form__label {
+  margin-top: 30px;
+}

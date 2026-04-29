@@ -14,25 +14,33 @@ enum UserRole {
 /// 第一版用户表。
 /// 作为登录、资源、生成、配置等模块的统一用户实体。
 model AppUser {
-  id                String             @id @default(cuid()) @db.VarChar(36)
-  name              String?            @db.VarChar(100)
-  avatarUrl         String?            @map("avatar_url") @db.Text
-  email             String?            @unique(map: "uk_app_users_email") @db.VarChar(191)
-  phone             String?            @unique(map: "uk_app_users_phone") @db.VarChar(32)
-  role              UserRole           @default(USER)
-  status            UserStatus         @default(ANONYMOUS)
-  createdAt         DateTime           @default(now()) @map("created_at")
-  updatedAt         DateTime           @updatedAt @map("updated_at")
-  verificationCodes AuthVerificationCode[]
-  authIdentities    AppUserAuthIdentity[]
-  sessions          AppSession[]
-  authMethodConfigs AuthMethodConfig[]
-  providerConfigs   AiProviderConfig[]
-  storageConfigs    ObjectStorageConfig[]
-  generationRecords GenerationRecord[]
-  agentRuns         AgentRun[]
-  assets            AssetItem[]
-  assetFavorites    AssetFavorite[]
+  id                 String                 @id @default(cuid()) @db.VarChar(36)
+  name               String?                @db.VarChar(100)
+  avatarUrl          String?                @map("avatar_url") @db.Text
+  email              String?                @unique(map: "uk_app_users_email") @db.VarChar(191)
+  phone              String?                @unique(map: "uk_app_users_phone") @db.VarChar(32)
+  role               UserRole               @default(USER)
+  status             UserStatus             @default(ANONYMOUS)
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+  verificationCodes  AuthVerificationCode[]
+  authIdentities     AppUserAuthIdentity[]
+  sessions           AppSession[]
+  authMethodConfigs  AuthMethodConfig[]
+  providerConfigs    AiProviderConfig[]
+  storageConfigs     ObjectStorageConfig[]
+  generationRecords  GenerationRecord[]
+  agentRuns          AgentRun[]
+  assets             AssetItem[]
+  assetFavorites     AssetFavorite[]
+  membershipOrders   MembershipOrder[]
+  subscriptions      UserSubscription[]
+  rechargeOrders     RechargeOrder[]
+  pointAccountLogs   PointAccountLog[]
+  rewardClaimRecords RewardClaimRecord[]
+  checkinRecords     UserCheckinRecord[]
+  usedCardCodes      CardCode[]             @relation("CardCodeUsedByUser")
+  cardRedeemRecords  CardRedeemRecord[]
 
   @@map("app_users")
 }
@@ -63,24 +71,24 @@ model AuthVerificationCode {
 /// 登录方式配置表。
 /// 用于后台动态启用、禁用、排序和扩展不同登录方式。
 model AuthMethodConfig {
-  id              String             @id @default(cuid()) @db.VarChar(36)
-  userId          String?            @map("user_id") @db.VarChar(36)
-  methodType      AuthMethodType     @unique(map: "uk_auth_method_configs_method_type") @map("method_type")
-  category        AuthMethodCategory
-  displayName     String             @map("display_name") @db.VarChar(100)
-  description     String?            @db.VarChar(255)
-  iconType        String?            @map("icon_type") @db.VarChar(50)
-  iconUrl         String?            @map("icon_url") @db.Text
-  isEnabled       Boolean            @default(true) @map("is_enabled")
-  isVisible       Boolean            @default(true) @map("is_visible")
-  sortOrder       Int                @default(0) @map("sort_order")
-  allowAutoFill   Boolean            @default(true) @map("allow_auto_fill")
-  allowSignUp     Boolean            @default(true) @map("allow_sign_up")
-  configJson      Json?              @map("config_json")
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
-  user            AppUser?           @relation(fields: [userId], references: [id], onDelete: SetNull)
-  userIdentities  AppUserAuthIdentity[]
+  id             String                @id @default(cuid()) @db.VarChar(36)
+  userId         String?               @map("user_id") @db.VarChar(36)
+  methodType     AuthMethodType        @unique(map: "uk_auth_method_configs_method_type") @map("method_type")
+  category       AuthMethodCategory
+  displayName    String                @map("display_name") @db.VarChar(100)
+  description    String?               @db.VarChar(255)
+  iconType       String?               @map("icon_type") @db.VarChar(50)
+  iconUrl        String?               @map("icon_url") @db.Text
+  isEnabled      Boolean               @default(true) @map("is_enabled")
+  isVisible      Boolean               @default(true) @map("is_visible")
+  sortOrder      Int                   @default(0) @map("sort_order")
+  allowAutoFill  Boolean               @default(true) @map("allow_auto_fill")
+  allowSignUp    Boolean               @default(true) @map("allow_sign_up")
+  configJson     Json?                 @map("config_json")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  user           AppUser?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userIdentities AppUserAuthIdentity[]
 
   @@index([isEnabled, isVisible, sortOrder], map: "idx_auth_method_configs_enabled_visible_sort")
   @@map("auth_method_configs")
@@ -376,11 +384,11 @@ model AssetItem {
 /// 用于支持首页收藏、个人收藏和收藏数量统计。
 model AssetFavorite {
   id        String    @id @default(cuid()) @db.VarChar(36)
-  assetId    String    @map("asset_id") @db.VarChar(36)
-  userId     String    @map("user_id") @db.VarChar(36)
-  createdAt  DateTime  @default(now()) @map("created_at")
-  asset      AssetItem @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  user       AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assetId   String    @map("asset_id") @db.VarChar(36)
+  userId    String    @map("user_id") @db.VarChar(36)
+  createdAt DateTime  @default(now()) @map("created_at")
+  asset     AssetItem @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user      AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([assetId, userId], map: "uk_asset_favorites_asset_user")
   @@index([userId, createdAt], map: "idx_asset_favorites_user_created_at")
@@ -464,16 +472,342 @@ model AgentProcessSection {
   @@map("agent_process_sections")
 }
 
+/// 会员等级表。
+/// 定义会员层级、每月赠送积分与权益展示。
+model MembershipLevel {
+  id                 String             @id @default(cuid()) @db.VarChar(36)
+  name               String             @db.VarChar(64)
+  level              Int
+  description        String?            @db.VarChar(255)
+  iconUrl            String?            @map("icon_url") @db.Text
+  monthlyBonusPoints Int                @default(0) @map("monthly_bonus_points")
+  storageCapacity    BigInt             @default(0) @map("storage_capacity")
+  benefitsJson       Json?              @map("benefits_json")
+  isEnabled          Boolean            @default(true) @map("is_enabled")
+  sortOrder          Int                @default(0) @map("sort_order")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  plans              MembershipPlan[]
+  subscriptions      UserSubscription[]
+  orders             MembershipOrder[]
+  cardBatches        CardBatch[]
+  cardCodes          CardCode[]
+  redeemRecords      CardRedeemRecord[]
+
+  @@unique([level], map: "uk_membership_levels_level")
+  @@index([isEnabled, sortOrder], map: "idx_membership_levels_enabled_sort")
+  @@map("membership_levels")
+}
+
+/// 会员订阅计划表。
+/// 每条计划绑定一个会员等级，用于定义时长和售价。
+model MembershipPlan {
+  id            String                 @id @default(cuid()) @db.VarChar(36)
+  levelId       String                 @map("level_id") @db.VarChar(36)
+  name          String                 @db.VarChar(64)
+  label         String?                @db.VarChar(64)
+  description   String?                @db.VarChar(255)
+  durationType  MembershipDurationType @map("duration_type")
+  durationValue Int                    @default(1) @map("duration_value")
+  durationUnit  String                 @default("month") @map("duration_unit") @db.VarChar(20)
+  salesPrice    Decimal                @map("sales_price") @db.Decimal(10, 2)
+  originalPrice Decimal?               @map("original_price") @db.Decimal(10, 2)
+  bonusPoints   Int                    @default(0) @map("bonus_points")
+  benefitsJson  Json?                  @map("benefits_json")
+  isEnabled     Boolean                @default(true) @map("is_enabled")
+  sortOrder     Int                    @default(0) @map("sort_order")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+  level         MembershipLevel        @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  orders        MembershipOrder[]
+
+  @@index([levelId, isEnabled, sortOrder], map: "idx_membership_plans_level_enabled_sort")
+  @@map("membership_plans")
+}
+
+/// 用户订阅聚合表。
+/// 记录用户当前持有的会员等级和有效期。
+model UserSubscription {
+  id        String             @id @default(cuid()) @db.VarChar(36)
+  userId    String             @map("user_id") @db.VarChar(36)
+  levelId   String             @map("level_id") @db.VarChar(36)
+  orderId   String?            @map("order_id") @db.VarChar(36)
+  status    SubscriptionStatus @default(ACTIVE)
+  startTime DateTime           @map("start_time")
+  endTime   DateTime           @map("end_time")
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+  user      AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  level     MembershipLevel    @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  order     MembershipOrder?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  pointLogs PointAccountLog[]
+
+  @@unique([userId, levelId], map: "uk_user_subscriptions_user_level")
+  @@index([userId, status, endTime], map: "idx_user_subscriptions_user_status_end_time")
+  @@map("user_subscriptions")
+}
+
+/// 会员订单表。
+/// 用于记录会员购买、续费、赠送与退款等交易过程。
+model MembershipOrder {
+  id            String                @id @default(cuid()) @db.VarChar(36)
+  userId        String                @map("user_id") @db.VarChar(36)
+  levelId       String                @map("level_id") @db.VarChar(36)
+  planId        String?               @map("plan_id") @db.VarChar(36)
+  orderNo       String                @unique(map: "uk_membership_orders_order_no") @map("order_no") @db.VarChar(64)
+  sourceType    MembershipOrderSource @default(DIRECT_PURCHASE) @map("source_type")
+  status        MembershipOrderStatus @default(PENDING)
+  totalAmount   Decimal               @map("total_amount") @db.Decimal(10, 2)
+  paidAmount    Decimal               @default(0) @map("paid_amount") @db.Decimal(10, 2)
+  bonusPoints   Int                   @default(0) @map("bonus_points")
+  startTime     DateTime?             @map("start_time")
+  endTime       DateTime?             @map("end_time")
+  paidAt        DateTime?             @map("paid_at")
+  canceledAt    DateTime?             @map("canceled_at")
+  refundedAt    DateTime?             @map("refunded_at")
+  metaJson      Json?                 @map("meta_json")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+  user          AppUser               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  level         MembershipLevel       @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  plan          MembershipPlan?       @relation(fields: [planId], references: [id], onDelete: SetNull)
+  subscriptions UserSubscription[]
+
+  @@index([userId, status, createdAt], map: "idx_membership_orders_user_status_created_at")
+  @@index([planId], map: "idx_membership_orders_plan_id")
+  @@map("membership_orders")
+}
+
+/// 积分充值套餐表。
+/// 用于配置前台可售卖的充值档位和赠送策略。
+model RechargePackage {
+  id            String          @id @default(cuid()) @db.VarChar(36)
+  name          String          @db.VarChar(64)
+  label         String?         @db.VarChar(64)
+  description   String?         @db.VarChar(255)
+  points        Int
+  bonusPoints   Int             @default(0) @map("bonus_points")
+  price         Decimal         @db.Decimal(10, 2)
+  originalPrice Decimal?        @map("original_price") @db.Decimal(10, 2)
+  badgeText     String?         @map("badge_text") @db.VarChar(64)
+  isEnabled     Boolean         @default(true) @map("is_enabled")
+  sortOrder     Int             @default(0) @map("sort_order")
+  metaJson      Json?           @map("meta_json")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  orders        RechargeOrder[]
+
+  @@index([isEnabled, sortOrder], map: "idx_recharge_packages_enabled_sort")
+  @@map("recharge_packages")
+}
+
+/// 充值订单表。
+/// 记录用户充值支付与退款状态，同时保存套餐快照。
+model RechargeOrder {
+  id                  String            @id @default(cuid()) @db.VarChar(36)
+  userId              String            @map("user_id") @db.VarChar(36)
+  rechargePackageId   String?           @map("recharge_package_id") @db.VarChar(36)
+  orderNo             String            @unique(map: "uk_recharge_orders_order_no") @map("order_no") @db.VarChar(64)
+  payChannel          PayChannelType    @map("pay_channel")
+  payStatus           PaymentStatus     @default(PENDING) @map("pay_status")
+  refundStatus        RefundStatus      @default(NONE) @map("refund_status")
+  points              Int
+  bonusPoints         Int               @default(0) @map("bonus_points")
+  totalAmount         Decimal           @map("total_amount") @db.Decimal(10, 2)
+  paidAmount          Decimal           @default(0) @map("paid_amount") @db.Decimal(10, 2)
+  packageSnapshotJson Json?             @map("package_snapshot_json")
+  paidAt              DateTime?         @map("paid_at")
+  refundedAt          DateTime?         @map("refunded_at")
+  metaJson            Json?             @map("meta_json")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  user                AppUser           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rechargePackage     RechargePackage?  @relation(fields: [rechargePackageId], references: [id], onDelete: SetNull)
+  pointLogs           PointAccountLog[]
+
+  @@index([userId, payStatus, createdAt], map: "idx_recharge_orders_user_pay_status_created_at")
+  @@index([rechargePackageId], map: "idx_recharge_orders_package_id")
+  @@map("recharge_orders")
+}
+
+/// 卡密批次表。
+/// 一次批量生成的卡密集合，可绑定积分奖励或会员奖励。
+model CardBatch {
+  id            String             @id @default(cuid()) @db.VarChar(36)
+  name          String             @db.VarChar(64)
+  batchNo       String             @unique(map: "uk_card_batches_batch_no") @map("batch_no") @db.VarChar(64)
+  description   String?            @db.VarChar(255)
+  rewardType    CardRewardType     @map("reward_type")
+  rewardPoints  Int                @default(0) @map("reward_points")
+  rewardLevelId String?            @map("reward_level_id") @db.VarChar(36)
+  rewardDays    Int?               @map("reward_days")
+  totalCount    Int                @default(0) @map("total_count")
+  usedCount     Int                @default(0) @map("used_count")
+  expiresAt     DateTime?          @map("expires_at")
+  isEnabled     Boolean            @default(true) @map("is_enabled")
+  metaJson      Json?              @map("meta_json")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  rewardLevel   MembershipLevel?   @relation(fields: [rewardLevelId], references: [id], onDelete: SetNull)
+  cardCodes     CardCode[]
+  redeemRecords CardRedeemRecord[]
+
+  @@index([rewardType, isEnabled, createdAt], map: "idx_card_batches_reward_type_enabled_created_at")
+  @@map("card_batches")
+}
+
+/// 卡密表。
+/// 单张卡密记录，跟踪状态、使用人和奖励快照。
+model CardCode {
+  id                 String             @id @default(cuid()) @db.VarChar(36)
+  batchId            String             @map("batch_id") @db.VarChar(36)
+  code               String             @unique(map: "uk_card_codes_code") @db.VarChar(32)
+  status             CardCodeStatus     @default(UNUSED)
+  usedByUserId       String?            @map("used_by_user_id") @db.VarChar(36)
+  rewardLevelId      String?            @map("reward_level_id") @db.VarChar(36)
+  rewardSnapshotJson Json?              @map("reward_snapshot_json")
+  expiresAt          DateTime?          @map("expires_at")
+  usedAt             DateTime?          @map("used_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  batch              CardBatch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  usedByUser         AppUser?           @relation("CardCodeUsedByUser", fields: [usedByUserId], references: [id], onDelete: SetNull)
+  rewardLevel        MembershipLevel?   @relation(fields: [rewardLevelId], references: [id], onDelete: SetNull)
+  redeemRecords      CardRedeemRecord[]
+
+  @@index([batchId, status], map: "idx_card_codes_batch_status")
+  @@index([usedByUserId], map: "idx_card_codes_used_by_user_id")
+  @@map("card_codes")
+}
+
+/// 卡密兑换记录表。
+/// 记录卡密被谁兑换、兑换到了什么奖励。
+model CardRedeemRecord {
+  id            String           @id @default(cuid()) @db.VarChar(36)
+  cardCodeId    String           @map("card_code_id") @db.VarChar(36)
+  batchId       String           @map("batch_id") @db.VarChar(36)
+  userId        String           @map("user_id") @db.VarChar(36)
+  rewardType    CardRewardType   @map("reward_type")
+  rewardPoints  Int              @default(0) @map("reward_points")
+  rewardLevelId String?          @map("reward_level_id") @db.VarChar(36)
+  rewardDays    Int?             @map("reward_days")
+  remark        String?          @db.VarChar(255)
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  cardCode      CardCode         @relation(fields: [cardCodeId], references: [id], onDelete: Cascade)
+  batch         CardBatch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  user          AppUser          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rewardLevel   MembershipLevel? @relation(fields: [rewardLevelId], references: [id], onDelete: SetNull)
+
+  @@unique([cardCodeId], map: "uk_card_redeem_records_card_code_id")
+  @@index([userId, createdAt], map: "idx_card_redeem_records_user_created_at")
+  @@map("card_redeem_records")
+}
+
+/// 积分账户流水表。
+/// 统一记录充值、奖励、兑换、消费、退款等积分变动。
+model PointAccountLog {
+  id              String            @id @default(cuid()) @db.VarChar(36)
+  userId          String            @map("user_id") @db.VarChar(36)
+  subscriptionId  String?           @map("subscription_id") @db.VarChar(36)
+  rechargeOrderId String?           @map("recharge_order_id") @db.VarChar(36)
+  accountNo       String            @unique(map: "uk_point_account_logs_account_no") @map("account_no") @db.VarChar(64)
+  changeType      PointChangeType   @map("change_type")
+  action          PointActionType   @map("action")
+  changeAmount    Int               @map("change_amount")
+  balanceAfter    Int               @map("balance_after")
+  availableAmount Int               @default(0) @map("available_amount")
+  sourceType      PointSourceType   @map("source_type")
+  sourceId        String?           @map("source_id") @db.VarChar(64)
+  associationNo   String?           @map("association_no") @db.VarChar(64)
+  remark          String?           @db.VarChar(255)
+  expireAt        DateTime?         @map("expire_at")
+  metaJson        Json?             @map("meta_json")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  user            AppUser           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription    UserSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  rechargeOrder   RechargeOrder?    @relation(fields: [rechargeOrderId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt], map: "idx_point_account_logs_user_created_at")
+  @@index([sourceType, sourceId], map: "idx_point_account_logs_source_type_source_id")
+  @@map("point_account_logs")
+}
+
+/// 奖励规则表。
+/// 支持登录奖励、注册奖励、签到奖励等统一配置。
+model RewardRule {
+  id            String              @id @default(cuid()) @db.VarChar(36)
+  code          String              @unique(map: "uk_reward_rules_code") @db.VarChar(50)
+  triggerType   RewardTriggerType   @map("trigger_type")
+  name          String              @db.VarChar(64)
+  description   String?             @db.VarChar(255)
+  rewardPoints  Int                 @default(0) @map("reward_points")
+  cycleType     RewardCycleType     @default(ONCE) @map("cycle_type")
+  limitPerCycle Int                 @default(1) @map("limit_per_cycle")
+  isEnabled     Boolean             @default(true) @map("is_enabled")
+  conditionJson Json?               @map("condition_json")
+  sortOrder     Int                 @default(0) @map("sort_order")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+  claimRecords  RewardClaimRecord[]
+
+  @@index([triggerType, isEnabled, sortOrder], map: "idx_reward_rules_trigger_enabled_sort")
+  @@map("reward_rules")
+}
+
+/// 奖励领取记录表。
+/// 用于实现登录、注册、签到奖励的幂等与去重。
+model RewardClaimRecord {
+  id             String              @id @default(cuid()) @db.VarChar(36)
+  userId         String              @map("user_id") @db.VarChar(36)
+  ruleId         String              @map("rule_id") @db.VarChar(36)
+  triggerType    RewardTriggerType   @map("trigger_type")
+  cycleKey       String              @map("cycle_key") @db.VarChar(32)
+  rewardPoints   Int                 @default(0) @map("reward_points")
+  claimStatus    RewardClaimStatus   @default(SUCCESS) @map("claim_status")
+  sourceId       String?             @map("source_id") @db.VarChar(64)
+  metaJson       Json?               @map("meta_json")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  user           AppUser             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rule           RewardRule          @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  checkinRecords UserCheckinRecord[]
+
+  @@unique([userId, ruleId, cycleKey], map: "uk_reward_claim_records_user_rule_cycle")
+  @@index([userId, triggerType, createdAt], map: "idx_reward_claim_records_user_trigger_created_at")
+  @@map("reward_claim_records")
+}
+
+/// 用户签到记录表。
+/// 用于存储每日签到结果和连续签到天数。
+model UserCheckinRecord {
+  id              String             @id @default(cuid()) @db.VarChar(36)
+  userId          String             @map("user_id") @db.VarChar(36)
+  rewardClaimId   String?            @map("reward_claim_id") @db.VarChar(36)
+  checkinDate     String             @map("checkin_date") @db.VarChar(10)
+  consecutiveDays Int                @default(1) @map("consecutive_days")
+  rewardPoints    Int                @default(0) @map("reward_points")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  user            AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rewardClaim     RewardClaimRecord? @relation(fields: [rewardClaimId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, checkinDate], map: "uk_user_checkin_records_user_date")
+  @@index([userId, createdAt], map: "idx_user_checkin_records_user_created_at")
+  @@map("user_checkin_records")
+}
+
 /// 系统设置表。
 /// 用于存储站点信息、政策协议与登录界面文案等全局配置。
 model SystemSetting {
-  id               String   @id @default(cuid()) @db.VarChar(36)
-  code             String   @unique(map: "uk_system_settings_code") @db.VarChar(50)
-  siteInfoJson     Json?    @map("site_info_json")
-  policyJson       Json?    @map("policy_json")
-  loginSettingsJson Json?   @map("login_settings_json")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id                String   @id @default(cuid()) @db.VarChar(36)
+  code              String   @unique(map: "uk_system_settings_code") @db.VarChar(50)
+  siteInfoJson      Json?    @map("site_info_json")
+  policyJson        Json?    @map("policy_json")
+  loginSettingsJson Json?    @map("login_settings_json")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@map("system_settings")
 }
@@ -599,4 +933,112 @@ enum AgentStepStatus {
 enum AgentProcessSectionKind {
   SKILL
   REASONING
+}
+
+enum MembershipDurationType {
+  MONTH
+  QUARTER
+  HALF_YEAR
+  YEAR
+  FOREVER
+  CUSTOM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELED
+}
+
+enum MembershipOrderSource {
+  DIRECT_PURCHASE
+  CARD_REDEEM
+  SYSTEM_GRANT
+  ADMIN_ADJUST
+}
+
+enum MembershipOrderStatus {
+  PENDING
+  PAID
+  CANCELED
+  REFUNDED
+  CLOSED
+}
+
+enum PayChannelType {
+  ALIPAY
+  WECHAT
+  MANUAL
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELED
+}
+
+enum RefundStatus {
+  NONE
+  PROCESSING
+  REFUNDED
+  FAILED
+}
+
+enum CardRewardType {
+  POINTS
+  MEMBERSHIP
+}
+
+enum CardCodeStatus {
+  UNUSED
+  USED
+  EXPIRED
+  DISABLED
+}
+
+enum PointChangeType {
+  RECHARGE
+  REWARD
+  CARD_REDEEM
+  MEMBERSHIP_BONUS
+  CONSUME
+  REFUND
+  EXPIRE
+  ADJUST
+}
+
+enum PointActionType {
+  INCREASE
+  DECREASE
+}
+
+enum PointSourceType {
+  RECHARGE_ORDER
+  MEMBERSHIP_ORDER
+  REWARD_RULE
+  CHECKIN
+  CARD_REDEEM
+  GENERATION_CONSUME
+  ADMIN_ADJUST
+}
+
+enum RewardTriggerType {
+  LOGIN_DAILY
+  REGISTER_ONCE
+  CHECKIN_DAILY
+}
+
+enum RewardCycleType {
+  ONCE
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum RewardClaimStatus {
+  SUCCESS
+  FAILED
+  REVOKED
 }

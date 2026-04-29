@@ -9,8 +9,7 @@ import AgentLoadingRecord from '../../components/generate/common/AgentLoadingRec
 import ImagePreview from '@/components/ImagePreview.vue'
 import { streamChatCompletions } from '@/api/chat'
 import { getAgentModel } from '@/api/agent'
-import { generateImage } from '@/views/workflow/api/image'
-import { getModelByName, loadPublicModelCatalog, resolveModelLabel, type ImageModel } from '@/config/models'
+import { getModelByName, loadPublicModelCatalog, resolveModelLabel, resolveRequestModelKey, resolveRequestProviderId, type ImageModel } from '@/config/models'
 import { buildAgentChatMessages } from '@/config/agentSkills'
 import {
   createGenerationRecord as createGenerationRecordRequest,
@@ -19,6 +18,7 @@ import {
   type GenerationRecordUpsertPayload,
   type PersistedGenerationRecord,
 } from '@/api/generation-records'
+import { createGenerationTask, stopGenerationTask, subscribeGenerationTaskEvents, type GenerationTaskStreamEvent } from '@/api/generation-tasks'
 import type { CreationType } from '../../components/generate/selectors'
 import discoverContent from '@/data/homeDiscoverContent.json'
 import type {
@@ -31,7 +31,6 @@ import type {
 import { useWorkflowOrchestrator } from '@/views/workflow/composables/useWorkflowOrchestrator'
 import { AUTH_LOGIN_SUCCESS_EVENT, useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
-import { uploadStorageFile } from '@/api/storage'
 import GenerateAgentRecord from './components/GenerateAgentRecord.vue'
 import {
   clearMockAgentTask,
@@ -69,6 +68,9 @@ interface GeneratingRecord {
   images: string[]
   done: boolean
   stopped?: boolean
+  progressStage?: string
+  progressMessage?: string
+  progressPercent?: number
   error: string
   agentTaskId?: string
   agentRun?: AgentRunState
@@ -86,12 +88,38 @@ interface GeneratePreviewImageItem {
 }
 const generatingRecords = ref<GeneratingRecord[]>([])
 let nextId = 0
-const imageAbortControllers = new Map<number, AbortController>()
 const recordPersistTimers = new Map<number, ReturnType<typeof setTimeout>>()
 const recordPersistInflight = new Set<number>()
+const taskStreamControllers = new Map<string, AbortController>()
 const previewVisible = ref(false)
 const previewIndex = ref(0)
 const previewImages = ref<GeneratePreviewImageItem[]>([])
+
+// 将服务端阶段映射成前台百分比，避免继续显示固定 99%。
+const mapTaskStageToProgressPercent = (stage?: string) => {
+  switch (String(stage || '').trim()) {
+    case 'queued':
+      return 5
+    case 'resolved_provider':
+      return 12
+    case 'requesting_upstream':
+      return 35
+    case 'receiving_upstream_result':
+      return 72
+    case 'syncing_record':
+      return 92
+    case 'completed':
+    case 'failed':
+    case 'stopped':
+      return 100
+    case 'failing':
+      return 96
+    case 'stopping':
+      return 98
+    default:
+      return 0
+  }
+}
 
 // 页面进入时预加载后台公开模型目录，确保工具栏与生成请求使用同一份模型清单。
 onMounted(() => {
@@ -149,34 +177,6 @@ const handlePreviewGenerateVideo = () => {
 
 const handlePreviewEditInCanvas = () => {
   ElMessage.success('请前往画布页继续编辑')
-}
-
-// 将 Data URL 转成浏览器 File，便于走现有上传接口，避免生成记录 PATCH 携带超大 base64。
-const dataUrlToFile = async (dataUrl: string, filename: string) => {
-  const response = await fetch(dataUrl)
-  const blob = await response.blob()
-  return new File([blob], filename, { type: blob.type || 'image/png' })
-}
-
-// 生成完成后先把 base64 图片转存到后端存储，再把正式 URL 写回记录，减少后续 PATCH 请求体积。
-const materializeGeneratedImageUrls = async (urls: string[]) => {
-  const nextUrls: string[] = []
-
-  for (const [index, url] of urls.entries()) {
-    if (!/^data:image\//i.test(String(url || '').trim())) {
-      nextUrls.push(url)
-      continue
-    }
-
-    const file = await dataUrlToFile(url, `generated-image-${Date.now()}-${index + 1}.png`)
-    const uploaded = await uploadStorageFile(file, 'asset', {
-      showSuccessMessage: false,
-      showErrorMessage: true,
-    })
-    nextUrls.push(uploaded.publicUrl)
-  }
-
-  return nextUrls
 }
 
 type AgentStepStatus = AgentTaskStep['status']
@@ -608,6 +608,11 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
   images: record.images,
   done: record.done,
   stopped: Boolean(record.stopped),
+  progressStage: record.done ? (record.stopped ? 'stopped' : 'completed') : 'queued',
+  progressMessage: record.done
+    ? (record.stopped ? '任务已停止' : '任务已完成')
+    : '任务已创建，等待服务端执行',
+  progressPercent: record.done ? 100 : 5,
   error: record.error,
   agentTaskId: record.agentTaskId,
   agentRun: record.agentRun,
@@ -621,6 +626,15 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   record.error = saved.error
   record.done = saved.done
   record.stopped = Boolean(saved.stopped)
+  record.progressStage = saved.done
+    ? (saved.stopped ? 'stopped' : saved.error ? 'failed' : 'completed')
+    : (record.progressStage || 'queued')
+  record.progressMessage = saved.done
+    ? (saved.stopped ? '任务已停止' : saved.error ? saved.error : '任务已完成')
+    : (record.progressMessage || '任务执行中')
+  record.progressPercent = saved.done
+    ? 100
+    : Math.max(record.progressPercent || 0, mapTaskStageToProgressPercent(record.progressStage))
   record.images = Array.isArray(saved.images) ? [...saved.images] : []
 
   if (!record.agentRun) return
@@ -682,6 +696,100 @@ const schedulePersistRecord = (record: GeneratingRecord, immediate = false) => {
   recordPersistTimers.set(record.id, timer)
 }
 
+// 处理任务事件流推送，SSE 已直接携带完整记录，不再额外回拉详情。
+const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTaskStreamEvent) => {
+  const targetRecord = generatingRecords.value.find(item => item.dbId === recordId)
+  if (!targetRecord) {
+    return
+  }
+
+  if (event.type === 'progress' && event.message) {
+    targetRecord.error = ''
+    targetRecord.progressStage = event.stage || targetRecord.progressStage || 'queued'
+    targetRecord.progressMessage = event.message
+    targetRecord.progressPercent = Math.max(
+      targetRecord.progressPercent || 0,
+      mapTaskStageToProgressPercent(event.stage),
+    )
+  }
+
+  if (event.type === 'connected' && event.message) {
+    targetRecord.progressStage = event.stage || targetRecord.progressStage || 'queued'
+    targetRecord.progressMessage = '造梦中'
+    targetRecord.progressPercent = Math.max(
+      targetRecord.progressPercent || 0,
+      mapTaskStageToProgressPercent(event.stage),
+    )
+  }
+
+  if (event.record) {
+    syncRecordWithPersisted(targetRecord, event.record)
+  }
+
+  if (event.type === 'completed') {
+    targetRecord.progressStage = 'completed'
+    targetRecord.progressMessage = event.message || '图片生成完成'
+    targetRecord.progressPercent = 100
+  } else if (event.type === 'failed') {
+    targetRecord.progressStage = 'failed'
+    targetRecord.progressMessage = event.message || '任务执行失败'
+    targetRecord.progressPercent = 100
+  } else if (event.type === 'stopped') {
+    targetRecord.progressStage = 'stopped'
+    targetRecord.progressMessage = event.message || '任务已停止'
+    targetRecord.progressPercent = 100
+  }
+
+  if (event.done) {
+    const controller = taskStreamControllers.get(recordId)
+    if (controller) {
+      controller.abort()
+      taskStreamControllers.delete(recordId)
+    }
+  }
+}
+
+// 连接单个任务的 SSE 事件流，断线后自动重连，直到任务完成。
+const connectGenerationTaskStream = (record: GeneratingRecord) => {
+  if (!record.dbId || record.type !== 'image' || record.done) {
+    return
+  }
+
+  if (taskStreamControllers.has(record.dbId)) {
+    return
+  }
+
+  const controller = new AbortController()
+  taskStreamControllers.set(record.dbId, controller)
+
+  void (async () => {
+    try {
+      await subscribeGenerationTaskEvents(record.dbId!, {
+        signal: controller.signal,
+        onEvent: (event) => {
+          handleGenerationTaskStreamEvent(record.dbId!, event)
+        },
+      })
+    } catch {
+      if (controller.signal.aborted) {
+        return
+      }
+      const latestRecord = generatingRecords.value.find(item => item.dbId === record.dbId)
+      if (latestRecord && !latestRecord.done) {
+        taskStreamControllers.delete(record.dbId!)
+        setTimeout(() => {
+          connectGenerationTaskStream(latestRecord)
+        }, 1500)
+        return
+      }
+    }
+
+    if (taskStreamControllers.get(record.dbId!) === controller) {
+      taskStreamControllers.delete(record.dbId!)
+    }
+  })()
+}
+
 // 首屏加载最近的生成记录，用于刷新后回放历史。
 const loadPersistedGeneratingRecords = async () => {
   try {
@@ -701,6 +809,7 @@ const loadPersistedGeneratingRecords = async () => {
     if (!nextRecords.length) return
 
     generatingRecords.value = [...generatingRecords.value, ...nextRecords]
+    nextRecords.forEach(connectGenerationTaskStream)
   } catch {
     // 数据库未配置或接口失败时，继续使用前端内存态。
   }
@@ -731,86 +840,96 @@ const handleSend = (message: string, type: CreationType, options?: { model?: str
     images: [],
     done: false,
     stopped: false,
+    progressStage: type === 'image' ? 'queued' : undefined,
+    progressMessage: type === 'image' ? '任务已创建，等待服务端执行' : undefined,
+    progressPercent: type === 'image' ? 5 : 0,
     error: '',
     agentRun: type === 'agent' && shouldUseAgentWorkspaceFlow(options?.skill)
       ? buildAgentPendingRun(recordId, message, options?.skill || 'general')
       : undefined,
   }
   generatingRecords.value.unshift(record)
-  schedulePersistRecord(record, true)
 
   // 根据类型触发不同的生成逻辑
   if (type === 'agent') {
+    schedulePersistRecord(record, true)
     if (record.agentRun) {
       runAgentExecution(generatingRecords.value[0])
     } else {
       runAgentStream(generatingRecords.value[0])
     }
   } else if (type === 'image') {
-    runImageGeneration(generatingRecords.value[0])
+    void startImageGenerationTask(generatingRecords.value[0])
   }
 }
 
-// 图片生成
-const runImageGeneration = async (record: GeneratingRecord) => {
-  const abortController = new AbortController()
-  imageAbortControllers.set(record.id, abortController)
+// 图片生成改为提交服务端任务，由后端继续执行并写回生成记录。
+const startImageGenerationTask = async (record: GeneratingRecord) => {
   try {
-    // 根据后台模型目录构建请求参数
-    const modelConfig = getModelByName(record.modelKey) as ImageModel | null
-    const sizeKey = modelConfig?.sizes?.length
+    const providerId = resolveRequestProviderId(record.modelKey, 'IMAGE')
+    const requestModelKey = resolveRequestModelKey(record.modelKey, 'IMAGE')
+    if (!providerId) {
+      throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
+    }
+    if (!requestModelKey) {
+      throw new Error('未匹配到有效图片模型，请先检查后台模型配置')
+    }
+
+    const modelConfig = getModelByName(record.modelKey || requestModelKey) as ImageModel | null
+    const size = modelConfig?.sizes?.length
       ? (modelConfig.sizes.find((sizeItem: string) => sizeItem.includes(record.ratio.replace(':', 'x'))) || modelConfig.defaultParams?.size || '')
-      : ''
-
+      : (record.ratio ? record.ratio.replace(':', 'x') : '')
     const data: any = {
-      model: record.modelKey,
+      model: requestModelKey,
       prompt: record.prompt,
-      n: 1
+      n: 1,
+      providerId,
     }
-    if (sizeKey) data.size = sizeKey
-
-    const result = await generateImage(data, { signal: abortController.signal })
-
-    // 提取图片 URL
-    const urls: string[] = []
-    if (result?.data) {
-      for (const item of result.data) {
-        if (item.url) urls.push(item.url)
-        else if (item.b64_json) urls.push(`data:image/png;base64,${item.b64_json}`)
-      }
+    if (size) {
+      data.size = size
     }
 
-    if (urls.length) {
-      record.images = await materializeGeneratedImageUrls(urls)
-    } else {
-      record.error = '未能获取到生成的图片'
-    }
-    schedulePersistRecord(record)
-  } catch (e: unknown) {
-    const isAbortError = e instanceof DOMException
-      ? e.name === 'AbortError'
-      : e instanceof Error && /abort/i.test(e.name || '')
+    const saved = await createGenerationTask({
+      type: 'image',
+      prompt: record.prompt,
+      model: record.model,
+      modelKey: requestModelKey,
+      ratio: record.ratio,
+      resolution: record.resolution,
+      duration: record.duration,
+      feature: record.feature,
+      skill: record.skill,
+      requestBody: data,
+    })
 
-    if (isAbortError) {
-      record.stopped = true
-      record.error = ''
-    } else {
-      record.error = e instanceof Error ? e.message : '图片生成失败'
-    }
-    schedulePersistRecord(record)
-  } finally {
-    imageAbortControllers.delete(record.id)
+    syncRecordWithPersisted(record, saved)
+    connectGenerationTaskStream(record)
+  } catch (error: unknown) {
     record.done = true
-    schedulePersistRecord(record, true)
+    record.stopped = false
+    record.progressStage = 'failed'
+    record.progressMessage = error instanceof Error ? error.message : '图片生成失败'
+    record.progressPercent = 100
+    record.error = error instanceof Error ? error.message : '图片生成失败'
   }
 }
 
-// 图片生成支持主动中断，停止后保留当前记录并展示“已停止生成”状态。
-const handleStopImageGeneration = (record: GeneratingRecord) => {
+// 图片生成支持跨页面中断；只要服务端任务仍在运行，就能远程停止。
+const handleStopImageGeneration = async (record: GeneratingRecord) => {
   if (record.done) return
-  const controller = imageAbortControllers.get(record.id)
-  if (!controller) return
-  controller.abort()
+  if (!record.dbId) return
+
+  try {
+    const saved = await stopGenerationTask(record.dbId)
+    syncRecordWithPersisted(record, saved)
+    const controller = taskStreamControllers.get(record.dbId)
+    if (controller) {
+      controller.abort()
+      taskStreamControllers.delete(record.dbId)
+    }
+  } catch {
+    // 停止失败时保持当前状态，等待 SSE 或后续同步刷新。
+  }
 }
 
 // Agent 在 generate 页内走任务编排流程，而不是单独新开页面。
@@ -1353,6 +1472,9 @@ onUnmounted(() => {
     window.removeEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
     authLoginSuccessListener = null
   }
+
+  taskStreamControllers.forEach(controller => controller.abort())
+  taskStreamControllers.clear()
 })
 
 // 修复滚动方向反转问题 + 控制输入框折叠/展开
@@ -1484,6 +1606,8 @@ onMounted(() => {
                                         :resolution="record.resolution"
                                         :duration="record.duration"
                                         :feature="record.feature"
+                                        :progress="record.progressPercent || 0"
+                                        :progress-text="record.progressMessage || ''"
                                         :done="record.done"
                                         :stopped="Boolean(record.stopped)"
                                         :images="record.images"

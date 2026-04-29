@@ -100,7 +100,7 @@
             </div>
             <!-- 进度徽章 -->
             <div class="progress-badge-RuihdC progress-badge-RQDqWu">
-              {{ currentProgress }}%造梦中
+              {{ currentProgress }}%{{ currentProgressText || '造梦中' }}
             </div>
             <button class="stop-generate-button-canana" type="button" @click="$emit('stop')">
               停止生成
@@ -209,6 +209,8 @@ const props = defineProps({
   aspectRatio: { type: Number, default: 1 },
   /** 初始进度百分比 */
   progress: { type: Number, default: 0 },
+  /** 进度文案 */
+  progressText: { type: String, default: '' },
   /** 是否生成完成 */
   done: { type: Boolean, default: false },
   /** 是否主动停止 */
@@ -226,9 +228,16 @@ const handlePreview = (index) => {
 }
 
 const currentProgress = ref(props.progress)
+const currentProgressText = ref(props.progressText)
 let timer = null
 
+// 当父级已经通过 SSE 提供明确进度时，当前卡片不再使用本地假进度动画。
+const hasControlledProgress = () => Number(props.progress) > 0 || Boolean(String(props.progressText || '').trim())
+
 const startTimer = () => {
+  if (hasControlledProgress()) {
+    return
+  }
   timer = setInterval(() => {
     if (currentProgress.value < 99) {
       const remaining = 99 - currentProgress.value
@@ -253,6 +262,24 @@ watch(() => props.error, (val) => {
 
 watch(() => props.stopped, (val) => {
   if (val) stopTimer()
+})
+
+watch(() => props.progress, (val) => {
+  currentProgress.value = Number.isFinite(Number(val)) ? Number(val) : 0
+  if (hasControlledProgress()) {
+    stopTimer()
+  } else if (!props.done && !props.error && !props.stopped && !timer) {
+    startTimer()
+  }
+})
+
+watch(() => props.progressText, (val) => {
+  currentProgressText.value = val || ''
+  if (hasControlledProgress()) {
+    stopTimer()
+  } else if (!props.done && !props.error && !props.stopped && !timer) {
+    startTimer()
+  }
 })
 
 onMounted(() => {

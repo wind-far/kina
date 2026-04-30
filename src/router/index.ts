@@ -13,7 +13,6 @@ const AdminDashboard = () => import('../views/admin/dashboard/AdminDashboard.vue
 const AdminAssets = () => import('../views/admin/assets/AdminAssets.vue')
 const AdminGenerations = () => import('../views/admin/generations/AdminGenerations.vue')
 const AdminMarketing = () => import('../views/admin/marketing/AdminMarketing.vue')
-const AdminPublish = () => import('../views/admin/publish/AdminPublish.vue')
 const AdminSkills = () => import('../views/admin/skills/AdminSkills.vue')
 const AdminProviders = () => import('../views/admin/providers/AdminProviders.vue')
 const AdminStorage = () => import('../views/admin/storage/AdminStorage.vue')
@@ -113,12 +112,7 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: 'publish',
-        name: 'AdminPublish',
-        component: AdminPublish,
-        meta: {
-          requiresAuth: true,
-          requiresAdmin: true,
-        },
+        redirect: '/admin/assets',
       },
 
       {

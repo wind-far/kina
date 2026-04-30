@@ -34,11 +34,6 @@ export const adminNavGroups: AdminNavGroup[] = [
         description: '查看生成历史与异常记录',
       },
       {
-        label: '发布管理',
-        path: '/admin/publish',
-        description: '管理首页与展示内容发布状态',
-      },
-      {
         label: '营销中心',
         path: '/admin/marketing',
         description: '管理会员订阅、积分充值与奖励活动',

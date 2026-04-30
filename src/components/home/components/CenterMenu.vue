@@ -1,11 +1,11 @@
 <template>
-  <div role="menu" class="lv-menu lv-menu-light lv-menu-vertical centerMenu-TCnKp8">
+  <div role="menu" class="lv-menu lv-menu-light lv-menu-vertical centerMenu">
     <div class="lv-menu-inner">
       <!-- 灵感 -->
       <div tabindex="0" role="menuitem" :class="['lv-menu-item', 'lv-menu-item-size-default', { 'lv-menu-selected': currentPath === '/' }]" id="Home" @click="navigateTo('/')">
-        <div class="icon-container-XAovJs" style="--menu-icon-size:48px">
+        <div class="icon-container" style="--menu-icon-size:48px">
           <div :class="['content-XAjJup', { 'active-E3Q3lq': currentPath === '/' }]">
-            <div :class="['icon-menu-m2Y0RB', { 'active-aFuBWS': currentPath === '/' }]">
+            <div :class="['icon-menu', { 'active-aFuBWS': currentPath === '/' }]">
               <div :class="['icon-wrap-tBuhBU', { 'hide-itzP3D sf-hidden': currentPath !== '/' }]">
                 <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                   <g>
@@ -28,10 +28,10 @@
 
       <!-- 生成 -->
       <div tabindex="0" role="menuitem" :class="['lv-menu-item', 'lv-menu-item-size-default', { 'lv-menu-selected': currentPath === '/generate' }]" id="AIGeneratedRecord" @click="navigateTo('/generate')">
-        <div class="icon-container-XAovJs" style="--menu-icon-size:48px">
+        <div class="icon-container" style="--menu-icon-size:48px">
           <div class="container-juKD6_">
             <div :class="['content-XAjJup', { 'active-E3Q3lq': currentPath === '/generate' }]">
-              <div :class="['icon-menu-m2Y0RB', { 'active-aFuBWS': currentPath === '/generate' }]">
+              <div :class="['icon-menu', { 'active-aFuBWS': currentPath === '/generate' }]">
                 <div :class="['icon-wrap-tBuhBU', { 'hide-itzP3D sf-hidden': currentPath !== '/generate' }]">
                   <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                     <g>
@@ -49,16 +49,16 @@
               </div>
               <div class="lv-typography text-HLQFZY">生成</div>
             </div>
-            <span class="badge-wrapper-lDD3pn"></span>
+            <span class="badge-wrapper"></span>
           </div>
         </div>
       </div>
 
       <!-- 资产 -->
       <div tabindex="0" role="menuitem" :class="['lv-menu-item', 'lv-menu-item-size-default', { 'lv-menu-selected': currentPath === '/asset' }]" id="Asset" @click="navigateTo('/asset')">
-        <div class="icon-container-XAovJs" style="--menu-icon-size:48px">
+        <div class="icon-container" style="--menu-icon-size:48px">
           <div :class="['content-XAjJup', { 'active-E3Q3lq': currentPath === '/asset' }]">
-            <div :class="['icon-menu-m2Y0RB', { 'active-aFuBWS': currentPath === '/asset' }]">
+            <div :class="['icon-menu', { 'active-aFuBWS': currentPath === '/asset' }]">
               <div :class="['icon-wrap-tBuhBU', { 'hide-itzP3D sf-hidden': currentPath !== '/asset' }]">
                 <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                   <g>
@@ -81,9 +81,9 @@
 
       <!-- 画布 -->
       <div tabindex="0" role="menuitem" :class="['lv-menu-item', 'lv-menu-item-size-default', { 'lv-menu-selected': currentPath === '/canvas' }]" id="CanvasAssets" @click="navigateTo('/canvas')">
-        <div class="icon-container-XAovJs" style="--menu-icon-size:48px">
+        <div class="icon-container" style="--menu-icon-size:48px">
           <div :class="['content-XAjJup', { 'active-E3Q3lq': currentPath === '/canvas' }]">
-            <div :class="['icon-menu-m2Y0RB', { 'active-aFuBWS': currentPath === '/canvas' }]">
+            <div :class="['icon-menu', { 'active-aFuBWS': currentPath === '/canvas' }]">
               <div :class="['icon-wrap-tBuhBU', { 'hide-itzP3D sf-hidden': currentPath !== '/canvas' }]">
                 <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                   <g>
@@ -106,9 +106,9 @@
 
       <!-- 工作流 -->
       <div tabindex="0" role="menuitem" :class="['lv-menu-item', 'lv-menu-item-size-default', { 'lv-menu-selected': currentPath === '/workflow' }]" id="Workflow" @click="navigateTo('/workflow')">
-        <div class="icon-container-XAovJs" style="--menu-icon-size:48px">
+        <div class="icon-container" style="--menu-icon-size:48px">
           <div :class="['content-XAjJup', { 'active-E3Q3lq': currentPath === '/workflow' }]">
-            <div :class="['icon-menu-m2Y0RB', { 'active-aFuBWS': currentPath === '/workflow' }]">
+            <div :class="['icon-menu', { 'active-aFuBWS': currentPath === '/workflow' }]">
               <div :class="['icon-wrap-tBuhBU', { 'hide-itzP3D sf-hidden': currentPath !== '/workflow' }]">
                 <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                   <g>
@@ -131,9 +131,9 @@
 
       <!-- 账号管理 -->
       <div tabindex="0" role="menuitem" :class="['lv-menu-item', 'lv-menu-item-size-default', { 'lv-menu-selected': currentPath === '/account' }]" id="AccountManagement" @click="navigateTo('/account')">
-        <div class="icon-container-XAovJs" style="--menu-icon-size:48px">
+        <div class="icon-container" style="--menu-icon-size:48px">
           <div :class="['content-XAjJup', { 'active-E3Q3lq': currentPath === '/account' }]">
-            <div :class="['icon-menu-m2Y0RB', { 'active-aFuBWS': currentPath === '/account' }]">
+            <div :class="['icon-menu', { 'active-aFuBWS': currentPath === '/account' }]">
               <div :class="['icon-wrap-tBuhBU', { 'hide-itzP3D sf-hidden': currentPath !== '/account' }]">
                 <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                   <g>
@@ -156,9 +156,9 @@
 
       <!-- 发布中心 -->
       <div tabindex="0" role="menuitem" :class="['lv-menu-item', 'lv-menu-item-size-default', { 'lv-menu-selected': currentPath === '/publish' }]" id="PublishCenter" @click="navigateTo('/publish')">
-        <div class="icon-container-XAovJs" style="--menu-icon-size:48px">
+        <div class="icon-container" style="--menu-icon-size:48px">
           <div :class="['content-XAjJup', { 'active-E3Q3lq': currentPath === '/publish' }]">
-            <div :class="['icon-menu-m2Y0RB', { 'active-aFuBWS': currentPath === '/publish' }]">
+            <div :class="['icon-menu', { 'active-aFuBWS': currentPath === '/publish' }]">
               <div :class="['icon-wrap-tBuhBU', { 'hide-itzP3D sf-hidden': currentPath !== '/publish' }]">
                 <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                   <g>

@@ -1,22 +1,22 @@
 <template>
   <div class="responsive-container-msS_cP responsive-container-NBoaUU">
     <div class="content-DPogfx ai-generated-record-content-hg5EL8">
-      <div v-if="time" class="group-title-mhd8yy">{{ time }}</div>
-      <div class="image-record-ytX6Dp">
+      <div v-if="time" class="group-title">{{ time }}</div>
+      <div class="image-record">
         <!-- 头部：提示词和标签 -->
-        <div class="record-header-E91Dfj">
-          <div class="record-header-content-Lkk9CM">
-            <div class="prompt-suffix-labels-wrapper-qthJZj"
+        <div class="record-header">
+          <div class="record-header-content">
+            <div class="prompt-suffix-labels-wrapper"
                  style="--line-height:24px;--padding-top:4px">
-              <div class="prompt-suffix-labels-NBprFc"
+              <div class="prompt-suffix-labels"
                    style="--line-height:24px;--padding-top:4px">
-                <div class="prompt-suffix-labels-content-uFKTga">
+                <div class="prompt-suffix-labels-content">
                   <span class="prompt-P_8aF8">
                     <span class="prompt-value-container-KCtKOf">
                       <span>{{ prompt }}</span>
                     </span>
                   </span>
-                  <span class="labels-mHLx1x" style="visibility:visible">
+                  <span class="labels" style="visibility:visible">
                     <span class="label-lhnDlt">{{ model }}</span>
                     <span v-if="feature" class="label-lhnDlt">{{ feature }}</span>
                     <span class="label-lhnDlt">{{ ratio }}</span>
@@ -30,12 +30,12 @@
         </div>
         <div
           v-if="renderedConversationEntries.length"
-          class="process-group-NFyTkD completed-Mr7mg1 image-stage-process-group"
+          class="process-group completed-Mr7mg1 image-stage-process-group"
           :class="{ 'expanded-bG3kBU': conversationExpanded }"
         >
           <div class="header-fE7Yzl" @click="conversationExpanded = !conversationExpanded">
             <div class="header-left-OUNZfc">
-              <div class="chevron-wrapper-TUhGYt" :class="{ 'collapsed-yhY7l2': !conversationExpanded }">
+              <div class="chevron-wrapper" :class="{ 'collapsed-yhY7l2': !conversationExpanded }">
                 <svg width="14" height="14" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="chevron-icon-OYUM9U">
                   <g>
                     <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M21.01 7.982A1.2 1.2 0 0 1 21 9.679l-8.156 8.06a1.2 1.2 0 0 1-1.688 0L3 9.68a1.2 1.2 0 0 1 1.687-1.707L12 15.199l7.313-7.227a1.2 1.2 0 0 1 1.697.01Z" fill="currentColor"></path>
@@ -50,42 +50,42 @@
           </div>
           <div class="content-wrapper-WwWXWE" :class="{ 'collapsed-yhY7l2': !conversationExpanded }">
             <div class="content-e0iN2u">
-              <div class="visible-messages-wrapper-EhNsCk">
+              <div class="visible-messages-wrapper">
                 <div
                   v-for="(entry, index) in renderedConversationEntries"
                   :key="`${index}-${entry.stageKey}-${entry.text}`"
-                  class="message-item-Tg244V"
+                  class="message-item"
                 >
-                  <div class="connector-LIfXJO"></div>
+                  <div class="connector"></div>
                   <div class="message-collapse-wrapper-zmpysd">
                     <div class="node-viewport-KqQuYn">
                       <div
-                        class="reasoning-message-ZytEV8 reasoning-message-expanded node-enter-g30LTv image-stage-reasoning-message"
+                        class="reasoning-message reasoning-message-expanded node-enter-g30LTv image-stage-reasoning-message"
                         :class="[
                           `reasoning-tone-${resolveStageTone(entry.stageKey)}`,
                           { 'image-stage-reasoning-message--current': index === currentStageIndex },
                         ]"
                       >
                         <div class="header-k72pQ0" :class="`header-tone-${resolveStageTone(entry.stageKey)}`">
-                          <div class="header-main-vvvpuW">
-                            <span class="status-icon-Pd0hvq">
+                          <div class="header-main">
+                            <span class="status-icon">
                               <span class="image-stage-conversation-item__dot" :class="{ 'image-stage-conversation-item__dot--active': index === currentStageIndex }"></span>
                             </span>
-                            <span class="title-zHQmQJ image-stage-title-zHQmQJ">
+                            <span class="title-zHQmQJ image-stage-title">
                               {{ resolveStageTitle(entry.stageKey, index) }}
                             </span>
                             <span
                               v-if="index === currentStageIndex"
-                              class="section-tone-badge-q2Ks9n image-stage-current-badge"
+                              class="section-tone-badge image-stage-current-badge"
                               :class="`section-tone-badge-${resolveStageTone(entry.stageKey)}`"
                             >
                               当前
                             </span>
                           </div>
                         </div>
-                        <div class="body-wrapper-K5fjb4" :style="{ maxHeight: 'none' }">
+                        <div class="body-wrapper" :style="{ maxHeight: 'none' }">
                           <div class="body-KixLFC">
-                            <div class="content-dherTv image-stage-content-dherTv">
+                            <div class="content-dherTv image-stage-content">
                               <div class="image-stage-conversation-item__text">{{ entry.text }}</div>
                             </div>
                           </div>
@@ -98,7 +98,7 @@
             </div>
           </div>
         </div>
-        <div class="record-box-wrapper-MDgaBP">
+        <div class="record-box-wrapper">
           <!-- 错误状态 -->
           <div v-if="error" class="image-error-container">
             <div class="image-error-content">
@@ -117,12 +117,12 @@
             </div>
           </div>
           <!-- 生成完成：显示图片 -->
-          <div v-else-if="done && images.length" class="image-record-content-TuJi21">
-            <div class="responsive-image-grid-WOh0lB">
+          <div v-else-if="done && images.length" class="image-record-content">
+            <div class="responsive-image-grid">
               <div v-for="(url, i) in images" :key="i"
-                   class="image-card-wrapper-WOgXrk landscape-Ven8Mz"
+                   class="image-card-wrapper landscape"
                    :style="`--aspect-ratio:${aspectRatio}`">
-                <div class="image-record-item-W6Y7Df">
+                <div class="image-record-item">
                   <div class="context-menu-trigger-WJ6VDZ">
                     <div class="slot-card-container-gulhrr image-card-container-dFemyw">
                       <div class="content-container-z0JOWv">
@@ -146,24 +146,24 @@
             </div>
           </div>
           <!-- 加载中 -->
-          <div v-else class="image-record-content-TuJi21">
-            <div class="responsive-image-grid-WOh0lB">
+          <div v-else class="image-record-content">
+            <div class="responsive-image-grid">
               <div v-for="i in count" :key="i"
-                   class="image-card-wrapper-WOgXrk landscape-Ven8Mz"
+                   class="image-card-wrapper landscape"
                    :style="`--aspect-ratio:${aspectRatio}`">
-                <div class="image-record-item-W6Y7Df"></div>
+                <div class="image-record-item"></div>
               </div>
               <!-- 加载动画覆盖层 -->
               <div class="loading-container-VeCJoq">
-                <div class="animation-wrapper-etExey">
-                  <video class="loading-animation-x3v9Mu"
+                <div class="animation-wrapper">
+                  <video class="loading-animation"
                          autoplay loop muted preload="auto"
                          :src="loadingVideoUrl"
                           />
                 </div>
               </div>
               <!-- 网格分割线 -->
-              <div class="divider-container-PJpG3l vertical-divider-container-romu4d">
+              <div class="divider-container vertical-divider-container">
                 <div v-for="i in (count - 1)" :key="i" class="vertical-divider"
                      :style="`left:${(i / count) * 100}%;transform:translateX(-50%)`"></div>
               </div>
@@ -176,7 +176,7 @@
               停止生成
             </button>
           </div>
-          <div v-if="done && !error" class="operations-NxPE1B">
+          <div v-if="done && !error" class="operations">
             <div class="record-bottom-slots-AYv3JV">
               <div>
                 <div class="card-bottom-button-view-xY_JqR"
@@ -494,17 +494,17 @@ onUnmounted(() => {
 @import "@/views/generate/components/generate-agent-record.css";
 
 /* 修正长提示词头部被绝对定位撑出后覆盖图片区的问题 */
-:deep(.record-header-E91Dfj .record-header-content-Lkk9CM) {
+:deep(.record-header .record-header-content) {
   align-items: flex-start;
 }
 
-:deep(.record-header-E91Dfj .prompt-suffix-labels-wrapper-qthJZj) {
+:deep(.record-header .prompt-suffix-labels-wrapper) {
   height: auto;
   max-height: none;
   min-height: calc(var(--line-height) * 2 + var(--padding-top) * 2);
 }
 
-:deep(.record-header-E91Dfj .prompt-suffix-labels-NBprFc) {
+:deep(.record-header .prompt-suffix-labels) {
   max-height: none;
   overflow: visible;
   position: relative;
@@ -521,7 +521,7 @@ onUnmounted(() => {
   width: 100%;
 }
 
-.animation-wrapper-etExey {
+.animation-wrapper {
   background-color: var(--bg-mask-60);
   height: 100%;
   left: 0;
@@ -531,14 +531,14 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.loading-animation-x3v9Mu {
+.loading-animation {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
 /* 网格分割线 */
-.divider-container-PJpG3l {
+.divider-container {
   height: 100%;
   left: 0;
   pointer-events: none;
@@ -571,7 +571,7 @@ onUnmounted(() => {
   padding: 2px 7px 2px 8px;
 }
 
-.image-record-content-TuJi21 .progress-badge-RQDqWu {
+.image-record-content .progress-badge-RQDqWu {
   left: 8px;
   position: absolute;
   top: 8px;
@@ -643,11 +643,11 @@ onUnmounted(() => {
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-main-default, #4c8dff) 16%, transparent);
 }
 
-.image-stage-title-zHQmQJ {
+.image-stage-title {
   color: var(--text-primary);
 }
 
-.image-stage-content-dherTv {
+.image-stage-content {
   color: var(--text-secondary, #83929d);
 }
 

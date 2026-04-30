@@ -353,7 +353,7 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <div v-if="visible"
          ref="panelRef"
-         :class="['lv-trigger', 'lv-popover', 'lv-trigger-position-bl', 'popover-hjZ_EM', 'preference-panel-popover', `placement-${actualPlacement}`]"
+         :class="['lv-trigger', 'lv-popover', 'lv-trigger-position-bl', 'popover', 'preference-panel-popover', `placement-${actualPlacement}`]"
          :style="{ ...panelStyle, opacity: 1, position: 'fixed', maxWidth: 'unset', display: 'initial', pointerEvents: 'auto', zIndex: 10000 }"
          @click.stop>
       <div :class="['lv-popover-content', actualPlacement === 'bottom' ? 'lv-popover-content-bottom' : 'lv-popover-content-top']" role="tooltip">
@@ -378,7 +378,7 @@ onBeforeUnmount(() => {
                       </div>
                     </div>
                   </div>
-                  <div :class="['lv-radio-group', 'lv-radio-size-small', 'lv-radio-mode-outline', 'radio-group-nSistg', 'radio-group-A7r8m8', 'radio-group-Qx5UyB', 'radio-group-eK_F9H', { 'radio-group-disabled-azzH2v': isDisabled }]"
+                  <div :class="['lv-radio-group', 'lv-radio-size-small', 'lv-radio-mode-outline', 'radio-group-nSistg', 'radio-group-A7r8m8', 'radio-group-Qx5UyB', 'radio-group-eK_F9H', { 'radio-group-disabled': isDisabled }]"
                        role="radiogroup">
                     <label class="lv-radio" :class="{ 'lv-radio-checked': preferenceType === 'image' }">
                       <input type="radio" value="image" class="sf-hidden" v-model="preferenceType" :disabled="isDisabled">
@@ -394,7 +394,7 @@ onBeforeUnmount(() => {
                 <!-- 选择比例 -->
                 <div class="field-lS55rI field-MHJGjQ">
                   <div class="title-RK9CLE title-GC81t8 secondary-IGs0cX secondary-oFxtL_">选择比例</div>
-                  <div :class="['lv-radio-group', 'lv-radio-size-small', 'lv-radio-mode-outline', 'radio-group-nSistg', 'radio-group-csT79P', 'radio-group-Qx5UyB', 'radio-group-x5S5vB', { 'aspect-ratio-radio-group-disabled-d5D3ro': isDisabled }]"
+                  <div :class="['lv-radio-group', 'lv-radio-size-small', 'lv-radio-mode-outline', 'radio-group-nSistg', 'radio-group-csT79P', 'radio-group-Qx5UyB', 'radio-group-x5S5vB', { 'aspect-ratio-radio-group-disabled': isDisabled }]"
                        role="radiogroup">
                     <label v-for="option in aspectRatioOptions"
                            :key="option.value"
@@ -511,7 +511,7 @@ onBeforeUnmount(() => {
                     <!-- 模型选择按钮 -->
                     <button ref="modelTriggerRef"
                             tabindex="0"
-                            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'trigger-button-HdTM8H', 'trigger-button-N_YSvF', 'model-select-mx2Aeo', 'model-select-HWM8up', { 'trigger-button-disabled-cJzDE3': isDisabled }]"
+                            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'trigger-button-HdTM8H', 'trigger-button-N_YSvF', 'model-select-mx2Aeo', 'model-select-HWM8up', { 'trigger-button-disabled': isDisabled }]"
                             type="button"
                             @click.stop="toggleModelSelect">
                       <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet"
@@ -541,11 +541,11 @@ onBeforeUnmount(() => {
                             :key="model.value"
                             :class="['lv-select-option', { 'lv-select-option-wrapper-selected': currentModel === model.value }]"
                             @click.stop="selectModel(model.value)">
-                          <div class="select-option-label-Ct6NRy">
-                            <div class="select-option-label-content-tmGvFs">
+                          <div class="select-option-label">
+                            <div class="select-option-label-content">
                               <span>{{ model.label }}</span>
                             </div>
-                            <span v-if="currentModel === model.value" class="select-option-check-icon-uOxlr2">
+                            <span v-if="currentModel === model.value" class="select-option-check-icon">
                               <svg width="1em" height="1em" viewBox="0 0 24 24"
                                    preserveAspectRatio="xMidYMid meet" fill="none"
                                    role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -568,7 +568,7 @@ onBeforeUnmount(() => {
                          aria-autocomplete="list"
                          :aria-expanded="isResolutionSelectOpen"
                          tabindex="0"
-                         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'resolution-select-BKucmm', 'resolution-select-JQy4Sm', 'select-joF5y7', { 'resolution-select-disabled-EoEwFj': isDisabled }]"
+                         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'resolution-select-BKucmm', 'resolution-select-JQy4Sm', 'select-joF5y7', { 'resolution-select-disabled': isDisabled }]"
                          @click.stop="toggleResolutionSelect">
                       <div class="lv-select-view">
                         <span class="lv-select-view-selector">
@@ -620,11 +620,11 @@ onBeforeUnmount(() => {
                             :key="resolution.value"
                             :class="['lv-select-option', { 'lv-select-option-wrapper-selected': currentResolution === resolution.value }]"
                             @click.stop="selectResolution(resolution.value)">
-                          <div class="select-option-label-Ct6NRy">
-                            <div class="select-option-label-content-tmGvFs">
+                          <div class="select-option-label">
+                            <div class="select-option-label-content">
                               <span>{{ resolution.label }}</span>
                             </div>
-                            <span v-if="currentResolution === resolution.value" class="select-option-check-icon-uOxlr2">
+                            <span v-if="currentResolution === resolution.value" class="select-option-check-icon">
                               <svg width="1em" height="1em" viewBox="0 0 24 24"
                                    preserveAspectRatio="xMidYMid meet" fill="none"
                                    role="presentation" xmlns="http://www.w3.org/2000/svg">

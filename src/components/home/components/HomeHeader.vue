@@ -1,5 +1,5 @@
 <template>
-  <div class="home-header-Z8R5qZ">
+  <div class="home-header">
     <div class="header-bto0dS">
       {{ siteNamePrefix }}开启你的
       <TypeSelector />
@@ -7,7 +7,7 @@
     </div>
     <!-- 首页配置：不可折叠、默认展开、弹窗强制向下弹出 -->
     <GenerateContentGenerator
-      class="home-header-content-generator-RI50Ki"
+      class="home-header-content-generator"
       :collapsible="false"
       :default-expanded="true"
       popup-placement="bottom"

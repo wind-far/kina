@@ -147,7 +147,7 @@ defineExpose({
   <div class="image-toolbar">
     <!-- 模型版本选择 -->
     <div ref="modelTriggerRef"
-         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select-h345g7', 'select-joF5y7', { 'compact-OC0Z0c': iconOnly }]"
+         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', { 'compact': iconOnly }]"
          role="combobox"
          tabindex="0"
          :aria-expanded="isModelSelectOpen"
@@ -193,11 +193,11 @@ defineExpose({
             :key="version.value"
             :class="['lv-select-option', { 'lv-select-option-wrapper-selected': currentModelVersion === version.value }]"
             @click.stop="selectModelVersion(version.value)">
-          <div class="select-option-label-Ct6NRy">
-            <div class="select-option-label-content-tmGvFs">
+          <div class="select-option-label">
+            <div class="select-option-label-content">
               <span>{{ version.label }}</span>
             </div>
-            <span v-if="currentModelVersion === version.value" class="select-option-check-icon-uOxlr2">
+            <span v-if="currentModelVersion === version.value" class="select-option-check-icon">
               <svg width="1em" height="1em" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none"
                    role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -239,12 +239,12 @@ defineExpose({
             :key="size.value"
             :class="['lv-select-option', { 'lv-select-option-wrapper-selected': currentSize === size.value }]"
             @click.stop="selectSize(size.value)">
-          <div class="select-option-label-Ct6NRy">
-            <div class="select-option-label-content-tmGvFs">
+          <div class="select-option-label">
+            <div class="select-option-label-content">
               <span>{{ size.label }}</span>
               <span class="commercial-content-PR23Ed">{{ size.quality }}</span>
             </div>
-            <span v-if="currentSize === size.value" class="select-option-check-icon-uOxlr2">
+            <span v-if="currentSize === size.value" class="select-option-check-icon">
               <svg width="1em" height="1em" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none"
                    role="presentation" xmlns="http://www.w3.org/2000/svg">

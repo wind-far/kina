@@ -14,7 +14,7 @@
 
 /* 编辑器和尺寸计算器 */
 .prompt-editor-E3Iuyy .tiptap,
-.prompt-editor-sizer-HGYBfr .tiptap {
+.prompt-editor-sizer .tiptap {
     background-color: transparent;
     box-sizing: border-box;
     caret-color: var(--brand-main-default);
@@ -29,41 +29,41 @@
 }
 
 .prompt-editor-E3Iuyy .tiptap:hover,
-.prompt-editor-sizer-HGYBfr .tiptap:hover {
+.prompt-editor-sizer .tiptap:hover {
     --scrollbar-background-color: var(--bg-block-primary-pressed);
 }
 
 .prompt-editor-E3Iuyy .tiptap:hover::-webkit-scrollbar-thumb,
-.prompt-editor-sizer-HGYBfr .tiptap:hover::-webkit-scrollbar-thumb {
+.prompt-editor-sizer .tiptap:hover::-webkit-scrollbar-thumb {
     background: var(--scrollbar-background-color);
 }
 
 .prompt-editor-E3Iuyy .tiptap::-webkit-scrollbar,
-.prompt-editor-sizer-HGYBfr .tiptap::-webkit-scrollbar {
+.prompt-editor-sizer .tiptap::-webkit-scrollbar {
     width: 4px;
 }
 
 .prompt-editor-E3Iuyy .tiptap::-webkit-scrollbar-thumb,
 .prompt-editor-E3Iuyy .tiptap::-webkit-scrollbar-track,
-.prompt-editor-sizer-HGYBfr .tiptap::-webkit-scrollbar-thumb,
-.prompt-editor-sizer-HGYBfr .tiptap::-webkit-scrollbar-track {
+.prompt-editor-sizer .tiptap::-webkit-scrollbar-thumb,
+.prompt-editor-sizer .tiptap::-webkit-scrollbar-track {
     cursor: default;
 }
 
 .prompt-editor-E3Iuyy .tiptap::-webkit-input-placeholder,
-.prompt-editor-sizer-HGYBfr .tiptap::-webkit-input-placeholder {
+.prompt-editor-sizer .tiptap::-webkit-input-placeholder {
     color: var(--text-placeholder);
     -webkit-text-fill-color: var(--text-placeholder);
 }
 
 .prompt-editor-E3Iuyy .tiptap::-ms-input-placeholder,
-.prompt-editor-sizer-HGYBfr .tiptap::-ms-input-placeholder {
+.prompt-editor-sizer .tiptap::-ms-input-placeholder {
     color: var(--text-placeholder);
     -webkit-text-fill-color: var(--text-placeholder);
 }
 
 .prompt-editor-E3Iuyy .tiptap::placeholder,
-.prompt-editor-sizer-HGYBfr .tiptap::placeholder {
+.prompt-editor-sizer .tiptap::placeholder {
     color: var(--text-placeholder);
     -webkit-text-fill-color: var(--text-placeholder);
 }
@@ -71,19 +71,19 @@
 /* Firefox 滚动条 */
 @-moz-document url-prefix() {
     .prompt-editor-E3Iuyy .tiptap,
-    .prompt-editor-sizer-HGYBfr .tiptap {
+    .prompt-editor-sizer .tiptap {
         scrollbar-color: var(--scrollbar-background-color) transparent;
         scrollbar-width: thin;
     }
 }
 
 .prompt-editor-E3Iuyy .tiptap p,
-.prompt-editor-sizer-HGYBfr .tiptap p {
+.prompt-editor-sizer .tiptap p {
     margin: 0;
 }
 
 /* 尺寸计算器 */
-.prompt-editor-sizer-HGYBfr {
+.prompt-editor-sizer {
     left: 0;
     position: absolute;
     top: 0;
@@ -173,13 +173,13 @@
 
 /* Tooltip 滚动条 */
 @-moz-document url-prefix() {
-    .tooltip-esIQzT .lv-tooltip-content-inner {
+    .tooltip .lv-tooltip-content-inner {
         scrollbar-color: var(--bg-block-primary-pressed) transparent;
         scrollbar-width: thin;
     }
 }
 
 /* 类型选择器 */
-.type-select-BRd1AA.lv-select .lv-select-view {
+.type-select.lv-select .lv-select-view {
     color: var(--brand-main-default) !important;
 }

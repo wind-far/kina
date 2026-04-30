@@ -339,7 +339,7 @@ const toggleCreativeDesign = () => {
   <div class="agent-toolbar">
     <!-- 模型选择 -->
     <div v-if="showModelSelector" ref="modelTriggerRef"
-         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select-h345g7', 'select-joF5y7', { 'compact-OC0Z0c': iconOnly }]"
+         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', { 'compact': iconOnly }]"
          role="combobox"
          tabindex="0"
          :aria-expanded="isModelSelectOpen"
@@ -385,11 +385,11 @@ const toggleCreativeDesign = () => {
             :key="m.value"
             :class="['lv-select-option', { 'lv-select-option-wrapper-selected': currentModel === m.value }]"
             @click.stop="selectModel(m.value)">
-          <div class="select-option-label-Ct6NRy">
-            <div class="select-option-label-content-tmGvFs">
+          <div class="select-option-label">
+            <div class="select-option-label-content">
               <span>{{ m.label }}</span>
             </div>
-            <span v-if="currentModel === m.value" class="select-option-check-icon-uOxlr2">
+            <span v-if="currentModel === m.value" class="select-option-check-icon">
               <svg width="1em" height="1em" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none"
                    role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -406,9 +406,9 @@ const toggleCreativeDesign = () => {
     </SelectPopup>
 
     <!-- 技能选择器 -->
-    <span v-if="showAssistantSelector" class="lv-badge skill-select-badge-nf8J3A">
+    <span v-if="showAssistantSelector" class="lv-badge skill-select-badge">
       <div ref="skillTriggerRef"
-           :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select-h345g7', 'select-joF5y7', 'skill-select-k92QxV', { 'compact-OC0Z0c': iconOnly, 'active-P7cL4x': isSkillSelectOpen }]"
+           :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', 'skill-select', { 'compact': iconOnly, 'active-P7cL4x': isSkillSelectOpen }]"
            role="combobox"
            tabindex="0"
            :aria-expanded="isSkillSelectOpen"
@@ -448,16 +448,16 @@ const toggleCreativeDesign = () => {
     </span>
 
     <!-- 技能选择弹窗 -->
-    <SelectPopup v-if="showAssistantSelector" v-model:visible="isSkillSelectOpen" :trigger-ref="skillTriggerRef" :placement="placement" popup-class="skill-select-popup-shell-dark-X2p9Qa" title="">
-      <div class="skill-select-shell-P9dLm4">
-        <div class="skill-select-title-T5mQ2s">选择技能</div>
-        <ul class="lv-select-popup-inner skill-select-popup-J8Tukj">
+    <SelectPopup v-if="showAssistantSelector" v-model:visible="isSkillSelectOpen" :trigger-ref="skillTriggerRef" :placement="placement" popup-class="skill-select-popup-shell-dark" title="">
+      <div class="skill-select-shell">
+        <div class="skill-select-title">选择技能</div>
+        <ul class="lv-select-popup-inner skill-select-popup">
         <li v-for="skill in visibleSkillOptions"
             :key="skill.value"
-            :class="['lv-select-option', 'skill-option-vV8DvA', { 'skill-option-selected-U7rKf2': currentSkill === skill.value }]"
+            :class="['lv-select-option', 'skill-option', { 'skill-option-selected': currentSkill === skill.value }]"
             @click.stop="selectSkill(skill.value)">
-          <div class="select-option-label-Ct6NRy skill-option-label-Q4mT8x">
-            <span class="skill-option-icon-L7pW3e" aria-hidden="true">
+          <div class="select-option-label skill-option-label">
+            <span class="skill-option-icon" aria-hidden="true">
               <svg width="14" height="14" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none"
                    role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -468,9 +468,9 @@ const toggleCreativeDesign = () => {
                 </g>
               </svg>
             </span>
-            <div class="select-option-label-content-tmGvFs skill-option-content-EZ4xS5">
-              <span class="skill-option-title-r6mY8X">{{ skill.label }}</span>
-              <span class="skill-option-description-t34hRc" :title="skill.description">{{ skill.description }}</span>
+            <div class="select-option-label-content skill-option-content">
+              <span class="skill-option-title">{{ skill.label }}</span>
+              <span class="skill-option-description" :title="skill.description">{{ skill.description }}</span>
             </div>
           </div>
         </li>
@@ -556,40 +556,40 @@ const toggleCreativeDesign = () => {
 }
 
 /* 技能弹窗内容 */
-.skill-select-badge-nf8J3A {
+.skill-select-badge {
   display: inline-flex;
 }
 
-.skill-select-k92QxV.lv-select.lv-select-single .lv-select-view {
+.skill-select.lv-select.lv-select-single .lv-select-view {
   min-width: 118px;
   padding-left: 12px;
   padding-right: 10px;
 }
 
-.skill-select-k92QxV .lv-select-view-value {
+.skill-select .lv-select-view-value {
   gap: 6px;
   color: var(--text-primary);
 }
 
-.skill-select-k92QxV .lv-select-view-value > svg {
+.skill-select .lv-select-view-value > svg {
   flex: 0 0 auto;
 }
 
-.skill-select-k92QxV .lv-select-arrow-icon {
+.skill-select .lv-select-arrow-icon {
   color: var(--text-placeholder);
 }
 
-.skill-select-k92QxV.active-P7cL4x .lv-select-view,
-.skill-select-k92QxV:focus-visible .lv-select-view,
-.skill-select-k92QxV:hover .lv-select-view {
+.skill-select.active-P7cL4x .lv-select-view,
+.skill-select:focus-visible .lv-select-view,
+.skill-select:hover .lv-select-view {
   background: var(--bg-block-primary-hover);
 }
 
-.skill-select-k92QxV.active-P7cL4x .lv-select-arrow-icon svg {
+.skill-select.active-P7cL4x .lv-select-arrow-icon svg {
   transform: rotate(180deg);
 }
 
-.skill-select-popup-shell-dark-X2p9Qa {
+.skill-select-popup-shell-dark {
   border-radius: 18px;
   border-color: var(--stroke-tertiary);
   background: var(--bg-dropdown-menu);
@@ -597,26 +597,26 @@ const toggleCreativeDesign = () => {
   padding: 0;
 }
 
-.skill-select-popup-J8Tukj {
+.skill-select-popup {
   min-width: 400px;
   max-height: 320px;
   padding: 0;
   overflow-y: auto;
 }
 
-.skill-select-shell-P9dLm4 {
+.skill-select-shell {
   width: 400px;
   padding: 12px 10px 10px;
 }
 
-.skill-select-title-T5mQ2s {
+.skill-select-title {
   padding: 2px 8px 10px;
   color: var(--text-placeholder);
   font-size: 12px;
   line-height: 18px;
 }
 
-.skill-option-vV8DvA {
+.skill-option {
   margin: 0;
   min-height: 36px;
   padding: 0;
@@ -624,25 +624,25 @@ const toggleCreativeDesign = () => {
   background: transparent;
 }
 
-.skill-option-vV8DvA + .skill-option-vV8DvA {
+.skill-option + .skill-option {
   margin-top: 1px;
 }
 
-.skill-option-vV8DvA:hover {
+.skill-option:hover {
   background: var(--bg-block-primary-hover);
 }
 
-.skill-option-selected-U7rKf2 {
+.skill-option-selected {
   background: transparent;
 }
 
-.skill-option-label-Q4mT8x {
+.skill-option-label {
   width: 100%;
   gap: 8px;
   padding: 7px 10px;
 }
 
-.skill-option-icon-L7pW3e {
+.skill-option-icon {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
@@ -652,7 +652,7 @@ const toggleCreativeDesign = () => {
   color: var(--text-primary);
 }
 
-.skill-option-content-EZ4xS5 {
+.skill-option-content {
   display: flex;
   flex: 1;
   align-items: center;
@@ -660,7 +660,7 @@ const toggleCreativeDesign = () => {
   min-width: 0;
 }
 
-.skill-option-title-r6mY8X {
+.skill-option-title {
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 500;
@@ -669,7 +669,7 @@ const toggleCreativeDesign = () => {
   white-space: nowrap;
 }
 
-.skill-option-description-t34hRc {
+.skill-option-description {
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 16px;

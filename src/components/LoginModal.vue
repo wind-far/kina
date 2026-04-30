@@ -3,7 +3,7 @@
     <Transition name="login-modal" :duration="{ enter: 280, leave: 200 }">
       <div
         v-if="visible"
-        class="login-modal-host lv-modal-wrapper lv-modal-wrapper-align-center login-modal-wrapper-G5V0Qp"
+        class="login-modal-host lv-modal-wrapper lv-modal-wrapper-align-center login-modal-wrapper"
         style="display: block"
       >
         <div
@@ -26,7 +26,7 @@
               <div :id="dialogTitleId" class="lv-modal-title">
                 <span>
                   <div class="title-UZtkUa">
-<!--                    <img class="title-logo-xhenXQ" :src="titleLogoSrc" alt="">-->
+<!--                    <img class="title-logo" :src="titleLogoSrc" alt="">-->
                     <div class="title-text-byG0WC">{{ welcomeTitle }}</div>
                   </div>
                   <div v-if="welcomeSubtitle" class="login-subtitle-canana">{{ welcomeSubtitle }}</div>
@@ -36,12 +36,12 @@
 
             <div class="lv-modal-content">
               <div>
-                <div v-if="codeMethods.length > 1" class="method-selector-YvSPmR">
+                <div v-if="codeMethods.length > 1" class="method-selector">
                   <button
                     v-for="method in codeMethods"
                     :key="method.methodType"
                     type="button"
-                    class="method-tab-JL2v9f"
+                    class="method-tab"
                     :class="{ 'is-active-Mw7P8u': method.methodType === activeMethodType }"
                     @click="selectMethod(method.methodType)"
                   >
@@ -63,19 +63,19 @@
 
                   <div v-if="currentCodeMethod">
                     <div class="label-gB9Ufj">验证码</div>
-                    <div class="sms-row-E6NdAG">
+                    <div class="sms-row">
                       <input
                         v-model="codeValue"
                         maxlength="6"
                         :placeholder="currentCodePlaceholder"
-                        class="lv-input lv-input-size-large input-pYC00w sms-input-Zimtwu"
+                        class="lv-input lv-input-size-large input-pYC00w sms-input"
                         :disabled="isSubmitting"
                       >
 
-                      <div class="sms-action-Vmkiao">
-                        <div class="sms-divider-PmyvXM"></div>
+                      <div class="sms-action">
+                        <div class="sms-divider"></div>
                         <button
-                          class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square sms-button-JmIuJw"
+                          class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square sms-button"
                           :class="{ 'lv-btn-disabled': !canSendCode }"
                           type="button"
                           :disabled="!canSendCode"
@@ -90,7 +90,7 @@
 
                 <div class="footer-X7PPzE">
                   <button
-                    class="lv-btn lv-btn-primary lv-btn-size-large lv-btn-shape-square confirm-button-Y9lc6j"
+                    class="lv-btn lv-btn-primary lv-btn-size-large lv-btn-shape-square confirm-button"
                     :class="{ 'lv-btn-disabled': !canSubmit }"
                     type="button"
                     :disabled="!canSubmit"
@@ -99,14 +99,14 @@
                     <span>{{ isSubmitting ? '登录中...' : primaryButtonText }}</span>
                   </button>
 
-                  <div v-if="oauthMethods.length" class="oauth-group-L5M8tN">
-                    <div class="oauth-title-WP0zQh">其他登录方式</div>
-                    <div class="oauth-buttons-S7VQpM">
+                  <div v-if="oauthMethods.length" class="oauth-group">
+                    <div class="oauth-title">其他登录方式</div>
+                    <div class="oauth-buttons">
                       <button
                         v-for="method in oauthMethods"
                         :key="method.methodType"
                         type="button"
-                        class="oauth-button-Nj6u2V"
+                        class="oauth-button"
                         @click="handleOAuthLogin(method.methodType)"
                       >
                         {{ method.displayName }}
@@ -132,13 +132,13 @@
                       </div>
                     </span>
                     <span class="lv-checkbox-text">
-                      <span class="agreement-text-zcf5TA">
+                      <span class="agreement-text">
                         <span>{{ agreementTextPrefix }}</span>
-                        <a class="link-text-OuVqYF" :href="userAgreementHref" :target="policySettings.userAgreementUrl ? '_blank' : undefined" rel="noreferrer">{{ policySettings.userAgreementTitle }}</a>
+                        <a class="link-text" :href="userAgreementHref" :target="policySettings.userAgreementUrl ? '_blank' : undefined" rel="noreferrer">{{ policySettings.userAgreementTitle }}</a>
                         <span>、</span>
-                        <a class="link-text-OuVqYF" :href="privacyPolicyHref" :target="policySettings.privacyPolicyUrl ? '_blank' : undefined" rel="noreferrer">{{ policySettings.privacyPolicyTitle }}</a>
+                        <a class="link-text" :href="privacyPolicyHref" :target="policySettings.privacyPolicyUrl ? '_blank' : undefined" rel="noreferrer">{{ policySettings.privacyPolicyTitle }}</a>
                         <span>、</span>
-                        <a class="link-text-OuVqYF" :href="aiNoticeHref" :target="policySettings.aiNoticeUrl ? '_blank' : undefined" rel="noreferrer">{{ policySettings.aiNoticeTitle }}</a>
+                        <a class="link-text" :href="aiNoticeHref" :target="policySettings.aiNoticeUrl ? '_blank' : undefined" rel="noreferrer">{{ policySettings.aiNoticeTitle }}</a>
                       </span>
                     </span>
                   </label>

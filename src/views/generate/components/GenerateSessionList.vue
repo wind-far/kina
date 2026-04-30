@@ -1,30 +1,30 @@
 <template>
-  <div class="record-list-container-YQhwuM">
-    <div class="record-list-RjGugi record-virtual-list" :style="`--content-generator-height:${contentGeneratorHeight}px`">
+  <div class="record-list-container">
+    <div class="record-list record-virtual-list" :style="`--content-generator-height:${contentGeneratorHeight}px`">
       <div
-        class="virtual-list-container-rarVwb"
+        class="virtual-list-container"
         style="--virtual-list-rotate:rotate(180deg);--virtual-list-direction:rtl;--virtual-list-justify-content:flex-end"
       >
         <div class="scroll-container-j7wUS8" style="height:100%">
-          <div ref="scrollContainerRef" class="virtual-list-gUs6jj" style="height:100%">
+          <div ref="scrollContainerRef" class="virtual-list" style="height:100%">
             <div :style="`height:${spacerHeight}`"></div>
             <div
               :id="scrollListId"
-              class="scroll-list-gsJVWP"
+              class="scroll-list"
               style="transform:translate3d(0px,0px,0px)"
             >
-              <div class="scroll-slot-coWS6S"></div>
+              <div class="scroll-slot"></div>
               <div class="top-placeholder-fTCjHC">
                 <div class="top-placeholder-aEry7y">
-                  <div class="clean-agent-context-wrapper-QM8uAh">
+                  <div class="clean-agent-context-wrapper">
                     <span
-                      class="clean-agent-context-text-Lx4BjY"
+                      class="clean-agent-context-text"
                       @click="emit('create-session')"
                     >
                       {{ createSessionText }}
                     </span>
                   </div>
-                  <div class="empty-placeholder-dcs8S2"></div>
+                  <div class="empty-placeholder"></div>
                 </div>
               </div>
               <slot />
@@ -33,15 +33,15 @@
         </div>
       </div>
     </div>
-    <div class="filter-mask-IOpWQJ"></div>
-    <div class="filter-container-wyGTle filter-F4oqdf">
+    <div class="filter-mask"></div>
+    <div class="filter-container filter">
       <div class="container-ufW1eH collapsed-HB97Ck">
         <div class="lv-input-group-wrapper lv-input-group-wrapper-default search-input-ZwhOpf">
           <span class="lv-input-group">
             <span class="lv-input-inner-wrapper lv-input-inner-wrapper-has-prefix lv-input-inner-wrapper-default lv-input-clear-wrapper">
               <span class="lv-input-group-prefix">
                 <svg
-                  class="search-icon-rvzopq search-icon-interactive-LHh2d0"
+                  class="search-icon-rvzopq search-icon-interactive"
                   fill="none"
                   height="1em"
                   preserveAspectRatio="xMidYMid meet"
@@ -74,7 +74,7 @@
           </span>
         </div>
       </div>
-      <span class="separator-AluiGy"></span>
+      <span class="separator"></span>
       <div class="container-KL2j0F" @click="emit('time-filter-click')">
         <span class="trigger-AnFRb7">
           <span class="filter-text-bBfqrS filter-text-MnA06c">{{ timeFilterLabel }}</span>
@@ -100,7 +100,7 @@
           </svg>
         </span>
       </div>
-      <span class="separator-AluiGy"></span>
+      <span class="separator"></span>
       <div class="container-KL2j0F" @click="emit('type-filter-click')">
         <span class="trigger-AnFRb7">
           <span class="filter-text-bBfqrS">{{ typeFilterLabel }}</span>
@@ -126,7 +126,7 @@
           </svg>
         </span>
       </div>
-      <span class="separator-AluiGy"></span>
+      <span class="separator"></span>
       <div class="container-KL2j0F" @click="emit('action-filter-click')">
         <span class="trigger-AnFRb7">
           <span class="filter-text-bBfqrS">{{ actionFilterLabel }}</span>

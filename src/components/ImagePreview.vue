@@ -3,19 +3,19 @@
     <div class="preview-area-TnDJHN">
       <div class="container-T1jCWT">
         <div class="preview-area-QscVpt">
-          <div class="image-player-KCJSe1">
-            <div class="image-player-container-V9ZRXE">
-              <div class="image-player-content-Ml9sbe">
+          <div class="image-player">
+            <div class="image-player-container">
+              <div class="image-player-content">
                 <img
                   v-if="currentImage"
-                  class="image-player-image-_Tib2c"
+                  class="image-player-image"
                   :src="currentImage.src"
                   :alt="currentImage.id"
                 >
               </div>
             </div>
 
-            <div class="image-player-navigation-mJIQnd">
+            <div class="image-player-navigation">
               <div class="container-H3ng83">
                 <button
                   class="arrow-container-UvRNxR"
@@ -31,7 +31,7 @@
                     fill="none"
                     role="presentation"
                     xmlns="http://www.w3.org/2000/svg"
-                    class="arrow-qw6CEe"
+                    class="arrow"
                     :class="{ 'disabled-Zss3dM': internalIndex === 0 }"
                   >
                     <g>
@@ -45,10 +45,10 @@
                     </g>
                   </svg>
                 </button>
-                <span class="page-number-Zjog_T">
-                  <span class="num-BCKBO0">{{ internalIndex + 1 }}</span>
+                <span class="page-number">
+                  <span class="num">{{ internalIndex + 1 }}</span>
                   <span>/</span>
-                  <span class="num-BCKBO0">{{ totalImages }}</span>
+                  <span class="num">{{ totalImages }}</span>
                 </span>
                 <button
                   class="arrow-container-UvRNxR"
@@ -64,7 +64,7 @@
                     fill="none"
                     role="presentation"
                     xmlns="http://www.w3.org/2000/svg"
-                    class="arrow-qw6CEe"
+                    class="arrow"
                     :class="{ 'disabled-Zss3dM': internalIndex === totalImages - 1 }"
                   >
                     <g>
@@ -84,8 +84,8 @@
     </div>
 
     <div class="operation-area-EihPQ7">
-      <div class="switch-area-AKmr_H">
-        <button class="collapse-button-L4UIFa operation-icon-w5Y4Pg" type="button">
+      <div class="switch-area">
+        <button class="collapse-button operation-icon-w5Y4Pg" type="button">
           <svg width="20" height="20" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
             <g>
               <path
@@ -98,7 +98,7 @@
             </g>
           </svg>
         </button>
-        <button class="collapse-button-L4UIFa operation-icon-w5Y4Pg" type="button">
+        <button class="collapse-button operation-icon-w5Y4Pg" type="button">
           <svg width="20" height="20" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
             <g>
               <path
@@ -128,11 +128,11 @@
       </button>
     </div>
 
-    <div class="detail-area-mylLyv">
+    <div class="detail-area">
       <div class="container-LTKJ3M">
         <div class="operation-area-uoDdSN">
           <div class="publish-button-jPQ6gf">
-            <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square left-button-IpJMp_ preview-text-button" type="button" @click="handleDownload">
+            <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square left-button preview-text-button" type="button" @click="handleDownload">
               <div class="icon-wrapper-H4Qy6w">
                 <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                   <g>
@@ -150,7 +150,7 @@
             </button>
           </div>
 
-          <div class="operation-buttons-ita9Ow">
+          <div class="operation-buttons">
             <div class="operation-button-pTosuC">
               <button class="icon-wrapper-SP2zJN" type="button" @click="handleFavorite">
                 <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -203,8 +203,8 @@
           </div>
         </div>
 
-        <div class="info-section-QOKtGr">
-          <div class="ref-image-container-DCcHUl image-thumbnail-list-iZWaR8">
+        <div class="info-section">
+          <div class="ref-image-container image-thumbnail-list">
             <div class="scroll-container-Nuo9r_">
               <div
                 v-for="(image, index) in images"
@@ -237,7 +237,7 @@
               <span class="more-info-label-tsxIEt">
                 <span class="more-info-label-inner-n_l9zm">
                   <span class="more-info-label-Bp1woI">
-                    <span class="more-info-label-text-HMW7Yo">详细信息</span>
+                    <span class="more-info-label-text">详细信息</span>
                     <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-G_8Owc">
                       <g>
                         <path
@@ -249,18 +249,18 @@
                     </svg>
                   </span>
                 </span>
-                <div class="more-info-mask-VNvIc5"></div>
+                <div class="more-info-mask"></div>
               </span>
             </div>
           </div>
         </div>
 
-        <div class="post-edit-buttons-X__8j8">
+        <div class="post-edit-buttons">
           <div class="container-CR8FG0">
-            <div class="group-container-sx43Zo">
-              <div class="group-gyYOPU">
-                <div class="detail-button-view-container-sEElmO">
-                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view-x33260" type="button" @click="handleGenerateVideo">
+            <div class="group-container">
+              <div class="group">
+                <div class="detail-button-view-container">
+                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button" @click="handleGenerateVideo">
                     <div class="icon-f2nkjH">
                       <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                         <g>
@@ -278,8 +278,8 @@
                   </button>
                 </div>
 
-                <div class="detail-button-view-container-sEElmO">
-                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view-x33260" type="button" @click="handleEditInCanvas">
+                <div class="detail-button-view-container">
+                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button" @click="handleEditInCanvas">
                     <div class="icon-f2nkjH">
                       <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                         <g>
@@ -295,7 +295,7 @@
                     </div>
                     <div class="text-FN1TsU">去画布编辑</div>
                     <div class="icon-f2nkjH">
-                      <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="suffix-icon-fLgyoX">
+                      <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="suffix-icon">
                         <g>
                           <path
                             data-follow-fill="currentColor"
@@ -310,10 +310,10 @@
               </div>
             </div>
 
-            <div class="group-container-sx43Zo">
-              <div class="group-gyYOPU">
-                <div class="detail-button-view-container-sEElmO">
-                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view-x33260" type="button">
+            <div class="group-container">
+              <div class="group">
+                <div class="detail-button-view-container">
+                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button">
                     <div class="icon-f2nkjH">
                       <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                         <g>
@@ -335,8 +335,8 @@
                   </button>
                 </div>
 
-                <div class="detail-button-view-container-sEElmO">
-                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view-x33260" type="button">
+                <div class="detail-button-view-container">
+                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button">
                     <div class="icon-f2nkjH">
                       <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                         <g>
@@ -352,8 +352,8 @@
                   </button>
                 </div>
 
-                <div class="detail-button-view-container-sEElmO">
-                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view-x33260" type="button">
+                <div class="detail-button-view-container">
+                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button">
                     <div class="icon-f2nkjH">
                       <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                         <g>
@@ -371,8 +371,8 @@
                   </button>
                 </div>
 
-                <div class="detail-button-view-container-sEElmO">
-                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view-x33260" type="button">
+                <div class="detail-button-view-container">
+                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button">
                     <div class="icon-f2nkjH">
                       <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                         <g>
@@ -388,8 +388,8 @@
                   </button>
                 </div>
 
-                <div class="detail-button-view-container-sEElmO">
-                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view-x33260" type="button">
+                <div class="detail-button-view-container">
+                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button">
                     <div class="icon-f2nkjH">
                       <svg width="1em" height="1em" viewBox="0 0 25 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                         <g>
@@ -403,8 +403,8 @@
                   </button>
                 </div>
 
-                <div class="detail-button-view-container-sEElmO">
-                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view-x33260" type="button">
+                <div class="detail-button-view-container">
+                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button">
                     <div class="icon-f2nkjH">
                       <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                         <g>
@@ -416,8 +416,8 @@
                   </button>
                 </div>
 
-                <div class="detail-button-view-container-sEElmO">
-                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view-x33260" type="button">
+                <div class="detail-button-view-container">
+                  <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button">
                     <div class="icon-f2nkjH">
                       <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                         <g>
@@ -431,11 +431,11 @@
               </div>
             </div>
 
-            <div class="group-container-sx43Zo">
-              <div class="group-gyYOPU">
+            <div class="group-container">
+              <div class="group">
                 <div>
-                  <div class="detail-button-view-container-sEElmO">
-                    <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view-x33260" type="button">
+                  <div class="detail-button-view-container">
+                    <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button">
                       <div class="icon-f2nkjH">
                         <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                           <g>
@@ -458,8 +458,8 @@
                 <div>
                   <div>
                     <div class="tooltip-container-BTcBzf">
-                      <div class="detail-button-view-container-sEElmO">
-                        <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view-x33260" type="button">
+                      <div class="detail-button-view-container">
+                        <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button">
                           <div class="icon-f2nkjH">
                             <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                               <g>

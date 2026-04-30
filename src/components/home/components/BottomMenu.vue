@@ -1,8 +1,8 @@
 <template>
-  <div role="menu" class="lv-menu lv-menu-light lv-menu-vertical bottomMenu-D_sElt login-menu-wrapper-TcQfJd">
+  <div role="menu" class="lv-menu lv-menu-light lv-menu-vertical bottomMenu login-menu-wrapper">
     <div class="lv-menu-inner">
       <!-- 积分 / 会员营销入口 -->
-      <div tabindex="0" role="menuitem" class="lv-menu-item lv-menu-item-size-default credit-display-menu-container-vPGgB6" id="SiderMenuCredit" @click="openMarketingEntry">
+      <div tabindex="0" role="menuitem" class="lv-menu-item lv-menu-item-size-default credit-display-menu-container" id="SiderMenuCredit" @click="openMarketingEntry">
         <div class="credit-container-vI5rYU">
           <div class="credit-display-container-EgNfse column-mode-GFlEE0">
             <div class="credit-amount-container-SnxCra">
@@ -25,8 +25,8 @@
         id="SiderMenuLogin"
         @click="openLoginModal('bottom-menu')"
       >
-        <div class="icon-container-XAovJs" style="--menu-icon-size:40px">
-          <div class="login-button-zpRsZb">
+        <div class="icon-container" style="--menu-icon-size:40px">
+          <div class="login-button">
             {{ loginButtonText }}
           </div>
         </div>
@@ -57,11 +57,11 @@
 
       <!-- 通知 -->
       <div tabindex="0" role="menuitem" class="lv-menu-item lv-menu-item-size-default" id="SiderMenuNotification">
-        <div class="icon-container-XAovJs" style="--menu-icon-size:40px">
+        <div class="icon-container" style="--menu-icon-size:40px">
           <div class="notice-y3FxAc">
             <div class="unread-btn-wa6B7W">
               <div class="content-XAjJup">
-                <div class="icon-menu-m2Y0RB">
+                <div class="icon-menu">
                   <div class="icon-wrap-tBuhBU hide-itzP3D sf-hidden">
                     <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                       <g>
@@ -85,10 +85,10 @@
 
       <!-- APP下载 -->
       <div tabindex="0" role="menuitem" class="lv-menu-item lv-menu-item-size-default" id="SiderMenuAppDownload">
-        <div class="icon-container-XAovJs" style="--menu-icon-size:40px">
+        <div class="icon-container" style="--menu-icon-size:40px">
           <div class="trigger-JEmSlm">
             <div class="content-XAjJup">
-              <div class="icon-menu-m2Y0RB">
+              <div class="icon-menu">
                 <div class="icon-wrap-tBuhBU hide-itzP3D sf-hidden">
                   <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                     <g>
@@ -111,10 +111,10 @@
 
       <!-- API入口 -->
       <div tabindex="0" role="menuitem" class="lv-menu-item lv-menu-item-size-default" id="SiderMenuApiInvokeEntrance">
-        <div class="icon-container-XAovJs" style="--menu-icon-size:40px">
+        <div class="icon-container" style="--menu-icon-size:40px">
           <div class="trigger-BIU_ST">
             <div class="content-XAjJup">
-              <div class="icon-menu-m2Y0RB">
+              <div class="icon-menu">
                 <div class="icon-wrap-tBuhBU hide-itzP3D sf-hidden">
                   <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                     <g>
@@ -137,10 +137,10 @@
 
       <!-- 设置 -->
       <div tabindex="0" role="menuitem" class="lv-menu-item lv-menu-item-size-default" id="SiderMenuSetting">
-        <div class="icon-container-XAovJs" style="--menu-icon-size:40px">
+        <div class="icon-container" style="--menu-icon-size:40px">
           <div class="dropdown-trigger-ZZ27H7">
             <div class="content-XAjJup">
-              <div class="icon-menu-m2Y0RB">
+              <div class="icon-menu">
                 <div class="icon-wrap-tBuhBU hide-itzP3D sf-hidden">
                   <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                     <g>
@@ -227,7 +227,7 @@ const navigateToAccount = () => {
 </script>
 
 <style scoped>
-.login-button-zpRsZb {
+.login-button {
   background: transparent;
   border: 1px solid var(--stroke-tertiary);
   border-radius: 8px;
@@ -239,12 +239,12 @@ const navigateToAccount = () => {
   padding: 6px 11px;
 }
 
-.login-menu-wrapper-TcQfJd .login-button-zpRsZb:hover {
+.login-menu-wrapper .login-button:hover {
   background: transparent;
   border: 1px solid var(--stroke-tertiary);
 }
 
-.login-button-zpRsZb:active {
+.login-button:active {
   background: var(--bg-block-secondary-pressed);
   border: 1px solid transparent;
 }

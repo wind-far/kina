@@ -2,32 +2,32 @@
   <Teleport to="body">
     <div
       v-if="visible"
-      class="lv-modal-wrapper lv-modal-wrapper-align-center credit-history-modal-wrapper-rcgLyB"
+      class="lv-modal-wrapper lv-modal-wrapper-align-center credit-history-modal-wrapper"
       @click.self="closeModal"
     >
       <div class="lv-modal-mask" @click="closeModal"></div>
-      <div role="dialog" aria-modal="true" class="lv-modal lv-modal-simple credit-history-modal-xO5hUp">
+      <div role="dialog" aria-modal="true" class="lv-modal lv-modal-simple credit-history-modal">
         <div class="action-cap1Mw">
           <div class="modal-title-_9IMIA">积分详情</div>
           <button class="close-btn-YEwxmE" type="button" @click="closeModal">
-            <span class="close-btn-icon-Wsjd_2">×</span>
+            <span class="close-btn-icon">×</span>
           </button>
         </div>
 
         <div class="header-r0c3rN">
-          <div class="credit-info-wrapper-JL8SoI">
+          <div class="credit-info-wrapper">
             <template v-for="(item, index) in summaryItems" :key="item.label">
-              <div class="credit-info-item-rnrl9v">
-                <div class="credit-info-item-title-pOA0Rt">{{ item.label }}</div>
-                <div class="creditInfoItemAmount-scwpa1">
-                  <div class="creditInfoItemNum-XNF6AK">{{ formatAmount(item.value) }}</div>
+              <div class="credit-info-item">
+                <div class="credit-info-item-title">{{ item.label }}</div>
+                <div class="creditInfoItemAmount">
+                  <div class="creditInfoItemNum">{{ formatAmount(item.value) }}</div>
                   <span
                     v-if="item.hint"
                     class="credit-info-item-hint-wrapper-canana"
                     @mouseleave="hintVisible = false"
                   >
                     <button
-                      class="creditInfoItemDetailIcon-aeEiG7"
+                      class="creditInfoItemDetailIcon"
                       type="button"
                       aria-label="查看赠送积分说明"
                       :aria-expanded="hintVisible ? 'true' : 'false'"
@@ -57,16 +57,16 @@
                   </span>
                 </div>
               </div>
-              <div v-if="index < summarySeparators.length" class="creditCalcSymbolWrapper-E7Gkm5" aria-hidden="true">
-                <div class="creditCalcSymbolLeft-Ey6Xen"></div>
-                <div class="creditCalcSymbol-Qm_Hbs">{{ summarySeparators[index] }}</div>
-                <div class="creditCalcSymbolRight-TE2RHM"></div>
+              <div v-if="index < summarySeparators.length" class="creditCalcSymbolWrapper" aria-hidden="true">
+                <div class="creditCalcSymbolLeft"></div>
+                <div class="creditCalcSymbol">{{ summarySeparators[index] }}</div>
+                <div class="creditCalcSymbolRight"></div>
               </div>
             </template>
           </div>
         </div>
 
-        <div class="contentWrapper-WYI3pI">
+        <div class="contentWrapper">
           <div class="content-WrmpEO">
             <div class="tabs-q8zet1">
               <div class="lv-tabs-header-wrapper">
@@ -74,7 +74,7 @@
                   <button
                     v-for="tab in tabs"
                     :key="tab.key"
-                    class="tabTitleWrapper-RetTWj"
+                    class="tabTitleWrapper"
                     type="button"
                     @click="activeTab = tab.key"
                   >
@@ -89,19 +89,19 @@
               </div>
             </div>
 
-            <div class="creditHistoryWrapper-cge6P1" :class="{ 'is-empty-canana': filteredLogs.length === 0 }">
-              <div v-if="filteredLogs.length" class="creditHistory-qAeI1C">
+            <div class="creditHistoryWrapper" :class="{ 'is-empty-canana': filteredLogs.length === 0 }">
+              <div v-if="filteredLogs.length" class="creditHistory">
                 <div
                   v-for="item in filteredLogs"
                   :key="String(item.id || item.accountNo || item.createdAt || item.updatedAt)"
-                  class="historyItem-pSj3eK"
+                  class="historyItem"
                 >
                   <div class="historyMain-canana">
-                    <div class="historyTitle-TdiCr7">{{ getLogTitle(item) }}</div>
-                    <div class="historyTime-Wqy6Kw">{{ getLogTime(item) }}</div>
+                    <div class="historyTitle">{{ getLogTitle(item) }}</div>
+                    <div class="historyTime">{{ getLogTime(item) }}</div>
                   </div>
-                  <div class="historyAmountWrapper-xiKq20">
-                    <div class="historyAmount-UQ6_5P" :class="{ 'issued-FqpDgk': isIncome(item) }">
+                  <div class="historyAmountWrapper">
+                    <div class="historyAmount" :class="{ 'issued': isIncome(item) }">
                       {{ getLogAmount(item) }}
                     </div>
                   </div>
@@ -112,11 +112,11 @@
           </div>
         </div>
 
-        <div class="bottomTips-CGxOKY">
-          <span class="delayTips-s4D_mE">仅展示近1个月明细，数据更新可能有延时</span>
+        <div class="bottomTips">
+          <span class="delayTips">仅展示近1个月明细，数据更新可能有延时</span>
           <a
             v-if="rulesHref"
-            class="creditRules-l2dCEq"
+            class="creditRules"
             :href="rulesHref"
             :target="isExternalRulesHref ? '_blank' : undefined"
             rel="noreferrer"

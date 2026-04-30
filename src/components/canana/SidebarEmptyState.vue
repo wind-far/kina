@@ -9,14 +9,14 @@ const handleUpload = () => {
 </script>
 
 <template>
-  <div class="sidebar-empty-state-z3TqNc empty-mJrwvw">
+  <div class="sidebar-empty-state empty">
     <div class="container-TJGGc3">
       <div class="main-title-wrapper-pHWOzE">
         <h2 class="main-title-QwAP1G">和Agent聊聊你的想法</h2>
       </div>
 
       <!-- 从已有素材开始 -->
-      <div class="action-bar-sTOcOI action-bar-image-muVmnQ">
+      <div class="action-bar-sTOcOI action-bar-image">
         <div class="section-RHLADZ">
           <div class="section-icon-nU4hZM attach-file-zDAqLM">
             <img
@@ -29,7 +29,7 @@ const handleUpload = () => {
             <div class="section-title-P1vkQ9">从已有素材开始</div>
             <div class="actions-vbY0pg">
               <button
-                class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square upload-button-ujoKPL"
+                class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square upload-button"
                 type="button"
                 @click="handleUpload"
               >

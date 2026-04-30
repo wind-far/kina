@@ -1,12 +1,12 @@
 <template>
-  <aside v-if="!collapsed" class="sidebar-Q5Aoit">
+  <aside v-if="!collapsed" class="sidebar">
     <div class="header-MPVCyQ">
       <div class="header-left-sIxFfE">
         <span class="title-text-RdcKCa">{{ title }}</span>
       </div>
-      <div class="header-right-Vyu_6e">
+      <div class="header-right">
         <button
-          class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square lv-btn-icon-only icon-button-Ao3wcq"
+          class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square lv-btn-icon-only icon-button"
           type="button"
           @click="emit('toggle-sidebar')"
         >
@@ -20,8 +20,8 @@
     </div>
 
     <div ref="listRef" class="list-JWYG84">
-      <div class="sticky-top-xH7Ldi" :class="{ 'scrolled-V1kU7f': isListScrolled }">
-        <div class="new-conversation-entry-_B5dlN active-aic4ZS" @click="emit('create-session')">
+      <div class="sticky-top" :class="{ 'scrolled': isListScrolled }">
+        <div class="new-conversation-entry active-aic4ZS" @click="emit('create-session')">
           <div class="new-conversation-icon-kkgjyz">
             <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
               <g>
@@ -29,85 +29,85 @@
               </g>
             </svg>
           </div>
-          <span class="new-conversation-text-ltRCwk">新对话</span>
+          <span class="new-conversation-text">新对话</span>
         </div>
-        <div class="sticky-divider-FrrR_Y"></div>
+        <div class="sticky-divider"></div>
       </div>
 
-      <div class="tooltip-trigger-shell-Lq7jCE">
+      <div class="tooltip-trigger-shell">
         <div
-          class="conversation-item-MI_69d is-default-trS4Ii"
+          class="conversation-item is-default"
           :class="{ 'active-aic4ZS': activeSessionId === defaultSession.id }"
           @click="emit('select-default')"
         >
-          <div class="item-media-IKBsbV">
-            <div v-if="defaultSession.imageUrl" class="item-media-img-nt18oM">
+          <div class="item-media">
+            <div v-if="defaultSession.imageUrl" class="item-media-img">
               <img :src="defaultSession.imageUrl" :alt="defaultSession.title" crossorigin="anonymous">
             </div>
-            <div v-else class="item-media-icon-Ln2eHX">
-              <svg class="media-icon-svg-fF5VvP" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+            <div v-else class="item-media-icon">
+              <svg class="media-icon-svg" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                 <g>
                   <path data-follow-fill="currentColor" d="M20 6a2 2 0 0 1 2 2v7.5A2.5 2.5 0 0 1 19.5 18H14l-3.293 3.293a1 1 0 0 1-1.414-1.414L10.586 18H4.5A2.5 2.5 0 0 1 2 15.5V8a2 2 0 0 1 2-2h16Z" fill="currentColor"></path>
                 </g>
               </svg>
             </div>
           </div>
-          <div class="item-text-area-GbxMR4">
-            <span class="item-name-k1u50X">{{ defaultSession.title }}</span>
+          <div class="item-text-area">
+            <span class="item-name">{{ defaultSession.title }}</span>
           </div>
         </div>
       </div>
 
       <div class="simple-tooltip-scroll-anchor sf-hidden"></div>
-      <div class="section-label-N9IWUc">最近</div>
+      <div class="section-label">最近</div>
 
-      <div v-if="loading" class="session-status-URzD3W">
-        <span class="session-status-text-Qs0Qyf">会话加载中...</span>
+      <div v-if="loading" class="session-status">
+        <span class="session-status-text">会话加载中...</span>
       </div>
 
-      <div v-else-if="!sessions.length" class="session-status-URzD3W">
-        <span class="session-status-text-Qs0Qyf">还没有最近会话</span>
+      <div v-else-if="!sessions.length" class="session-status">
+        <span class="session-status-text">还没有最近会话</span>
       </div>
 
       <div
         v-else
         v-for="session in sessions"
         :key="session.id"
-        class="tooltip-trigger-shell-Lq7jCE"
+        class="tooltip-trigger-shell"
       >
         <div
-          class="conversation-item-MI_69d"
+          class="conversation-item"
           :class="{
             'active-aic4ZS': activeSessionId === session.id,
-            'menu-open-lVbR4V': openedSessionMenuId === session.id,
+            'menu-open': openedSessionMenuId === session.id,
           }"
           @click="emit('select-session', session.id)"
         >
-          <div class="item-media-IKBsbV">
-            <div v-if="session.imageUrl" class="item-media-img-nt18oM">
+          <div class="item-media">
+            <div v-if="session.imageUrl" class="item-media-img">
               <img :src="session.imageUrl" :alt="session.title" crossorigin="anonymous">
             </div>
-            <div v-else class="item-media-icon-Ln2eHX">
-              <svg class="media-icon-svg-fF5VvP" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+            <div v-else class="item-media-icon">
+              <svg class="media-icon-svg" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                 <g>
                   <path data-follow-fill="currentColor" d="M20 6a2 2 0 0 1 2 2v7.5A2.5 2.5 0 0 1 19.5 18H14l-3.293 3.293a1 1 0 0 1-1.414-1.414L10.586 18H4.5A2.5 2.5 0 0 1 2 15.5V8a2 2 0 0 1 2-2h16Z" fill="currentColor"></path>
                 </g>
               </svg>
             </div>
           </div>
-          <div class="item-text-area-GbxMR4">
-            <span class="item-name-k1u50X">{{ session.title }}</span>
+          <div class="item-text-area">
+            <span class="item-name">{{ session.title }}</span>
           </div>
           <el-dropdown
-            class="more-dropdown-trigger-JKx2pQ"
+            class="more-dropdown-trigger"
             trigger="click"
             placement="bottom-end"
             :offset="2"
-            popper-class="conversation-dropdown-panel-YLxZyR"
+            popper-class="conversation-dropdown-panel"
             @visible-change="openedSessionMenuId = $event ? session.id : ''"
             @command="handleSessionDropdownCommand(session.id, $event)"
           >
-            <div class="more-button-LARylx" @click.stop>
+            <div class="more-button" @click.stop>
               <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                 <g>
                   <path data-follow-fill="currentColor" d="M7 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm7 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm5 2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
@@ -117,23 +117,23 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item class="menu-item-IIjppP" command="rename">
-                  <span class="menu-item-content-o9vlmB">
-                    <svg class="menu-item-icon-K8w8qM" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                  <span class="menu-item-content">
+                    <svg class="menu-item-icon" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                       <g>
                         <path data-follow-fill="currentColor" d="M16.293 3.293a1 1 0 0 1 1.414 0l3 3a1 1 0 0 1 0 1.414l-9.5 9.5a1 1 0 0 1-.464.263l-4 1a1 1 0 0 1-1.213-1.213l1-4a1 1 0 0 1 .263-.464l9.5-9.5Zm.707 2.121-8.883 8.884-.5 2 2-.5L18.5 6.914l-1.5-1.5ZM4 20a1 1 0 0 1 1-1h15a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Z" fill="currentColor"></path>
                       </g>
                     </svg>
-                    <span class="menu-item-label-IYf2z9">重命名</span>
+                    <span class="menu-item-label">重命名</span>
                   </span>
                 </el-dropdown-item>
-                <el-dropdown-item class="menu-item-IIjppP danger-zMx4rT" command="delete">
-                  <span class="menu-item-content-o9vlmB">
-                    <svg class="menu-item-icon-K8w8qM" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                <el-dropdown-item class="menu-item-IIjppP danger" command="delete">
+                  <span class="menu-item-content">
+                    <svg class="menu-item-icon" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                       <g>
                         <path data-follow-fill="currentColor" d="M9 3a1 1 0 0 0-1 1v1H5a1 1 0 1 0 0 2h1v11a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7h1a1 1 0 1 0 0-2h-3V4a1 1 0 0 0-1-1H9Zm5 2h-4V5h4V5Zm-6 2h8v11a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V7Zm2 3a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0v-4a1 1 0 0 1 1-1Zm4 0a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0v-4a1 1 0 0 1 1-1Z" fill="currentColor"></path>
                       </g>
                     </svg>
-                    <span class="menu-item-label-IYf2z9">删除</span>
+                    <span class="menu-item-label">删除</span>
                   </span>
                 </el-dropdown-item>
               </el-dropdown-menu>
@@ -141,16 +141,16 @@
           </el-dropdown>
         </div>
       </div>
-      <div class="list-scrollbar-oNfnSF" style="display:none"></div>
+      <div class="list-scrollbar" style="display:none"></div>
     </div>
   </aside>
-  <aside v-else class="collapsed-bar-YV_HpR">
-    <button class="collapsed-text-v2gTI4" type="button" @click="emit('create-session')">
+  <aside v-else class="collapsed-bar">
+    <button class="collapsed-text" type="button" @click="emit('create-session')">
       新对话
     </button>
-    <span class="collapsed-divider-O1XKbf"></span>
+    <span class="collapsed-divider"></span>
     <button
-      class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square lv-btn-icon-only collapsed-icon-button-O8MpoM"
+      class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square lv-btn-icon-only collapsed-icon-button"
       type="button"
       @click="emit('toggle-sidebar')"
     >
@@ -252,7 +252,7 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
 </script>
 
 <style>
-.sidebar-Q5Aoit {
+.sidebar {
     background: var(--bg-surface, #fff);
     border-left: 1px solid var(--stroke-secondary, rgba(0, 0, 0, .05));
     border-right: 1px solid var(--stroke-secondary, rgba(0, 0, 0, .05));
@@ -295,14 +295,14 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     white-space: nowrap
 }
 
-.header-right-Vyu_6e {
+.header-right {
     align-items: center;
     display: flex;
     flex-shrink: 0;
     gap: 4px
 }
 
-.icon-button-Ao3wcq {
+.icon-button {
     -webkit-appearance: none;
     appearance: none;
     align-items: center;
@@ -320,23 +320,23 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     transition: background-color .2s ease, color .15s ease
 }
 
-.icon-button-Ao3wcq.lv-btn-text:not(.lv-btn-disabled) {
+.icon-button.lv-btn-text:not(.lv-btn-disabled) {
     color: var(--text-primary, #0f1419)
 }
 
-.icon-button-Ao3wcq.lv-btn-text:not(.lv-btn-disabled):not(.lv-btn-loading):hover {
+.icon-button.lv-btn-text:not(.lv-btn-disabled):not(.lv-btn-loading):hover {
     background-color: var(--bg-block-primary-hover, rgba(0, 0, 0, .04));
     border-color: transparent;
     color: var(--text-primary, #0f1419)
 }
 
-.icon-button-Ao3wcq.lv-btn-text:not(.lv-btn-disabled):not(.lv-btn-loading):active {
+.icon-button.lv-btn-text:not(.lv-btn-disabled):not(.lv-btn-loading):active {
     background-color: var(--bg-block-primary-pressed, rgba(0, 0, 0, .06));
     border-color: transparent;
     color: var(--text-primary, #0f1419)
 }
 
-.icon-button-Ao3wcq:disabled {
+.icon-button:disabled {
     cursor: not-allowed;
     opacity: .4
 }
@@ -359,7 +359,7 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     width: 0
 }
 
-.collapsed-bar-YV_HpR {
+.collapsed-bar {
     align-items: center;
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
@@ -381,15 +381,15 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     z-index: 10
 }
 
-.collapsed-bar-YV_HpR:hover {
+.collapsed-bar:hover {
     border-color: var(--stroke-primary, rgba(0, 0, 0, .07))
 }
 
-.collapsed-bar-YV_HpR .lv-btn-shape-square {
+.collapsed-bar .lv-btn-shape-square {
     border-radius: 6px !important
 }
 
-.collapsed-text-v2gTI4 {
+.collapsed-text {
     -webkit-appearance: none;
     appearance: none;
     align-items: center;
@@ -416,18 +416,18 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     white-space: nowrap
 }
 
-.collapsed-text-v2gTI4:hover {
+.collapsed-text:hover {
     background: var(--bg-block-secondary-hover, rgba(0, 0, 0, .05))
 }
 
-.collapsed-divider-O1XKbf {
+.collapsed-divider {
     background: var(--stroke-secondary, rgba(0, 0, 0, .05));
     flex-shrink: 0;
     height: 10px;
     width: 1px
 }
 
-.collapsed-icon-button-O8MpoM {
+.collapsed-icon-button {
     -webkit-appearance: none;
     appearance: none;
     align-items: center;
@@ -446,22 +446,22 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     transition: background-color .2s ease
 }
 
-.collapsed-icon-button-O8MpoM.lv-btn-text:not(.lv-btn-disabled) {
+.collapsed-icon-button.lv-btn-text:not(.lv-btn-disabled) {
     color: var(--text-primary, #0f1419)
 }
 
-.collapsed-icon-button-O8MpoM.lv-btn-text:not(.lv-btn-disabled):not(.lv-btn-loading):hover {
+.collapsed-icon-button.lv-btn-text:not(.lv-btn-disabled):not(.lv-btn-loading):hover {
     background-color: var(--bg-block-secondary-hover, rgba(0, 0, 0, .03));
     border-color: transparent;
     color: var(--text-primary, #0f1419)
 }
 
-.collapsed-icon-button-O8MpoM.lv-btn-text:not(.lv-btn-disabled):not(.lv-btn-loading):active {
+.collapsed-icon-button.lv-btn-text:not(.lv-btn-disabled):not(.lv-btn-loading):active {
     border-color: transparent;
     color: var(--text-primary, #0f1419)
 }
 
-.session-status-URzD3W {
+.session-status {
     align-items: center;
     border-radius: 8px;
     box-sizing: border-box;
@@ -471,14 +471,14 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     padding: 8px 12px
 }
 
-.session-status-text-Qs0Qyf {
+.session-status-text {
     color: var(--text-placeholder, rgba(83, 100, 113, .35));
     font-size: 12px;
     line-height: 20px;
     text-align: center
 }
 
-.sticky-top-xH7Ldi {
+.sticky-top {
     background: var(--bg-surface, #fff);
     display: flex;
     flex-direction: column;
@@ -488,7 +488,7 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     z-index: 1
 }
 
-.sticky-divider-FrrR_Y {
+.sticky-divider {
     align-items: center;
     align-self: stretch;
     display: flex;
@@ -503,7 +503,7 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     transition: height .15s ease
 }
 
-.sticky-divider-FrrR_Y:after {
+.sticky-divider:after {
     border-top: .5px solid var(--stroke-secondary, rgba(0, 0, 0, .05));
     content: "";
     display: block;
@@ -513,11 +513,11 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     width: 100%
 }
 
-.sticky-top-xH7Ldi.scrolled-V1kU7f .sticky-divider-FrrR_Y:after {
+.sticky-top.scrolled .sticky-divider:after {
     opacity: 1
 }
 
-.new-conversation-entry-_B5dlN {
+.new-conversation-entry {
     align-items: center;
     border-radius: 8px;
     box-sizing: border-box;
@@ -529,15 +529,15 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     transition: background-color .15s ease
 }
 
-.new-conversation-entry-_B5dlN:hover {
+.new-conversation-entry:hover {
     background: var(--bg-block-secondary-hover, rgba(0, 0, 0, .03))
 }
 
-.new-conversation-entry-_B5dlN:active {
+.new-conversation-entry:active {
     background: var(--bg-block-secondary-pressed, rgba(0, 0, 0, .05))
 }
 
-.new-conversation-entry-_B5dlN.active-aic4ZS {
+.new-conversation-entry.active-aic4ZS {
     background: var(--bg-block-primary-default, rgba(0, 0, 0, .05))
 }
 
@@ -560,7 +560,7 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     width: 16px
 }
 
-.new-conversation-text-ltRCwk {
+.new-conversation-text {
     color: var(--text-primary, #0f1419);
     flex: 1 1;
     font-size: 13px;
@@ -572,7 +572,7 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     white-space: nowrap
 }
 
-.section-label-N9IWUc {
+.section-label {
     color: var(--text-placeholder, rgba(83, 100, 113, .35));
     font-size: 12px;
     font-weight: 400;
@@ -580,12 +580,12 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     padding: 12px 2px 4px 4px
 }
 
-.tooltip-trigger-shell-Lq7jCE {
+.tooltip-trigger-shell {
     display: block;
     width: 100%
 }
 
-.conversation-item-MI_69d {
+.conversation-item {
     align-items: center;
     border-radius: 8px;
     box-sizing: border-box;
@@ -598,25 +598,25 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     transition: background-color .15s ease
 }
 
-.conversation-item-MI_69d:hover {
+.conversation-item:hover {
     background: var(--bg-block-secondary-hover, rgba(0, 0, 0, .05))
 }
 
-.conversation-item-MI_69d:active {
+.conversation-item:active {
     background: var(--bg-block-secondary-pressed, rgba(0, 0, 0, .07))
 }
 
-.conversation-item-MI_69d.active-aic4ZS {
+.conversation-item.active-aic4ZS {
     background: var(--bg-block-primary-default, rgba(0, 0, 0, .05))
 }
 
-.item-media-IKBsbV {
+.item-media {
     flex-shrink: 0;
     height: 32px;
     width: 32px
 }
 
-.item-media-img-nt18oM {
+.item-media-img {
     border-radius: 6px;
     box-sizing: border-box;
     height: 32px;
@@ -625,14 +625,14 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     width: 32px
 }
 
-.item-media-img-nt18oM img {
+.item-media-img img {
     display: block;
     height: 100%;
     object-fit: cover;
     width: 100%
 }
 
-.item-media-img-nt18oM:after {
+.item-media-img:after {
     border: 1px solid var(--stroke-secondary, rgba(0, 0, 0, .05));
     border-radius: 6px;
     bottom: 0;
@@ -644,7 +644,7 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     top: 0
 }
 
-.item-media-icon-Ln2eHX {
+.item-media-icon {
     align-items: center;
     background: var(--bg-block-secondary-default, rgba(0, 0, 0, .08));
     border: 1px solid var(--stroke-secondary, rgba(0, 0, 0, .05));
@@ -656,14 +656,14 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     width: 32px
 }
 
-.item-media-icon-Ln2eHX .media-icon-svg-fF5VvP,
-.media-icon-svg-fF5VvP {
+.item-media-icon .media-icon-svg,
+.media-icon-svg {
     color: var(--text-primary, #0f1419);
     height: 16px;
     width: 16px
 }
 
-.item-text-area-GbxMR4 {
+.item-text-area {
     align-items: center;
     display: flex;
     flex: 1 1;
@@ -671,11 +671,11 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     min-width: 0
 }
 
-.conversation-item-MI_69d:not(.is-default-trS4Ii):not(.editing-q9fj2e):hover .item-text-area-GbxMR4 {
+.conversation-item:not(.is-default):not(.editing):hover .item-text-area {
     margin-right: 32px
 }
 
-.item-name-k1u50X {
+.item-name {
     color: var(--text-primary, #0f1419);
     font-size: 13px;
     font-weight: 400;
@@ -685,7 +685,7 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     white-space: nowrap
 }
 
-.more-button-LARylx {
+.more-button {
     align-items: center;
     background: transparent;
     color: var(--component-primary-text-button-default, #0f1419);
@@ -701,7 +701,7 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     transition: opacity .15s ease, color .15s ease
 }
 
-.more-dropdown-trigger-JKx2pQ {
+.more-dropdown-trigger {
     align-items: center;
     display: flex;
     height: 24px;
@@ -714,20 +714,20 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     z-index: 1
 }
 
-.more-button-LARylx:hover {
+.more-button:hover {
     color: var(--component-primary-text-button-hover, #191e23)
 }
 
-.more-button-LARylx:active {
+.more-button:active {
     color: var(--component-primary-text-button-pressed, #050a0f)
 }
 
-.conversation-item-MI_69d:hover .more-button-LARylx {
+.conversation-item:hover .more-button {
     opacity: 1;
     pointer-events: auto
 }
 
-.conversation-item-MI_69d.menu-open-lVbR4V .more-button-LARylx {
+.conversation-item.menu-open .more-button {
     opacity: 1;
     pointer-events: auto
 }
@@ -740,7 +740,7 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     background: var(--bg-block-secondary-pressed, rgba(255, 255, 255, .12))
 }
 
-.conversation-dropdown-panel-YLxZyR {
+.conversation-dropdown-panel {
     background: var(--bg-dropdown-menu, #1c1e22) !important;
     border: 1px solid var(--stroke-primary, rgba(204, 221, 255, .1)) !important;
     border-radius: 12px !important;
@@ -751,19 +751,19 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     transform-origin: top right !important;
 }
 
-.conversation-dropdown-panel-YLxZyR .el-popper__arrow,
-.conversation-dropdown-panel-YLxZyR .el-popper__arrow:before {
+.conversation-dropdown-panel .el-popper__arrow,
+.conversation-dropdown-panel .el-popper__arrow:before {
     display: none !important
 }
 
-.conversation-dropdown-panel-YLxZyR .el-dropdown-menu {
+.conversation-dropdown-panel .el-dropdown-menu {
     background: transparent;
     border: none;
     box-shadow: none;
     padding: 0
 }
 
-.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item {
+.conversation-dropdown-panel .el-dropdown-menu__item {
     align-items: stretch;
     border-radius: 12px;
     color: var(--text-primary, #f5fbff);
@@ -772,12 +772,12 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     padding: 0
 }
 
-.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:not(.is-disabled):focus {
+.conversation-dropdown-panel .el-dropdown-menu__item:not(.is-disabled):focus {
     background: var(--bg-block-secondary-hover, rgba(255, 255, 255, .08));
     color: var(--text-primary, #f5fbff)
 }
 
-.menu-item-content-o9vlmB {
+.menu-item-content {
     align-items: center;
     display: flex;
     gap: 10px;
@@ -786,30 +786,30 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     width: 100%
 }
 
-.menu-item-icon-K8w8qM {
+.menu-item-icon {
     color: inherit;
     flex-shrink: 0;
     height: 16px;
     width: 16px
 }
 
-.menu-item-label-IYf2z9 {
+.menu-item-label {
     color: var(--text-primary, #f5fbff);
     font-size: 14px;
     font-weight: 400;
     line-height: 22px
 }
 
-.conversation-dropdown-panel-YLxZyR .danger-zMx4rT {
+.conversation-dropdown-panel .danger {
     color: var(--text-primary, #f5fbff)
 }
 
-.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:hover,
-.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:hover .menu-item-label-IYf2z9,
-.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:hover .menu-item-icon-K8w8qM,
-.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:focus,
-.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:focus .menu-item-label-IYf2z9,
-.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:focus .menu-item-icon-K8w8qM {
+.conversation-dropdown-panel .el-dropdown-menu__item:hover,
+.conversation-dropdown-panel .el-dropdown-menu__item:hover .menu-item-label,
+.conversation-dropdown-panel .el-dropdown-menu__item:hover .menu-item-icon,
+.conversation-dropdown-panel .el-dropdown-menu__item:focus,
+.conversation-dropdown-panel .el-dropdown-menu__item:focus .menu-item-label,
+.conversation-dropdown-panel .el-dropdown-menu__item:focus .menu-item-icon {
     color: var(--text-primary, #f5fbff)
 }
 </style>

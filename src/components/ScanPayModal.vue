@@ -2,22 +2,22 @@
   <Teleport to="body">
     <div
       v-if="visible"
-      class="lv-modal-wrapper lv-modal-wrapper-align-center qrCodeModal-wICnaZ commerceModal-xQfKL9"
+      class="lv-modal-wrapper lv-modal-wrapper-align-center qrCodeModal commerceModal"
       @click.self="closeModal"
     >
       <div class="lv-modal-mask" @click="closeModal"></div>
       <div role="dialog" aria-modal="true" class="lv-modal lv-modal-closable">
         <div class="lv-modal-header sf-hidden"></div>
         <div class="lv-modal-content">
-          <div class="qrCodeContainer-PHfrhM">
-            <div class="modalTitle-P5DcnG">扫码支付<span>{{ amountText }}</span>元</div>
+          <div class="qrCodeContainer">
+            <div class="modalTitle">扫码支付<span>{{ amountText }}</span>元</div>
             <div class="wrapper-y8IP35">
-              <div class="qrcode-wrapper-g0iTB8">
-                <div class="qrcode-gq6HB7" style="background:none">
-                  <div class="container-bbbsvQ qrcode-img-_pA78x qrcode-img-top-oCDxyx qrcode-hide-ZacgyM">
+              <div class="qrcode-wrapper">
+                <div class="qrcode" style="background:none">
+                  <div class="container-bbbsvQ qrcode-img qrcode-img-top qrcode-hide">
                     <div style="transition:opacity 300ms;opacity:1"></div>
                   </div>
-                  <div class="container-bbbsvQ qrcode-img-_pA78x">
+                  <div class="container-bbbsvQ qrcode-img">
                     <div style="transition:opacity 300ms;opacity:1">
                       <img
                         draggable="false"
@@ -30,19 +30,19 @@
                       >
                     </div>
                   </div>
-                  <div class="mask-pl1iri">
-                    <div class="locked-mask-bLniXk">
-                      <div class="agreementF-hQMJXp">支付前请阅读</div>
+                  <div class="mask">
+                    <div class="locked-mask">
+                      <div class="agreementF">支付前请阅读</div>
                       <a
                         :href="agreementHref"
-                        class="agreementS-AEjIg_"
+                        class="agreementS"
                         :target="isExternalAgreement ? '_blank' : undefined"
                         rel="noreferrer"
                       >
                         {{ agreementLabel }}
                       </a>
                       <button
-                        class="mweb-button-default mweb-button-mOrK7U agreement-button-FtNiZx"
+                        class="mweb-button-default mweb-button agreement-button"
                         type="button"
                         :disabled="submitting"
                         @click="emitConfirm"
@@ -53,9 +53,9 @@
                   </div>
                 </div>
               </div>
-              <div class="pay-text-VhDoIR">
+              <div class="pay-text">
                 请扫码完成支付
-                <div class="container-bbbsvQ pay-png-c0Civc">
+                <div class="container-bbbsvQ pay-png">
                   <div style="transition:opacity 300ms;opacity:1">
                     <img
                       draggable="false"
@@ -70,7 +70,7 @@
                 </div>
               </div>
             </div>
-            <div class="agreementPrivacy-geWxYy">
+            <div class="agreementPrivacy">
               <span></span>
               <a
                 :href="agreementHref"

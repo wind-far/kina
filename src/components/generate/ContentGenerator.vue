@@ -374,7 +374,7 @@ const priceText = computed(() => {
 
 // 外层容器布局类名
 const layoutClass = computed(() =>
-  isSidebar.value ? 'canvas-layout-blZ0JP' : 'default-layout-bOIxyJ'
+  isSidebar.value ? 'canvas-layout' : 'default-layout-bOIxyJ'
 )
 
 // 提交按钮容器类名
@@ -487,7 +487,7 @@ onUnmounted(() => {
                     </g>
                   </svg>
                   <input accept="image/jpeg,.jpeg,image/jpg,.jpg,image/png,.png,image/webp,.webp,image/bmp,.bmp"
-                         class="file-input-OfqonL sf-hidden"
+                         class="file-input sf-hidden"
                          multiple type="file"
                          value="">
                 </div>
@@ -532,7 +532,7 @@ onUnmounted(() => {
                   </svg>
                   <div class="label-O_5YLx">首帧</div>
                   <input accept="image/jpeg,.jpeg,image/jpg,.jpg,image/png,.png,image/webp,.webp,image/bmp,.bmp"
-                         class="file-input-OfqonL sf-hidden"
+                         class="file-input sf-hidden"
                          type="file"
                          value="">
                 </div>
@@ -541,7 +541,7 @@ onUnmounted(() => {
           </div>
 
           <!-- 交换按钮 -->
-          <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square lv-btn-icon-only button-c41WFq swap-button-Sta_GS"
+          <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square lv-btn-icon-only button-c41WFq swap-button"
                   type="button">
             <svg width="1em" height="1em" viewBox="0 0 24 24"
                  preserveAspectRatio="xMidYMid meet"
@@ -558,7 +558,7 @@ onUnmounted(() => {
           </button>
 
           <!-- 尾帧上传 -->
-          <div :class="['reference-group-_DAGw1', 'last-frame-JCr045', { 'collapsed-J9LsWu': isCollapsed && !isSidebar }]"
+          <div :class="['reference-group-_DAGw1', 'last-frame', { 'collapsed-J9LsWu': isCollapsed && !isSidebar }]"
                style="--reference-count:1;--reference-item-width:48px;--reference-item-gap:4px">
             <div class="reference-group-background-f6pFpT"></div>
             <div class="reference-group-hover-trigger-YTDCQf"></div>
@@ -584,7 +584,7 @@ onUnmounted(() => {
                   </svg>
                   <div class="label-O_5YLx">尾帧</div>
                   <input accept="image/jpeg,.jpeg,image/jpg,.jpg,image/png,.png,image/webp,.webp,image/bmp,.bmp"
-                         class="file-input-OfqonL sf-hidden"
+                         class="file-input sf-hidden"
                          type="file"
                          value="">
                 </div>
@@ -608,13 +608,13 @@ onUnmounted(() => {
           <div
             v-if="isCollapsed"
             :class="[
-              'reference-record-text-container-UOUXv6',
+              'reference-record-text-container',
               'collapsed-SgPm0K',
               'hidden-FI_sis',
               isReferenceHtmlLayout ? ['reference-record-text-container-Us4Jm9', 'hidden-uxDIg8'] : [],
             ]"
           >
-            <div :class="['reference-record-text-YzRnHL', isReferenceHtmlLayout ? 'reference-record-text-lG480D' : '']">
+            <div :class="['reference-record-text', isReferenceHtmlLayout ? 'reference-record-text-lG480D' : '']">
               <div :class="['icon-TICgEz', isReferenceHtmlLayout ? 'icon-DbkXnt' : '']">
                 <svg width="1em" height="1em" viewBox="0 0 24 24"
                      preserveAspectRatio="xMidYMid meet" fill="none"
@@ -629,7 +629,7 @@ onUnmounted(() => {
               <span :class="['divider-GjrSf1', isReferenceHtmlLayout ? 'divider-x9oajA' : '']"></span>
               <span :class="['content-lZaX5g', isReferenceHtmlLayout ? 'content-DZjg1a' : '']"></span>
               <span :class="['divider-GjrSf1', isReferenceHtmlLayout ? 'divider-x9oajA' : '']"></span>
-              <div :class="['icon-TICgEz', 'icon-close-_TmiMV', isReferenceHtmlLayout ? ['icon-DbkXnt', 'icon-close-iSQOHU'] : []]">
+              <div :class="['icon-TICgEz', 'icon-close', isReferenceHtmlLayout ? ['icon-DbkXnt', 'icon-close-iSQOHU'] : []]">
                 <svg width="1em" height="1em" viewBox="0 0 24 24"
                      preserveAspectRatio="xMidYMid meet" fill="none"
                      role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -646,22 +646,22 @@ onUnmounted(() => {
 
           <!-- 提示词输入区域 -->
           <div
-            :class="['prompt-container-SvZ73x', isReferenceHtmlLayout ? 'prompt-editor-container-HRhsP7' : '']"
+            :class="['prompt-container', isReferenceHtmlLayout ? 'prompt-editor-container-HRhsP7' : '']"
             :style="`--content-generator-prompt-control-height:${promptControlHeight};--content-generator-prompt-control-line-height:24px`"
           >
             <div :class="['prompt-editor-aDwTfA', isReferenceHtmlLayout ? 'prompt-editor-aDwTfA' : '']">
               <textarea
                   v-model="inputValue"
-                  :class="['lv-textarea', 'textarea-rfj34A', 'prompt-textarea-l5tJNE', { 'collapsed-l8bAEB': isCollapsed, 'collapse-transition-start-AXNjML': isCollapsed }]"
+                  :class="['lv-textarea', 'textarea-rfj34A', 'prompt-textarea', { 'collapsed-l8bAEB': isCollapsed, 'collapse-transition-start': isCollapsed }]"
                   :placeholder="placeholder"
                   translate="no"
                   @input="handleInput"
                   @keydown="handleKeydown"></textarea>
             </div>
-            <div :class="['prompt-textarea-sizer-KvlV5P', isReferenceHtmlLayout ? 'prompt-editor-sizer-S4F9P4' : '']">
+            <div :class="['prompt-textarea-sizer', isReferenceHtmlLayout ? 'prompt-editor-sizer-S4F9P4' : '']">
               <input
                   v-model="inputValue"
-                  :class="['lv-input', 'lv-input-size-default', 'input-JjM14b', 'prompt-input-w0wBdF', { 'collapsed-l8bAEB': isCollapsed, 'collapse-transition-start-AXNjML': isCollapsed }]"
+                  :class="['lv-input', 'lv-input-size-default', 'input-JjM14b', 'prompt-input', { 'collapsed-l8bAEB': isCollapsed, 'collapse-transition-start': isCollapsed }]"
                   :placeholder="placeholder"
                   translate="no"
                   @input="handleInput"
@@ -673,7 +673,7 @@ onUnmounted(() => {
         <!-- 折叠状态下的提交按钮 -->
         <div :class="[submitButtonContainerClass, { 'collapsed-WjKggt': isCollapsed, [hasReferencesClass]: hasReferences }]">
           <!-- 根据创作类型显示价格信息（仅图片和视频类型显示） -->
-          <div v-if="showPrice" class="commercial-button-content-WWEPba">
+          <div v-if="showPrice" class="commercial-button-content">
             <svg fill="none" height="1em" preserveAspectRatio="xMidYMid meet"
                  role="presentation" viewBox="0 0 25 24"
                  width="1em" xmlns="http://www.w3.org/2000/svg">
@@ -686,7 +686,7 @@ onUnmounted(() => {
             {{ priceText }}
           </div>
           <div>
-            <button :class="['lv-btn', 'lv-btn-primary', 'lv-btn-size-default', 'lv-btn-shape-circle', 'lv-btn-icon-only', 'button-lc3WzE', 'submit-button-KJTUYS', collapsedSubmitButtonClass, { 'collapsed-WjKggt': isCollapsed, 'expand-transition-start-ejnjPm': !isCollapsed, 'lv-btn-disabled': isSubmitDisabled, 'home-submit-button-Fk2nQa': isHomeVariant }]"
+            <button :class="['lv-btn', 'lv-btn-primary', 'lv-btn-size-default', 'lv-btn-shape-circle', 'lv-btn-icon-only', 'button-lc3WzE', 'submit-button-KJTUYS', collapsedSubmitButtonClass, { 'collapsed-WjKggt': isCollapsed, 'expand-transition-start': !isCollapsed, 'lv-btn-disabled': isSubmitDisabled, 'home-submit-button': isHomeVariant }]"
                     :disabled="isSubmitDisabled"
                     type="button"
                     @click.stop="handleSubmit">
@@ -825,7 +825,7 @@ onUnmounted(() => {
         <!-- 提交按钮区域 -->
         <div class="toolbar-actions-DsJHmQ">
           <!-- 根据创作类型显示价格信息（仅图片和视频类型显示） -->
-          <div v-if="showPrice" class="commercial-button-content-WWEPba">
+          <div v-if="showPrice" class="commercial-button-content">
             <svg fill="none" height="1em" preserveAspectRatio="xMidYMid meet"
                  role="presentation" viewBox="0 0 25 24"
                  width="1em" xmlns="http://www.w3.org/2000/svg">
@@ -837,7 +837,7 @@ onUnmounted(() => {
             {{ priceText }}
           </div>
           <div>
-            <button :class="['lv-btn', 'lv-btn-primary', 'lv-btn-size-default', 'lv-btn-shape-circle', 'lv-btn-icon-only', 'button-lc3WzE', 'submit-button-KJTUYS', isSidebar ? 'submit-button-qiVtq5' : 'submit-button-CpjScj', { 'collapsed-WjKggt': isCollapsed, 'expand-transition-start-ejnjPm': !isCollapsed, 'lv-btn-disabled': isSubmitDisabled, 'home-submit-button-Fk2nQa': isHomeVariant }]"
+            <button :class="['lv-btn', 'lv-btn-primary', 'lv-btn-size-default', 'lv-btn-shape-circle', 'lv-btn-icon-only', 'button-lc3WzE', 'submit-button-KJTUYS', isSidebar ? 'submit-button-qiVtq5' : 'submit-button-CpjScj', { 'collapsed-WjKggt': isCollapsed, 'expand-transition-start': !isCollapsed, 'lv-btn-disabled': isSubmitDisabled, 'home-submit-button': isHomeVariant }]"
                     :disabled="isSubmitDisabled"
                     type="button"
                     @click.stop="handleSubmit">
@@ -883,7 +883,7 @@ onUnmounted(() => {
 @import "../../views/generate/generate.css";
 
 /* 统一新版发送按钮样式：普通布局走反转圆钮，侧边栏保持原样 */
-.dimension-layout-FUl4Nj .home-submit-button-Fk2nQa.lv-btn.lv-btn-primary {
+.dimension-layout-FUl4Nj .home-submit-button.lv-btn.lv-btn-primary {
   width: 40px;
   height: 40px;
   border: none;
@@ -892,21 +892,21 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
-.dimension-layout-FUl4Nj .home-submit-button-Fk2nQa.lv-btn.lv-btn-primary:not(.lv-btn-disabled):hover {
+.dimension-layout-FUl4Nj .home-submit-button.lv-btn.lv-btn-primary:not(.lv-btn-disabled):hover {
   background: color-mix(in srgb, var(--text-primary) 92%, var(--bg-body));
   color: var(--inverse-text-primary);
 }
 
-.dimension-layout-FUl4Nj .home-submit-button-Fk2nQa.lv-btn.lv-btn-primary:not(.lv-btn-disabled):active {
+.dimension-layout-FUl4Nj .home-submit-button.lv-btn.lv-btn-primary:not(.lv-btn-disabled):active {
   background: color-mix(in srgb, var(--text-primary) 84%, var(--bg-body));
 }
 
-.dimension-layout-FUl4Nj .home-submit-button-Fk2nQa.lv-btn.lv-btn-primary.lv-btn-disabled {
+.dimension-layout-FUl4Nj .home-submit-button.lv-btn.lv-btn-primary.lv-btn-disabled {
   background: color-mix(in srgb, var(--text-primary) 28%, transparent);
   color: color-mix(in srgb, var(--inverse-text-primary) 72%, transparent);
 }
 
-.dimension-layout-FUl4Nj .home-submit-button-Fk2nQa > svg {
+.dimension-layout-FUl4Nj .home-submit-button > svg {
   width: 20px;
   height: 20px;
 }

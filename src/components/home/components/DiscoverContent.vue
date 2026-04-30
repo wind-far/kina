@@ -16,15 +16,15 @@
         data-col="0"
         :style="heroInlineStyle"
       >
-        <div class="carousel-FWRj1r">
-          <div class="list-container-vuJDVb">
+        <div class="carousel">
+          <div class="list-container">
             <div
               v-for="(item, index) in carouselItems"
               :key="index"
-              :class="['list-item-ZCXUDd', 'animated-iDahmY', getCarouselItemClass(index)]"
+              :class="['list-item', 'animated', getCarouselItemClass(index)]"
             >
               <div
-                class="carousel-item-etX02e"
+                class="carousel-item"
                 :data-index="index"
                 role="button"
                 tabindex="0"
@@ -44,11 +44,11 @@
                     >
                   </div>
                 </div>
-                <div class="gradient-s76omw"></div>
+                <div class="gradient"></div>
                 <div class="description-LBLc4Y">
                   <p class="title-rWMvWE">{{ item.title }}</p>
                   <p v-if="item.participants" class="subtitle-gSQDQC">
-                    已有<span class="number-GeGXES">{{ item.participants }}</span>人参与
+                    已有<span class="number">{{ item.participants }}</span>人参与
                   </p>
                 </div>
               </div>
@@ -57,7 +57,7 @@
           
           <!-- Carousel Arrows -->
           <div class="arrow-container-LaBgq_">
-            <div class="arrow-button-h6oOIX" role="button" tabindex="0" aria-label="上一个" @click="prevSlide">
+            <div class="arrow-button" role="button" tabindex="0" aria-label="上一个" @click="prevSlide">
               <svg width="1em" height="1em" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none" role="presentation"
                    xmlns="http://www.w3.org/2000/svg" class="icon-XIKnET">
@@ -69,7 +69,7 @@
                 </g>
               </svg>
             </div>
-            <div class="arrow-button-h6oOIX" role="button" tabindex="0" aria-label="下一个" @click="nextSlide">
+            <div class="arrow-button" role="button" tabindex="0" aria-label="下一个" @click="nextSlide">
               <svg width="1em" height="1em" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none" role="presentation"
                    xmlns="http://www.w3.org/2000/svg" class="icon-XIKnET">
@@ -83,12 +83,12 @@
           </div>
           
           <!-- Carousel Dots -->
-          <div class="dots-container-FwLPgG">
+          <div class="dots-container">
             <div
               v-for="(item, index) in carouselItems"
               :key="index"
               :data-index="index"
-              :class="['dot-uLga1M', { 'curr-F1jSlh': currentSlide === index }]"
+              :class="['dot', { 'curr': currentSlide === index }]"
               @click="goToSlide(index)"
             ></div>
           </div>
@@ -130,8 +130,8 @@
             </div>
             <!-- 鼠标移入时显示的作品信息层 -->
             <div class="overlay-WWIpyU discover-feed-overlay" aria-hidden="true">
-              <div class="tail-AclRiA discover-feed-overlay-tail">
-                <div class="author-g6lhbl concealable-card-element-rpjFtw discover-feed-author">
+              <div class="tail discover-feed-overlay-tail">
+                <div class="author-g6lhbl concealable-card-element discover-feed-author">
                   <div class="dreamina-component-avatar-container avatar-LRSR55 discover-feed-avatar-shell">
                     <img
                       :src="item.user.avatarSrc"
@@ -141,17 +141,17 @@
                       :alt="item.user.name"
                     >
                   </div>
-                  <span class="username-omeTE7 discover-feed-author-name">{{ item.user.name }}</span>
+                  <span class="username discover-feed-author-name">{{ item.user.name }}</span>
                 </div>
                 <div class="discover-feed-actions">
-                <div class="operation-ptGIet discover-feed-operation" title="工作流">
+                <div class="operation discover-feed-operation" title="工作流">
                   <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-yH97ZW">
                     <g>
                       <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M4.92 3.537a4 4 0 0 0-2.83 4.899l2.585 9.645a4 4 0 0 0 4.899 2.829l2.737-.733a3.403 3.403 0 0 1-.874-1.837l-2.381.638a2 2 0 0 1-2.45-1.414L4.023 7.918a2 2 0 0 1 1.414-2.45l3.288-.88a2 2 0 0 1 2.45 1.414l2.318 8.654.553-.246a.683.683 0 0 0 .345-.368l.214-.516a3.56 3.56 0 0 1 .445-.784l-1.944-7.257a4 4 0 0 0-4.899-2.829l-3.287.881ZM21.6 9.766l-.885 3.303a3.332 3.332 0 0 0-1.687-1.433l.64-2.388a1.5 1.5 0 0 0-1.061-1.837l-2.437-.653a1.492 1.492 0 0 0-.659-.026l-.473-1.765c-.01-.039-.022-.077-.034-.115l-.016-.055a3.485 3.485 0 0 1 1.7.03l2.436.652A3.5 3.5 0 0 1 21.6 9.766Zm-3.433 11.127.208-.477a3.68 3.68 0 0 1 1.871-1.899l.64-.285a.447.447 0 0 0 0-.812l-.604-.269a3.682 3.682 0 0 1-1.898-1.961l-.214-.516a.427.427 0 0 0-.794 0l-.213.516a3.681 3.681 0 0 1-1.898 1.961l-.605.27a.447.447 0 0 0 0 .811l.64.285a3.68 3.68 0 0 1 1.872 1.899l.207.477a.427.427 0 0 0 .788 0Z" fill="currentColor"></path>
                     </g>
                   </svg>
                 </div>
-                <div class="operation-ptGIet discover-feed-operation" title="图片">
+                <div class="operation discover-feed-operation" title="图片">
                   <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-yH97ZW">
                     <g>
                       <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M16.326 4.72H7.674A2.954 2.954 0 0 0 4.72 7.674v8.652c0 .054.001.108.004.162l3.509-3.508a2.954 2.954 0 0 1 4.03-.138l6.262 5.457c.47-.523.755-1.215.755-1.973V7.674a2.954 2.954 0 0 0-2.954-2.954Zm2.798 15.658a4.919 4.919 0 0 0 2.126-4.052V7.674a4.924 4.924 0 0 0-4.924-4.924H7.674A4.924 4.924 0 0 0 2.75 7.674v8.652a4.924 4.924 0 0 0 4.924 4.924h8.652a4.901 4.901 0 0 0 2.798-.872Zm-2.489-1.114-5.666-4.937a.985.985 0 0 0-1.344.046l-4.041 4.04a2.945 2.945 0 0 0 2.09.867h8.652c.104 0 .208-.005.31-.016ZM14.078 8.401a1.532 1.532 0 1 1 3.064 0 1.532 1.532 0 0 1-3.064 0Z" fill="currentColor"></path>
@@ -467,10 +467,10 @@ const carouselItems = ref(
 )
 
 const getCarouselItemClass = (index) => {
-  if (index === currentSlide.value) return 'curr-F1jSlh'
+  if (index === currentSlide.value) return 'curr'
   if (index === (currentSlide.value + 1) % carouselItems.value.length) return 'next-fFJk8u'
   if (index === (currentSlide.value - 1 + carouselItems.value.length) % carouselItems.value.length) {
-    return 'prev-CbPcEG'
+    return 'prev'
   }
   return ''
 }

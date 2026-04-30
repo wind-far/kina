@@ -354,10 +354,10 @@ const isCurrentSessionEmpty = computed(() => {
 const mainContentClassName = computed(() => {
   const classNames = ['main-content-G632JF']
   if (isCurrentSessionEmpty.value) {
-    classNames.push('new-conversation-cz8zuh')
+    classNames.push('new-conversation')
   }
   if (!conversationSidebarCollapsed.value) {
-    classNames.push('with-sidebar-mPyABv')
+    classNames.push('with-sidebar')
   }
   return classNames.join(' ')
 })
@@ -1287,7 +1287,7 @@ onUnmounted(() => {
     <div id="csr-root">
       <div class="global-dreamina-container">
         <div id="dreamina" class="root_bf55f">
-          <div class="top-down-layer-ilr3Ve">
+          <div class="top-down-layer">
             <div class="container-moSF_y"
                  style="--side-menu-width:76px;--side-drawer-width:440px;--side-drawer-float-limit-width:1280px">
               <!-- 侧边菜单 -->
@@ -1312,7 +1312,7 @@ onUnmounted(() => {
                       <div :class="mainContentClassName">
                         <template v-if="isCurrentSessionEmpty">
                           <div v-if="conversationHeroSettings.enabled" class="new-conversation-hero-canana">
-                            <h1 class="new-conversation-title-S9Fv1t" ccfmp-element="true">
+                            <h1 class="new-conversation-title" ccfmp-element="true">
                               {{ conversationHeroSettings.title || '你好，想创作什么？' }}
                             </h1>
                             <p v-if="conversationHeroSettings.subtitle" class="new-conversation-subtitle-canana">
@@ -1379,7 +1379,7 @@ onUnmounted(() => {
                               >
                                 <div class="responsive-container-msS_cP">
                                   <div class="content-DPogfx ai-generated-record-content-hg5EL8">
-                                    <div class="group-title-mhd8yy">{{ record.time }}</div>
+                                    <div class="group-title">{{ record.time }}</div>
                                   </div>
                                 </div>
                               </div>
@@ -1439,7 +1439,7 @@ onUnmounted(() => {
 <style>
 @import "./generate.css";
 
-.main-content-G632JF.new-conversation-cz8zuh {
+.main-content-G632JF.new-conversation {
   align-items: center;
   display: flex;
   flex-direction: column;
@@ -1452,7 +1452,7 @@ onUnmounted(() => {
   gap: 10px;
 }
 
-.new-conversation-title-S9Fv1t {
+.new-conversation-title {
   color: var(--text-primary, #fff);
   font-family: "Founder Yashi Black", var(--font-family, inherit);
   font-size: 24px;

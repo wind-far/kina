@@ -4,7 +4,7 @@
       <div class="agentic-record-uRPmpt">
         <div class="agentic-record-content-Bgk_hF completed-WGVjke">
           <div class="user-message-AAqI02">
-            <div class="bubble-h2zzoZ">
+            <div class="bubble">
               <div class="context-menu-trigger-ZXpguB">
                 <div class="prompt-value-container-lIP4pF">
                   <span class="prompt-value-container-KCtKOf">
@@ -15,10 +15,10 @@
             </div>
           </div>
 
-          <div class="process-group-NFyTkD completed-Mr7mg1" :class="{ 'expanded-bG3kBU': isProcessGroupExpanded }">
+          <div class="process-group completed-Mr7mg1" :class="{ 'expanded-bG3kBU': isProcessGroupExpanded }">
             <div class="header-fE7Yzl" @click="toggleProcessGroup">
               <div class="header-left-OUNZfc">
-                <div class="chevron-wrapper-TUhGYt" :class="{ 'collapsed-yhY7l2': !isProcessGroupExpanded }">
+                <div class="chevron-wrapper" :class="{ 'collapsed-yhY7l2': !isProcessGroupExpanded }">
                   <svg width="14" height="14" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="chevron-icon-OYUM9U">
                     <g>
                       <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M21.01 7.982A1.2 1.2 0 0 1 21 9.679l-8.156 8.06a1.2 1.2 0 0 1-1.688 0L3 9.68a1.2 1.2 0 0 1 1.687-1.707L12 15.199l7.313-7.227a1.2 1.2 0 0 1 1.697.01Z" fill="currentColor"></path>
@@ -30,22 +30,22 @@
             </div>
             <div class="content-wrapper-WwWXWE" :class="{ 'collapsed-yhY7l2': !isProcessGroupExpanded }">
               <div class="content-e0iN2u">
-                <div class="visible-messages-wrapper-EhNsCk">
+                <div class="visible-messages-wrapper">
                   <div
                     v-for="section in contentSections"
                     :key="section.key"
-                    class="message-item-Tg244V"
+                    class="message-item"
                   >
                     <div
-                      class="connector-LIfXJO"
+                      class="connector"
                       :class="{ 'sf-hidden': section.kind === 'skill' }"
                     ></div>
                     <div class="message-collapse-wrapper-zmpysd">
                       <div class="node-viewport-KqQuYn">
                         <div
                           :class="section.kind === 'skill'
-                            ? 'activate-skill-message-a3YZ6f'
-                            : ['reasoning-message-ZytEV8', 'reasoning-message-expanded', `reasoning-tone-${section.tone || 'default'}`]"
+                            ? 'activate-skill-message'
+                            : ['reasoning-message', 'reasoning-message-expanded', `reasoning-tone-${section.tone || 'default'}`]"
                           class="node-enter-g30LTv"
                         >
                           <template v-if="section.kind === 'skill'">
@@ -60,8 +60,8 @@
                           </template>
                           <template v-else>
                             <div class="header-k72pQ0 clickable-DpW_Qi" :class="`header-tone-${section.tone || 'default'}`" @click="toggleSection(section.key)">
-                              <div class="header-main-vvvpuW">
-                                <span class="status-icon-Pd0hvq">
+                              <div class="header-main">
+                                <span class="status-icon">
                                   <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                                     <g>
                                       <path data-follow-fill="currentColor" d="M14.012 20a1 1 0 1 1 0 2h-4a1 1 0 0 1 0-2h4ZM12 1.451a8 8 0 0 1 8 8 7.99 7.99 0 0 1-3.76 6.781 2.999 2.999 0 0 1-2.99 2.769h-2.5a3 3 0 0 1-2.99-2.769A7.99 7.99 0 0 1 4 9.452a8 8 0 0 1 8-8Zm0 2a6 6 0 0 0-2.785 11.314 1 1 0 0 1 .535.885v.351a1 1 0 0 0 1 1h2.5a1 1 0 0 0 1-1v-.35a1 1 0 0 1 .535-.886A6 6 0 0 0 12 3.452Z" fill="currentColor"></path>
@@ -71,14 +71,14 @@
                                 <span class="title-zHQmQJ">{{ section.label }}</span>
                                 <span
                                   v-if="section.tone && section.tone !== 'default'"
-                                  class="section-tone-badge-q2Ks9n"
+                                  class="section-tone-badge"
                                   :class="`section-tone-badge-${section.tone}`"
                                 >
                                   {{ sectionToneText(section.tone) }}
                                 </span>
                               </div>
-                              <button type="button" class="header-toggle-ZlswMW" :aria-expanded="isSectionExpanded(section.key)">
-                                <svg width="14" height="14" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="toggle-icon-WjySCk">
+                              <button type="button" class="header-toggle" :aria-expanded="isSectionExpanded(section.key)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="toggle-icon">
                                   <g>
                                     <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M21.01 7.982A1.2 1.2 0 0 1 21 9.679l-8.156 8.06a1.2 1.2 0 0 1-1.688 0L3 9.68a1.2 1.2 0 0 1 1.687-1.707L12 15.199l7.313-7.227a1.2 1.2 0 0 1 1.697.01Z" fill="currentColor"></path>
                                   </g>
@@ -86,26 +86,26 @@
                               </button>
                             </div>
                             <div
-                              class="body-wrapper-K5fjb4"
+                              class="body-wrapper"
                               :class="{ 'collapsed-yhY7l2': !isSectionExpanded(section.key) }"
                               :style="{ maxHeight: isSectionExpanded(section.key) ? getSectionBodyHeight(section.key) : '0px' }"
                             >
                               <div class="body-KixLFC" :ref="(el) => setSectionBodyRef(section.key, el)">
                                 <div class="content-dherTv">
-                                  <div v-if="section.taskPlanItems?.length" class="task-plan-grid-pA9s2K">
+                                  <div v-if="section.taskPlanItems?.length" class="task-plan-grid">
                                     <div
                                       v-for="item in section.taskPlanItems"
                                       :key="item.key"
-                                      class="task-plan-card-mL8xQn"
+                                      class="task-plan-card"
                                       :class="`task-plan-status-${item.status}`"
                                     >
-                                      <div class="task-plan-card-header-s4rDNe">
-                                        <div class="task-plan-index-jmR4Xe">{{ item.index }}</div>
-                                        <div class="task-plan-badge-r1eQMs" :class="`task-plan-badge-${item.status}`">
+                                      <div class="task-plan-card-header">
+                                        <div class="task-plan-index">{{ item.index }}</div>
+                                        <div class="task-plan-badge" :class="`task-plan-badge-${item.status}`">
                                           {{ taskPlanStatusText(item.status) }}
                                         </div>
                                       </div>
-                                      <div class="task-plan-text-qo8VgP">{{ item.text }}</div>
+                                      <div class="task-plan-text">{{ item.text }}</div>
                                     </div>
                                   </div>
                                   <div v-for="paragraph in section.paragraphs" :key="paragraph.key">
@@ -124,8 +124,8 @@
             </div>
           </div>
 
-          <div v-if="showOutputSection" class="media-output-section-olQRB9">
-            <div v-if="resultTitle" class="last-assistant-output-KmwvCO">
+          <div v-if="showOutputSection" class="media-output-section">
+            <div v-if="resultTitle" class="last-assistant-output">
               <div class="node-viewport-YXsYbA">
                 <div class="node-enter-ww1GBC">
                   <div class="assistant-message-text-XR8fHP">
@@ -136,7 +136,7 @@
                 </div>
               </div>
             </div>
-            <div v-if="summaryParagraphs.length" class="last-assistant-output-KmwvCO">
+            <div v-if="summaryParagraphs.length" class="last-assistant-output">
               <div class="node-viewport-YXsYbA">
                 <div class="node-enter-ww1GBC">
                   <div class="assistant-message-text-XR8fHP">
@@ -149,7 +149,7 @@
                 </div>
               </div>
             </div>
-            <div v-if="mediaStatusText" class="media-group-placeholder-gFeJS2">
+            <div v-if="mediaStatusText" class="media-group-placeholder">
               <span class="icon-wrap-QQV86C">
                 <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                   <g>
@@ -157,20 +157,20 @@
                   </g>
                 </svg>
               </span>
-              <span class="status-text-J4iEcZ">{{ mediaStatusText }}</span>
+              <span class="status-text">{{ mediaStatusText }}</span>
             </div>
-            <div v-if="showImageRecordSection" class="image-record-ytX6Dp">
-              <div class="record-header-E91Dfj">
-                <div class="record-header-content-Lkk9CM">
-                  <div class="prompt-suffix-labels-wrapper-qthJZj" style="--line-height:24px;--padding-top:4px">
-                    <div class="prompt-suffix-labels-NBprFc" style="--line-height:24px;--padding-top:4px">
-                      <div class="prompt-suffix-labels-content-uFKTga">
+            <div v-if="showImageRecordSection" class="image-record">
+              <div class="record-header">
+                <div class="record-header-content">
+                  <div class="prompt-suffix-labels-wrapper" style="--line-height:24px;--padding-top:4px">
+                    <div class="prompt-suffix-labels" style="--line-height:24px;--padding-top:4px">
+                      <div class="prompt-suffix-labels-content">
                         <span class="prompt-P_8aF8">
                           <span class="prompt-value-container-KCtKOf">
                             <span>{{ resultHeaderText }}</span>
                           </span>
                         </span>
-                        <span class="labels-mHLx1x" style="visibility:visible">
+                        <span class="labels" style="visibility:visible">
                           <span class="label-lhnDlt">{{ skillLabel }}</span>
                           <span class="label-lhnDlt">{{ workflowLabel }}</span>
                           <span class="label-lhnDlt">{{ imageCountLabel }}</span>
@@ -180,22 +180,22 @@
                   </div>
                 </div>
               </div>
-              <div class="record-box-wrapper-MDgaBP">
-                <div class="image-record-content-TuJi21">
-                  <div class="responsive-image-grid-WOh0lB">
+              <div class="record-box-wrapper">
+                <div class="image-record-content">
+                  <div class="responsive-image-grid">
                     <div
                       v-for="slot in imageDisplaySlots"
                       :key="slot.key"
-                      class="image-card-wrapper-WOgXrk landscape-Ven8Mz"
+                      class="image-card-wrapper landscape"
                       style="--aspect-ratio:1"
                     >
-                      <div class="image-record-item-W6Y7Df">
+                      <div class="image-record-item">
                         <div class="context-menu-trigger-WJ6VDZ">
                           <div class="slot-card-container-gulhrr image-card-container-dFemyw">
                             <div class="content-container-z0JOWv">
                               <div
                                 class="image-card-container-qy7ui4"
-                                :class="{ 'placeholder-card-Jzjl2T': slot.kind === 'placeholder' }"
+                                :class="{ 'placeholder-card': slot.kind === 'placeholder' }"
                                 role="button"
                                 tabindex="0"
                                 aria-disabled="false"
@@ -217,9 +217,9 @@
                                     >
                                   </div>
                                 </div>
-                                <div v-else class="placeholder-card-inner-WmYwWJ">
-                                  <div class="placeholder-shimmer-Km1xvL"></div>
-                                  <div class="placeholder-caption-Hw5grQ">结果生成中</div>
+                                <div v-else class="placeholder-card-inner">
+                                  <div class="placeholder-shimmer"></div>
+                                  <div class="placeholder-caption">结果生成中</div>
                                 </div>
                               </div>
                             </div>
@@ -236,7 +236,7 @@
           <div v-if="showNotice" class="ai-generated-notice-PjZsIx">
             以上内容由 AI 生成
             <div class="divider-mrF2Mr"></div>
-            <div v-if="costText" class="costed-credit-mqLJHq">{{ costText }}</div>
+            <div v-if="costText" class="costed-credit">{{ costText }}</div>
           </div>
           <div v-if="showActions" class="record-bottom-slots-wtfgFX">
             <div>

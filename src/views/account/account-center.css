@@ -60,14 +60,14 @@
   background-color: var(--bg-block-primary-hover);
 }
 
-.profile-info-WckVdm {
+.profile-info {
   align-items: center;
   display: flex;
   gap: 16px;
   width: 100%;
 }
 
-.avatar-wrapper-ucWXeE {
+.avatar-wrapper {
   cursor: pointer;
   position: relative;
 }
@@ -90,11 +90,11 @@
   object-fit: cover;
 }
 
-.avatar-wrapper-ucWXeE:hover .avatar-qnfikn {
+.avatar-wrapper:hover .avatar-qnfikn {
   filter: brightness(.92);
 }
 
-.user-container-HSvfnA {
+.user-container {
   align-items: center;
   display: flex;
   min-width: 0;
@@ -112,7 +112,7 @@
   white-space: nowrap;
 }
 
-.statics-NfMXxa {
+.statics {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -168,11 +168,11 @@
   width: 100%;
 }
 
-.is-myself-g1tFtu {
+.is-myself {
   justify-content: flex-end;
 }
 
-.share-btn-HPCCdO {
+.share-btn {
   align-items: center;
   background: var(--component-secondary-button-bg-default, rgba(204, 221, 255, .08));
   border: 0;
@@ -203,15 +203,15 @@
   opacity: .72;
 }
 
-.share-btn-HPCCdO:hover {
+.share-btn:hover {
   background: var(--component-secondary-button-bg-hover, rgba(204, 221, 255, .12));
 }
 
-.share-btn-HPCCdO:active {
+.share-btn:active {
   background: var(--component-secondary-button-bg-pressed, rgba(204, 221, 255, .16));
 }
 
-.share-btn-text-Bmwtaa {
+.share-btn-text {
   font-family: PingFang SC, sans-serif;
   font-size: 13px;
   font-style: normal;
@@ -221,14 +221,14 @@
   text-align: center;
 }
 
-.profile-description-AMTtqP {
+.profile-description {
   flex: 1 1 auto;
   margin-top: 8px;
   overflow: auto;
   width: 100%;
 }
 
-.description-wrapper-qOKwu7 {
+.description-wrapper {
   border-radius: 8px;
   color: var(--text-secondary, rgba(224, 245, 255, .6));
   font-family: PingFang SC, sans-serif;
@@ -241,7 +241,7 @@
   word-break: break-all;
 }
 
-.edit-button-KkCkQM {
+.edit-button {
   align-items: center;
   background: var(--component-secondary-button-bg-default, rgba(204, 221, 255, .08));
   border-radius: 6px;
@@ -297,7 +297,7 @@
   width: 100%;
 }
 
-.tab-group-w_qr_b {
+.tab-group {
   align-items: center;
   box-sizing: border-box;
   display: flex;
@@ -309,7 +309,7 @@
   padding-top: 20px;
 }
 
-.left-tabs-HBP1py {
+.left-tabs {
   align-items: center;
   display: flex;
   flex-direction: row;
@@ -363,7 +363,7 @@
   width: 16px;
 }
 
-.tab-divider-vX6hHD {
+.tab-divider {
   align-self: center;
   background: var(--stroke-secondary, rgba(204, 221, 255, .12));
   border-radius: 18px;
@@ -418,7 +418,7 @@
   opacity: .9;
 }
 
-.feed-list-gf2bXe {
+.feed-list {
   border-radius: 16px;
   box-sizing: border-box;
   margin-right: 60px;
@@ -484,7 +484,7 @@
   overflow: hidden;
 }
 
-.top-overlay-GhUyzO {
+.top-overlay {
   align-items: center;
   display: flex;
   justify-content: space-between;
@@ -535,7 +535,7 @@
   width: 100%;
 }
 
-.author-g6lhbl .username-omeTE7 {
+.author-g6lhbl .username {
   font-size: 12px;
   font-style: normal;
   font-weight: 500;
@@ -547,14 +547,14 @@
   white-space: nowrap;
 }
 
-.operation-ptGIet,
-.tail-AclRiA {
+.operation,
+.tail {
   align-items: center;
   display: flex;
   z-index: 1;
 }
 
-.operation-ptGIet {
+.operation {
   border-radius: 8px;
   cursor: pointer;
   flex-direction: row;
@@ -563,16 +563,16 @@
   pointer-events: auto;
 }
 
-.operation-ptGIet .icon-yH97ZW {
+.operation .icon-yH97ZW {
   height: 20px;
   width: 20px;
 }
 
-.operation-ptGIet:hover {
+.operation:hover {
   background-color: rgba(0, 0, 0, .2);
 }
 
-.operation-ptGIet:active {
+.operation:active {
   background-color: rgba(0, 0, 0, .25);
 }
 
@@ -605,7 +605,7 @@
 }
 
 .overlay-WWIpyU .head-wYUoMC,
-.overlay-WWIpyU .tail-AclRiA {
+.overlay-WWIpyU .tail {
   align-items: center;
   display: flex;
   z-index: 1;
@@ -616,7 +616,7 @@
   overflow: hidden;
 }
 
-.overlay-WWIpyU .tail-AclRiA {
+.overlay-WWIpyU .tail {
   margin-left: 12px;
 }
 
@@ -706,7 +706,7 @@
   margin-top: 8px;
 }
 
-.feed-list-no-more-Erz30i {
+.feed-list-no-more {
   align-items: center;
   box-sizing: border-box;
   color: var(--text-placeholder);
@@ -733,12 +733,12 @@
     width: 100%;
   }
 
-  .tab-group-w_qr_b {
+  .tab-group {
     height: auto;
     padding: 16px 0;
   }
 
-  .feed-list-gf2bXe {
+  .feed-list {
     margin-right: 0;
     width: 100%;
   }
@@ -755,7 +755,7 @@
     gap: 8px;
   }
 
-  .left-tabs-HBP1py {
+  .left-tabs {
     flex-wrap: wrap;
   }
 }

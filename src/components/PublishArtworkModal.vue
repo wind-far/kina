@@ -3,7 +3,7 @@
     <Transition name="publish-artwork-modal" :duration="{ enter: 320, leave: 220 }">
       <div
         v-if="visible && image"
-        class="publish-artwork-modal-host lv-modal-wrapper lv-modal-wrapper-align-center publish-modal-wrapper-V8zaHc"
+        class="publish-artwork-modal-host lv-modal-wrapper lv-modal-wrapper-align-center publish-modal-wrapper"
         style="display: block"
       >
         <div class="publish-artwork-backdrop" aria-hidden="true" @click="close"></div>
@@ -20,7 +20,7 @@
             <div class="lv-modal-content">
               <div class="modal-container-BvlOIz">
                 <div class="publish-header-uieubt">
-                  <div class="header-title-QCjfhu">
+                  <div class="header-title">
                     <span>发布作品</span>
                   </div>
 
@@ -41,35 +41,35 @@
 
                 <div class="content-container-sNJbeH">
                   <div class="content-wrapper-pbEuKY">
-                    <div class="preview-wrapper-_wIcb1">
-                      <div class="preview-title-elzXh0">预览</div>
-                      <div class="preview-image-wrapper-DQLP4U">
-                        <div class="preview-image-content-ONDKjp">
+                    <div class="preview-wrapper">
+                      <div class="preview-title">预览</div>
+                      <div class="preview-image-wrapper">
+                        <div class="preview-image-content">
                           <img class="publish-preview-image" :src="image.src" :alt="image.id">
                         </div>
                       </div>
                     </div>
 
-                    <div class="publish-form-container-Oeqqeo">
-                      <div class="form-container-wHKVU9">
-                        <div class="label-container-tfpB4z">
+                    <div class="publish-form-container">
+                      <div class="form-container">
+                        <div class="label-container">
                           <span>标题</span>
-                          <span class="required-icon-l_HVKQ">*</span>
+                          <span class="required-icon">*</span>
                         </div>
 
-                        <div class="input-wrapper-n7y99H form-title-input-pp1JpZ">
+                        <div class="input-wrapper-n7y99H form-title-input">
                           <div class="lv-textarea-wrapper">
                             <textarea
                               v-model="title"
                               maxlength="20"
-                              class="lv-textarea lv-textarea-wording-padding input-area-ATwyR6"
+                              class="lv-textarea lv-textarea-wording-padding input-area"
                               placeholder="给作品起个标题吧"
                             ></textarea>
                             <span class="lv-textarea-word-limit">{{ title.length }}/20</span>
                           </div>
 
-                          <div class="bottom-left-module-hPNpLm">
-                            <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square activity-button-mRxIHv" type="button">
+                          <div class="bottom-left-module">
+                            <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square activity-button" type="button">
                               <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                                 <g>
                                   <path
@@ -85,38 +85,38 @@
                             </button>
                           </div>
 
-                          <div class="error-message-n1wdyc">{{ titleError }}</div>
+                          <div class="error-message">{{ titleError }}</div>
                         </div>
                       </div>
 
-                      <div class="form-container-wHKVU9">
-                        <div class="label-container-tfpB4z">
+                      <div class="form-container">
+                        <div class="label-container">
                           <span>作品描述</span>
                         </div>
 
-                        <div class="input-wrapper-n7y99H form-desc-input-n73OIj">
+                        <div class="input-wrapper-n7y99H form-desc-input">
                           <div class="lv-textarea-wrapper">
                             <textarea
                               v-model="description"
                               maxlength="500"
-                              class="lv-textarea lv-textarea-wording-padding input-area-ATwyR6"
+                              class="lv-textarea lv-textarea-wording-padding input-area"
                               placeholder="聊聊你的作品灵感吧"
                             ></textarea>
                             <span class="lv-textarea-word-limit">{{ description.length }}/500</span>
                           </div>
 
-                          <div class="bottom-left-module-hPNpLm"></div>
-                          <div class="error-message-n1wdyc"></div>
+                          <div class="bottom-left-module"></div>
+                          <div class="error-message"></div>
                         </div>
                       </div>
 
                       <div>
-                        <div class="prompt-header-VMrv9a">
-                          <span class="prompt-title-nxAMai">图片提示词</span>
+                        <div class="prompt-header">
+                          <span class="prompt-title">图片提示词</span>
                         </div>
 
-                        <div class="prompt-box-YN9Dvs">
-                          <div class="prompt-content-c091Rk">
+                        <div class="prompt-box">
+                          <div class="prompt-content">
                             <span class="prompt-value-container-lIP4pF">
                               <span>{{ image.promptText || '暂无提示词' }}</span>
                             </span>
@@ -127,7 +127,7 @@
                   </div>
                 </div>
 
-                <div class="publish-button-container-RMNKzT">
+                <div class="publish-button-container">
                   <button
                     class="lv-btn lv-btn-primary lv-btn-size-default lv-btn-shape-square publish-button-_eqdhG"
                     :class="{

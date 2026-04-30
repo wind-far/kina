@@ -3,7 +3,7 @@
     <div id="csr-root">
       <div class="global-dreamina-container">
         <div id="dreamina" class="root_bf55f">
-          <div class="top-down-layer-ilr3Ve">
+          <div class="top-down-layer">
             <div class="container-moSF_y"
                  style="--side-menu-width:76px;--side-drawer-width:440px;--side-drawer-float-limit-width:1280px">
               <!-- 侧边菜单 -->
@@ -16,7 +16,7 @@
                     <div class="scroll-container-Jsws2j scroll-container-QnV2C9">
                       <div>
                         <div class="scroll-content-DaYLnh scroll-content">
-                          <div class="section-generator-q8kS_W">
+                          <div class="section-generator">
                             <!-- 首页头部 -->
                             <HomeHeader/>
                           </div>

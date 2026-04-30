@@ -6,7 +6,7 @@
     >
       <div
           v-if="modelValue"
-          class="home-work-detail-modal-host lv-modal-wrapper lv-modal-wrapper-align-center work-detail-modal-wrapper-3L0Dzs"
+          class="home-work-detail-modal-host lv-modal-wrapper lv-modal-wrapper-align-center work-detail-modal-wrapper"
           style="display: block"
       >
         <div
@@ -36,12 +36,12 @@
                                                               }"
                     >
                       <div class="preview-area-QscVpt home-work-detail-preview-stage">
-                        <div class="context-menu-trigger-container-w5xaCZ">
-                          <div class="image-left-content-myH1iF">
-                            <div class="image-player-KCJSe1">
-                              <div class="image-player-container-V9ZRXE">
-                                <div class="image-player-content-Ml9sbe">
-                                  <div class="container-bbbsvQ image-player-image-_Tib2c home-work-detail-image-frame">
+                        <div class="context-menu-trigger-container">
+                          <div class="image-left-content">
+                            <div class="image-player">
+                              <div class="image-player-container">
+                                <div class="image-player-content">
+                                  <div class="container-bbbsvQ image-player-image home-work-detail-image-frame">
                                     <div
                                         v-show="!detailImageReady"
                                         class="home-work-detail-img-skeleton"
@@ -54,7 +54,7 @@
                                           draggable="false"
                                           fetchpriority="high"
                                           loading="eager"
-                                          class="image-eTuIBd noAnimation-RP9btL home-work-detail-main-img"
+                                          class="image-eTuIBd noAnimation home-work-detail-main-img"
                                           :src="imageSrc"
                                           @load="onDetailImageLoad"
                                           @error="onDetailImageError">
@@ -69,7 +69,7 @@
                       <!-- 底部嵌入生成器：v-show 仅控制是否已点「使用提示词」；收起用组件内 collapse，不隐藏整条 -->
                       <div
                           v-show="contentGeneratorVisible"
-                          class="work-detail-content-generator-oprkFz content-generator-z1rciw home-work-detail-embedded-generator"
+                          class="work-detail-content-generator content-generator-z1rciw home-work-detail-embedded-generator"
                           @click.stop
                       >
                         <!-- 透传 ContentGenerator 的 send 载荷（message、类型、可选配置） -->
@@ -87,8 +87,8 @@
                       </div>
                     </div>
                   </div>
-                  <div class="operation-area-EihPQ7 middle-content-xyawTY">
-                    <div class="switch-area-AKmr_H">
+                  <div class="operation-area-EihPQ7 middle-content">
+                    <div class="switch-area">
                       <button class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square operation-icon-w5Y4Pg"
                               type="button"
                               aria-label="上一张"
@@ -141,7 +141,7 @@
                     </button>
                     <button
                         v-show="contentGeneratorVisible"
-                        class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square operation-icon-w5Y4Pg collapse-button-L4UIFa"
+                        class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square operation-icon-w5Y4Pg collapse-button"
                         type="button"
                         :aria-expanded="contentGeneratorExpanded"
                         aria-label="展开或收起底部创作栏"
@@ -159,22 +159,22 @@
                       </svg>
                     </button>
                   </div>
-                  <div class="detail-area-mylLyv">
+                  <div class="detail-area">
                     <div class="main-container-MeJEJY">
                       <div class="content-wrapper-yGrcJJ">
-                        <div class="user-profile-container-YpAS0A">
-                          <div class="left-container-vYu9RS">
-                            <div class="user-section-O05SIg">
-                              <div class="user-avatar-gP6jYP"><img
+                        <div class="user-profile-container">
+                          <div class="left-container">
+                            <div class="user-section">
+                              <div class="user-avatar"><img
                                   :src="resolvedAuthorAvatarSrc"
-                                  class="avatar-image-Xos7qj"
+                                  class="avatar-image"
 
                                   :alt="authorName"
                                   :style="authorAvatarSrc ? undefined : fallbackAvatarStyle">
                               </div>
                               <div class="user-name-UPyK2X">{{ authorName }}</div>
                             </div>
-                            <div class="operation-follow-MhTx3J">
+                            <div class="operation-follow">
                               <svg width="1em" height="1em"
                                    viewBox="0 0 24 24"
                                    preserveAspectRatio="xMidYMid meet"
@@ -224,7 +224,7 @@
                             </div>
                             <div
                                 ref="operationTriggerRef"
-                                class="operation-wrapper-Hc6lfr"
+                                class="operation-wrapper"
                                 role="button"
                                 tabindex="0"
                                 aria-label="更多操作"
@@ -237,7 +237,7 @@
                                    preserveAspectRatio="xMidYMid meet"
                                    fill="none" role="presentation"
                                    xmlns="http://www.w3.org/2000/svg"
-                                   class="more-options-icon-p31JuD">
+                                   class="more-options-icon">
                                 <g>
                                   <path data-follow-fill="currentColor"
                                         d="M7 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm7 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm5 2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
@@ -254,7 +254,7 @@
                                 <button
                                     v-if="isAuthor"
                                     type="button"
-                                    class="home-work-detail-operation-menu-item operation-menu-content-item-p3jbuP"
+                                    class="home-work-detail-operation-menu-item operation-menu-content-item"
                                     @click.stop="handleDelete"
                                 >
                                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -264,7 +264,7 @@
                                 </button>
                                 <button
                                     type="button"
-                                    class="home-work-detail-operation-menu-item operation-menu-content-item-p3jbuP"
+                                    class="home-work-detail-operation-menu-item operation-menu-content-item"
                                     @click.stop="handleReport"
                                 >
                                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -276,9 +276,9 @@
                             </div>
                           </div>
                         </div>
-                        <div class="work-info-section-kNeD31">
-                          <div class="meta-info-wrapper-xhHsPv">
-                            <div class="create-time-wrapper-fqUhx0">
+                        <div class="work-info-section">
+                          <div class="meta-info-wrapper">
+                            <div class="create-time-wrapper">
                               {{ createDate }}
                             </div>
                             <div class="ai-generated-text-IHOsIL">{{ aiGeneratedText }}</div>
@@ -322,7 +322,7 @@
                             fill="currentColor"></path></g></svg></span></span>
                         </div>
                       </div>
-                      <div class="action-buttons-wrapper-ibCKz2">
+                      <div class="action-buttons-wrapper">
                         <div tabindex="0" class="operation-button-ZGVDtf">
                           <svg width="1em" height="1em" viewBox="0 0 24 24"
                                preserveAspectRatio="xMidYMid meet"
@@ -337,7 +337,7 @@
                                     fill="currentColor"></path>
                             </g>
                           </svg>
-                          <p class="operation-text-sYthqa">{{ makeSameLabel }}</p></div>
+                          <p class="operation-text">{{ makeSameLabel }}</p></div>
                         <div tabindex="0" class="operation-button-ZGVDtf">
                           <svg width="1em" height="1em" viewBox="0 0 24 24"
                                preserveAspectRatio="xMidYMid meet"
@@ -350,7 +350,7 @@
                                     fill="currentColor"></path>
                             </g>
                           </svg>
-                          <p class="operation-text-sYthqa">{{ useAsReferenceLabel }}</p>
+                          <p class="operation-text">{{ useAsReferenceLabel }}</p>
                         </div>
                       </div>
                     </div>
@@ -717,7 +717,7 @@ body.home-work-detail-modal-scroll-lock {
   box-shadow: var(--shadow-dropdown-menu, 0 16px 48px rgba(0, 0, 0, 0.32));
 }
 
-.home-work-detail-modal-host .operation-wrapper-Hc6lfr {
+.home-work-detail-modal-host .operation-wrapper {
   position: relative;
 }
 
@@ -769,11 +769,11 @@ body.home-work-detail-modal-scroll-lock {
   max-width: none;
 }
 
-.home-work-detail-modal-host.work-detail-modal-wrapper-3L0Dzs .lv-modal-content {
+.home-work-detail-modal-host.work-detail-modal-wrapper .lv-modal-content {
   padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
-.home-work-detail-modal-host .collapse-button-L4UIFa {
+.home-work-detail-modal-host .collapse-button {
   visibility: visible !important;
 }
 
@@ -913,20 +913,20 @@ body.home-work-detail-modal-scroll-lock {
   }
 }
 
-.home-work-detail-modal-host .context-menu-trigger-container-w5xaCZ,
-.home-work-detail-modal-host .image-left-content-myH1iF {
+.home-work-detail-modal-host .context-menu-trigger-container,
+.home-work-detail-modal-host .image-left-content {
   min-height: 0;
   max-height: 100%;
 }
 
-.home-work-detail-modal-host .image-player-KCJSe1,
-.home-work-detail-modal-host .image-player-container-V9ZRXE,
-.home-work-detail-modal-host .image-player-content-Ml9sbe {
+.home-work-detail-modal-host .image-player,
+.home-work-detail-modal-host .image-player-container,
+.home-work-detail-modal-host .image-player-content {
   min-height: 0;
   max-height: 100%;
 }
 
-.home-work-detail-modal-host .image-player-image-_Tib2c {
+.home-work-detail-modal-host .image-player-image {
   display: flex;
   align-items: center;
   justify-content: center;

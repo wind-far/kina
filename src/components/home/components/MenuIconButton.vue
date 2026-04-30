@@ -1,9 +1,9 @@
 <template>
   <div tabindex="0" role="menuitem" class="lv-menu-item lv-menu-item-size-default" :id="id">
-    <div class="icon-container-XAovJs" style="--menu-icon-size:40px">
+    <div class="icon-container" style="--menu-icon-size:40px">
       <div :class="containerClass">
         <div class="content-XAjJup">
-          <div class="icon-menu-m2Y0RB">
+          <div class="icon-menu">
             <div class="icon-wrap-tBuhBU hide-itzP3D sf-hidden">
               <slot name="icon-filled"></slot>
             </div>

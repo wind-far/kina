@@ -118,7 +118,7 @@ const selectType = (type: CreationType) => {
   <div ref="triggerRef" class="type-select-wrapper" @click.stop="toggleDropdown">
     <div :aria-expanded="isOpen"
          aria-haspopup="listbox"
-         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select-h345g7', 'type-select-BRd1AA', 'select-joF5y7', { 'compact-OC0Z0c': compact }]"
+         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'type-select', 'select-joF5y7', { 'compact': compact }]"
          role="combobox"
          tabindex="0">
       <div class="lv-select-view">
@@ -209,8 +209,8 @@ const selectType = (type: CreationType) => {
           :key="type.value"
           :class="['lv-select-option', { 'lv-select-option-wrapper-selected': modelValue === type.value }]"
           @click.stop="selectType(type.value)">
-        <div class="select-option-label-Ct6NRy">
-          <div class="select-option-label-content-tmGvFs">
+        <div class="select-option-label">
+          <div class="select-option-label-content">
             <span class="select-option-icon-LQHnJG">
               <!-- Agent 模式图标 -->
               <svg v-if="type.value === 'agent'" width="1em" height="1em" viewBox="0 0 24 24"
@@ -266,7 +266,7 @@ const selectType = (type: CreationType) => {
             </span>
             <span>{{ type.label }}</span>
           </div>
-          <span v-if="modelValue === type.value" class="select-option-check-icon-uOxlr2">
+          <span v-if="modelValue === type.value" class="select-option-check-icon">
             <svg width="1em" height="1em" viewBox="0 0 24 24"
                  preserveAspectRatio="xMidYMid meet" fill="none"
                  role="presentation" xmlns="http://www.w3.org/2000/svg">

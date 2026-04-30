@@ -2,29 +2,29 @@
   <Teleport to="body">
     <div
       v-if="visible"
-      class="lv-modal-wrapper lv-modal-wrapper-align-center domesticModalWrapper-G4rAI_"
+      class="lv-modal-wrapper lv-modal-wrapper-align-center domesticModalWrapper"
       @click.self="closeModal"
     >
       <div class="lv-modal-mask" @click="closeModal"></div>
-      <div role="dialog" aria-modal="true" class="lv-modal lv-modal-simple domesticModal-CcAfki">
+      <div role="dialog" aria-modal="true" class="lv-modal lv-modal-simple domesticModal">
         <div class="lv-modal-content">
-          <div class="outerWrapper-YDl043">
+          <div class="outerWrapper">
             <div class="wrapper-dTloRs">
-              <div class="defaultContentContainer-ZsT7nd">
-                <div class="defaultContent-bObVfZ">
+              <div class="defaultContentContainer">
+                <div class="defaultContent">
                   <div class="title-AZ0SpV">
-                    <span class="titleHighlight-1Hxg1W">{{ heroPrimaryText }}</span>
-                    <span class="titleWhite-pL9WDI">{{ heroSecondaryText }}</span>
+                    <span class="titleHighlight">{{ heroPrimaryText }}</span>
+                    <span class="titleWhite">{{ heroSecondaryText }}</span>
                   </div>
                   <div class="desc-KaZqms">
                     <span>{{ heroDescription }}</span>
-                    <button class="getCredits-Y_OSUW" type="button" @click="switchTab('recharge')">购买积分</button>
+                    <button class="getCredits" type="button" @click="switchTab('recharge')">购买积分</button>
                     <span class="divider-pIgPeB"></span>
-                    <button class="redeem-WAo38f" type="button" @click="switchTab('redeem')">卡密兑换</button>
+                    <button class="redeem" type="button" @click="switchTab('redeem')">卡密兑换</button>
                   </div>
                 </div>
-                <div class="rightButtonContainer-CRWw92">
-                  <button class="creditBtn-Todove" type="button" @click="openPointsDetailModal">积分详情</button>
+                <div class="rightButtonContainer">
+                  <button class="creditBtn" type="button" @click="openPointsDetailModal">积分详情</button>
                 </div>
               </div>
 
@@ -36,61 +36,61 @@
                   <button
                     v-for="tab in tabs"
                     :key="tab.key"
-                    class="tabItem-SiOW3q"
-                    :class="{ 'selectedTabItem-aDidmJ': activeTab === tab.key }"
+                    class="tabItem"
+                    :class="{ 'selectedTabItem': activeTab === tab.key }"
                     type="button"
                     @click="switchTab(tab.key)"
                   >
-                    <div class="tabText-LeDNDN">{{ tab.label }}</div>
+                    <div class="tabText">{{ tab.label }}</div>
                     <div
                       v-if="tab.badge"
-                      class="tabTag-PSs89e"
-                      :class="{ 'tabTagHighlight-QqpiuB': activeTab === tab.key, 'tabTagnoActivated-goes2o': activeTab !== tab.key }"
+                      class="tabTag"
+                      :class="{ 'tabTagHighlight': activeTab === tab.key, 'tabTagnoActivated': activeTab !== tab.key }"
                     >
                       {{ tab.badge }}
                     </div>
                   </button>
                 </div>
 
-                <div v-if="isLoadingPanel" class="creditsDesc-irHa5p">正在加载营销权益...</div>
+                <div v-if="isLoadingPanel" class="creditsDesc">正在加载营销权益...</div>
 
                 <template v-else>
-                  <div v-if="activeTab === 'membership'" class="priceListContainer-yZzGFk">
+                  <div v-if="activeTab === 'membership'" class="priceListContainer">
                     <div
                       v-for="(plan, planIndex) in membershipDisplayPlans"
                       :key="String(plan.id)"
-                      class="priceListItem-jmLrWu"
+                      class="priceListItem"
                     >
-                      <div class="price-list-item-wrapper-QTu1QM">
-                        <div v-if="isActiveMembershipPlan(plan)" class="selectedMask-kgipMi"></div>
-                        <div class="priceListItemContent-f8yA2T">
-                          <div class="priceTopWrapper-PO1sPk">
-                            <div class="priceTop-FYHAcm">
-                              <div class="priceTitle-xo_cbl membershipTitleRow-canana">
+                      <div class="price-list-item-wrapper">
+                        <div v-if="isActiveMembershipPlan(plan)" class="selectedMask"></div>
+                        <div class="priceListItemContent">
+                          <div class="priceTopWrapper">
+                            <div class="priceTop">
+                              <div class="priceTitle membershipTitleRow-canana">
                                 <div class="membershipTitleMain-canana">
                                   <span v-if="!isZeroPricePlan(plan)" class="membershipSpark-canana">✦</span>
-                                  <div class="levelName-kcprWP">{{ getPlanLevelName(plan) }}</div>
+                                  <div class="levelName">{{ getPlanLevelName(plan) }}</div>
                                 </div>
-                                <div v-if="isFeaturedPlan(plan, planIndex)" class="bestPlan-fJd80q">最划算</div>
+                                <div v-if="isFeaturedPlan(plan, planIndex)" class="bestPlan">最划算</div>
                               </div>
-                              <div class="priceContainer-EtMXeH membershipPriceRow-canana">
+                              <div class="priceContainer membershipPriceRow-canana">
                                 <div
-                                  class="priceTips-dLW7oc priceTipsWithFixedCurrencySymbolSize-XQdawj membershipPriceMain-canana"
-                                  :class="{ 'priceTipsFree-T3GkW0': isZeroPricePlan(plan) }"
+                                  class="priceTips priceTipsWithFixedCurrencySymbolSize membershipPriceMain-canana"
+                                  :class="{ 'priceTipsFree': isZeroPricePlan(plan) }"
                                 >
                                   <span>¥</span>
                                   <span>{{ formatMoneyDisplay(plan.salesPrice) }}</span>
                                 </div>
-                                <div class="cycleTips-r_gMtv membershipCycleTips-canana">{{ getPlanPriceUnitText(plan) }}</div>
+                                <div class="cycleTips membershipCycleTips-canana">{{ getPlanPriceUnitText(plan) }}</div>
                               </div>
-                              <div class="priceDesc-yOCFse membershipSubDesc-canana">{{ getMembershipDesc(plan) }}</div>
+                              <div class="priceDesc membershipSubDesc-canana">{{ getMembershipDesc(plan) }}</div>
                             </div>
                           </div>
 
-                          <div class="btnContainer-lv1ARI btnContainerWithoutAutoRenewDesc-f6J_Ai">
-                            <div class="btnContainer-lv1ARI">
+                          <div class="btnContainer btnContainerWithoutAutoRenewDesc">
+                            <div class="btnContainer">
                               <button
-                                class="priceButton-MfMZpC priceButtonWithResourcePositionMaterial-nKxJNx mweb-button-default"
+                                class="priceButton priceButtonWithResourcePositionMaterial mweb-button-default"
                                 :class="getPlanButtonClass(plan, planIndex)"
                                 type="button"
                                 :disabled="submitting || isZeroPricePlan(plan)"
@@ -101,18 +101,18 @@
                             </div>
                           </div>
 
-                          <div class="creditsContainer-kZN4Fp">
-                            <div class="creditsContent-piPVgX">
+                          <div class="creditsContainer">
+                            <div class="creditsContent">
                               <div class="creditsInnerContent-ybfrhd">
                                 <span>赠送</span>
-                                <span class="creditsNumber-em42d3">{{ Number(plan.bonusPoints || 0) }}</span>
+                                <span class="creditsNumber">{{ Number(plan.bonusPoints || 0) }}</span>
                                 <span>积分</span>
                               </div>
                             </div>
-                            <div class="creditsDesc-irHa5p">{{ getMembershipCreditDesc(plan) }}</div>
+                            <div class="creditsDesc">{{ getMembershipCreditDesc(plan) }}</div>
                           </div>
 
-                          <div class="benefitsDesc-qy_Zwm">
+                          <div class="benefitsDesc">
                             <div v-for="benefit in getPlanBenefits(plan)" :key="benefit">
                               <svg viewBox="0 0 12 20" aria-hidden="true"><path fill="currentColor" d="M4.704 15.122L1.27 11.69l-1.06 1.06 4.494 4.493L11.79 10.157l-1.06-1.06z" /></svg>
                               <span>{{ benefit }}</span>
@@ -123,34 +123,34 @@
                     </div>
                   </div>
 
-                  <div v-else-if="activeTab === 'recharge'" class="priceListContainer-yZzGFk">
+                  <div v-else-if="activeTab === 'recharge'" class="priceListContainer">
                     <div
                       v-for="(item, itemIndex) in rechargeDisplayPackages"
                       :key="String(item.id)"
-                      class="priceListItem-jmLrWu"
+                      class="priceListItem"
                     >
-                      <div class="price-list-item-wrapper-QTu1QM">
-                        <div class="priceListItemContent-f8yA2T">
-                          <div class="priceTopWrapper-PO1sPk">
-                            <div class="priceTop-FYHAcm">
-                              <div class="priceTitle-xo_cbl">
-                                <div class="levelName-kcprWP">{{ String(item.name || item.label || '积分包') }}</div>
-                                <div v-if="isFeaturedRecharge(item, itemIndex)" class="bestPlan-fJd80q">多送</div>
+                      <div class="price-list-item-wrapper">
+                        <div class="priceListItemContent">
+                          <div class="priceTopWrapper">
+                            <div class="priceTop">
+                              <div class="priceTitle">
+                                <div class="levelName">{{ String(item.name || item.label || '积分包') }}</div>
+                                <div v-if="isFeaturedRecharge(item, itemIndex)" class="bestPlan">多送</div>
                               </div>
-                              <div class="priceContainer-EtMXeH">
-                                <div class="priceTips-dLW7oc priceTipsWithFixedCurrencySymbolSize-XQdawj">
+                              <div class="priceContainer">
+                                <div class="priceTips priceTipsWithFixedCurrencySymbolSize">
                                   <span>{{ Number(item.points || 0) }}</span>
                                 </div>
-                                <div class="cycleTips-r_gMtv">售价 {{ formatMoney(item.price) }}</div>
+                                <div class="cycleTips">售价 {{ formatMoney(item.price) }}</div>
                               </div>
-                              <div class="priceDesc-yOCFse">{{ getRechargeDesc(item) }}</div>
+                              <div class="priceDesc">{{ getRechargeDesc(item) }}</div>
                             </div>
                           </div>
 
-                          <div class="btnContainer-lv1ARI btnContainerWithoutAutoRenewDesc-f6J_Ai">
-                            <div class="btnContainer-lv1ARI">
+                          <div class="btnContainer btnContainerWithoutAutoRenewDesc">
+                            <div class="btnContainer">
                               <button
-                                class="priceButton-MfMZpC priceButtonWithResourcePositionMaterial-nKxJNx mweb-button-default"
+                                class="priceButton priceButtonWithResourcePositionMaterial mweb-button-default"
                                 :class="getRechargeButtonClass(item, itemIndex)"
                                 type="button"
                                 :disabled="submitting"
@@ -161,18 +161,18 @@
                             </div>
                           </div>
 
-                          <div class="creditsContainer-kZN4Fp">
-                            <div class="creditsContent-piPVgX">
+                          <div class="creditsContainer">
+                            <div class="creditsContent">
                               <div class="creditsInnerContent-ybfrhd">
                                 <span>赠送</span>
-                                <span class="creditsNumber-em42d3">{{ Number(item.bonusPoints || 0) }}</span>
+                                <span class="creditsNumber">{{ Number(item.bonusPoints || 0) }}</span>
                                 <span>积分</span>
                               </div>
                             </div>
-                            <div class="creditsDesc-irHa5p">{{ getRechargeCreditDesc(item) }}</div>
+                            <div class="creditsDesc">{{ getRechargeCreditDesc(item) }}</div>
                           </div>
 
-                          <div class="benefitsDesc-qy_Zwm">
+                          <div class="benefitsDesc">
                             <div v-for="benefit in getRechargeBenefits(item)" :key="benefit">
                               <svg viewBox="0 0 12 20" aria-hidden="true"><path fill="currentColor" d="M4.704 15.122L1.27 11.69l-1.06 1.06 4.494 4.493L11.79 10.157l-1.06-1.06z" /></svg>
                               <span>{{ benefit }}</span>
@@ -183,51 +183,51 @@
                     </div>
                   </div>
 
-                  <div v-else-if="activeTab === 'checkin'" class="priceListContainer-yZzGFk checkinLayout-canana">
-                    <div class="priceListItem-jmLrWu checkinDashboardCard-canana">
-                      <div class="price-list-item-wrapper-QTu1QM">
-                        <div class="priceListItemContent-f8yA2T checkinDashboardContent-canana">
-                          <div class="priceTopWrapper-PO1sPk">
-                            <div class="priceTop-FYHAcm checkinDashboardHead-canana">
-                              <div class="priceTitle-xo_cbl">
-                                <div class="levelName-kcprWP">{{ getRewardRuleName(primaryRewardRule) }}</div>
-                                <div class="bestPlan-fJd80q">限时可领</div>
+                  <div v-else-if="activeTab === 'checkin'" class="priceListContainer checkinLayout-canana">
+                    <div class="priceListItem checkinDashboardCard-canana">
+                      <div class="price-list-item-wrapper">
+                        <div class="priceListItemContent checkinDashboardContent-canana">
+                          <div class="priceTopWrapper">
+                            <div class="priceTop checkinDashboardHead-canana">
+                              <div class="priceTitle">
+                                <div class="levelName">{{ getRewardRuleName(primaryRewardRule) }}</div>
+                                <div class="bestPlan">限时可领</div>
                               </div>
-                              <div class="priceDesc-yOCFse checkinDashboardDesc-canana">{{ hasCheckedInToday ? '今日福利已到账，明日 0 点后可继续领取签到积分。' : '每日签到可领专属积分，连续参与更有日常活跃氛围。' }}</div>
+                              <div class="priceDesc checkinDashboardDesc-canana">{{ hasCheckedInToday ? '今日福利已到账，明日 0 点后可继续领取签到积分。' : '每日签到可领专属积分，连续参与更有日常活跃氛围。' }}</div>
                             </div>
                           </div>
 
-                          <div class="creditsContainer-kZN4Fp checkinDashboardHero-canana">
+                          <div class="creditsContainer checkinDashboardHero-canana">
                             <div class="checkinDashboardAmount-canana">
-                              <div class="priceTips-dLW7oc priceTipsWithFixedCurrencySymbolSize-XQdawj">
+                              <div class="priceTips priceTipsWithFixedCurrencySymbolSize">
                                 <span>{{ Number(primaryRewardRule.rewardPoints || 0) }}</span>
                               </div>
-                              <div class="cycleTips-r_gMtv">今日签到礼包</div>
+                              <div class="cycleTips">今日签到礼包</div>
                             </div>
                             <div class="checkinDashboardMeta-canana">
-                              <div class="creditsContent-piPVgX">
+                              <div class="creditsContent">
                                 <div class="creditsInnerContent-ybfrhd">
                                   <span>当前积分</span>
-                                  <span class="creditsNumber-em42d3">{{ Number(pointsBalance || 0) }}</span>
+                                  <span class="creditsNumber">{{ Number(pointsBalance || 0) }}</span>
                                 </div>
                               </div>
-                              <div class="creditsDesc-irHa5p">{{ currentCheckinRecord ? `最近领取：${formatDate(currentCheckinRecord.createdAt || currentCheckinRecord.checkinAt)}` : '今日福利待领取，点击右侧按钮立即到账。' }}</div>
+                              <div class="creditsDesc">{{ currentCheckinRecord ? `最近领取：${formatDate(currentCheckinRecord.createdAt || currentCheckinRecord.checkinAt)}` : '今日福利待领取，点击右侧按钮立即到账。' }}</div>
                             </div>
                             <div class="checkinDashboardAction-canana">
                               <button
-                                class="priceButton-MfMZpC priceButtonWithResourcePositionMaterial-nKxJNx mweb-button-default checkinActionButton-canana"
-                                :class="hasCheckedInToday ? 'freeButton-jEPOwF disabled' : 'recommendButton-DTYbz5'"
+                                class="priceButton priceButtonWithResourcePositionMaterial mweb-button-default checkinActionButton-canana"
+                                :class="hasCheckedInToday ? 'freeButton disabled' : 'recommendButton'"
                                 type="button"
                                 :disabled="submitting || hasCheckedInToday"
                                 @click="handleCheckin"
                               >
                                 {{ hasCheckedInToday ? '今日已领取' : '立即领取' }}
                               </button>
-                              <div class="creditsDesc-irHa5p">{{ hasCheckedInToday ? '今日奖励已发放，明天记得再来打卡。' : '领取成功后积分将实时发放到账户。' }}</div>
+                              <div class="creditsDesc">{{ hasCheckedInToday ? '今日奖励已发放，明天记得再来打卡。' : '领取成功后积分将实时发放到账户。' }}</div>
                             </div>
                           </div>
 
-                          <div class="benefitsDesc-qy_Zwm checkinDashboardBenefits-canana">
+                          <div class="benefitsDesc checkinDashboardBenefits-canana">
                             <div v-for="benefit in getRewardBenefits(primaryRewardRule)" :key="benefit">
                               <svg viewBox="0 0 12 20" aria-hidden="true"><path fill="currentColor" d="M4.704 15.122L1.27 11.69l-1.06 1.06 4.494 4.493L11.79 10.157l-1.06-1.06z" /></svg>
                               <span>{{ benefit }}</span>
@@ -238,13 +238,13 @@
                             <div
                               v-for="rule in secondaryRewardRules"
                               :key="String(rule.id)"
-                              class="creditsContainer-kZN4Fp checkinRulePanel-canana"
+                              class="creditsContainer checkinRulePanel-canana"
                             >
-                              <div class="priceTitle-xo_cbl">
-                                <div class="levelName-kcprWP">{{ getRewardRuleName(rule) }}</div>
+                              <div class="priceTitle">
+                                <div class="levelName">{{ getRewardRuleName(rule) }}</div>
                               </div>
-                              <div class="priceDesc-yOCFse">{{ getRewardRuleMeta(rule) }}</div>
-                              <div class="benefitsDesc-qy_Zwm checkinRuleBenefits-canana">
+                              <div class="priceDesc">{{ getRewardRuleMeta(rule) }}</div>
+                              <div class="benefitsDesc checkinRuleBenefits-canana">
                                 <div v-for="benefit in getRewardBenefits(rule)" :key="benefit">
                                   <svg viewBox="0 0 12 20" aria-hidden="true"><path fill="currentColor" d="M4.704 15.122L1.27 11.69l-1.06 1.06 4.494 4.493L11.79 10.157l-1.06-1.06z" /></svg>
                                   <span>{{ benefit }}</span>
@@ -257,35 +257,35 @@
                     </div>
                   </div>
 
-                  <div v-else class="priceListContainer-yZzGFk redeemLayout-canana" :style="getGridStyle(Math.max(redeemDisplayRecords.length + 1, 2))">
-                    <div class="priceListItem-jmLrWu redeemEntryCard-canana">
-                      <div class="price-list-item-wrapper-QTu1QM">
-                        <div class="priceListItemContent-f8yA2T redeemEntryContent-canana">
-                          <div class="priceTopWrapper-PO1sPk">
-                            <div class="priceTop-FYHAcm redeemEntryHead-canana">
-                              <div class="priceTitle-xo_cbl">
-                                <div class="levelName-kcprWP">卡密兑换</div>
-                                <div class="bestPlan-fJd80q">立即生效</div>
+                  <div v-else class="priceListContainer redeemLayout-canana" :style="getGridStyle(Math.max(redeemDisplayRecords.length + 1, 2))">
+                    <div class="priceListItem redeemEntryCard-canana">
+                      <div class="price-list-item-wrapper">
+                        <div class="priceListItemContent redeemEntryContent-canana">
+                          <div class="priceTopWrapper">
+                            <div class="priceTop redeemEntryHead-canana">
+                              <div class="priceTitle">
+                                <div class="levelName">卡密兑换</div>
+                                <div class="bestPlan">立即生效</div>
                               </div>
-                              <div class="priceDesc-yOCFse redeemEntryDesc-canana">输入卡密后可兑换会员天数或积分奖励，权益会实时发放到账户。</div>
+                              <div class="priceDesc redeemEntryDesc-canana">输入卡密后可兑换会员天数或积分奖励，权益会实时发放到账户。</div>
                             </div>
                           </div>
 
-                          <div class="creditsContainer-kZN4Fp redeemHero-canana">
+                          <div class="creditsContainer redeemHero-canana">
                             <div class="redeemHeroStat-canana">
-                              <div class="priceTips-dLW7oc priceTipsWithFixedCurrencySymbolSize-XQdawj">
+                              <div class="priceTips priceTipsWithFixedCurrencySymbolSize">
                                 <span>{{ Number(pointsBalance || 0) }}</span>
                               </div>
-                              <div class="cycleTips-r_gMtv">当前积分</div>
+                              <div class="cycleTips">当前积分</div>
                             </div>
-                            <div class="creditsDesc-irHa5p">支持兑换会员时长、积分奖励等后台配置权益。</div>
+                            <div class="creditsDesc">支持兑换会员时长、积分奖励等后台配置权益。</div>
                           </div>
 
-                          <div class="creditsContainer-kZN4Fp redeemForm-canana">
+                          <div class="creditsContainer redeemForm-canana">
                             <div class="redeemInputRow-canana">
                               <input v-model="redeemCodeValue" type="text" placeholder="请输入卡密" />
                               <button
-                                class="priceButton-MfMZpC priceButtonWithResourcePositionMaterial-nKxJNx recommendButton-DTYbz5 mweb-button-default redeemActionButton-canana"
+                                class="priceButton priceButtonWithResourcePositionMaterial recommendButton mweb-button-default redeemActionButton-canana"
                                 type="button"
                                 :disabled="submitting"
                                 @click="handleRedeemCode"
@@ -293,10 +293,10 @@
                                 立即兑换
                               </button>
                             </div>
-                            <div class="creditsDesc-irHa5p">卡密区分大小写，兑换成功后将自动刷新当前权益。</div>
+                            <div class="creditsDesc">卡密区分大小写，兑换成功后将自动刷新当前权益。</div>
                           </div>
 
-                          <div class="benefitsDesc-qy_Zwm redeemBenefits-canana">
+                          <div class="benefitsDesc redeemBenefits-canana">
                             <div v-for="benefit in redeemBenefits" :key="benefit">
                               <svg viewBox="0 0 12 20" aria-hidden="true"><path fill="currentColor" d="M4.704 15.122L1.27 11.69l-1.06 1.06 4.494 4.493L11.79 10.157l-1.06-1.06z" /></svg>
                               <span>{{ benefit }}</span>
@@ -309,30 +309,30 @@
                     <div
                       v-for="record in redeemDisplayRecords"
                       :key="String(record.id)"
-                      class="priceListItem-jmLrWu redeemRecordCard-canana"
+                      class="priceListItem redeemRecordCard-canana"
                     >
-                      <div class="price-list-item-wrapper-QTu1QM">
-                        <div class="priceListItemContent-f8yA2T">
-                          <div class="priceTopWrapper-PO1sPk">
-                            <div class="priceTop-FYHAcm redeemRecordHead-canana">
-                              <div class="priceTitle-xo_cbl">
-                                <div class="levelName-kcprWP">{{ getRedeemRecordTitle(record) }}</div>
+                      <div class="price-list-item-wrapper">
+                        <div class="priceListItemContent">
+                          <div class="priceTopWrapper">
+                            <div class="priceTop redeemRecordHead-canana">
+                              <div class="priceTitle">
+                                <div class="levelName">{{ getRedeemRecordTitle(record) }}</div>
                               </div>
-                              <div class="priceDesc-yOCFse">兑换时间 {{ formatDate(record.redeemedAt || record.createdAt) }}</div>
+                              <div class="priceDesc">兑换时间 {{ formatDate(record.redeemedAt || record.createdAt) }}</div>
                             </div>
                           </div>
 
-                          <div class="creditsContainer-kZN4Fp redeemRecordMeta-canana">
-                            <div class="creditsContent-piPVgX">
+                          <div class="creditsContainer redeemRecordMeta-canana">
+                            <div class="creditsContent">
                               <div class="creditsInnerContent-ybfrhd">
                                 <span>状态</span>
-                                <span class="creditsNumber-em42d3">{{ String(record.status || '已生效') }}</span>
+                                <span class="creditsNumber">{{ String(record.status || '已生效') }}</span>
                               </div>
                             </div>
-                            <div class="creditsDesc-irHa5p">{{ String(record.code || '后台卡密记录') }}</div>
+                            <div class="creditsDesc">{{ String(record.code || '后台卡密记录') }}</div>
                           </div>
 
-                          <div class="benefitsDesc-qy_Zwm redeemRecordBenefits-canana">
+                          <div class="benefitsDesc redeemRecordBenefits-canana">
                             <div v-for="benefit in getRedeemRecordBenefits(record)" :key="benefit">
                               <svg viewBox="0 0 12 20" aria-hidden="true"><path fill="currentColor" d="M4.704 15.122L1.27 11.69l-1.06 1.06 4.494 4.493L11.79 10.157l-1.06-1.06z" /></svg>
                               <span>{{ benefit }}</span>
@@ -347,9 +347,9 @@
 
             </div>
 
-            <div class="closeBtnContainer-S1G3nv">
+            <div class="closeBtnContainer">
               <button class="closeBtn-avuQWW" type="button" @click="closeModal" aria-label="关闭营销弹窗">
-                <span class="closeBtnIcon-KXfT1X">×</span>
+                <span class="closeBtnIcon">×</span>
               </button>
             </div>
           </div>
@@ -620,19 +620,19 @@ const getPlanButtonText = (plan: Record<string, any>, planIndex: number) => {
 // 按参考稿的主按钮、普通按钮、禁用按钮三种状态映射。
 const getPlanButtonClass = (plan: Record<string, any>, planIndex: number) => {
   if (isZeroPricePlan(plan)) {
-    return 'freeButton-jEPOwF disabled'
+    return 'freeButton disabled'
   }
   if (isFeaturedPlan(plan, planIndex)) {
-    return 'recommendButton-DTYbz5'
+    return 'recommendButton'
   }
-  return 'freeButton-jEPOwF'
+  return 'freeButton'
 }
 
 const getRechargeButtonClass = (item: Record<string, any>, itemIndex: number) => {
   if (isFeaturedRecharge(item, itemIndex)) {
-    return 'recommendButton-DTYbz5'
+    return 'recommendButton'
   }
-  return 'freeButton-jEPOwF'
+  return 'freeButton'
 }
 
 const getPlanBenefits = (plan: Record<string, any>) => {

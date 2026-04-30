@@ -581,6 +581,7 @@ import {
   type PublicAuthMethod,
 } from '@/api/auth'
 import {
+  createDefaultConversationSettings,
   getAdminSystemConfig,
   saveAdminSystemConfig,
   type SystemConfigPayload,
@@ -833,6 +834,7 @@ const createDefaultSystemForm = (): SystemConfigPayload => ({
       { key: 'stopped', label: '已停止', percent: 100, showPercent: false, description: '任务已停止' },
     ],
   },
+  conversationSettings: createDefaultConversationSettings(),
 })
 
 const createDefaultGenerationProgressStages = () => createDefaultSystemForm().generationProgressSettings.stages.map(item => ({ ...item }))
@@ -870,6 +872,7 @@ const applySystemForm = (value: SystemConfigPayload) => {
   systemForm.loginSettings.welcomeSubtitle = value.loginSettings.welcomeSubtitle
   systemForm.generationProgressSettings.enabled = value.generationProgressSettings.enabled
   systemForm.generationProgressSettings.stages = value.generationProgressSettings.stages.map(item => ({ ...item }))
+  systemForm.conversationSettings = JSON.parse(JSON.stringify(value.conversationSettings || createDefaultConversationSettings()))
 }
 
 // 把后端登录方式配置映射成后台表单结构。
@@ -1185,6 +1188,7 @@ const buildSystemPayload = (): SystemConfigPayload => ({
       description: item.description,
     })),
   },
+  conversationSettings: JSON.parse(JSON.stringify(systemForm.conversationSettings)),
 })
 
 // 生成文案配置在后台实时预览成前台徽章文案，便于运营直接确认效果。

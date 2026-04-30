@@ -1,5 +1,9 @@
 import { computed, ref } from 'vue'
-import { getPublicSystemConfig, type SystemConfigPayload } from '@/api/system-config'
+import {
+  createDefaultConversationSettings,
+  getPublicSystemConfig,
+  type SystemConfigPayload,
+} from '@/api/system-config'
 
 const createDefaultSettings = (): SystemConfigPayload => ({
   siteInfo: {
@@ -43,6 +47,7 @@ const createDefaultSettings = (): SystemConfigPayload => ({
       { key: 'stopped', label: '已停止', percent: 100, showPercent: false, description: '任务已停止' },
     ],
   },
+  conversationSettings: createDefaultConversationSettings(),
 })
 
 const publicSystemSettings = ref<SystemConfigPayload>(createDefaultSettings())

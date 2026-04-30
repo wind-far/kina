@@ -21,11 +21,47 @@ interface Props {
   placement?: Placement
   // 是否只显示图标（侧边栏模式）
   iconOnly?: boolean
+  // 是否显示模型选择器
+  showModelSelector?: boolean
+  // 是否显示助手选择器
+  showAssistantSelector?: boolean
+  // 默认模型
+  defaultModelKey?: string
+  // 允许模型白名单
+  allowedModelKeys?: string[]
+  // 默认助手
+  defaultAssistantKey?: string
+  // 允许助手白名单
+  allowedAssistantKeys?: string[]
+  // 自动按钮是否显示
+  showAutoAction?: boolean
+  // 自动按钮默认开关
+  autoActionEnabled?: boolean
+  // 灵感搜索是否显示
+  showInspirationAction?: boolean
+  // 灵感搜索默认开关
+  inspirationActionEnabled?: boolean
+  // 创意设计是否显示
+  showCreativeDesignAction?: boolean
+  // 创意设计默认开关
+  creativeDesignActionEnabled?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   placement: 'auto',
-  iconOnly: false
+  iconOnly: false,
+  showModelSelector: true,
+  showAssistantSelector: true,
+  defaultModelKey: '',
+  allowedModelKeys: () => [],
+  defaultAssistantKey: 'general',
+  allowedAssistantKeys: () => [],
+  showAutoAction: true,
+  autoActionEnabled: true,
+  showInspirationAction: true,
+  inspirationActionEnabled: false,
+  showCreativeDesignAction: true,
+  creativeDesignActionEnabled: false,
 })
 
 // 定义事件
@@ -42,8 +78,9 @@ interface AgentSkillOption {
 }
 
 // 功能开关状态
-const inspirationSearchEnabled = ref(true)
-const creativeDesignEnabled = ref(true)
+const autoMode = ref(props.autoActionEnabled !== false)
+const inspirationSearchEnabled = ref(props.inspirationActionEnabled)
+const creativeDesignEnabled = ref(props.creativeDesignActionEnabled)
 
 // 技能选择
 const skillOptions = ref<AgentSkillOption[]>(listEnabledAgentSkills())
@@ -60,7 +97,7 @@ const readStoredAgentToolbarState = () => {
 }
 
 const storedAgentToolbarState = readStoredAgentToolbarState()
-const currentSkill = ref(typeof storedAgentToolbarState?.skill === 'string' ? storedAgentToolbarState.skill : 'general')
+const currentSkill = ref(typeof storedAgentToolbarState?.skill === 'string' ? storedAgentToolbarState.skill : props.defaultAssistantKey)
 const isSkillSelectOpen = ref(false)
 const skillTriggerRef = ref<HTMLElement | null>(null)
 
@@ -70,16 +107,32 @@ const currentSkillLabel = computed(() => {
 })
 
 const visibleSkillOptions = computed(() => {
+  const allowedSkillKeys = Array.isArray(props.allowedAssistantKeys) && props.allowedAssistantKeys.length
+    ? props.allowedAssistantKeys.map(item => String(item || '').trim()).filter(Boolean)
+    : []
+  const nextOptions = allowedSkillKeys.length
+    ? skillOptions.value.filter(option => allowedSkillKeys.includes(option.value))
+    : skillOptions.value
+
   if (currentSkill.value === 'general') {
-    return skillOptions.value.filter(option => option.value !== 'general')
+    return nextOptions.filter(option => option.value !== 'general')
   }
-  return skillOptions.value
+  return nextOptions
 })
 
 // 模型选择
-const chatModels = computed(() =>
-  getAllChatModels().map((m: any) => ({ value: m.key, label: m.label }))
-)
+const chatModels = computed(() => {
+  const allowedModelKeys = Array.isArray(props.allowedModelKeys) && props.allowedModelKeys.length
+    ? props.allowedModelKeys.map(item => String(item || '').trim()).filter(Boolean)
+    : []
+
+  const allModels = getAllChatModels().map((m: any) => ({ value: m.key, label: m.label }))
+  const nextModels = allowedModelKeys.length
+    ? allModels.filter(item => allowedModelKeys.includes(item.value))
+    : allModels
+
+  return nextModels.length ? nextModels : allModels
+})
 const currentModel = ref(getAgentModel())
 const isModelSelectOpen = ref(false)
 const modelTriggerRef = ref<HTMLElement | null>(null)
@@ -95,7 +148,7 @@ watch(
     const values = options.map(item => item.value)
     if (!values.length) return
     if (!values.includes(currentModel.value)) {
-      currentModel.value = getAgentModel() || getDefaultChatModelKey() || values[0]
+      currentModel.value = props.defaultModelKey || getAgentModel() || getDefaultChatModelKey() || values[0]
     }
   },
   { immediate: true },
@@ -105,11 +158,70 @@ onMounted(() => {
   void loadPublicModelCatalog()
   void loadPublicSkillCatalog().then((skills) => {
     skillOptions.value = listEnabledAgentSkills()
-    if (!skills.some(item => item.skillKey === currentSkill.value)) {
-      currentSkill.value = skills[0]?.skillKey || 'general'
+    const allowedSkillKeys = Array.isArray(props.allowedAssistantKeys) && props.allowedAssistantKeys.length
+      ? props.allowedAssistantKeys.map(item => String(item || '').trim()).filter(Boolean)
+      : []
+    const filteredSkills = allowedSkillKeys.length
+      ? skills.filter(item => allowedSkillKeys.includes(item.skillKey))
+      : skills
+    if (!filteredSkills.some(item => item.skillKey === currentSkill.value)) {
+      currentSkill.value = props.defaultAssistantKey || filteredSkills[0]?.skillKey || 'general'
     }
   })
 })
+
+watch(
+  () => props.defaultModelKey,
+  (value) => {
+    const normalizedValue = String(value || '').trim()
+    if (!normalizedValue) {
+      return
+    }
+
+    if (chatModels.value.some(item => item.value === normalizedValue)) {
+      currentModel.value = normalizedValue
+      setAgentModel(normalizedValue)
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.defaultAssistantKey,
+  (value) => {
+    const normalizedValue = String(value || '').trim()
+    if (!normalizedValue) {
+      return
+    }
+
+    currentSkill.value = normalizedValue
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.autoActionEnabled,
+  (value) => {
+    autoMode.value = value !== false
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.inspirationActionEnabled,
+  (value) => {
+    inspirationSearchEnabled.value = value === true
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.creativeDesignActionEnabled,
+  (value) => {
+    creativeDesignEnabled.value = value === true
+  },
+  { immediate: true },
+)
 
 watch(
   currentSkill,
@@ -176,9 +288,6 @@ const selectSkill = (key: string) => {
 const isPreferencePanelOpen = ref(false)
 const preferenceTriggerRef = ref<HTMLElement | null>(null)
 
-// 自动模式状态
-const autoMode = ref(true)
-
 // 按钮文字（根据 autoMode 显示不同文字）
 const preferenceButtonText = computed(() => autoMode.value ? '自动' : '自定义')
 
@@ -229,7 +338,7 @@ const toggleCreativeDesign = () => {
 <template>
   <div class="agent-toolbar">
     <!-- 模型选择 -->
-    <div ref="modelTriggerRef"
+    <div v-if="showModelSelector" ref="modelTriggerRef"
          :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select-h345g7', 'select-joF5y7', { 'compact-OC0Z0c': iconOnly }]"
          role="combobox"
          tabindex="0"
@@ -270,7 +379,7 @@ const toggleCreativeDesign = () => {
     </div>
 
     <!-- 模型选择弹窗 -->
-    <SelectPopup v-model:visible="isModelSelectOpen" :trigger-ref="modelTriggerRef" :placement="placement" title="对话模型">
+    <SelectPopup v-if="showModelSelector" v-model:visible="isModelSelectOpen" :trigger-ref="modelTriggerRef" :placement="placement" title="对话模型">
       <ul class="lv-select-popup-inner">
         <li v-for="m in chatModels"
             :key="m.value"
@@ -297,7 +406,7 @@ const toggleCreativeDesign = () => {
     </SelectPopup>
 
     <!-- 技能选择器 -->
-    <span class="lv-badge skill-select-badge-nf8J3A">
+    <span v-if="showAssistantSelector" class="lv-badge skill-select-badge-nf8J3A">
       <div ref="skillTriggerRef"
            :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select-h345g7', 'select-joF5y7', 'skill-select-k92QxV', { 'compact-OC0Z0c': iconOnly, 'active-P7cL4x': isSkillSelectOpen }]"
            role="combobox"
@@ -339,7 +448,7 @@ const toggleCreativeDesign = () => {
     </span>
 
     <!-- 技能选择弹窗 -->
-    <SelectPopup v-model:visible="isSkillSelectOpen" :trigger-ref="skillTriggerRef" :placement="placement" popup-class="skill-select-popup-shell-dark-X2p9Qa" title="">
+    <SelectPopup v-if="showAssistantSelector" v-model:visible="isSkillSelectOpen" :trigger-ref="skillTriggerRef" :placement="placement" popup-class="skill-select-popup-shell-dark-X2p9Qa" title="">
       <div class="skill-select-shell-P9dLm4">
         <div class="skill-select-title-T5mQ2s">选择技能</div>
         <ul class="lv-select-popup-inner skill-select-popup-J8Tukj">
@@ -370,7 +479,7 @@ const toggleCreativeDesign = () => {
     </SelectPopup>
 
     <!-- 自动按钮（打开生成偏好面板） -->
-    <button ref="preferenceTriggerRef"
+    <button v-if="showAutoAction" ref="preferenceTriggerRef"
             :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', { 'lv-btn-icon-only': iconOnly, 'active-Rs99sz active-mrQmUS': isPreferencePanelOpen }]"
             type="button"
             :title="iconOnly ? preferenceButtonText : undefined"
@@ -389,10 +498,10 @@ const toggleCreativeDesign = () => {
     </button>
 
     <!-- 生成偏好面板 -->
-    <PreferencePanel v-model:visible="isPreferencePanelOpen" v-model:autoMode="autoMode" :trigger-ref="preferenceTriggerRef" :placement="placement" />
+    <PreferencePanel v-if="showAutoAction" v-model:visible="isPreferencePanelOpen" v-model:autoMode="autoMode" :trigger-ref="preferenceTriggerRef" :placement="placement" />
 
     <!-- 灵感搜索按钮 -->
-    <button :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'switch-button-GPRaGT', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': inspirationSearchEnabled }]"
+    <button v-if="showInspirationAction" :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'switch-button-GPRaGT', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': inspirationSearchEnabled }]"
             type="button"
             :title="iconOnly ? '灵感搜索' : undefined"
             @click="toggleInspirationSearch">
@@ -411,7 +520,7 @@ const toggleCreativeDesign = () => {
     </button>
 
     <!-- 创意设计按钮 -->
-    <button :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'switch-button-GPRaGT', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': creativeDesignEnabled }]"
+    <button v-if="showCreativeDesignAction" :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'switch-button-GPRaGT', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': creativeDesignEnabled }]"
             type="button"
             :title="iconOnly ? '创意设计' : undefined"
             @click="toggleCreativeDesign">

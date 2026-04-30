@@ -2,6 +2,7 @@
 import { ref, computed, onUnmounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
+import { useSystemSettingsStore } from '@/stores/system-settings'
 import { getModelByName } from '@/config/models'
 
 // 导入子组件
@@ -78,19 +79,49 @@ const inputValue = ref('')
 // 登录态与全局登录弹窗。
 const authStore = useAuthStore()
 const { openLoginModal } = useLoginModalStore()
+const { publicSystemSettings } = useSystemSettingsStore()
 
 // 从本地恢复最近一次创作类型，详情页等显式传入初始值时优先使用外部值。
 const readStoredCreationType = (): CreationType | null => {
   if (typeof window === 'undefined') return null
 
   const rawValue = String(window.localStorage.getItem(GENERATOR_CREATION_TYPE_STORAGE_KEY) || '').trim()
-  return ['agent', 'image', 'video', 'digital-human'].includes(rawValue)
+  return ['agent', 'image', 'video', 'digital-human', 'motion'].includes(rawValue)
     ? rawValue as CreationType
     : null
 }
 
 // 当前创作类型（有 initialCreationType 时与之一致，避免先闪默认 Agent）
-const currentType = ref<CreationType>(props.initialCreationType ?? readStoredCreationType() ?? 'agent')
+const conversationEntrySettings = computed(() => publicSystemSettings.value.conversationSettings.entryDisplay)
+const inputSettings = computed(() => conversationEntrySettings.value.input)
+const availableModeOptions = computed(() => {
+  const options = Array.isArray(conversationEntrySettings.value?.mode?.options)
+    ? conversationEntrySettings.value.mode.options
+    : []
+
+  const nextOptions = options
+    .map(item => ({
+      value: String(item.value || '').trim() as CreationType,
+      label: String(item.label || '').trim(),
+    }))
+    .filter(item => ['agent', 'image', 'video', 'digital-human', 'motion'].includes(item.value) && item.label)
+
+  return nextOptions.length
+    ? nextOptions
+    : [{ value: 'agent' as CreationType, label: 'Agent 模式' }]
+})
+
+const readDefaultCreationType = () => {
+  const configuredMode = String(conversationEntrySettings.value?.mode?.defaultMode || '').trim()
+  if (['agent', 'image', 'video', 'digital-human', 'motion'].includes(configuredMode)) {
+    return configuredMode as CreationType
+  }
+
+  return 'agent' as CreationType
+}
+
+const storedCreationType = readStoredCreationType()
+const currentType = ref<CreationType>(props.initialCreationType ?? storedCreationType ?? readDefaultCreationType())
 
 // 组件引用（用于弹窗互斥）
 const typeSelectorRef = ref<InstanceType<typeof TypeSelector> | null>(null)
@@ -138,6 +169,31 @@ watch(
     window.localStorage.setItem(GENERATOR_CREATION_TYPE_STORAGE_KEY, type)
   },
   { immediate: true }
+)
+
+watch(
+  availableModeOptions,
+  (options) => {
+    if (!options.some(item => item.value === currentType.value)) {
+      currentType.value = options[0]?.value || 'agent'
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => conversationEntrySettings.value.mode.defaultMode,
+  (value) => {
+    if (props.initialCreationType || storedCreationType) {
+      return
+    }
+
+    const normalizedValue = String(value || '').trim()
+    if (['agent', 'image', 'video', 'digital-human', 'motion'].includes(normalizedValue)) {
+      currentType.value = normalizedValue as CreationType
+    }
+  },
+  { immediate: true },
 )
 
 watch(
@@ -250,12 +306,13 @@ defineExpose({
 
 // 根据创作类型返回不同的 placeholder
 const placeholder = computed(() => {
+  const configuredPlaceholder = String(inputSettings.value?.placeholder || '').trim()
   if (isCollapsed.value) {
-    return '说说今天想做点什么'
+    return configuredPlaceholder || '说说今天想做点什么'
   }
   switch (currentType.value) {
     case 'agent':
-      return '说说今天想做点什么'
+      return configuredPlaceholder || '说说今天想做点什么'
     case 'image':
       return '请描述你想生成的图片'
     case 'video':
@@ -674,16 +731,47 @@ onUnmounted(() => {
             <!-- 折叠状态：创作类型选择 + Agent 工具栏 -->
             <template v-if="isCollapsed && !isSidebar">
               <!-- 类型选择器 -->
-              <TypeSelector ref="typeSelectorRef" v-model="currentType" :placement="popupPlacement" @open="handleTypeSelectorOpen" />
+              <TypeSelector
+                v-if="conversationEntrySettings.mode.enabled"
+                ref="typeSelectorRef"
+                v-model="currentType"
+                :options="availableModeOptions"
+                :placement="popupPlacement"
+                @open="handleTypeSelectorOpen"
+              />
 
               <!-- Agent 工具栏（折叠状态下显示） -->
-              <AgentToolbar ref="agentToolbarRef" :placement="popupPlacement" @panelOpen="handleAgentToolbarPanelOpen" />
+              <AgentToolbar
+                ref="agentToolbarRef"
+                :placement="popupPlacement"
+                :show-model-selector="conversationEntrySettings.modelSelector.enabled"
+                :show-assistant-selector="conversationEntrySettings.assistantSelector.enabled"
+                :default-model-key="conversationEntrySettings.modelSelector.defaultModelKey"
+                :allowed-model-keys="conversationEntrySettings.modelSelector.allowedModelKeys"
+                :default-assistant-key="conversationEntrySettings.assistantSelector.defaultAssistantKey"
+                :allowed-assistant-keys="conversationEntrySettings.assistantSelector.allowedAssistantKeys"
+                :show-auto-action="conversationEntrySettings.actions.auto.visible"
+                :auto-action-enabled="conversationEntrySettings.actions.auto.defaultEnabled"
+                :show-inspiration-action="conversationEntrySettings.actions.inspiration.visible"
+                :inspiration-action-enabled="conversationEntrySettings.actions.inspiration.defaultEnabled"
+                :show-creative-design-action="conversationEntrySettings.actions.creativeDesign.visible"
+                :creative-design-action-enabled="conversationEntrySettings.actions.creativeDesign.defaultEnabled"
+                @panelOpen="handleAgentToolbarPanelOpen"
+              />
             </template>
 
             <!-- 展开状态或侧边栏模式：根据创作类型显示不同工具栏 -->
             <template v-else>
               <!-- 类型选择器（侧边栏模式使用紧凑模式） -->
-              <TypeSelector ref="typeSelectorExpandRef" v-model="currentType" :placement="popupPlacement" :compact="isSidebar" @open="handleTypeSelectorOpen" />
+              <TypeSelector
+                v-if="conversationEntrySettings.mode.enabled"
+                ref="typeSelectorExpandRef"
+                v-model="currentType"
+                :options="availableModeOptions"
+                :placement="popupPlacement"
+                :compact="isSidebar"
+                @open="handleTypeSelectorOpen"
+              />
 
               <!-- 附件按钮（仅侧边栏 Agent 模式显示） -->
               <button v-if="isSidebar && currentType === 'agent'"
@@ -702,7 +790,25 @@ onUnmounted(() => {
               </button>
 
               <!-- Agent 模式工具栏 -->
-              <AgentToolbar v-if="currentType === 'agent'" ref="agentToolbarExpandRef" :placement="popupPlacement" :icon-only="isSidebar" @panelOpen="handleAgentToolbarPanelOpen" />
+              <AgentToolbar
+                v-if="currentType === 'agent'"
+                ref="agentToolbarExpandRef"
+                :placement="popupPlacement"
+                :icon-only="isSidebar"
+                :show-model-selector="conversationEntrySettings.modelSelector.enabled"
+                :show-assistant-selector="conversationEntrySettings.assistantSelector.enabled"
+                :default-model-key="conversationEntrySettings.modelSelector.defaultModelKey"
+                :allowed-model-keys="conversationEntrySettings.modelSelector.allowedModelKeys"
+                :default-assistant-key="conversationEntrySettings.assistantSelector.defaultAssistantKey"
+                :allowed-assistant-keys="conversationEntrySettings.assistantSelector.allowedAssistantKeys"
+                :show-auto-action="conversationEntrySettings.actions.auto.visible"
+                :auto-action-enabled="conversationEntrySettings.actions.auto.defaultEnabled"
+                :show-inspiration-action="conversationEntrySettings.actions.inspiration.visible"
+                :inspiration-action-enabled="conversationEntrySettings.actions.inspiration.defaultEnabled"
+                :show-creative-design-action="conversationEntrySettings.actions.creativeDesign.visible"
+                :creative-design-action-enabled="conversationEntrySettings.actions.creativeDesign.defaultEnabled"
+                @panelOpen="handleAgentToolbarPanelOpen"
+              />
 
               <!-- 图片生成工具栏 -->
               <ImageToolbar v-else-if="currentType === 'image'" ref="imageToolbarRef" :placement="popupPlacement" :icon-only="isSidebar" />

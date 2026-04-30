@@ -11,6 +11,8 @@ import { isAdminUsersPath } from './admin-users/constants'
 import { handleAdminUsersRequest } from './admin-users/request-handler'
 import { isAdminGenerationSessionsPath } from './admin-generation-sessions/constants'
 import { handleAdminGenerationSessionsRequest } from './admin-generation-sessions/request-handler'
+import { isAdminConversationSettingsPath } from './conversation-settings/constants'
+import { handleAdminConversationSettingsRequest } from './conversation-settings/request-handler'
 import { isAdminDashboardPath } from './admin-dashboard/constants'
 import { handleAdminDashboardRequest } from './admin-dashboard/request-handler'
 import { isAdminMarketingPath } from './admin-marketing/constants'
@@ -395,6 +397,12 @@ const dispatchRequest = async (req: any, res: any) => {
   // 命中后台会话管理接口时返回全站会话与会话明细。
   if (isAdminGenerationSessionsPath(requestPath)) {
     await handleAdminGenerationSessionsRequest(req, res)
+    return
+  }
+
+  // 命中后台会话配置接口时返回会话配置数据。
+  if (isAdminConversationSettingsPath(requestPath)) {
+    await handleAdminConversationSettingsRequest(req, res)
     return
   }
 

@@ -61,7 +61,7 @@
         <div v-else-if="sessions.length === 0" class="admin-empty">当前筛选条件下还没有会话记录。</div>
         <div v-else class="admin-conversation-list">
           <div v-for="session in sessions" :key="session.id" class="admin-conversation-card">
-            <div class="admin-conversation-card__preview">
+            <div v-if="conversationSettings.listDisplay.showCoverImage" class="admin-conversation-card__preview">
               <img
                 v-if="session.coverImageUrl"
                 :src="session.coverImageUrl"
@@ -80,10 +80,10 @@
                     <span class="admin-conversation-card__title">{{ session.title || '未命名会话' }}</span>
                     <span v-if="session.isDefault" class="admin-chip">默认会话</span>
                   </div>
-                  <div class="admin-conversation-card__meta">
-                    用户：{{ session.user.name || '未命名用户' }}
-                    <template v-if="session.user.email">（{{ session.user.email }}）</template>
-                    · 用户 ID：{{ session.user.id }}
+                  <div v-if="conversationSettings.listDisplay.showUserInfo" class="admin-conversation-card__meta">
+                    用户：{{ formatUserName(session.user.name) || '未命名用户' }}
+                    <template v-if="session.user.email">（{{ formatUserEmail(session.user.email) }}）</template>
+                    · 用户 ID：{{ formatUserId(session.user.id) }}
                   </div>
                 </div>
                 <div class="admin-conversation-card__tags">
@@ -94,15 +94,15 @@
                 </div>
               </div>
 
-              <div class="admin-conversation-card__prompt">
+              <div v-if="conversationSettings.listDisplay.showLatestPrompt" class="admin-conversation-card__prompt">
                 {{ session.latestRecord?.prompt || '当前会话下还没有生成记录。' }}
               </div>
 
-              <div class="admin-conversation-card__stats">
-                <span>完成：{{ session.completedRecordCount }}</span>
-                <span>失败：{{ session.failedRecordCount }}</span>
-                <span>进行中：{{ session.runningRecordCount }}</span>
-                <span>最近活跃：{{ formatDate(session.lastRecordAt || session.updatedAt) }}</span>
+              <div v-if="conversationSettings.listDisplay.showStatusStats || conversationSettings.listDisplay.showLastRecordTime" class="admin-conversation-card__stats">
+                <span v-if="conversationSettings.listDisplay.showStatusStats">完成：{{ session.completedRecordCount }}</span>
+                <span v-if="conversationSettings.listDisplay.showStatusStats">失败：{{ session.failedRecordCount }}</span>
+                <span v-if="conversationSettings.listDisplay.showStatusStats">进行中：{{ session.runningRecordCount }}</span>
+                <span v-if="conversationSettings.listDisplay.showLastRecordTime">最近活跃：{{ formatDate(session.lastRecordAt || session.updatedAt) }}</span>
               </div>
 
               <div v-if="session.latestRecord?.error" class="admin-conversation-card__error">
@@ -110,20 +110,20 @@
               </div>
 
               <div class="admin-conversation-card__footer">
-                <div class="admin-conversation-card__meta">
+                <div v-if="conversationSettings.listDisplay.showSessionId" class="admin-conversation-card__meta">
                   会话 ID：{{ session.id }}
                 </div>
                 <div class="admin-list-item__actions">
                   <button class="admin-inline-button" type="button" :disabled="detailLoading" @click="handleOpenDetail(session.id)">
                     查看记录
                   </button>
-                  <button class="admin-inline-button" type="button" :disabled="detailLoading" @click="handleRename(session)">
+                  <button class="admin-inline-button" type="button" :disabled="detailLoading || !conversationSettings.basicRules.allowAdminRename" @click="handleRename(session)">
                     重命名
                   </button>
                   <button
                     class="admin-inline-button admin-inline-button--danger"
                     type="button"
-                    :disabled="detailLoading || session.isDefault"
+                    :disabled="detailLoading || !conversationSettings.basicRules.allowAdminDelete || (!conversationSettings.basicRules.allowDeleteDefaultSession && session.isDefault)"
                     @click="handleDelete(session)"
                   >
                     删除
@@ -160,9 +160,9 @@
               <span v-if="selectedSession.isDefault" class="admin-chip">默认会话</span>
             </div>
             <div class="admin-session-drawer__meta">
-              用户：{{ selectedSession.user.name || '未命名用户' }}
-              <template v-if="selectedSession.user.email">（{{ selectedSession.user.email }}）</template>
-              · 用户 ID：{{ selectedSession.user.id }}
+              用户：{{ formatUserName(selectedSession.user.name) || '未命名用户' }}
+              <template v-if="selectedSession.user.email">（{{ formatUserEmail(selectedSession.user.email) }}）</template>
+              · 用户 ID：{{ formatUserId(selectedSession.user.id) }}
             </div>
             <div class="admin-session-drawer__meta">
               创建时间：{{ formatDate(selectedSession.createdAt) }} · 最近活跃：{{ formatDate(selectedSession.lastRecordAt || selectedSession.updatedAt) }}
@@ -265,6 +265,11 @@ import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue
 import { useAdminListFilters } from '@/composables/useAdminListFilters'
 import { useAdminPagination } from '@/composables/useAdminPagination'
 import {
+  createDefaultConversationSettings,
+  getAdminConversationSettings,
+  type ConversationSettingsConfig,
+} from '@/api/admin-conversation-settings'
+import {
   deleteAdminGenerationSession,
   getAdminGenerationSessionDetail,
   listAdminGenerationSessionRecords,
@@ -279,6 +284,7 @@ import {
 const loading = ref(false)
 const detailLoading = ref(false)
 const sessions = ref<AdminGenerationSessionItem[]>([])
+const conversationSettings = reactive<ConversationSettingsConfig>(createDefaultConversationSettings())
 const summary = reactive({
   totalCount: 0,
   totalPages: 1,
@@ -363,6 +369,40 @@ const filterChipGroups = computed((): AdminFilterChipGroup[] => [
 const errorSessionCount = computed(() => sessions.value.filter(session => session.failedRecordCount > 0).length)
 const runningSessionCount = computed(() => sessions.value.filter(session => session.runningRecordCount > 0).length)
 const defaultSessionCount = computed(() => sessions.value.filter(session => session.isDefault).length)
+
+const applyConversationSettings = (value?: ConversationSettingsConfig | null) => {
+  const nextValue = value || createDefaultConversationSettings()
+  Object.assign(conversationSettings.basicRules, nextValue.basicRules)
+  Object.assign(conversationSettings.listDisplay, nextValue.listDisplay)
+  Object.assign(conversationSettings.entryDisplay.hero, nextValue.entryDisplay.hero)
+  Object.assign(conversationSettings.entryDisplay.input, nextValue.entryDisplay.input)
+  Object.assign(conversationSettings.entryDisplay.mode, {
+    ...nextValue.entryDisplay.mode,
+    options: nextValue.entryDisplay.mode.options.map(item => ({ ...item })),
+  })
+  Object.assign(conversationSettings.entryDisplay.modelSelector, {
+    ...nextValue.entryDisplay.modelSelector,
+    allowedModelKeys: [...nextValue.entryDisplay.modelSelector.allowedModelKeys],
+  })
+  Object.assign(conversationSettings.entryDisplay.assistantSelector, {
+    ...nextValue.entryDisplay.assistantSelector,
+    allowedAssistantKeys: [...nextValue.entryDisplay.assistantSelector.allowedAssistantKeys],
+  })
+  Object.assign(conversationSettings.entryDisplay.actions.auto, nextValue.entryDisplay.actions.auto)
+  Object.assign(conversationSettings.entryDisplay.actions.inspiration, nextValue.entryDisplay.actions.inspiration)
+  Object.assign(conversationSettings.entryDisplay.actions.creativeDesign, nextValue.entryDisplay.actions.creativeDesign)
+  Object.assign(conversationSettings.managementPolicy, nextValue.managementPolicy)
+}
+
+const loadConversationSettings = async () => {
+  try {
+    const result = await getAdminConversationSettings()
+    applyConversationSettings(result)
+    pagination.pageSize = Number(result?.listDisplay?.defaultPageSize || pagination.pageSize)
+  } catch {
+    applyConversationSettings(createDefaultConversationSettings())
+  }
+}
 
 const loadSessions = async () => {
   loading.value = true
@@ -459,6 +499,10 @@ const handleDetailPaginationChange = (payload: { page: number; pageSize: number 
 }
 
 const handleRename = async (session: AdminGenerationSessionItem) => {
+  if (!conversationSettings.basicRules.allowAdminRename) {
+    return
+  }
+
   const { value } = await ElMessageBox.prompt('请输入新的会话名称', '重命名会话', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
@@ -478,6 +522,10 @@ const handleRename = async (session: AdminGenerationSessionItem) => {
 }
 
 const handleDelete = async (session: AdminGenerationSessionItem) => {
+  if (!conversationSettings.basicRules.allowAdminDelete) {
+    return
+  }
+
   await ElMessageBox.confirm(
     `确定删除会话“${session.title}”吗？该会话下的生成记录也会一并移除。`,
     '删除会话',
@@ -510,6 +558,51 @@ const formatDate = (value?: string) => {
   return date.toLocaleString('zh-CN', {
     hour12: false,
   })
+}
+
+const maskMiddle = (value: string, left = 2, right = 2) => {
+  const normalizedValue = String(value || '').trim()
+  if (!normalizedValue) {
+    return ''
+  }
+
+  if (normalizedValue.length <= left + right) {
+    return `${normalizedValue.slice(0, 1)}***`
+  }
+
+  return `${normalizedValue.slice(0, left)}***${normalizedValue.slice(-right)}`
+}
+
+const formatUserName = (value?: string) => {
+  const normalizedValue = String(value || '').trim()
+  if (!conversationSettings.listDisplay.enableUserMasking) {
+    return normalizedValue
+  }
+
+  return maskMiddle(normalizedValue, 1, 1)
+}
+
+const formatUserEmail = (value?: string) => {
+  const normalizedValue = String(value || '').trim()
+  if (!conversationSettings.listDisplay.enableUserMasking) {
+    return normalizedValue
+  }
+
+  const [prefix, domain] = normalizedValue.split('@')
+  if (!domain) {
+    return maskMiddle(normalizedValue, 1, 1)
+  }
+
+  return `${maskMiddle(prefix, 1, 1)}@${domain}`
+}
+
+const formatUserId = (value?: string) => {
+  const normalizedValue = String(value || '').trim()
+  if (!conversationSettings.listDisplay.enableUserMasking) {
+    return normalizedValue
+  }
+
+  return maskMiddle(normalizedValue, 4, 4)
 }
 
 const getSessionStatusLabel = (session: AdminGenerationSessionItem) => {
@@ -576,7 +669,10 @@ const buildRecordTitle = (record: AdminSessionRecordItem) => {
 }
 
 onMounted(() => {
-  void loadSessions()
+  void (async () => {
+    await loadConversationSettings()
+    await loadSessions()
+  })()
 })
 </script>
 

@@ -18,6 +18,11 @@ const creationTypes = [
   { value: 'motion' as CreationType, label: '动作模仿', icon: 'motion' }
 ]
 
+interface TypeOption {
+  value: CreationType
+  label: string
+}
+
 // Props 定义
 interface Props {
   modelValue: CreationType
@@ -25,11 +30,14 @@ interface Props {
   placement?: Placement
   // 是否紧凑模式（只显示图标，用于侧边栏）
   compact?: boolean
+  // 允许显示的创作类型列表
+  options?: TypeOption[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
   placement: 'auto',
-  compact: false
+  compact: false,
+  options: undefined,
 })
 
 // Emits 定义
@@ -59,9 +67,31 @@ defineExpose({
 // 触发器元素引用
 const triggerRef = ref<HTMLElement | null>(null)
 
+const visibleCreationTypes = computed(() => {
+  const sourceOptions = Array.isArray(props.options) && props.options.length
+    ? props.options
+    : creationTypes.map(item => ({
+        value: item.value,
+        label: item.label,
+      }))
+
+  const optionMap = new Map(
+    sourceOptions.map(item => [item.value, String(item.label || '').trim()]),
+  )
+
+  const nextTypes = creationTypes
+    .filter(item => optionMap.has(item.value))
+    .map(item => ({
+      ...item,
+      label: optionMap.get(item.value) || item.label,
+    }))
+
+  return nextTypes.length ? nextTypes : creationTypes
+})
+
 // 获取当前类型配置
 const currentTypeConfig = computed(() =>
-  creationTypes.find(t => t.value === props.modelValue) || creationTypes[0]
+  visibleCreationTypes.value.find(t => t.value === props.modelValue) || visibleCreationTypes.value[0]
 )
 
 // 切换下拉框
@@ -175,7 +205,7 @@ const selectType = (type: CreationType) => {
   <!-- 下拉弹窗 -->
   <SelectPopup v-model:visible="isOpen" :trigger-ref="triggerRef" :placement="placement" title="创作类型">
     <ul class="lv-select-popup-inner">
-      <li v-for="type in creationTypes"
+      <li v-for="type in visibleCreationTypes"
           :key="type.value"
           :class="['lv-select-option', { 'lv-select-option-wrapper-selected': modelValue === type.value }]"
           @click.stop="selectType(type.value)">

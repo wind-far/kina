@@ -1,8 +1,29 @@
 import crypto from 'node:crypto'
 import prisma from '../db/prisma'
-import type { SystemConfigPayload } from './shared'
+import type {
+  SystemConfigPayload,
+  SystemConversationModeOptionPayload,
+  SystemConversationSettingsPayload,
+} from './shared'
 
 const SYSTEM_CONFIG_CODE = 'DEFAULT'
+
+const DEFAULT_CREATION_MODE_OPTIONS = [
+  { value: 'agent', label: 'Agent 模式' },
+  { value: 'image', label: '图片生成' },
+  { value: 'video', label: '视频生成' },
+  { value: 'digital-human', label: '数字人' },
+  { value: 'motion', label: '动作模仿' },
+]
+
+const DEFAULT_ASSISTANT_ALLOWLIST = [
+  'general',
+  'story-short',
+  'marketing-video',
+  'ecommerce-pack',
+  'poster-design',
+  'brand-design',
+]
 
 const createDefaultSystemConfig = () => ({
   siteInfo: {
@@ -46,7 +67,214 @@ const createDefaultSystemConfig = () => ({
       { key: 'stopped', label: '已停止', percent: 100, showPercent: false, description: '任务已停止' },
     ],
   },
+  conversationSettings: {
+    basicRules: {
+      defaultSessionTitle: '新对话',
+      newSessionTitlePrefix: '新对话',
+      sessionTitleMaxLength: 120,
+      defaultSortMode: 'lastRecordAt_desc',
+      allowDeleteDefaultSession: false,
+      allowAdminRename: true,
+      allowAdminDelete: true,
+    },
+    listDisplay: {
+      defaultPageSize: 12,
+      showUserInfo: true,
+      showCoverImage: true,
+      showLatestPrompt: true,
+      showStatusStats: true,
+      showSessionId: true,
+      showLastRecordTime: true,
+      enableUserMasking: false,
+    },
+    entryDisplay: {
+      hero: {
+        enabled: true,
+        title: '你好，想创作什么？',
+        subtitle: '输入一句需求，快速开始图片、视频或智能创作',
+      },
+      input: {
+        placeholder: '说说今天想做点什么',
+        autoResize: true,
+        minRows: 4,
+        maxWidth: 960,
+      },
+      mode: {
+        enabled: true,
+        defaultMode: 'agent',
+        options: DEFAULT_CREATION_MODE_OPTIONS.map(option => ({ ...option })),
+      },
+      modelSelector: {
+        enabled: true,
+        defaultModelKey: '',
+        allowedModelKeys: [],
+        allowSkillOverride: true,
+      },
+      assistantSelector: {
+        enabled: true,
+        defaultAssistantKey: 'general',
+        allowedAssistantKeys: [...DEFAULT_ASSISTANT_ALLOWLIST],
+      },
+      actions: {
+        auto: {
+          visible: true,
+          defaultEnabled: true,
+        },
+        inspiration: {
+          visible: true,
+          defaultEnabled: false,
+        },
+        creativeDesign: {
+          visible: true,
+          defaultEnabled: false,
+        },
+      },
+    },
+    managementPolicy: {
+      allowBatchDelete: true,
+      allowExportSessions: false,
+      autoCleanupEnabled: false,
+      emptySessionRetentionDays: 30,
+      completedSessionRetentionDays: 180,
+      failedSessionRetentionDays: 365,
+      deleteCascadeRecords: true,
+    },
+  },
 })
+
+const normalizeConversationModeOptions = (value: unknown, fallback: SystemConversationModeOptionPayload[]) => {
+  if (!Array.isArray(value)) {
+    return fallback.map(option => ({ ...option }))
+  }
+
+  const options = value
+    .map((item) => ({
+      value: String((item as any)?.value || '').trim(),
+      label: String((item as any)?.label || '').trim(),
+    }))
+    .filter(item => item.value && item.label)
+
+  return options.length ? options : fallback.map(option => ({ ...option }))
+}
+
+const normalizeStringList = (value: unknown, fallback: string[]) => {
+  if (!Array.isArray(value)) {
+    return [...fallback]
+  }
+
+  const items = value
+    .map(item => String(item || '').trim())
+    .filter(Boolean)
+
+  return items.length ? Array.from(new Set(items)) : [...fallback]
+}
+
+export const createDefaultConversationSettings = () => createDefaultSystemConfig().conversationSettings
+
+export const normalizeConversationSettings = (input?: SystemConversationSettingsPayload | null) => {
+  const defaults = createDefaultConversationSettings()
+  const basicRules = readPlainObject(input?.basicRules)
+  const listDisplay = readPlainObject(input?.listDisplay)
+  const entryDisplay = readPlainObject(input?.entryDisplay)
+  const hero = readPlainObject(entryDisplay.hero)
+  const inputSettings = readPlainObject(entryDisplay.input)
+  const mode = readPlainObject(entryDisplay.mode)
+  const modelSelector = readPlainObject(entryDisplay.modelSelector)
+  const assistantSelector = readPlainObject(entryDisplay.assistantSelector)
+  const actions = readPlainObject(entryDisplay.actions)
+  const actionAuto = readPlainObject(actions.auto)
+  const actionInspiration = readPlainObject(actions.inspiration)
+  const actionCreativeDesign = readPlainObject(actions.creativeDesign)
+  const managementPolicy = readPlainObject(input?.managementPolicy)
+
+  return {
+    basicRules: {
+      defaultSessionTitle: String(basicRules.defaultSessionTitle || defaults.basicRules.defaultSessionTitle).trim(),
+      newSessionTitlePrefix: String(basicRules.newSessionTitlePrefix || defaults.basicRules.newSessionTitlePrefix).trim(),
+      sessionTitleMaxLength: Number.isFinite(Number(basicRules.sessionTitleMaxLength))
+        ? Math.max(1, Math.min(200, Number(basicRules.sessionTitleMaxLength)))
+        : defaults.basicRules.sessionTitleMaxLength,
+      defaultSortMode: String(basicRules.defaultSortMode || defaults.basicRules.defaultSortMode).trim() || defaults.basicRules.defaultSortMode,
+      allowDeleteDefaultSession: basicRules.allowDeleteDefaultSession === true,
+      allowAdminRename: basicRules.allowAdminRename !== false,
+      allowAdminDelete: basicRules.allowAdminDelete !== false,
+    },
+    listDisplay: {
+      defaultPageSize: Number.isFinite(Number(listDisplay.defaultPageSize))
+        ? Math.max(1, Math.min(100, Number(listDisplay.defaultPageSize)))
+        : defaults.listDisplay.defaultPageSize,
+      showUserInfo: listDisplay.showUserInfo !== false,
+      showCoverImage: listDisplay.showCoverImage !== false,
+      showLatestPrompt: listDisplay.showLatestPrompt !== false,
+      showStatusStats: listDisplay.showStatusStats !== false,
+      showSessionId: listDisplay.showSessionId !== false,
+      showLastRecordTime: listDisplay.showLastRecordTime !== false,
+      enableUserMasking: listDisplay.enableUserMasking === true,
+    },
+    entryDisplay: {
+      hero: {
+        enabled: hero.enabled !== false,
+        title: String(hero.title || defaults.entryDisplay.hero.title).trim(),
+        subtitle: String(hero.subtitle || '').trim(),
+      },
+      input: {
+        placeholder: String(inputSettings.placeholder || defaults.entryDisplay.input.placeholder).trim(),
+        autoResize: inputSettings.autoResize !== false,
+        minRows: Number.isFinite(Number(inputSettings.minRows))
+          ? Math.max(1, Math.min(12, Number(inputSettings.minRows)))
+          : defaults.entryDisplay.input.minRows,
+        maxWidth: Number.isFinite(Number(inputSettings.maxWidth))
+          ? Math.max(320, Math.min(1600, Number(inputSettings.maxWidth)))
+          : defaults.entryDisplay.input.maxWidth,
+      },
+      mode: {
+        enabled: mode.enabled !== false,
+        defaultMode: String(mode.defaultMode || defaults.entryDisplay.mode.defaultMode).trim(),
+        options: normalizeConversationModeOptions(mode.options, defaults.entryDisplay.mode.options),
+      },
+      modelSelector: {
+        enabled: modelSelector.enabled !== false,
+        defaultModelKey: String(modelSelector.defaultModelKey || '').trim(),
+        allowedModelKeys: normalizeStringList(modelSelector.allowedModelKeys, defaults.entryDisplay.modelSelector.allowedModelKeys),
+        allowSkillOverride: modelSelector.allowSkillOverride !== false,
+      },
+      assistantSelector: {
+        enabled: assistantSelector.enabled !== false,
+        defaultAssistantKey: String(assistantSelector.defaultAssistantKey || defaults.entryDisplay.assistantSelector.defaultAssistantKey).trim(),
+        allowedAssistantKeys: normalizeStringList(assistantSelector.allowedAssistantKeys, defaults.entryDisplay.assistantSelector.allowedAssistantKeys),
+      },
+      actions: {
+        auto: {
+          visible: actionAuto.visible !== false,
+          defaultEnabled: actionAuto.defaultEnabled !== false,
+        },
+        inspiration: {
+          visible: actionInspiration.visible !== false,
+          defaultEnabled: actionInspiration.defaultEnabled === true,
+        },
+        creativeDesign: {
+          visible: actionCreativeDesign.visible !== false,
+          defaultEnabled: actionCreativeDesign.defaultEnabled === true,
+        },
+      },
+    },
+    managementPolicy: {
+      allowBatchDelete: managementPolicy.allowBatchDelete !== false,
+      allowExportSessions: managementPolicy.allowExportSessions === true,
+      autoCleanupEnabled: managementPolicy.autoCleanupEnabled === true,
+      emptySessionRetentionDays: Number.isFinite(Number(managementPolicy.emptySessionRetentionDays))
+        ? Math.max(1, Math.min(3650, Number(managementPolicy.emptySessionRetentionDays)))
+        : defaults.managementPolicy.emptySessionRetentionDays,
+      completedSessionRetentionDays: Number.isFinite(Number(managementPolicy.completedSessionRetentionDays))
+        ? Math.max(1, Math.min(3650, Number(managementPolicy.completedSessionRetentionDays)))
+        : defaults.managementPolicy.completedSessionRetentionDays,
+      failedSessionRetentionDays: Number.isFinite(Number(managementPolicy.failedSessionRetentionDays))
+        ? Math.max(1, Math.min(3650, Number(managementPolicy.failedSessionRetentionDays)))
+        : defaults.managementPolicy.failedSessionRetentionDays,
+      deleteCascadeRecords: managementPolicy.deleteCascadeRecords !== false,
+    },
+  }
+}
 
 const readPlainObject = (value: unknown) => {
   if (!value) {
@@ -71,6 +299,7 @@ const normalizeSystemConfig = (input?: SystemConfigPayload | null) => {
   const policySettings = readPlainObject(input?.policySettings)
   const loginSettings = readPlainObject(input?.loginSettings)
   const generationProgressSettings = readPlainObject(input?.generationProgressSettings || loginSettings.generationProgressSettings)
+  const conversationSettings = normalizeConversationSettings(input?.conversationSettings || loginSettings.conversationSettings)
   const defaultStageMap = new Map(
     defaults.generationProgressSettings.stages.map(item => [item.key, item]),
   )
@@ -121,6 +350,7 @@ const normalizeSystemConfig = (input?: SystemConfigPayload | null) => {
       enabled: generationProgressSettings.enabled !== false,
       stages: normalizedStages.filter(item => defaultStageMap.has(item.key)),
     },
+    conversationSettings,
   }
 }
 
@@ -145,6 +375,7 @@ export const getAdminSystemConfig = async () => {
     policySettings: readPlainObject(row.policy_json),
     loginSettings: readPlainObject(row.login_settings_json),
     generationProgressSettings: readPlainObject(readPlainObject(row.login_settings_json).generationProgressSettings),
+    conversationSettings: readPlainObject(readPlainObject(row.login_settings_json).conversationSettings),
   })
 }
 
@@ -181,6 +412,7 @@ export const saveAdminSystemConfig = async (payload: SystemConfigPayload) => {
     JSON.stringify({
       ...normalized.loginSettings,
       generationProgressSettings: normalized.generationProgressSettings,
+      conversationSettings: normalized.conversationSettings,
     }),
   )
 

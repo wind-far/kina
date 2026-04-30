@@ -46,6 +46,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const { openLoginModal } = useLoginModalStore()
 const { publicSystemSettings, loadPublicSettings } = useSystemSettingsStore()
+const conversationHeroSettings = computed(() => publicSystemSettings.value.conversationSettings.entryDisplay.hero)
 
 // ContentGenerator 组件引用
 const contentGeneratorRef = ref<InstanceType<typeof ContentGenerator> | null>(null)
@@ -1302,7 +1303,14 @@ onUnmounted(() => {
                       />
                       <div :class="mainContentClassName">
                         <template v-if="isCurrentSessionEmpty">
-                          <h1 class="new-conversation-title-S9Fv1t" ccfmp-element="true">你好，想创作什么？</h1>
+                          <div v-if="conversationHeroSettings.enabled" class="new-conversation-hero-canana">
+                            <h1 class="new-conversation-title-S9Fv1t" ccfmp-element="true">
+                              {{ conversationHeroSettings.title || '你好，想创作什么？' }}
+                            </h1>
+                            <p v-if="conversationHeroSettings.subtitle" class="new-conversation-subtitle-canana">
+                              {{ conversationHeroSettings.subtitle }}
+                            </p>
+                          </div>
                           <ContentGenerator
                             ref="contentGeneratorRef"
                             :default-expanded="true"
@@ -1429,6 +1437,13 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
+.new-conversation-hero-canana {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .new-conversation-title-S9Fv1t {
   color: var(--text-primary, #fff);
   font-family: "Founder Yashi Black", var(--font-family, inherit);
@@ -1436,6 +1451,14 @@ onUnmounted(() => {
   font-weight: 600;
   line-height: 32px;
   margin: calc(40vh - 72px) 0 40px;
+  text-align: center;
+}
+
+.new-conversation-subtitle-canana {
+  color: var(--text-secondary, rgba(255, 255, 255, 0.64));
+  font-size: 14px;
+  line-height: 22px;
+  margin: -28px 0 24px;
   text-align: center;
 }
 </style>

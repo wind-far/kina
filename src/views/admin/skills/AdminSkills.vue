@@ -1,35 +1,39 @@
 <template>
   <AdminPageContainer title="技能配置" description="统一维护技能目录、工作台模式、提示词模板、工作流模板与阶段文案。">
-    <div class="admin-provider-toolbar admin-skill-toolbar">
-      <div class="admin-skill-toolbar__filters">
+    <AdminFilterToolbar>
+      <template #search>
         <div class="admin-skill-toolbar__search-wrap">
           <input
-            v-model.trim="keyword"
+            v-model.trim="filters.keyword"
             class="admin-input admin-provider-toolbar__search"
             type="text"
             placeholder="搜索技能名称、标识或分类"
           >
         </div>
-        <select v-model="statusFilter" class="admin-input admin-provider-toolbar__status">
+      </template>
+      <template #filters>
+        <div class="admin-skill-toolbar__filters">
+        <select v-model="filters.status" class="admin-input admin-provider-toolbar__status">
           <option value="ALL">技能状态</option>
           <option value="ENABLED">已启用</option>
           <option value="DISABLED">已禁用</option>
         </select>
-        <select v-model="uiModeFilter" class="admin-input admin-provider-toolbar__status">
+        <select v-model="filters.uiMode" class="admin-input admin-provider-toolbar__status">
           <option value="ALL">界面模式</option>
           <option value="WORKSPACE">工作台</option>
           <option value="PLAIN_CHAT">普通对话</option>
         </select>
-        <select v-model="executionModeFilter" class="admin-input admin-provider-toolbar__status">
+        <select v-model="filters.executionMode" class="admin-input admin-provider-toolbar__status">
           <option value="ALL">执行模式</option>
           <option v-for="item in executionModeOptions" :key="item" :value="item">{{ item }}</option>
         </select>
-        <select v-model="categoryFilter" class="admin-input admin-provider-toolbar__status">
+        <select v-model="filters.category" class="admin-input admin-provider-toolbar__status">
           <option value="ALL">技能分类</option>
           <option v-for="item in categoryOptions" :key="item" :value="item">{{ item }}</option>
         </select>
-      </div>
-      <div class="admin-skill-toolbar__meta">
+        </div>
+      </template>
+      <template #meta>
         <span class="admin-skill-toolbar__summary">
           共 {{ filteredSkills.length }} 个技能
           <em v-if="activeFilterCount">，已启用 {{ activeFilterCount }} 个筛选</em>
@@ -42,16 +46,16 @@
         >
           清空筛选
         </button>
-      </div>
-      <div class="admin-skill-toolbar__actions">
+      </template>
+      <template #actions>
         <button class="admin-button admin-button--secondary" type="button" @click="loadSkillList" :disabled="loading || saving">
           {{ loading ? '刷新中...' : '刷新列表' }}
         </button>
         <button class="admin-button admin-button--primary" type="button" @click="openCreateDialog" :disabled="saving">
           新增技能
         </button>
-      </div>
-    </div>
+      </template>
+    </AdminFilterToolbar>
 
     <div v-if="loading" class="admin-empty">正在加载技能列表...</div>
     <div v-else-if="!filteredSkills.length" class="admin-empty">当前还没有符合条件的技能。</div>
@@ -725,7 +729,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import AdminFilterToolbar from '@/components/admin/common/AdminFilterToolbar.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
+import { matchesAdminKeyword, useAdminListFilters } from '@/composables/useAdminListFilters'
 import {
   createAdminSkill,
   deleteAdminSkill,
@@ -780,11 +786,20 @@ type SkillListUiModeFilter = 'ALL' | AdminSkillUiMode
 type SkillListExecutionModeFilter = 'ALL' | AdminSkillExecutionMode
 type SkillEditorTabKey = 'basic-runtime' | 'templates' | 'plan-stage'
 
-const keyword = ref('')
-const statusFilter = ref<'ALL' | 'ENABLED' | 'DISABLED'>('ALL')
-const uiModeFilter = ref<SkillListUiModeFilter>('ALL')
-const executionModeFilter = ref<SkillListExecutionModeFilter>('ALL')
-const categoryFilter = ref('ALL')
+const filters = reactive({
+  keyword: '',
+  status: 'ALL' as 'ALL' | 'ENABLED' | 'DISABLED',
+  uiMode: 'ALL' as SkillListUiModeFilter,
+  executionMode: 'ALL' as SkillListExecutionModeFilter,
+  category: 'ALL',
+})
+const filterDefaults = {
+  keyword: '',
+  status: 'ALL' as 'ALL' | 'ENABLED' | 'DISABLED',
+  uiMode: 'ALL' as SkillListUiModeFilter,
+  executionMode: 'ALL' as SkillListExecutionModeFilter,
+  category: 'ALL',
+}
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
@@ -796,6 +811,10 @@ const collapsedTemplateItemKeys = ref<Set<string>>(new Set())
 const skills = ref<AdminSkillDetail['skill'][]>([])
 const skillDetailMap = ref<Record<string, AdminSkillDetail>>({})
 const providerOptions = ref<AdminProviderItem[]>([])
+const { activeFilterCount, resetFilters } = useAdminListFilters({
+  filters,
+  defaults: filterDefaults,
+})
 
 const sectionNavItems: Array<{ key: SkillSectionKey; label: string; anchorId: string }> = [
   { key: 'basic', label: '基础信息', anchorId: 'skill-section-basic' },
@@ -837,23 +856,20 @@ const skillForm = reactive({
 
 const filteredSkills = computed(() => {
   return skills.value.filter((item) => {
-    const matchedKeyword = !keyword.value
-      || item.label.toLowerCase().includes(keyword.value.toLowerCase())
-      || item.skillKey.toLowerCase().includes(keyword.value.toLowerCase())
-      || item.category.toLowerCase().includes(keyword.value.toLowerCase())
+    const matchedKeyword = matchesAdminKeyword(filters.keyword, [item.label, item.skillKey, item.category])
 
-    const matchedStatus = statusFilter.value === 'ALL'
-      || (statusFilter.value === 'ENABLED' && item.isEnabled)
-      || (statusFilter.value === 'DISABLED' && !item.isEnabled)
+    const matchedStatus = filters.status === 'ALL'
+      || (filters.status === 'ENABLED' && item.isEnabled)
+      || (filters.status === 'DISABLED' && !item.isEnabled)
 
-    const matchedUiMode = uiModeFilter.value === 'ALL'
-      || item.uiMode === uiModeFilter.value
+    const matchedUiMode = filters.uiMode === 'ALL'
+      || item.uiMode === filters.uiMode
 
-    const matchedExecutionMode = executionModeFilter.value === 'ALL'
-      || item.executionMode === executionModeFilter.value
+    const matchedExecutionMode = filters.executionMode === 'ALL'
+      || item.executionMode === filters.executionMode
 
-    const matchedCategory = categoryFilter.value === 'ALL'
-      || item.category === categoryFilter.value
+    const matchedCategory = filters.category === 'ALL'
+      || item.category === filters.category
 
     return matchedKeyword && matchedStatus && matchedUiMode && matchedExecutionMode && matchedCategory
   })
@@ -863,15 +879,6 @@ const executionModeOptions = computed(() => {
 })
 const categoryOptions = computed(() => {
   return Array.from(new Set(skills.value.map(item => item.category).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'zh-CN'))
-})
-const activeFilterCount = computed(() => {
-  let count = 0
-  if (keyword.value.trim()) count += 1
-  if (statusFilter.value !== 'ALL') count += 1
-  if (uiModeFilter.value !== 'ALL') count += 1
-  if (executionModeFilter.value !== 'ALL') count += 1
-  if (categoryFilter.value !== 'ALL') count += 1
-  return count
 })
 const visibleSectionNavItems = computed(() => {
   const currentTab = editorTabs.find(item => item.key === activeEditorTab.value)
@@ -1051,11 +1058,7 @@ const getTabCountText = (tabKey: SkillEditorTabKey) => {
 }
 
 const resetListFilters = () => {
-  keyword.value = ''
-  statusFilter.value = 'ALL'
-  uiModeFilter.value = 'ALL'
-  executionModeFilter.value = 'ALL'
-  categoryFilter.value = 'ALL'
+  resetFilters()
 }
 
 const updateLocalSkillDetail = (detail: AdminSkillDetail) => {

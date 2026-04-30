@@ -294,32 +294,32 @@
               </div>
             </div>
             <div class="admin-card__content">
-              <div class="admin-marketing-log-toolbar">
-                <div class="admin-marketing-log-toolbar__search">
+              <AdminFilterToolbar>
+                <template #search>
                   <div class="admin-marketing-log-filter-field admin-marketing-log-filter-field--search">
                     <span class="admin-marketing-log-filter-field__label">关键词搜索</span>
                     <input
-                      v-model.trim="pointLogQuery.keyword"
+                      v-model.trim="pointLogFilters.keyword"
                       class="admin-input admin-marketing-log-filter-field__control"
                       type="text"
                       placeholder="搜索用户、流水号、备注、模型、任务提示词"
                       @keydown.enter.prevent="handleApplyPointLogFilters"
                     >
                   </div>
-                  <div class="admin-marketing-log-toolbar__actions">
-                    <button class="admin-button admin-button--secondary" type="button" :disabled="compensationLoading" @click="handleResetPointLogFilters">
-                      重置
-                    </button>
-                    <button class="admin-button admin-button--primary" type="button" :disabled="compensationLoading" @click="handleApplyPointLogFilters">
-                      {{ compensationLoading ? '筛选中...' : '应用筛选' }}
-                    </button>
-                  </div>
-                </div>
-
-                <div class="admin-marketing-log-filters">
+                </template>
+                <template #actions>
+                  <button class="admin-button admin-button--secondary" type="button" :disabled="compensationLoading" @click="handleResetPointLogFilters">
+                    重置
+                  </button>
+                  <button class="admin-button admin-button--primary" type="button" :disabled="compensationLoading" @click="handleApplyPointLogFilters">
+                    {{ compensationLoading ? '筛选中...' : '应用筛选' }}
+                  </button>
+                </template>
+                <template #filters>
+                  <div class="admin-marketing-log-filters">
                   <label class="admin-marketing-log-filter-field">
                     <span class="admin-marketing-log-filter-field__label">动作类型</span>
-                    <select v-model="pointLogQuery.action" class="admin-select admin-marketing-log-filter-field__control">
+                    <select v-model="pointLogFilters.action" class="admin-select admin-marketing-log-filter-field__control">
                       <option value="">全部动作</option>
                       <option value="INCREASE">收入</option>
                       <option value="DECREASE">支出</option>
@@ -327,7 +327,7 @@
                   </label>
                   <label class="admin-marketing-log-filter-field">
                     <span class="admin-marketing-log-filter-field__label">来源渠道</span>
-                    <select v-model="pointLogQuery.sourceType" class="admin-select admin-marketing-log-filter-field__control">
+                    <select v-model="pointLogFilters.sourceType" class="admin-select admin-marketing-log-filter-field__control">
                       <option value="">全部来源</option>
                       <option value="GENERATION_CONSUME">生成消费</option>
                       <option value="RECHARGE_ORDER">充值</option>
@@ -339,7 +339,7 @@
                   </label>
                   <label class="admin-marketing-log-filter-field">
                     <span class="admin-marketing-log-filter-field__label">终端类型</span>
-                    <select v-model="pointLogQuery.endpointType" class="admin-select admin-marketing-log-filter-field__control">
+                    <select v-model="pointLogFilters.endpointType" class="admin-select admin-marketing-log-filter-field__control">
                       <option value="">全部终端</option>
                       <option value="chat">CHAT</option>
                       <option value="image">IMAGE</option>
@@ -348,7 +348,7 @@
                   </label>
                   <label class="admin-marketing-log-filter-field">
                     <span class="admin-marketing-log-filter-field__label">退款状态</span>
-                    <select v-model="pointLogQuery.refundStatus" class="admin-select admin-marketing-log-filter-field__control">
+                    <select v-model="pointLogFilters.refundStatus" class="admin-select admin-marketing-log-filter-field__control">
                       <option value="">全部退款状态</option>
                       <option value="compensable">待补偿</option>
                       <option value="refunded">已退款</option>
@@ -357,14 +357,21 @@
                   </label>
                   <label class="admin-marketing-log-filter-field">
                     <span class="admin-marketing-log-filter-field__label">时间窗口</span>
-                    <select v-model.number="pointLogQuery.days" class="admin-select admin-marketing-log-filter-field__control">
+                    <select v-model.number="pointLogFilters.days" class="admin-select admin-marketing-log-filter-field__control">
                       <option :value="7">近 7 天</option>
                       <option :value="30">近 30 天</option>
                       <option :value="90">近 90 天</option>
                     </select>
                   </label>
-                </div>
-              </div>
+                  </div>
+                </template>
+                <template #meta>
+                  <span class="admin-skill-toolbar__summary">
+                    共 {{ pointLogSummary.totalCount }} 条流水
+                    <em v-if="pointLogActiveFilterCount">，已启用 {{ pointLogActiveFilterCount }} 个筛选</em>
+                  </span>
+                </template>
+              </AdminFilterToolbar>
 
               <div class="admin-marketing-log-summary">
                 <div class="admin-marketing-log-summary__item">
@@ -913,8 +920,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import AdminFilterToolbar from '@/components/admin/common/AdminFilterToolbar.vue'
 import AdminPagination from '@/components/admin/common/AdminPagination.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
+import { useAdminListFilters } from '@/composables/useAdminListFilters'
 import {
   createCardBatch,
   createMembershipLevel,
@@ -973,7 +982,7 @@ const compensationSubmitting = ref(false)
 const pointLogCopiedKey = ref('')
 const activeTool = ref<MarketingToolKey>('membership')
 const selectedCompensationAssociationNos = ref<string[]>([])
-const pointLogQuery = reactive({
+const pointLogFilters = reactive({
   days: 30,
   action: '',
   sourceType: '',
@@ -981,6 +990,14 @@ const pointLogQuery = reactive({
   refundStatus: '',
   keyword: '',
 })
+const pointLogFilterDefaults = {
+  days: 30,
+  action: '',
+  sourceType: '',
+  endpointType: '',
+  refundStatus: '',
+  keyword: '',
+}
 const pointLogPagination = reactive({
   page: 1,
   pageSize: 10,
@@ -998,6 +1015,10 @@ const pointLogSummary = reactive<AdminPointLogListResult['summary']>({
   page: 1,
   pageSize: 10,
   totalPages: 1,
+})
+const { activeFilterCount: pointLogActiveFilterCount, resetFilters: resetPointLogFilters } = useAdminListFilters({
+  filters: pointLogFilters,
+  defaults: pointLogFilterDefaults,
 })
 
 const marketingTools = computed(() => [
@@ -1405,7 +1426,7 @@ const loadPointLogs = async () => {
   compensationLoading.value = true
   try {
     const result = await listAdminPointLogs({
-      ...pointLogQuery,
+      ...pointLogFilters,
       page: pointLogPagination.page,
       pageSize: pointLogPagination.pageSize,
     })
@@ -1413,7 +1434,7 @@ const loadPointLogs = async () => {
     pointLogSummary.totalCount = Number(result.summary?.totalCount || 0)
     pointLogSummary.compensableCount = Number(result.summary?.compensableCount || 0)
     pointLogSummary.refundCount = Number(result.summary?.refundCount || 0)
-    pointLogSummary.windowDays = Number(result.summary?.windowDays || pointLogQuery.days)
+    pointLogSummary.windowDays = Number(result.summary?.windowDays || pointLogFilters.days)
     pointLogSummary.page = Number(result.summary?.page || pointLogPagination.page)
     pointLogSummary.pageSize = Number(result.summary?.pageSize || pointLogPagination.pageSize)
     pointLogSummary.totalPages = Number(result.summary?.totalPages || 1)
@@ -1432,12 +1453,7 @@ const handleApplyPointLogFilters = async () => {
 }
 
 const handleResetPointLogFilters = async () => {
-  pointLogQuery.keyword = ''
-  pointLogQuery.action = ''
-  pointLogQuery.sourceType = ''
-  pointLogQuery.endpointType = ''
-  pointLogQuery.refundStatus = ''
-  pointLogQuery.days = 30
+  resetPointLogFilters()
   pointLogPagination.page = 1
   await loadPointLogs()
 }
@@ -1582,7 +1598,7 @@ const loadAllData = async () => {
       listRewardRules(),
       listCardBatches(),
       listAdminPointLogs({
-        ...pointLogQuery,
+        ...pointLogFilters,
         page: pointLogPagination.page,
         pageSize: pointLogPagination.pageSize,
       }),
@@ -1597,7 +1613,7 @@ const loadAllData = async () => {
     pointLogSummary.totalCount = Number(pointLogData.summary?.totalCount || 0)
     pointLogSummary.compensableCount = Number(pointLogData.summary?.compensableCount || 0)
     pointLogSummary.refundCount = Number(pointLogData.summary?.refundCount || 0)
-    pointLogSummary.windowDays = Number(pointLogData.summary?.windowDays || pointLogQuery.days)
+    pointLogSummary.windowDays = Number(pointLogData.summary?.windowDays || pointLogFilters.days)
     pointLogSummary.page = Number(pointLogData.summary?.page || pointLogPagination.page)
     pointLogSummary.pageSize = Number(pointLogData.summary?.pageSize || pointLogPagination.pageSize)
     pointLogSummary.totalPages = Number(pointLogData.summary?.totalPages || 1)

@@ -19,6 +19,8 @@ import { isSystemConfigPath } from './system-config/constants'
 import { handleSystemConfigRequest } from './system-config/request-handler'
 import { isGenerationRecordsPath } from './generation-records/constants'
 import { handleGenerationRecordsRequest } from './generation-records/request-handler'
+import { isGenerationSessionsPath } from './generation-sessions/constants'
+import { handleGenerationSessionsRequest } from './generation-sessions/request-handler'
 import { isGenerationTasksPath } from './generation-tasks/constants'
 import { handleGenerationTasksRequest } from './generation-tasks/request-handler'
 import { PROVIDER_CONFIG_MATCH_PATHS } from './provider-config/constants'
@@ -354,10 +356,15 @@ const dispatchRequest = async (req: any, res: any) => {
   }
 
   // 命中生成记录接口时走生成记录逻辑。
-  if (isGenerationRecordsPath(requestPath)) {
-    await handleGenerationRecordsRequest(req, res)
-    return
-  }
+    if (isGenerationRecordsPath(requestPath)) {
+      await handleGenerationRecordsRequest(req, res)
+      return
+    }
+
+    if (isGenerationSessionsPath(requestPath)) {
+      await handleGenerationSessionsRequest(req, res)
+      return
+    }
 
   // 命中生成任务接口时走服务端任务逻辑。
   if (isGenerationTasksPath(requestPath)) {

@@ -50,6 +50,7 @@ export const handleGenerationRecordsRequest = async (req: any, res: any) => {
     if (req.method === 'POST' && requestUrl === GENERATION_RECORDS_BASE_PATH) {
       const payload = await readGenerationRecordBody(req)
       payloadSummary = {
+        sessionId: payload?.sessionId || null,
         type: payload?.type,
         done: Boolean(payload?.done),
         imageCount: Array.isArray(payload?.images) ? payload.images.length : 0,
@@ -66,6 +67,7 @@ export const handleGenerationRecordsRequest = async (req: any, res: any) => {
     if (req.method === 'PATCH' && recordId) {
       const payload = await readGenerationRecordBody(req)
       payloadSummary = {
+        sessionId: payload?.sessionId || null,
         type: payload?.type,
         done: Boolean(payload?.done),
         imageCount: Array.isArray(payload?.images) ? payload.images.length : 0,

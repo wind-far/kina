@@ -5,6 +5,7 @@ import { consumeSseStream, type SseMessage } from '@/utils/sse'
 import type { AgentWorkspaceEvent } from '@/shared/agent-workspace'
 
 export interface GenerationTaskStartPayload {
+  sessionId?: string
   type: 'image' | 'agent'
   prompt: string
   model?: string

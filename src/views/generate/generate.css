@@ -26,6 +26,27 @@
     width: 100%
 }
 
+.entry-erESAd {
+    display: flex;
+    flex-direction: row;
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+    width: 100%
+}
+
+.main-content-G632JF {
+    flex: 1 1;
+    height: 100%;
+    min-width: 0;
+    position: relative
+}
+
+.main-content-G632JF.with-sidebar-mPyABv {
+    box-sizing: border-box;
+    padding-left: 20px
+}
+
 .root_bf55f {
     height: 100%;
     overflow: hidden;
@@ -1343,7 +1364,7 @@
 }
 
 .record-list-container-YQhwuM .filter-mask-IOpWQJ {
-    background: linear-gradient(180deg, rgba(9, 9, 11, .8), rgba(9, 9, 11, .793) 6.67%, rgba(9, 9, 11, .772) 13.33%, rgba(9, 9, 11, .735) 20%, rgba(9, 9, 11, .682) 26.67%, rgba(9, 9, 11, .615) 33.33%, rgba(9, 9, 11, .534) 40%, rgba(9, 9, 11, .446) 46.67%, rgba(9, 9, 11, .354) 53.33%, rgba(9, 9, 11, .266) 60%, rgba(9, 9, 11, .185) 66.67%, rgba(9, 9, 11, .118) 73.33%, rgba(9, 9, 11, .065) 80%, rgba(9, 9, 11, .028) 86.67%, rgba(9, 9, 11, .007) 93.33%, rgba(9, 9, 11, 0));
+    /*background: linear-gradient(180deg, rgba(9, 9, 11, .8), rgba(9, 9, 11, .793) 6.67%, rgba(9, 9, 11, .772) 13.33%, rgba(9, 9, 11, .735) 20%, rgba(9, 9, 11, .682) 26.67%, rgba(9, 9, 11, .615) 33.33%, rgba(9, 9, 11, .534) 40%, rgba(9, 9, 11, .446) 46.67%, rgba(9, 9, 11, .354) 53.33%, rgba(9, 9, 11, .266) 60%, rgba(9, 9, 11, .185) 66.67%, rgba(9, 9, 11, .118) 73.33%, rgba(9, 9, 11, .065) 80%, rgba(9, 9, 11, .028) 86.67%, rgba(9, 9, 11, .007) 93.33%, rgba(9, 9, 11, 0));*/
     height: 40px;
     left: 0;
     padding: 20px 20px 0 0;

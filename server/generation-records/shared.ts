@@ -13,6 +13,7 @@ export interface GenerationOutputPayload {
 }
 
 export interface GenerationRecordPayload {
+  sessionId?: string
   type: string
   prompt: string
   content?: string

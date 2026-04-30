@@ -2,6 +2,7 @@ import { readJsonBody, sendJson } from '../ai-gateway/shared'
 import type { AgentWorkspaceEvent } from '../../src/shared/agent-workspace'
 
 export interface GenerationTaskStartPayload {
+  sessionId?: string
   type: string
   prompt: string
   model?: string

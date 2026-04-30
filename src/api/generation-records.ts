@@ -6,6 +6,8 @@ import { readApiData } from './response'
 // 后端返回的持久化生成记录结构
 export interface PersistedGenerationRecord {
   id: string
+  sessionId: string
+  sessionTitle?: string
   type: CreationType
   prompt: string
   content: string
@@ -33,6 +35,7 @@ export interface PersistedGenerationRecord {
 
 // 前端提交给后端的生成记录写入结构
 export interface GenerationRecordUpsertPayload {
+  sessionId?: string
   type: CreationType
   prompt: string
   content: string

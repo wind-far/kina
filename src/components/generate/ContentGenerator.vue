@@ -273,6 +273,7 @@ const placeholder = computed(() => {
 const isSidebar = computed(() => props.layout === 'sidebar')
 // 默认将非侧边栏场景统一成新版样式，侧边栏仍保留紧凑布局
 const isHomeVariant = computed(() => !isSidebar.value && props.variant === 'home')
+const isReferenceHtmlLayout = computed(() => !isSidebar.value && props.variant === 'home')
 
 // 根据折叠状态和布局模式返回不同的高度
 const promptControlHeight = computed(() => {
@@ -382,14 +383,28 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div :class="['dimension-layout-FUl4Nj', layoutClass, { 'collapsed-WjKggt': isCollapsed }]"
+  <div :class="[
+         'dimension-layout-FUl4Nj',
+         layoutClass,
+         {
+           'collapsed-WjKggt': isCollapsed,
+         },
+         isReferenceHtmlLayout ? ['dimension-layout-IIVEBh', 'default-layout-eH8Zi1'] : []
+       ]"
        style="--content-generator-collapse-transition-duration:350ms;--content-generator-collapse-transition-timing-function:cubic-bezier(0.15,0.75,0.3,1)"
        @click="handleClick">
-    <div class="layout-KSckhZ">
-      <div class="content-oZ2zsI">
+    <div :class="['layout-KSckhZ', isReferenceHtmlLayout ? 'layout-E1r_xu' : '']">
+      <div :class="['content-oZ2zsI', isReferenceHtmlLayout ? 'content-_OGr5P' : '']">
         <!-- 参考图上传区域 -->
         <!-- 图片模式：单个参考图上传 -->
-        <div v-if="currentType === 'image'" :class="['references-vWIzeo', { 'collapsed-_VpN2b': isCollapsed && !isSidebar }]">
+        <div
+          v-if="currentType === 'image'"
+          :class="[
+            'references-vWIzeo',
+            { 'collapsed-_VpN2b': isCollapsed && !isSidebar },
+            isReferenceHtmlLayout ? 'references-Gf5d1P' : '',
+          ]"
+        >
           <div :class="['reference-group-_DAGw1', { 'collapsed-J9LsWu': isCollapsed && !isSidebar }]"
                style="--reference-count:1;--reference-item-width:48px;--reference-item-gap:4px">
             <div class="reference-group-background-f6pFpT"></div>
@@ -425,7 +440,14 @@ onUnmounted(() => {
         </div>
 
         <!-- 视频模式：首尾帧上传 -->
-        <div v-else-if="currentType === 'video'" :class="['references-vWIzeo', { 'collapsed-_VpN2b': isCollapsed && !isSidebar }]">
+        <div
+          v-else-if="currentType === 'video'"
+          :class="[
+            'references-vWIzeo',
+            { 'collapsed-_VpN2b': isCollapsed && !isSidebar },
+            isReferenceHtmlLayout ? 'references-Gf5d1P' : '',
+          ]"
+        >
           <!-- 首帧上传 -->
           <div :class="['reference-group-_DAGw1', { 'collapsed-J9LsWu': isCollapsed && !isSidebar }]"
                style="--reference-count:1;--reference-item-width:48px;--reference-item-gap:4px">
@@ -515,11 +537,28 @@ onUnmounted(() => {
         </div>
 
         <!-- 主内容区域 -->
-        <div :class="['main-content-pao8ef', { 'main-content-MTw5sD': isCollapsed || isSidebar, 'collapsed-SD4UgZ': isCollapsed }]">
+        <div
+          :class="[
+            'main-content-pao8ef',
+            {
+              'main-content-MTw5sD': isCollapsed || isSidebar,
+              'collapsed-SD4UgZ': isCollapsed,
+            },
+            isReferenceHtmlLayout ? ['main-content-eTfdBT', 'main-content-O3r9dD'] : [],
+          ]"
+        >
           <!-- 折叠状态下的引用记录文本区域 -->
-          <div v-if="isCollapsed" class="reference-record-text-container-UOUXv6 collapsed-SgPm0K hidden-FI_sis">
-            <div class="reference-record-text-YzRnHL">
-              <div class="icon-TICgEz">
+          <div
+            v-if="isCollapsed"
+            :class="[
+              'reference-record-text-container-UOUXv6',
+              'collapsed-SgPm0K',
+              'hidden-FI_sis',
+              isReferenceHtmlLayout ? ['reference-record-text-container-Us4Jm9', 'hidden-uxDIg8'] : [],
+            ]"
+          >
+            <div :class="['reference-record-text-YzRnHL', isReferenceHtmlLayout ? 'reference-record-text-lG480D' : '']">
+              <div :class="['icon-TICgEz', isReferenceHtmlLayout ? 'icon-DbkXnt' : '']">
                 <svg width="1em" height="1em" viewBox="0 0 24 24"
                      preserveAspectRatio="xMidYMid meet" fill="none"
                      role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -530,10 +569,10 @@ onUnmounted(() => {
                   </g>
                 </svg>
               </div>
-              <span class="divider-GjrSf1"></span>
-              <span class="content-lZaX5g"></span>
-              <span class="divider-GjrSf1"></span>
-              <div class="icon-TICgEz icon-close-_TmiMV">
+              <span :class="['divider-GjrSf1', isReferenceHtmlLayout ? 'divider-x9oajA' : '']"></span>
+              <span :class="['content-lZaX5g', isReferenceHtmlLayout ? 'content-DZjg1a' : '']"></span>
+              <span :class="['divider-GjrSf1', isReferenceHtmlLayout ? 'divider-x9oajA' : '']"></span>
+              <div :class="['icon-TICgEz', 'icon-close-_TmiMV', isReferenceHtmlLayout ? ['icon-DbkXnt', 'icon-close-iSQOHU'] : []]">
                 <svg width="1em" height="1em" viewBox="0 0 24 24"
                      preserveAspectRatio="xMidYMid meet" fill="none"
                      role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -549,23 +588,28 @@ onUnmounted(() => {
           </div>
 
           <!-- 提示词输入区域 -->
-          <div class="prompt-container-SvZ73x"
-               :style="`--content-generator-prompt-control-height:${promptControlHeight};--content-generator-prompt-control-line-height:24px`">
-            <div class="prompt-textarea-sizer-KvlV5P"></div>
-            <textarea
-                v-model="inputValue"
-                :class="['lv-textarea', 'textarea-rfj34A', 'prompt-textarea-l5tJNE', { 'collapsed-l8bAEB': isCollapsed, 'collapse-transition-start-AXNjML': isCollapsed }]"
-                :placeholder="placeholder"
-                translate="no"
-                @input="handleInput"
-                @keydown="handleKeydown"></textarea>
-            <input
-                v-model="inputValue"
-                :class="['lv-input', 'lv-input-size-default', 'input-JjM14b', 'prompt-input-w0wBdF', { 'collapsed-l8bAEB': isCollapsed, 'collapse-transition-start-AXNjML': isCollapsed }]"
-                :placeholder="placeholder"
-                translate="no"
-                @input="handleInput"
-                @keydown="handleKeydown">
+          <div
+            :class="['prompt-container-SvZ73x', isReferenceHtmlLayout ? 'prompt-editor-container-HRhsP7' : '']"
+            :style="`--content-generator-prompt-control-height:${promptControlHeight};--content-generator-prompt-control-line-height:24px`"
+          >
+            <div :class="['prompt-editor-aDwTfA', isReferenceHtmlLayout ? 'prompt-editor-aDwTfA' : '']">
+              <textarea
+                  v-model="inputValue"
+                  :class="['lv-textarea', 'textarea-rfj34A', 'prompt-textarea-l5tJNE', { 'collapsed-l8bAEB': isCollapsed, 'collapse-transition-start-AXNjML': isCollapsed }]"
+                  :placeholder="placeholder"
+                  translate="no"
+                  @input="handleInput"
+                  @keydown="handleKeydown"></textarea>
+            </div>
+            <div :class="['prompt-textarea-sizer-KvlV5P', isReferenceHtmlLayout ? 'prompt-editor-sizer-S4F9P4' : '']">
+              <input
+                  v-model="inputValue"
+                  :class="['lv-input', 'lv-input-size-default', 'input-JjM14b', 'prompt-input-w0wBdF', { 'collapsed-l8bAEB': isCollapsed, 'collapse-transition-start-AXNjML': isCollapsed }]"
+                  :placeholder="placeholder"
+                  translate="no"
+                  @input="handleInput"
+                  @keydown="handleKeydown">
+            </div>
           </div>
         </div>
 

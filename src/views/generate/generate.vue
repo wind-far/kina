@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SideMenu from '../../components/home/components/SideMenu.vue'
 import ContentGenerator from '../../components/generate/ContentGenerator.vue'
@@ -17,6 +17,13 @@ import {
   type GenerationRecordUpsertPayload,
   type PersistedGenerationRecord,
 } from '@/api/generation-records'
+import {
+  createGenerationSession as createGenerationSessionRequest,
+  deleteGenerationSession as deleteGenerationSessionRequest,
+  listGenerationSessions as listGenerationSessionsRequest,
+  updateGenerationSession as updateGenerationSessionRequest,
+  type PersistedGenerationSession,
+} from '@/api/generation-sessions'
 import { createGenerationTask, stopGenerationTask, subscribeGenerationTaskEvents, type GenerationTaskStreamEvent } from '@/api/generation-tasks'
 import type { CreationType } from '../../components/generate/selectors'
 import type {
@@ -31,6 +38,8 @@ import { AUTH_LOGIN_SUCCESS_EVENT, useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
 import { useSystemSettingsStore } from '@/stores/system-settings'
 import GenerateAgentRecord from './components/GenerateAgentRecord.vue'
+import GenerateSessionList from './components/GenerateSessionList.vue'
+import GenerateConversationSidebar, { type GenerateConversationSidebarItem } from './components/GenerateConversationSidebar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -45,6 +54,8 @@ const contentGeneratorRef = ref<InstanceType<typeof ContentGenerator> | null>(nu
 interface GeneratingRecord {
   id: number
   dbId?: string
+  sessionId?: string
+  sessionTitle?: string
   type: CreationType
   prompt: string
   time: string
@@ -77,6 +88,12 @@ interface GeneratePreviewImageItem {
   featureLabel?: string
   createDate?: string
 }
+
+interface GenerateSessionScrollState {
+  scrollTop: number
+  isAtBottom: boolean
+  isScrollingUp: boolean
+}
 const generatingRecords = ref<GeneratingRecord[]>([])
 let nextId = 0
 const recordPersistTimers = new Map<number, ReturnType<typeof setTimeout>>()
@@ -85,6 +102,47 @@ const taskStreamControllers = new Map<string, AbortController>()
 const previewVisible = ref(false)
 const previewIndex = ref(0)
 const previewImages = ref<GeneratePreviewImageItem[]>([])
+const sessionSearchKeyword = ref('')
+const generationSessions = ref<PersistedGenerationSession[]>([])
+const currentSessionId = ref('')
+const conversationSidebarCollapsed = ref(false)
+const isGenerationSessionsLoading = ref(false)
+
+const GENERATE_SIDEBAR_COLLAPSED_STORAGE_KEY = 'generate_conversation_sidebar_collapsed'
+
+const GENERATE_ACTIVE_SESSION_STORAGE_KEY = 'generate_active_session_id'
+
+const readStoredCurrentSessionId = () => {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+  return String(window.localStorage.getItem(GENERATE_ACTIVE_SESSION_STORAGE_KEY) || '').trim()
+}
+
+const writeStoredCurrentSessionId = (sessionId: string) => {
+  if (typeof window === 'undefined') {
+    return
+  }
+  if (!sessionId) {
+    window.localStorage.removeItem(GENERATE_ACTIVE_SESSION_STORAGE_KEY)
+    return
+  }
+  window.localStorage.setItem(GENERATE_ACTIVE_SESSION_STORAGE_KEY, sessionId)
+}
+
+const readStoredConversationSidebarCollapsed = () => {
+  if (typeof window === 'undefined') {
+    return false
+  }
+  return window.localStorage.getItem(GENERATE_SIDEBAR_COLLAPSED_STORAGE_KEY) === '1'
+}
+
+const writeStoredConversationSidebarCollapsed = (collapsed: boolean) => {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(GENERATE_SIDEBAR_COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0')
+}
 
 interface StageConversationEntry {
   stageKey: string
@@ -254,6 +312,258 @@ const handlePreviewEditInCanvas = () => {
   ElMessage.success('请前往画布页继续编辑')
 }
 
+// 当前会话列表先支持关键词搜索，便于快速定位提示词和结果文本。
+const visibleGeneratingRecords = computed(() => {
+  const activeSession = String(currentSessionId.value || '').trim()
+  const keyword = String(sessionSearchKeyword.value || '').trim().toLowerCase()
+
+  return generatingRecords.value.filter((record) => {
+    if (activeSession && record.sessionId !== activeSession) {
+      return false
+    }
+
+    if (!keyword) {
+      return true
+    }
+
+    return [
+      record.prompt,
+      record.content,
+      record.model,
+      record.feature,
+      record.skill,
+      record.type,
+      record.error,
+    ].some((field) => String(field || '').toLowerCase().includes(keyword))
+  })
+})
+
+const isCurrentSessionEmpty = computed(() => {
+  if (sessionSearchKeyword.value.trim()) {
+    return false
+  }
+  return visibleGeneratingRecords.value.length === 0
+})
+
+const mainContentClassName = computed(() => {
+  const classNames = ['main-content-G632JF']
+  if (isCurrentSessionEmpty.value) {
+    classNames.push('new-conversation-cz8zuh')
+  }
+  if (!conversationSidebarCollapsed.value) {
+    classNames.push('with-sidebar-mPyABv')
+  }
+  return classNames.join(' ')
+})
+
+const sidebarRecentSessions = computed<GenerateConversationSidebarItem[]>(() => {
+  return generationSessions.value
+    .filter(session => !session.isDefault)
+    .map((session) => ({
+      id: session.id,
+      title: String(session.title || '未命名会话').trim(),
+      imageUrl: session.coverImageUrl || '',
+    }))
+})
+
+const sidebarDefaultSession = computed<GenerateConversationSidebarItem>(() => ({
+  id: generationSessions.value.find(session => session.isDefault)?.id || 'default',
+  title: generationSessions.value.find(session => session.isDefault)?.title || '默认创作',
+  imageUrl: generationSessions.value.find(session => session.isDefault)?.coverImageUrl || '',
+}))
+
+const applyCurrentSessionId = (sessionId: string) => {
+  currentSessionId.value = sessionId
+  writeStoredCurrentSessionId(sessionId)
+}
+
+const syncCurrentSessionWithSessionList = (sessions: PersistedGenerationSession[]) => {
+  if (!sessions.length) {
+    applyCurrentSessionId('')
+    return
+  }
+
+  const current = String(currentSessionId.value || '').trim()
+  if (current && sessions.some(session => session.id === current)) {
+    return
+  }
+
+  const stored = readStoredCurrentSessionId()
+  const matchedStored = stored
+    ? sessions.find(session => session.id === stored)
+    : null
+
+  applyCurrentSessionId(matchedStored?.id || sessions[0].id)
+}
+
+const loadPersistedGenerationSessions = async () => {
+  if (!authStore.isLoggedIn.value) {
+    generationSessions.value = []
+    applyCurrentSessionId('')
+    return
+  }
+
+  try {
+    isGenerationSessionsLoading.value = true
+    const sessions = await listGenerationSessionsRequest()
+    generationSessions.value = sessions
+    syncCurrentSessionWithSessionList(sessions)
+  } catch {
+    generationSessions.value = []
+    applyCurrentSessionId('')
+  } finally {
+    isGenerationSessionsLoading.value = false
+  }
+}
+
+// 新建正式会话，并切换到新会话视图。
+const handleCreateSession = async () => {
+  if (!authStore.isLoggedIn.value) {
+    openLoginModal('generate-session-create')
+    return
+  }
+
+  const createdSession = await createGenerationSessionRequest()
+  generationSessions.value = generationSessions.value
+    .filter(session => session.id !== createdSession.id)
+  generationSessions.value.push(createdSession)
+  generationSessions.value = [...generationSessions.value].sort((left, right) => {
+    if (left.isDefault !== right.isDefault) {
+      return left.isDefault ? -1 : 1
+    }
+    return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+  })
+  applyCurrentSessionId(createdSession.id)
+  sessionSearchKeyword.value = ''
+  const scrollNode = document.getElementById('scroll-list-generate-session')
+  scrollNode?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  contentGeneratorRef.value?.expand()
+}
+
+const handleSessionSearch = () => {
+  contentGeneratorRef.value?.expand()
+}
+
+const handleSessionTimeFilterClick = () => {
+  ElMessage.info('时间筛选下一步接入。')
+}
+
+const handleSessionTypeFilterClick = () => {
+  ElMessage.info('生成类型筛选下一步接入。')
+}
+
+const handleSessionActionFilterClick = () => {
+  ElMessage.info('操作类型筛选下一步接入。')
+}
+
+const handleSelectSidebarDefault = () => {
+  applyCurrentSessionId(sidebarDefaultSession.value.id)
+  sessionSearchKeyword.value = ''
+}
+
+const handleSelectSidebarSession = (id: string) => {
+  applyCurrentSessionId(id)
+  sessionSearchKeyword.value = ''
+}
+
+const handleRenameSidebarSession = async (id: string) => {
+  const targetSession = generationSessions.value.find(session => session.id === id)
+  if (!targetSession) {
+    return
+  }
+
+  try {
+    const { value } = await ElMessageBox.prompt('请输入新的会话名称', '重命名会话', {
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      inputValue: targetSession.title,
+      inputPlaceholder: '请输入会话名称',
+      inputValidator: (inputValue) => {
+        return String(inputValue || '').trim() ? true : '会话名称不能为空'
+      },
+    })
+
+    const savedSession = await updateGenerationSessionRequest(id, {
+      title: String(value || '').trim(),
+    })
+
+    generationSessions.value = generationSessions.value.map((session) => {
+      if (session.id !== savedSession.id) {
+        return session
+      }
+      return savedSession
+    })
+
+    generatingRecords.value = generatingRecords.value.map((record) => {
+      if (record.sessionId !== savedSession.id) {
+        return record
+      }
+      return {
+        ...record,
+        sessionTitle: savedSession.title,
+      }
+    })
+  } catch {
+    // 用户取消重命名时不提示错误。
+  }
+}
+
+const handleDeleteSidebarSession = async (id: string) => {
+  const targetSession = generationSessions.value.find(session => session.id === id)
+  if (!targetSession) {
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定删除会话“${targetSession.title}”吗？该会话下的生成记录也会一并移除。`,
+      '删除会话',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+
+    const runningRecords = generatingRecords.value.filter(record => record.sessionId === id && !record.done && record.dbId)
+    await Promise.allSettled(runningRecords.map(async (record) => {
+      if (!record.dbId) {
+        return
+      }
+
+      const saved = await stopGenerationTask(record.dbId)
+      syncRecordWithPersisted(record, saved)
+      const controller = taskStreamControllers.get(record.dbId)
+      if (controller) {
+        controller.abort()
+        taskStreamControllers.delete(record.dbId)
+      }
+    }))
+
+    await deleteGenerationSessionRequest(id)
+
+    generationSessions.value = generationSessions.value.filter(session => session.id !== id)
+    generatingRecords.value = generatingRecords.value.filter(record => record.sessionId !== id)
+
+    if (currentSessionId.value === id) {
+      const fallbackSession = generationSessions.value.find(session => session.isDefault) || generationSessions.value[0]
+      applyCurrentSessionId(fallbackSession?.id || '')
+    }
+
+    if (!generationSessions.value.length) {
+      conversationSidebarCollapsed.value = false
+      writeStoredConversationSidebarCollapsed(false)
+    }
+  } catch {
+    // 用户取消删除时不提示错误。
+  }
+}
+
+const handleToggleConversationSidebar = () => {
+  conversationSidebarCollapsed.value = !conversationSidebarCollapsed.value
+  writeStoredConversationSidebarCollapsed(conversationSidebarCollapsed.value)
+}
+
 // 只有显式选择技能时，才进入工作台式 Agent 流程；通用助手仍保留原流式对话体验。
 const shouldUseAgentWorkspaceFlow = (skill?: string) => {
   return isAgentWorkspaceSkill(skill)
@@ -261,6 +571,7 @@ const shouldUseAgentWorkspaceFlow = (skill?: string) => {
 
 // 将页面内的记录结构转换为后端持久化结构。
 const toGenerationRecordPayload = (record: GeneratingRecord): GenerationRecordUpsertPayload => ({
+  sessionId: record.sessionId,
   type: record.type,
   prompt: record.prompt,
   content: record.content,
@@ -299,6 +610,8 @@ const formatGroupLabel = (date: Date): string => {
 const createRecordFromPersisted = (record: PersistedGenerationRecord): GeneratingRecord => ({
   id: nextId++,
   dbId: record.id,
+  sessionId: record.sessionId,
+  sessionTitle: record.sessionTitle || '',
   type: record.type,
   prompt: record.prompt,
   time: formatGroupLabel(new Date(record.createdAt)),
@@ -337,6 +650,8 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
 // 将后端持久化后的正式资源地址回写到当前记录，避免重复提交 base64 或上游临时链接。
 const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGenerationRecord) => {
   record.dbId = saved.id
+  record.sessionId = saved.sessionId
+  record.sessionTitle = saved.sessionTitle || record.sessionTitle || ''
   record.content = saved.content || record.content
   record.error = saved.error
   record.done = saved.done
@@ -378,6 +693,8 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   if (record.type === 'agent') {
     record.agentRun = undefined
   }
+
+  syncSessionMetaFromRecord(record, saved)
 }
 
 // 立即持久化一条记录；创建与更新都走这里统一收口。
@@ -581,6 +898,11 @@ const connectGenerationTaskStream = (record: GeneratingRecord) => {
 // 首屏加载最近的生成记录，用于刷新后回放历史。
 const loadPersistedGeneratingRecords = async () => {
   try {
+    if (!authStore.isLoggedIn.value) {
+      generatingRecords.value = []
+      return
+    }
+
     const records = await listGenerationRecordsRequest()
     if (!records.length) return
 
@@ -604,16 +926,97 @@ const loadPersistedGeneratingRecords = async () => {
 }
 
 
+const ensureCurrentGenerationSession = async () => {
+  if (!authStore.isLoggedIn.value) {
+    return null
+  }
+
+  if (!generationSessions.value.length) {
+    await loadPersistedGenerationSessions()
+  }
+
+  if (currentSessionId.value) {
+    const matchedSession = generationSessions.value.find(session => session.id === currentSessionId.value)
+    if (matchedSession) {
+      return matchedSession
+    }
+  }
+
+  const defaultSession = generationSessions.value.find(session => session.isDefault) || generationSessions.value[0]
+  if (defaultSession) {
+    applyCurrentSessionId(defaultSession.id)
+    return defaultSession
+  }
+
+  await loadPersistedGenerationSessions()
+  const reloadedDefaultSession = generationSessions.value.find(session => session.isDefault) || generationSessions.value[0]
+  if (reloadedDefaultSession) {
+    applyCurrentSessionId(reloadedDefaultSession.id)
+    return reloadedDefaultSession
+  }
+
+  return null
+}
+
+const touchSessionAfterRecordCreated = (sessionId: string) => {
+  const now = new Date().toISOString()
+  generationSessions.value = generationSessions.value
+    .map((session) => {
+      if (session.id !== sessionId) {
+        return session
+      }
+      return {
+        ...session,
+        lastRecordAt: now,
+        updatedAt: now,
+        recordCount: Number(session.recordCount || 0) + 1,
+      }
+    })
+    .sort((left, right) => {
+      if (left.isDefault !== right.isDefault) {
+        return left.isDefault ? -1 : 1
+      }
+      return new Date(right.lastRecordAt || right.updatedAt).getTime() - new Date(left.lastRecordAt || left.updatedAt).getTime()
+    })
+}
+
+// 生成记录回写后直接更新本地会话元数据，避免再次请求会话列表造成闪动。
+const syncSessionMetaFromRecord = (record: GeneratingRecord, saved: PersistedGenerationRecord) => {
+  const sessionId = String(saved.sessionId || record.sessionId || '').trim()
+  if (!sessionId) {
+    return
+  }
+
+  const nextCoverImageUrl = String(saved.images?.[0] || record.images?.[0] || '').trim()
+  generationSessions.value = generationSessions.value.map((session) => {
+    if (session.id !== sessionId) {
+      return session
+    }
+    return {
+      ...session,
+      title: saved.sessionTitle || record.sessionTitle || session.title,
+      coverImageUrl: nextCoverImageUrl || session.coverImageUrl,
+    }
+  })
+}
+
 // 处理发送事件
-const handleSend = (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string }) => {
+const handleSend = async (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string }) => {
   if (!authStore.isLoggedIn.value) {
     openLoginModal('generate-send-guard')
+    return
+  }
+
+  const activeSession = await ensureCurrentGenerationSession()
+  if (!activeSession) {
     return
   }
 
   const recordId = nextId++
   const record: GeneratingRecord = {
     id: recordId,
+    sessionId: activeSession.id,
+    sessionTitle: activeSession.title,
     type,
     prompt: message,
     time: formatGroupLabel(new Date()),
@@ -637,6 +1040,7 @@ const handleSend = (message: string, type: CreationType, options?: { model?: str
       : undefined,
   }
   generatingRecords.value.unshift(record)
+  touchSessionAfterRecordCreated(activeSession.id)
 
   // 根据类型触发不同的生成逻辑
   if (type === 'agent') {
@@ -657,6 +1061,7 @@ const startWorkspaceAgentTask = async (record: GeneratingRecord) => {
     const providerId = resolveRequestProviderId(record.modelKey || currentModelKey, 'CHAT')
 
     const saved = await createGenerationTask({
+      sessionId: record.sessionId,
       type: 'agent',
       prompt: record.prompt,
       model: record.model,
@@ -693,6 +1098,7 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
     }
 
     const saved = await createGenerationTask({
+      sessionId: record.sessionId,
       type: 'agent',
       prompt: record.prompt,
       model: record.model,
@@ -743,6 +1149,7 @@ const startImageGenerationTask = async (record: GeneratingRecord) => {
     }
 
     const saved = await createGenerationTask({
+      sessionId: record.sessionId,
       type: 'image',
       prompt: record.prompt,
       model: record.model,
@@ -801,8 +1208,15 @@ const handleStopAgentExecution = async (record: GeneratingRecord) => {
   }
 }
 
-// 上一次滚动位置
-let lastScrollTop = 0
+// 处理 GenerateSessionList 上抛的滚动状态，控制输入框折叠/展开。
+const handleSessionListScrollState = (state: GenerateSessionScrollState) => {
+  if (!contentGeneratorRef.value) return
+  if (state.isAtBottom) {
+    contentGeneratorRef.value.expand()
+  } else if (state.isScrollingUp && state.scrollTop > 50) {
+    contentGeneratorRef.value.collapse()
+  }
+}
 
 // 登录成功后的页面数据刷新监听器。
 let authLoginSuccessListener: (() => void) | null = null
@@ -818,18 +1232,10 @@ const handlePageClick = (e: MouseEvent) => {
   }
 }
 
-onUnmounted(() => {
-  if (authLoginSuccessListener) {
-    window.removeEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
-    authLoginSuccessListener = null
-  }
-
-  taskStreamControllers.forEach(controller => controller.abort())
-  taskStreamControllers.clear()
-})
-
-// 修复滚动方向反转问题 + 控制输入框折叠/展开
 onMounted(() => {
+  currentSessionId.value = readStoredCurrentSessionId()
+  conversationSidebarCollapsed.value = readStoredConversationSidebarCollapsed()
+  void loadPersistedGenerationSessions()
   void loadPersistedGeneratingRecords()
 
   // 检查路由参数（从首页跳转过来的发送请求）
@@ -840,62 +1246,30 @@ onMounted(() => {
       type as CreationType,
       { model: model as string, ratio: ratio as string, resolution: resolution as string, skill: skill as string }
     )
-    // 清除 query 参数，避免刷新重复创建
     router.replace({ path: '/generate' })
   }
 
-  const scrollContainer = document.querySelector('.virtual-list-gUs6jj') as HTMLElement
-
-  // 添加页面点击监听
   document.addEventListener('click', handlePageClick)
 
   authLoginSuccessListener = () => {
+    void loadPersistedGenerationSessions()
     void loadPersistedGeneratingRecords()
   }
   window.addEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
+})
 
-  if (scrollContainer) {
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      // 反转滚动方向：由于容器被旋转了180度，我们需要反转滚动增量
-      scrollContainer.scrollTop -= e.deltaY
-    }
+onUnmounted(() => {
+  recordPersistTimers.forEach(timer => clearTimeout(timer))
+  recordPersistTimers.clear()
+  document.removeEventListener('click', handlePageClick)
 
-    // 滚动事件处理：控制输入框折叠/展开
-    const handleScroll = () => {
-      const currentScrollTop = scrollContainer.scrollTop
-
-      // 判断是否滚动到底部（由于容器旋转180度，底部实际上是 scrollTop 接近 0）
-      const isAtBottom = currentScrollTop <= 10
-
-      // 判断滚动方向（由于容器旋转，方向也反转了）
-      const isScrollingUp = currentScrollTop > lastScrollTop  // 实际是向上滚动（看旧内容）
-
-      if (contentGeneratorRef.value) {
-        if (isAtBottom) {
-          // 滚动到底部时展开
-          contentGeneratorRef.value.expand()
-        } else if (isScrollingUp && currentScrollTop > 50) {
-          // 向上滚动（看旧内容）时折叠
-          contentGeneratorRef.value.collapse()
-        }
-      }
-
-      lastScrollTop = currentScrollTop
-    }
-
-    scrollContainer.addEventListener('wheel', handleWheel, { passive: false })
-    scrollContainer.addEventListener('scroll', handleScroll, { passive: true })
-
-    // 清理函数
-    onUnmounted(() => {
-      recordPersistTimers.forEach(timer => clearTimeout(timer))
-      recordPersistTimers.clear()
-      scrollContainer.removeEventListener('wheel', handleWheel)
-      scrollContainer.removeEventListener('scroll', handleScroll)
-      document.removeEventListener('click', handlePageClick)
-    })
+  if (authLoginSuccessListener) {
+    window.removeEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
+    authLoginSuccessListener = null
   }
+
+  taskStreamControllers.forEach(controller => controller.abort())
+  taskStreamControllers.clear()
 })
 </script>
 
@@ -912,145 +1286,97 @@ onMounted(() => {
               <div class=content-wrapper-cF1zaN>
                 <div id=dreamina-ui-configuration-content-wrapper class=main-container-nXfW_A>
                   <div class=content-TZbgMr>
-                    <div class=entry-lav5_s>
-                      <div class=record-list-container-YQhwuM>
-                        <div class="record-list-RjGugi record-virtual-list"
-                             style=--content-generator-height:174px>
-                          <div class=virtual-list-container-rarVwb
-                               style=--virtual-list-rotate:rotate(180deg);--virtual-list-direction:rtl;--virtual-list-justify-content:flex-end>
-                            <div class=scroll-container-j7wUS8 style=height:100%>
-                              <div class=virtual-list-gUs6jj style=height:100%>
-                                <div style=height:1056.88px></div>
-                                <div id=scroll-list-9341e2ed-6804-4e34-9b38-1eb6fe79c48e
-                                     class=scroll-list-gsJVWP
-                                     style=transform:translate3d(0px,0px,0px)>
-                                  <div class=scroll-slot-coWS6S></div>
-                                  <div class=top-placeholder-fTCjHC>
-                                    <div class=top-placeholder-aEry7y>
-                                      <div class=clean-agent-context-wrapper-QM8uAh><span
-                                          class=clean-agent-context-text-Lx4BjY>创建新会话</span>
-                                      </div>
-                                      <div class=empty-placeholder-dcs8S2></div>
-                                    </div>
+                    <div class="entry-erESAd">
+                      <GenerateConversationSidebar
+                        :active-session-id="currentSessionId"
+                        :collapsed="conversationSidebarCollapsed"
+                        :loading="isGenerationSessionsLoading"
+                        :default-session="sidebarDefaultSession"
+                        :sessions="sidebarRecentSessions"
+                        @toggle-sidebar="handleToggleConversationSidebar"
+                        @create-session="handleCreateSession"
+                        @select-default="handleSelectSidebarDefault"
+                        @select-session="handleSelectSidebarSession"
+                        @rename-session="handleRenameSidebarSession"
+                        @delete-session="handleDeleteSidebarSession"
+                      />
+                      <div :class="mainContentClassName">
+                        <template v-if="isCurrentSessionEmpty">
+                          <h1 class="new-conversation-title-S9Fv1t" ccfmp-element="true">你好，想创作什么？</h1>
+                          <ContentGenerator
+                            ref="contentGeneratorRef"
+                            :default-expanded="true"
+                            @send="handleSend"
+                          />
+                        </template>
+                        <div v-else class=entry-lav5_s>
+                          <GenerateSessionList
+                            v-model:search-value="sessionSearchKeyword"
+                            scroll-list-id="scroll-list-generate-session"
+                            @create-session="handleCreateSession"
+                            @search="handleSessionSearch"
+                            @time-filter-click="handleSessionTimeFilterClick"
+                            @type-filter-click="handleSessionTypeFilterClick"
+                            @action-filter-click="handleSessionActionFilterClick"
+                            @scroll-state="handleSessionListScrollState"
+                          >
+                            <template v-for="(record, index) in visibleGeneratingRecords" :key="record.id">
+                              <div class="item-Xh64V7" :data-index="index * 2 + 1" style="z-index:1">
+                                <GenerateAgentRecord
+                                  v-if="record.type === 'agent' && record.agentRun"
+                                  :run="record.agentRun"
+                                  :error-text="record.error"
+                                  @stop="handleStopAgentExecution(record)"
+                                />
+                                <AgentLoadingRecord
+                                  v-else-if="record.type === 'agent'"
+                                  :prompt="record.prompt"
+                                  :content="record.content"
+                                  :done="record.done"
+                                  :error="record.error"
+                                />
+                                <ImageLoadingRecord
+                                  v-else
+                                  :time="record.time"
+                                  :prompt="record.prompt"
+                                  :model="record.model"
+                                  :ratio="record.ratio"
+                                  :resolution="record.resolution"
+                                  :duration="record.duration"
+                                  :feature="record.feature"
+                                  :progress="record.progressPercent || 0"
+                                  :progress-text="record.progressMessage || ''"
+                                  :done="record.done"
+                                  :stopped="Boolean(record.stopped)"
+                                  :images="record.images"
+                                  :conversation-entries="getRecordConversationEntries(record)"
+                                  :error="record.error"
+                                  @preview="handlePreviewRecordImage(record, $event)"
+                                  @stop="handleStopImageGeneration(record)"
+                                />
+                              </div>
+                              <div
+                                v-if="record.type === 'agent'"
+                                class="item-Xh64V7"
+                                :data-index="index * 2 + 2"
+                                style="z-index:1"
+                              >
+                                <div class="responsive-container-msS_cP">
+                                  <div class="content-DPogfx ai-generated-record-content-hg5EL8">
+                                    <div class="group-title-mhd8yy">{{ record.time }}</div>
                                   </div>
-                                  <!-- 正在生成中的记录 -->
-                                  <template v-for="(record, index) in generatingRecords" :key="record.id">
-                                    <div class=item-Xh64V7 :data-index="index * 2 + 1" style=z-index:1>
-                                      <GenerateAgentRecord
-                                        v-if="record.type === 'agent' && record.agentRun"
-                                        :run="record.agentRun"
-                                        :error-text="record.error"
-                                        @stop="handleStopAgentExecution(record)"
-                                      />
-                                      <AgentLoadingRecord
-                                        v-else-if="record.type === 'agent'"
-                                        :prompt="record.prompt"
-                                        :content="record.content"
-                                        :done="record.done"
-                                        :error="record.error"
-                                      />
-                                      <ImageLoadingRecord v-else
-                                        :time="record.time"
-                                        :prompt="record.prompt"
-                                        :model="record.model"
-                                        :ratio="record.ratio"
-                                        :resolution="record.resolution"
-                                        :duration="record.duration"
-                                        :feature="record.feature"
-                                        :progress="record.progressPercent || 0"
-                                        :progress-text="record.progressMessage || ''"
-                                        :done="record.done"
-                                        :stopped="Boolean(record.stopped)"
-                                        :images="record.images"
-                                        :conversation-entries="getRecordConversationEntries(record)"
-                                        :error="record.error"
-                                        @preview="handlePreviewRecordImage(record, $event)"
-                                        @stop="handleStopImageGeneration(record)"
-                                      />
-                                    </div>
-                                    <div v-if="record.type === 'agent'" class=item-Xh64V7 :data-index="index * 2 + 2" style=z-index:1>
-                                      <div class=responsive-container-msS_cP>
-                                        <div class="content-DPogfx ai-generated-record-content-hg5EL8">
-                                          <div class=group-title-mhd8yy>{{ record.time }}</div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </template>
-
                                 </div>
                               </div>
-                            </div>
-                          </div>
-                        </div>
-                        <div class=filter-mask-IOpWQJ></div>
-                        <div class="filter-container-wyGTle filter-F4oqdf">
-                          <div class="container-ufW1eH collapsed-HB97Ck">
-                            <div class="lv-input-group-wrapper lv-input-group-wrapper-default search-input-ZwhOpf">
-                                                    <span class=lv-input-group><span
-                                                        class="lv-input-inner-wrapper lv-input-inner-wrapper-has-prefix lv-input-inner-wrapper-default lv-input-clear-wrapper"><span
-                                                        class=lv-input-group-prefix><svg
-                                                        class="search-icon-rvzopq search-icon-interactive-LHh2d0"
-                                                        fill=none
-                                                        height=1em
-                                                        preserveAspectRatio="xMidYMid meet"
-                                                        role=presentation viewBox="0 0 24 24"
-                                                        width=1em
-                                                        xmlns=http://www.w3.org/2000/svg><g><path
-                                                        clip-rule=evenodd
-                                                        d="M4.563 10.75a6.5 6.5 0 1 1 13 0 6.5 6.5 0 0 1-13 0Zm6.5-8.5a8.5 8.5 0 1 0 5.261 15.176l3.406 3.406a1 1 0 0 0 1.415-1.414l-3.407-3.406A8.5 8.5 0 0 0 11.062 2.25Z"
-                                                        data-follow-fill=currentColor fill=currentColor
-                                                        fill-rule=evenodd></path></g></svg></span><input
-                                                        class="lv-input lv-input-size-default" maxlength=100
-                                                        placeholder=搜索 value></span></span>
-                            </div>
-                          </div>
-                          <span class=separator-AluiGy></span>
-                          <div class=container-KL2j0F><span class=trigger-AnFRb7><span
-                              class="filter-text-bBfqrS filter-text-MnA06c">时间</span><svg
-                              class=dropdown-arrow-qZsXaR fill=none height=1em
-                              preserveAspectRatio="xMidYMid meet" role=presentation
-                              viewBox="0 0 24 24"
-                              width=1em xmlns=http://www.w3.org/2000/svg><g><path
-                              clip-rule=evenodd
-                              d="M21.01 7.982A1.2 1.2 0 0 1 21 9.679l-8.156 8.06a1.2 1.2 0 0 1-1.688 0L3 9.68a1.2 1.2 0 0 1 1.687-1.707L12 15.199l7.313-7.227a1.2 1.2 0 0 1 1.697.01Z"
-                              data-follow-fill=currentColor
-                              fill=currentColor
-                              fill-rule=evenodd></path></g></svg></span></div>
-                          <span class=separator-AluiGy></span>
-                          <div class=container-KL2j0F><span class=trigger-AnFRb7><span
-                              class=filter-text-bBfqrS>生成类型</span><svg
-                              class=dropdown-arrow-qZsXaR fill=none
-                              height=1em
-                              preserveAspectRatio="xMidYMid meet"
-                              role=presentation
-                              viewBox="0 0 24 24"
-                              width=1em
-                              xmlns=http://www.w3.org/2000/svg><g><path
-                              clip-rule=evenodd
-                              d="M21.01 7.982A1.2 1.2 0 0 1 21 9.679l-8.156 8.06a1.2 1.2 0 0 1-1.688 0L3 9.68a1.2 1.2 0 0 1 1.687-1.707L12 15.199l7.313-7.227a1.2 1.2 0 0 1 1.697.01Z"
-                              data-follow-fill=currentColor
-                              fill=currentColor
-                              fill-rule=evenodd></path></g></svg></span></div>
-                          <span class=separator-AluiGy></span>
-                          <div class=container-KL2j0F><span class=trigger-AnFRb7><span
-                              class=filter-text-bBfqrS>操作类型</span><svg
-                              class=dropdown-arrow-qZsXaR fill=none
-                              height=1em
-                              preserveAspectRatio="xMidYMid meet"
-                              role=presentation
-                              viewBox="0 0 24 24"
-                              width=1em
-                              xmlns=http://www.w3.org/2000/svg><g><path
-                              clip-rule=evenodd
-                              d="M21.01 7.982A1.2 1.2 0 0 1 21 9.679l-8.156 8.06a1.2 1.2 0 0 1-1.688 0L3 9.68a1.2 1.2 0 0 1 1.687-1.707L12 15.199l7.313-7.227a1.2 1.2 0 0 1 1.697.01Z"
-                              data-follow-fill=currentColor
-                              fill=currentColor
-                              fill-rule=evenodd></path></g></svg></span></div>
+                            </template>
+                          </GenerateSessionList>
+                          <ContentGenerator
+                            ref="contentGeneratorRef"
+                            :default-expanded="true"
+                            @send="handleSend"
+                          />
+                          <div style=height:1px></div>
                         </div>
                       </div>
-                      <!-- 内容生成器输入框组件 -->
-                      <ContentGenerator ref="contentGeneratorRef" @send="handleSend"/>
-                      <div style=height:1px></div>
                     </div>
                   </div>
                   <div class="platform-ui-service-side-drawer-container normal-mode legacy">
@@ -1096,4 +1422,20 @@ onMounted(() => {
 
 <style>
 @import "./generate.css";
+
+.main-content-G632JF.new-conversation-cz8zuh {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+}
+
+.new-conversation-title-S9Fv1t {
+  color: var(--text-primary, #fff);
+  font-family: "Founder Yashi Black", var(--font-family, inherit);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+  margin: calc(40vh - 72px) 0 40px;
+  text-align: center;
+}
 </style>

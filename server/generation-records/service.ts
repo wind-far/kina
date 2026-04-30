@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer'
 import { saveUploadedBuffer } from '../storage/service'
 import { prisma } from '../db/prisma'
+import { ensureDefaultGenerationSession, refreshGenerationSessionLastRecordAt, resolveGenerationSessionForUser } from '../generation-sessions/service'
 import type { GenerationRecordPayload, GenerationOutputPayload } from './shared'
 
 // 前端创建类型映射到数据库枚举
@@ -461,6 +462,7 @@ const mapAgentProcessSectionKind = (kind?: string) => {
 
 // 查询详情时统一带出输出、步骤与过程分组
 const buildRecordInclude = () => ({
+  session: true,
   outputs: {
     orderBy: { sortOrder: 'asc' as const },
   },
@@ -479,6 +481,8 @@ const buildRecordInclude = () => ({
 // 将数据库记录序列化为前端可直接消费的结构
 const serializeGenerationRecord = (record: any) => ({
   id: record.id,
+  sessionId: record.sessionId,
+  sessionTitle: record.session?.title || '',
   type: String(record.type || '').toLowerCase().replace('_', '-'),
   prompt: record.prompt,
   content: record.content || '',
@@ -553,6 +557,14 @@ const serializeGenerationRecord = (record: any) => ({
 
 // 获取最近的生成记录列表
 export const listGenerationRecords = async (currentUserId?: string | null) => {
+  if (!currentUserId) {
+    return []
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await ensureDefaultGenerationSession(tx, currentUserId)
+  })
+
   const records = await prisma.generationRecord.findMany({
     where: { userId: currentUserId },
     include: buildRecordInclude(),
@@ -609,9 +621,12 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
   let created: { id: string }
   try {
     created = await prisma.$transaction(async (tx) => {
+      const session = await resolveGenerationSessionForUser(tx, currentUserId, payload.sessionId)
+
       const createdRecord = await tx.generationRecord.create({
         data: {
           userId: currentUserId,
+          sessionId: session.id,
           type: mapGenerationType(payload.type),
           status: mapGenerationStatus(payload),
           prompt: String(payload.prompt || '').trim(),
@@ -753,6 +768,13 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
         }
       }
 
+      await tx.generationSession.update({
+        where: { id: session.id },
+        data: {
+          lastRecordAt: createdRecord.createdAt,
+        },
+      })
+
       return createdRecord
     })
   } catch (error) {
@@ -815,7 +837,7 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
     await prisma.$transaction(async (tx) => {
       const existingRecord = await tx.generationRecord.findUnique({
         where: { id },
-        select: { id: true, userId: true },
+        select: { id: true, userId: true, sessionId: true, createdAt: true },
       })
 
       if (!existingRecord) {
@@ -826,9 +848,12 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
         throw new Error('无权修改当前生成记录')
       }
 
+      const session = await resolveGenerationSessionForUser(tx, currentUserId, payload.sessionId || existingRecord.sessionId)
+
       await tx.generationRecord.update({
         where: { id },
         data: {
+          sessionId: session.id,
           type: mapGenerationType(payload.type),
           status: mapGenerationStatus(payload),
           prompt: String(payload.prompt || '').trim(),
@@ -845,6 +870,16 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
           finishedAt: payload.done ? new Date() : null,
         },
       })
+
+      if (existingRecord.sessionId !== session.id) {
+        await refreshGenerationSessionLastRecordAt(tx, existingRecord.sessionId)
+        await tx.generationSession.update({
+          where: { id: session.id },
+          data: {
+            lastRecordAt: existingRecord.createdAt,
+          },
+        })
+      }
 
       await tx.generationOutput.deleteMany({
         where: { generationRecordId: id },

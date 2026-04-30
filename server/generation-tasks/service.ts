@@ -250,6 +250,7 @@ const isChatCompletionsEndpoint = (endpoint: string) => {
 }
 
 const buildInitialRecordPayload = (payload: GenerationTaskStartPayload): GenerationRecordPayload => ({
+  sessionId: String(payload.sessionId || '').trim() || undefined,
   type: payload.type,
   prompt: String(payload.prompt || '').trim(),
   content: '',

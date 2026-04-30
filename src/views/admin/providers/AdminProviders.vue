@@ -1,21 +1,42 @@
 <template>
   <AdminPageContainer title="模型厂商" description="集中管理多个 AI 厂商，并在厂商维度下维护模型列表与模型能力。">
-    <div class="admin-provider-toolbar">
-      <input
-        v-model.trim="providerKeyword"
-        class="admin-input admin-provider-toolbar__search"
-        type="text"
-        placeholder="搜索供应商名称或厂商标识"
-      >
-      <select v-model="providerStatus" class="admin-input admin-provider-toolbar__status">
-        <option value="ALL">供应商状态</option>
-        <option value="ENABLED">已启用</option>
-        <option value="DISABLED">已禁用</option>
-      </select>
-      <button class="admin-button admin-button--secondary" type="button" @click="loadProviders" :disabled="providerLoading || providerSaving || modelLoading || modelSaving">
-        {{ providerLoading ? '刷新中...' : '刷新列表' }}
-      </button>
-    </div>
+    <AdminFilterToolbar>
+      <template #search>
+        <input
+          v-model.trim="providerFilters.keyword"
+          class="admin-input admin-provider-toolbar__search"
+          type="text"
+          placeholder="搜索供应商名称或厂商标识"
+        >
+      </template>
+      <template #filters>
+        <select v-model="providerFilters.status" class="admin-input admin-provider-toolbar__status">
+          <option value="ALL">供应商状态</option>
+          <option value="ENABLED">已启用</option>
+          <option value="DISABLED">已禁用</option>
+        </select>
+      </template>
+      <template #meta>
+        <span class="admin-skill-toolbar__summary">
+          共 {{ filteredProviders.length }} 个厂商
+          <em v-if="providerActiveFilterCount">，已启用 {{ providerActiveFilterCount }} 个筛选</em>
+        </span>
+      </template>
+      <template #actions>
+        <button
+          v-if="providerActiveFilterCount"
+          class="admin-button admin-button--secondary"
+          type="button"
+          :disabled="providerLoading || providerSaving || modelLoading || modelSaving"
+          @click="resetProviderFilters"
+        >
+          清空筛选
+        </button>
+        <button class="admin-button admin-button--secondary" type="button" @click="loadProviders" :disabled="providerLoading || providerSaving || modelLoading || modelSaving">
+          {{ providerLoading ? '刷新中...' : '刷新列表' }}
+        </button>
+      </template>
+    </AdminFilterToolbar>
 
     <div class="admin-provider-grid">
       <button class="admin-provider-create-card" type="button" @click="openCreateProviderDialog">
@@ -28,7 +49,7 @@
         </div>
       </button>
 
-      <div v-for="provider in filteredProviders" :key="provider.id" class="admin-provider-tile">
+      <div v-for="provider in paginatedProviders" :key="provider.id" class="admin-provider-tile">
         <div class="admin-provider-tile__header">
           <div class="admin-provider-tile__brand">
             <div class="admin-provider-avatar">
@@ -78,6 +99,13 @@
         </div>
       </div>
     </div>
+    <AdminPagination
+      v-if="filteredProviders.length > 0"
+      v-model:page="providerPagination.page"
+      v-model:page-size="providerPagination.pageSize"
+      :total="filteredProviders.length"
+      :disabled="providerLoading || providerSaving || modelLoading || modelSaving"
+    />
   </AdminPageContainer>
 
   <div v-if="providerDialogVisible" class="admin-dialog-mask" @click="closeProviderDialog">
@@ -232,7 +260,7 @@
         <div v-if="modelLoading" class="admin-empty">正在加载模型列表...</div>
         <div v-else-if="!filteredModels.length" class="admin-empty">当前厂商下还没有模型。</div>
         <div v-else class="admin-model-list">
-          <div v-for="model in filteredModels" :key="model.id" class="admin-model-row">
+          <div v-for="model in paginatedModels" :key="model.id" class="admin-model-row">
             <div class="admin-model-row__main">
               <div class="admin-model-row__title">{{ model.modelKey }}</div>
               <div class="admin-model-row__badges">
@@ -253,6 +281,12 @@
               </label>
             </div>
           </div>
+          <AdminPagination
+            v-model:page="modelPagination.page"
+            v-model:page-size="modelPagination.pageSize"
+            :total="filteredModels.length"
+            :disabled="modelLoading || modelSaving"
+          />
         </div>
       </div>
     </div>
@@ -366,10 +400,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Edit, MoreFilled, Setting, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import AdminPagination from '@/components/admin/common/AdminPagination.vue'
+import AdminFilterToolbar from '@/components/admin/common/AdminFilterToolbar.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
+import { matchesAdminKeyword, useAdminListFilters } from '@/composables/useAdminListFilters'
+import { useAdminPagination } from '@/composables/useAdminPagination'
 import {
   createAdminProvider,
   deleteAdminProvider,
@@ -418,8 +456,14 @@ const providerSaving = ref(false)
 const modelLoading = ref(false)
 const modelSaving = ref(false)
 
-const providerKeyword = ref('')
-const providerStatus = ref<'ALL' | 'ENABLED' | 'DISABLED'>('ALL')
+const providerFilters = reactive({
+  keyword: '',
+  status: 'ALL' as 'ALL' | 'ENABLED' | 'DISABLED',
+})
+const providerFilterDefaults = {
+  keyword: '',
+  status: 'ALL' as 'ALL' | 'ENABLED' | 'DISABLED',
+}
 const providers = ref<AdminProviderItem[]>([])
 const selectedProvider = ref<AdminProviderItem | null>(null)
 const providerDialogVisible = ref(false)
@@ -433,6 +477,16 @@ const modelKeyword = ref('')
 const modelStatus = ref<'ALL' | 'ENABLED' | 'DISABLED'>('ALL')
 const modelCategoryFilter = ref<'ALL' | AdminModelCategory>('ALL')
 const models = ref<AdminProviderModelItem[]>([])
+const { activeFilterCount: providerActiveFilterCount, resetFilters: resetProviderFilterValues } = useAdminListFilters({
+  filters: providerFilters,
+  defaults: providerFilterDefaults,
+})
+const { pagination: providerPagination, sliceItems: sliceProviderItems, resetPage: resetProviderPage } = useAdminPagination({
+  initialPageSize: 8,
+})
+const { pagination: modelPagination, sliceItems: sliceModelItems, resetPage: resetModelPage } = useAdminPagination({
+  initialPageSize: 10,
+})
 
 const providerForm = reactive<AdminProviderPayload>({
   code: '',
@@ -470,17 +524,21 @@ const modelForm = reactive({
 
 const filteredProviders = computed(() => {
   return providers.value.filter((provider) => {
-    const matchedKeyword = !providerKeyword.value
-      || provider.name.toLowerCase().includes(providerKeyword.value.toLowerCase())
-      || provider.code.toLowerCase().includes(providerKeyword.value.toLowerCase())
+    const matchedKeyword = matchesAdminKeyword(providerFilters.keyword, [provider.name, provider.code])
 
-    const matchedStatus = providerStatus.value === 'ALL'
-      || (providerStatus.value === 'ENABLED' && provider.isEnabled)
-      || (providerStatus.value === 'DISABLED' && !provider.isEnabled)
+    const matchedStatus = providerFilters.status === 'ALL'
+      || (providerFilters.status === 'ENABLED' && provider.isEnabled)
+      || (providerFilters.status === 'DISABLED' && !provider.isEnabled)
 
     return matchedKeyword && matchedStatus
   })
 })
+const paginatedProviders = computed(() => sliceProviderItems(filteredProviders.value))
+
+const resetProviderFilters = () => {
+  resetProviderFilterValues()
+  resetProviderPage()
+}
 
 const filteredModels = computed(() => {
   return models.value
@@ -499,6 +557,7 @@ const filteredModels = computed(() => {
     })
     .sort((prevItem, nextItem) => prevItem.sortOrder - nextItem.sortOrder)
 })
+const paginatedModels = computed(() => sliceModelItems(filteredModels.value))
 
 const resetProviderForm = () => {
   providerForm.code = ''
@@ -637,6 +696,7 @@ const loadModels = async (providerId?: string) => {
     const result = await listAdminProviderModels(targetProviderId)
     models.value = result.models
     selectedProvider.value = result.provider
+    resetModelPage()
   } finally {
     modelLoading.value = false
   }
@@ -764,6 +824,7 @@ const openModelManager = async (provider: AdminProviderItem) => {
   modelStatus.value = 'ALL'
   modelCategoryFilter.value = 'ALL'
   modelManagerVisible.value = true
+  resetModelPage()
   await loadModels(provider.id)
 }
 
@@ -773,7 +834,16 @@ const closeModelManager = () => {
   selectedProvider.value = null
   models.value = []
   resetModelForm()
+  resetModelPage()
 }
+
+watch(() => [providerFilters.keyword, providerFilters.status] as const, () => {
+  resetProviderPage()
+})
+
+watch(() => [modelKeyword.value, modelStatus.value, modelCategoryFilter.value] as const, () => {
+  resetModelPage()
+})
 
 const openCreateModelDialog = () => {
   resetModelForm()

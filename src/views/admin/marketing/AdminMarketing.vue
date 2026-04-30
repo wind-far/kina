@@ -2098,7 +2098,7 @@ onMounted(() => {
   padding: 16px;
   border: 1px solid var(--line-divider, #00000014);
   border-radius: 16px;
-  background: var(--bg-block-primary-default, rgba(255, 255, 255, 0.03));
+  background: var(--bg-block-primary-default);
 }
 
 .admin-marketing-log-toolbar__search {
@@ -2204,7 +2204,7 @@ onMounted(() => {
   padding: 14px 16px;
   border-radius: 14px;
   border: 1px solid var(--line-divider, #00000014);
-  background: var(--bg-block-primary-default, rgba(255, 255, 255, 0.03));
+  background: var(--bg-block-primary-default);
 }
 
 .admin-marketing-log-summary__label {
@@ -2231,7 +2231,7 @@ onMounted(() => {
   padding: 16px 18px;
   border-radius: 16px;
   border: 1px solid var(--line-divider, #00000014);
-  background: var(--bg-block-primary-default, rgba(255, 255, 255, 0.025));
+  background: var(--bg-block-primary-default);
 }
 
 .admin-point-log-item__check {
@@ -2314,8 +2314,8 @@ onMounted(() => {
   align-items: center;
   padding: 12px;
   border-radius: 12px;
-  background: var(--bg-block-primary-default, rgba(255, 255, 255, 0.04));
-  border: 1px solid var(--stroke-secondary, rgba(255, 255, 255, 0.08));
+  background: var(--bg-block-primary-default);
+  border: 1px solid var(--line-divider, #00000014);
 }
 
 .admin-form__label--row {

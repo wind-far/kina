@@ -528,7 +528,7 @@ html[data-theme='dark'] .admin-system-tabs__item {
 
 html[data-theme='dark'] .admin-input,
 html[data-theme='dark'] .admin-textarea {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-block-secondary-default);
 }
 
 html[data-theme='dark'] .admin-input:hover,
@@ -1747,7 +1747,7 @@ html[data-theme='dark'] .admin-empty {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--bg-surface);
   transition: transform .2s ease;
 }
 

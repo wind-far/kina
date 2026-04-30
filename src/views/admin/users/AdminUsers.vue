@@ -13,9 +13,8 @@
       <AdminStatCard label="已激活" :value="activeCount" hint="当前筛选结果中的激活用户数量" />
     </div>
 
-    <div class="admin-filter-bar">
-      <AdminFilterChips :groups="filterChipGroups" :disabled="loading" @select="handleChipSelect" />
-      <div style="display: flex; gap: 10px; flex-wrap: wrap; width: 100%;">
+    <AdminFilterToolbar>
+      <template #search>
         <input
           v-model.trim="filters.keyword"
           class="admin-input"
@@ -23,10 +22,21 @@
           placeholder="搜索昵称、邮箱、手机号或用户 ID"
           @keydown.enter="handleSearch"
         >
-        <button class="admin-inline-button" type="button" :disabled="loading" @click="handleSearch">搜索</button>
-        <button class="admin-inline-button" type="button" :disabled="loading" @click="resetFilters">重置</button>
-      </div>
-    </div>
+      </template>
+      <template #filters>
+        <AdminFilterChips :groups="filterChipGroups" :disabled="loading" @select="handleChipSelect" />
+      </template>
+      <template #meta>
+        <span class="admin-skill-toolbar__summary">
+          共 {{ users.length }} 个用户
+          <em v-if="activeFilterCount">，已启用 {{ activeFilterCount }} 个筛选</em>
+        </span>
+      </template>
+      <template #actions>
+        <button class="admin-button admin-button--secondary" type="button" :disabled="loading" @click="resetFilters">重置</button>
+        <button class="admin-button admin-button--primary" type="button" :disabled="loading" @click="handleSearch">搜索</button>
+      </template>
+    </AdminFilterToolbar>
 
     <div class="admin-card">
       <div class="admin-card__header">
@@ -39,7 +49,7 @@
         <div v-if="loading" class="admin-empty">正在加载用户列表...</div>
         <div v-else-if="users.length === 0" class="admin-empty">当前筛选条件下还没有用户数据。</div>
         <div v-else class="admin-user-list">
-          <div v-for="user in users" :key="user.id" class="admin-user-card">
+          <div v-for="user in paginatedUsers" :key="user.id" class="admin-user-card">
             <div class="admin-user-card__avatar">
               <img v-if="user.avatarUrl" :src="user.avatarUrl" :alt="user.name || '用户头像'" class="admin-user-card__avatar-image">
               <div v-else class="admin-user-card__avatar-fallback">{{ getUserInitial(user.name || user.maskedEmail || user.maskedPhone || 'U') }}</div>
@@ -92,6 +102,12 @@
               </div>
             </div>
           </div>
+          <AdminPagination
+            v-model:page="pagination.page"
+            v-model:page-size="pagination.pageSize"
+            :total="users.length"
+            :disabled="loading"
+          />
         </div>
       </div>
     </div>
@@ -99,10 +115,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import AdminFilterChips, { type AdminFilterChipGroup } from '@/components/admin/common/AdminFilterChips.vue'
+import AdminFilterToolbar from '@/components/admin/common/AdminFilterToolbar.vue'
+import AdminPagination from '@/components/admin/common/AdminPagination.vue'
 import AdminStatCard from '@/components/admin/common/AdminStatCard.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
+import { useAdminListFilters } from '@/composables/useAdminListFilters'
+import { useAdminPagination } from '@/composables/useAdminPagination'
 import { listAdminUsers, updateAdminUserRole, type AdminUserItem, type ListAdminUsersOptions } from '@/api/admin-users'
 
 const loading = ref(false)
@@ -113,6 +133,18 @@ const filters = reactive<ListAdminUsersOptions>({
   keyword: '',
   role: 'ALL',
   status: 'ALL',
+})
+const filterDefaults: ListAdminUsersOptions = {
+  keyword: '',
+  role: 'ALL',
+  status: 'ALL',
+}
+const { activeFilterCount, resetFilters: resetFilterValues } = useAdminListFilters({
+  filters,
+  defaults: filterDefaults,
+})
+const { pagination, sliceItems, resetPage } = useAdminPagination({
+  initialPageSize: 10,
 })
 
 const roleOptions: Array<{ label: string; value: 'ALL' | 'USER' | 'ADMIN' }> = [
@@ -146,6 +178,7 @@ const filterChipGroups = computed((): AdminFilterChipGroup[] => [
 const adminCount = computed(() => users.value.filter(user => user.role === 'ADMIN').length)
 const userCount = computed(() => users.value.filter(user => user.role !== 'ADMIN').length)
 const activeCount = computed(() => users.value.filter(user => user.status === 'ACTIVE').length)
+const paginatedUsers = computed(() => sliceItems(users.value))
 
 const loadUsers = async () => {
   loading.value = true
@@ -200,11 +233,13 @@ const handleChipSelect = (payload: { groupKey: string; value: string }) => {
 }
 
 const resetFilters = () => {
-  filters.keyword = ''
-  filters.role = 'ALL'
-  filters.status = 'ALL'
+  resetFilterValues()
   void loadUsers()
 }
+
+watch(() => pagination.pageSize, () => {
+  resetPage()
+})
 
 const getUserInitial = (value: string) => {
   return String(value || 'U').trim().slice(0, 1).toUpperCase() || 'U'

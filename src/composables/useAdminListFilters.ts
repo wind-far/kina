@@ -1,14 +1,14 @@
 import { computed } from 'vue'
 
-type FilterRecord = Record<string, unknown>
+type FilterObject = object
 
-interface UseAdminListFiltersOptions<TFilters extends FilterRecord> {
+interface UseAdminListFiltersOptions<TFilters extends FilterObject> {
   filters: TFilters
   defaults: TFilters
   isEmptyValue?: (key: keyof TFilters, value: TFilters[keyof TFilters], defaultValue: TFilters[keyof TFilters]) => boolean
 }
 
-const defaultIsEmptyValue = <TFilters extends FilterRecord>(
+const defaultIsEmptyValue = <TFilters extends FilterObject>(
   _key: keyof TFilters,
   value: TFilters[keyof TFilters],
   defaultValue: TFilters[keyof TFilters],
@@ -24,7 +24,7 @@ const defaultIsEmptyValue = <TFilters extends FilterRecord>(
   return value === null || value === undefined
 }
 
-export const useAdminListFilters = <TFilters extends FilterRecord>({
+export const useAdminListFilters = <TFilters extends FilterObject>({
   filters,
   defaults,
   isEmptyValue = defaultIsEmptyValue,

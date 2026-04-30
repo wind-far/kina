@@ -60,7 +60,7 @@
     <div v-if="loading" class="admin-empty">正在加载技能列表...</div>
     <div v-else-if="!filteredSkills.length" class="admin-empty">当前还没有符合条件的技能。</div>
     <div v-else class="admin-provider-grid">
-      <div v-for="skill in filteredSkills" :key="skill.skillKey" class="admin-provider-tile admin-skill-tile">
+      <div v-for="skill in paginatedSkills" :key="skill.skillKey" class="admin-provider-tile admin-skill-tile">
         <div class="admin-provider-tile__header">
           <div class="admin-provider-tile__brand">
             <div class="admin-provider-avatar">
@@ -122,6 +122,13 @@
         </div>
       </div>
     </div>
+    <AdminPagination
+      v-if="filteredSkills.length > 0"
+      v-model:page="pagination.page"
+      v-model:page-size="pagination.pageSize"
+      :total="filteredSkills.length"
+      :disabled="loading || saving"
+    />
   </AdminPageContainer>
 
   <div v-if="dialogVisible" class="admin-dialog-mask" @click="closeDialog">
@@ -728,10 +735,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import AdminFilterToolbar from '@/components/admin/common/AdminFilterToolbar.vue'
+import AdminPagination from '@/components/admin/common/AdminPagination.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
 import { matchesAdminKeyword, useAdminListFilters } from '@/composables/useAdminListFilters'
+import { useAdminPagination } from '@/composables/useAdminPagination'
 import {
   createAdminSkill,
   deleteAdminSkill,
@@ -815,6 +824,9 @@ const { activeFilterCount, resetFilters } = useAdminListFilters({
   filters,
   defaults: filterDefaults,
 })
+const { pagination, sliceItems, resetPage } = useAdminPagination({
+  initialPageSize: 12,
+})
 
 const sectionNavItems: Array<{ key: SkillSectionKey; label: string; anchorId: string }> = [
   { key: 'basic', label: '基础信息', anchorId: 'skill-section-basic' },
@@ -874,6 +886,7 @@ const filteredSkills = computed(() => {
     return matchedKeyword && matchedStatus && matchedUiMode && matchedExecutionMode && matchedCategory
   })
 })
+const paginatedSkills = computed(() => sliceItems(filteredSkills.value))
 const executionModeOptions = computed(() => {
   return Array.from(new Set(skills.value.map(item => item.executionMode).filter(Boolean)))
 })
@@ -1059,7 +1072,12 @@ const getTabCountText = (tabKey: SkillEditorTabKey) => {
 
 const resetListFilters = () => {
   resetFilters()
+  resetPage()
 }
+
+watch(() => [filters.keyword, filters.status, filters.uiMode, filters.executionMode, filters.category] as const, () => {
+  resetPage()
+})
 
 const updateLocalSkillDetail = (detail: AdminSkillDetail) => {
   skillDetailMap.value = {

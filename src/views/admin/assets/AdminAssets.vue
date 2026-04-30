@@ -6,31 +6,17 @@
       </button>
     </template>
 
-    <div class="admin-filter-bar">
-      <div class="admin-filter-bar__chips">
-        <button
-          v-for="option in typeOptions"
-          :key="option.value"
-          class="admin-chip-button"
-          type="button"
-          :class="{ 'is-active': filters.assetType === option.value }"
-          @click="setAssetType(option.value)"
-        >
-          {{ option.label }}
-        </button>
-        <button
-          v-for="option in publishStateOptions"
-          :key="option.value"
-          class="admin-chip-button"
-          type="button"
-          :class="{ 'is-active': filters.publishState === option.value }"
-          @click="setPublishState(option.value)"
-        >
-          {{ option.label }}
-        </button>
-      </div>
-      <div class="admin-list-item__meta">当前只管理“我的资源”，这样批量动作可以直接复用现有服务端权限约束。</div>
-    </div>
+    <AdminFilterToolbar>
+      <template #filters>
+        <AdminFilterChips :groups="filterChipGroups" :disabled="loading || acting" @select="handleChipSelect" />
+      </template>
+      <template #meta>
+        <span class="admin-skill-toolbar__summary">
+          共 {{ assets.length }} 条资源
+          <em>，当前只管理我的资源</em>
+        </span>
+      </template>
+    </AdminFilterToolbar>
 
     <div class="admin-card">
       <div class="admin-card__header">
@@ -43,9 +29,9 @@
         <div class="admin-bulk-bar">
           <label class="admin-switch-row">
             <input :checked="isAllSelected" type="checkbox" @change="handleToggleAll">
-            <span>全选当前列表</span>
+            <span>全选当前页</span>
           </label>
-          <div class="admin-bulk-bar__meta">已选择 {{ selectedIds.length }} 项，共 {{ assets.length }} 项</div>
+          <div class="admin-bulk-bar__meta">已选择 {{ selectedIds.length }} 项，当前页 {{ paginatedAssets.length }} 项，共 {{ assets.length }} 项</div>
           <div class="admin-bulk-bar__actions">
             <button class="admin-inline-button" type="button" :disabled="acting || selectedIds.length === 0" @click="handleBatchAction('publish')">
               {{ actingAction === 'publish' ? '发布中...' : '批量发布' }}
@@ -72,7 +58,7 @@
         <div v-if="loading" class="admin-empty">正在加载资源列表...</div>
         <div v-else-if="assets.length === 0" class="admin-empty">当前筛选条件下还没有资源记录。</div>
         <div v-else class="admin-asset-list">
-          <div v-for="item in assets" :key="item.id" class="admin-asset-card">
+          <div v-for="item in paginatedAssets" :key="item.id" class="admin-asset-card">
             <div class="admin-asset-card__select">
               <input :checked="selectedMap[item.id] === true" type="checkbox" @change="handleToggleItem(item.id, $event)">
             </div>
@@ -142,6 +128,12 @@
               </div>
             </div>
           </div>
+          <AdminPagination
+            v-model:page="pagination.page"
+            v-model:page-size="pagination.pageSize"
+            :total="assets.length"
+            :disabled="loading || acting"
+          />
         </div>
       </div>
     </div>
@@ -149,8 +141,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import AdminFilterChips, { type AdminFilterChipGroup } from '@/components/admin/common/AdminFilterChips.vue'
+import AdminFilterToolbar from '@/components/admin/common/AdminFilterToolbar.vue'
+import AdminPagination from '@/components/admin/common/AdminPagination.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
+import { useAdminPagination } from '@/composables/useAdminPagination'
 import {
   applyAssetAction,
   listAssetItems,
@@ -173,6 +169,9 @@ const filters = reactive<{
   assetType: 'image',
   publishState: 'all',
 })
+const { pagination, sliceItems, resetPage } = useAdminPagination({
+  initialPageSize: 12,
+})
 
 const typeOptions: Array<{ label: string; value: AssetKind }> = [
   { label: '图片资源', value: 'image' },
@@ -184,9 +183,24 @@ const publishStateOptions: Array<{ label: string; value: AssetPublishState }> = 
   { label: '已发布', value: 'published' },
   { label: '草稿', value: 'draft' },
 ]
+const filterChipGroups = computed<AdminFilterChipGroup[]>(() => [
+  {
+    key: 'assetType',
+    label: '资源类型',
+    modelValue: filters.assetType,
+    options: typeOptions,
+  },
+  {
+    key: 'publishState',
+    label: '发布状态',
+    modelValue: filters.publishState,
+    options: publishStateOptions,
+  },
+])
 
 const selectedIds = computed(() => Object.keys(selectedMap.value).filter((id) => selectedMap.value[id]))
-const isAllSelected = computed(() => assets.value.length > 0 && assets.value.every((item) => selectedMap.value[item.id]))
+const paginatedAssets = computed(() => sliceItems(assets.value))
+const isAllSelected = computed(() => paginatedAssets.value.length > 0 && paginatedAssets.value.every((item) => selectedMap.value[item.id]))
 
 const clearSelection = () => {
   selectedMap.value = {}
@@ -201,6 +215,7 @@ const loadAssets = async () => {
       publishState: filters.publishState,
       take: 80,
     })
+    resetPage()
     clearSelection()
   } finally {
     loading.value = false
@@ -223,6 +238,16 @@ const setPublishState = (publishState: AssetPublishState) => {
   void loadAssets()
 }
 
+const handleChipSelect = (payload: { groupKey: string; value: string }) => {
+  if (payload.groupKey === 'assetType') {
+    setAssetType(payload.value as AssetKind)
+    return
+  }
+  if (payload.groupKey === 'publishState') {
+    setPublishState(payload.value as AssetPublishState)
+  }
+}
+
 const toggleSelect = (id: string, checked: boolean) => {
   selectedMap.value = {
     ...selectedMap.value,
@@ -236,7 +261,10 @@ const toggleSelectAll = (checked: boolean) => {
     return
   }
 
-  selectedMap.value = Object.fromEntries(assets.value.map((item) => [item.id, true]))
+  selectedMap.value = {
+    ...selectedMap.value,
+    ...Object.fromEntries(paginatedAssets.value.map((item) => [item.id, true])),
+  }
 }
 
 const handleToggleAll = (event: Event) => {
@@ -293,5 +321,9 @@ const formatDate = (value?: string) => {
 
 onMounted(() => {
   void loadAssets()
+})
+
+watch(() => pagination.pageSize, () => {
+  resetPage()
 })
 </script>

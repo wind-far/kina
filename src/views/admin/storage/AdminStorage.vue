@@ -1,31 +1,43 @@
 <template>
   <AdminPageContainer title="存储配置" description="集中管理对象存储配置，并清晰展示当前启用状态与本地回退策略。">
-    <div class="admin-provider-toolbar">
-      <input
-        v-model.trim="filters.keyword"
-        class="admin-input admin-provider-toolbar__search"
-        type="text"
-        placeholder="搜索配置名称或编码"
-      >
-      <select v-model="filters.status" class="admin-input admin-provider-toolbar__status">
-        <option value="ALL">配置状态</option>
-        <option value="DEFAULT">当前启用</option>
-        <option value="ENABLED">已启用</option>
-        <option value="DISABLED">未启用</option>
-      </select>
-      <button class="admin-button admin-button--secondary" type="button" @click="loadConfigs" :disabled="loading || submitting || activatingId !== ''">
-        {{ loading ? '刷新中...' : '刷新列表' }}
-      </button>
-      <button
-        v-if="hasFilters"
-        class="admin-button admin-button--ghost"
-        type="button"
-        :disabled="loading || submitting || activatingId !== ''"
-        @click="handleResetFilters"
-      >
-        清空筛选
-      </button>
-    </div>
+    <AdminFilterToolbar>
+      <template #search>
+        <input
+          v-model.trim="filters.keyword"
+          class="admin-input admin-provider-toolbar__search"
+          type="text"
+          placeholder="搜索配置名称或编码"
+        >
+      </template>
+      <template #filters>
+        <select v-model="filters.status" class="admin-input admin-provider-toolbar__status">
+          <option value="ALL">配置状态</option>
+          <option value="DEFAULT">当前启用</option>
+          <option value="ENABLED">已启用</option>
+          <option value="DISABLED">未启用</option>
+        </select>
+      </template>
+      <template #meta>
+        <span class="admin-skill-toolbar__summary">
+          共 {{ filteredConfigs.length }} 条结果
+          <em v-if="hasFilters">，筛选已生效</em>
+        </span>
+      </template>
+      <template #actions>
+        <button
+          v-if="hasFilters"
+          class="admin-button admin-button--secondary"
+          type="button"
+          :disabled="loading || submitting || activatingId !== ''"
+          @click="handleResetFilters"
+        >
+          清空筛选
+        </button>
+        <button class="admin-button admin-button--secondary" type="button" @click="loadConfigs" :disabled="loading || submitting || activatingId !== ''">
+          {{ loading ? '刷新中...' : '刷新列表' }}
+        </button>
+      </template>
+    </AdminFilterToolbar>
 
     <div class="admin-grid admin-grid--stats">
       <div class="admin-stat-card">
@@ -81,7 +93,7 @@
         当前筛选条件下暂无存储配置，建议清空筛选或新增一条配置。
       </div>
 
-      <div v-for="config in filteredConfigs" :key="config.id" class="admin-provider-tile admin-storage-card" :class="{ 'is-active': config.isDefault }">
+      <div v-for="config in paginatedConfigs" :key="config.id" class="admin-provider-tile admin-storage-card" :class="{ 'is-active': config.isDefault }">
         <div class="admin-provider-tile__header">
           <div class="admin-provider-tile__brand">
             <div class="admin-provider-avatar">
@@ -132,6 +144,13 @@
         </div>
       </div>
     </div>
+    <AdminPagination
+      v-if="filteredConfigs.length > 0"
+      v-model:page="pagination.page"
+      v-model:page-size="pagination.pageSize"
+      :total="filteredConfigs.length"
+      :disabled="loading || submitting || activatingId !== ''"
+    />
   </AdminPageContainer>
 
   <div v-if="dialogVisible" class="admin-dialog-mask" @click="closeDialog">
@@ -223,9 +242,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import AdminPagination from '@/components/admin/common/AdminPagination.vue'
+import AdminFilterToolbar from '@/components/admin/common/AdminFilterToolbar.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
 import { matchesAdminKeyword, useAdminListFilters } from '@/composables/useAdminListFilters'
+import { useAdminPagination } from '@/composables/useAdminPagination'
 import {
   activateStorageConfig,
   createStorageConfig,
@@ -273,6 +295,9 @@ const { hasFilters, resetFilters } = useAdminListFilters({
   filters,
   defaults: filterDefaults,
 })
+const { pagination, sliceItems, resetPage } = useAdminPagination({
+  initialPageSize: 8,
+})
 
 // 统一维护筛选状态，保证列表、统计和空状态展示逻辑一致。
 const filteredConfigs = computed(() => {
@@ -287,6 +312,7 @@ const filteredConfigs = computed(() => {
     return matchedKeyword && matchedStatus
   })
 })
+const paginatedConfigs = computed(() => sliceItems(filteredConfigs.value))
 
 const applyForm = (value = createDefaultForm()) => {
   form.name = value.name
@@ -314,7 +340,12 @@ const loadConfigs = async () => {
 
 const handleResetFilters = () => {
   resetFilters()
+  resetPage()
 }
+
+watch(() => [filters.keyword, filters.status] as const, () => {
+  resetPage()
+})
 
 const resetForm = () => {
   editingId.value = ''

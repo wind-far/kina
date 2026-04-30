@@ -1441,8 +1441,8 @@ onMounted(() => {
   gap: 12px;
   padding: 12px 14px;
   border-radius: 14px;
-  background: var(--bg-block-primary-default, rgba(255, 255, 255, 0.04));
-  border: 1px solid var(--stroke-secondary, rgba(255, 255, 255, 0.08));
+  background: var(--bg-block-primary-default);
+  border: 1px solid var(--line-divider, #00000014);
 }
 
 .admin-system-stage-card__preview-label {

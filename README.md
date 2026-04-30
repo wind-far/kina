@@ -73,6 +73,11 @@ npm install
 npm run dev
 ```
 
+该命令会同时启动：
+
+- 前端开发服务：http://localhost:5010
+- 独立后端服务：http://localhost:5409
+
 访问 http://localhost:5010 查看应用
 
 ### 生产构建
@@ -80,6 +85,169 @@ npm run dev
 ```bash
 npm run build
 ```
+
+### 生产启动
+
+```bash
+npm run start
+```
+
+生产启动时会自动执行：
+
+1. `prisma migrate deploy`
+2. 启动独立后端服务
+3. 由后端统一托管 `dist` 静态前端与 `/api/...` 接口
+
+### Docker 部署
+
+当前仓库已经提供 `Dockerfile` 与 `docker-compose.yml`，可直接按镜像方式部署。
+
+#### 1. 准备环境文件
+
+在部署目录创建 `.env`，推荐最小配置如下：
+
+```env
+APP_PORT=5409
+VITE_API_BASE_URL=https://你的域名或接口地址
+STATIC_DIST_DIR=/app/dist
+UPLOADS_DIR=/app/uploads
+CORS_ALLOWED_ORIGINS=https://你的前端域名
+DATABASE_URL=mysql://用户名:密码@数据库地址:3306/canana_mind
+PROVIDER_CONFIG_SECRET=请替换成你自己的密钥
+STORAGE_CONFIG_SECRET=
+AUTH_LOGIN_CODE_EXPIRE_MINUTES=5
+AUTH_SESSION_EXPIRE_DAYS=30
+```
+
+说明：
+
+- 项目当前采用**单端口模式**，只需要保留 `APP_PORT`
+- `docker-compose.yml` 会自动把 `SERVER_PORT` 映射为同一个端口
+- 生成图片与本地上传文件默认存放在容器内 `/app/uploads`
+
+#### 2. 启动方式
+
+如果服务器通过镜像仓库拉取镜像运行，执行：
+
+```bash
+docker compose pull
+docker compose up -d --force-recreate --remove-orphans
+```
+
+如果服务器本机直接基于源码构建镜像，执行：
+
+```bash
+docker build -t couei/canana-vue:latest .
+docker compose up -d --force-recreate --remove-orphans
+```
+
+#### 3. 使用 `docker run` 直接启动
+
+如果你不使用 `docker compose`，也可以直接通过 `docker run` 方式启动：
+
+```bash
+docker run -d \
+  --name canana-vue-app \
+  --restart unless-stopped \
+  -p 5409:5409 \
+  -e APP_PORT=5409 \
+  -e VITE_API_BASE_URL=https://你的域名或接口地址 \
+  -e STATIC_DIST_DIR=/app/dist \
+  -e UPLOADS_DIR=/app/uploads \
+  -e CORS_ALLOWED_ORIGINS=https://你的前端域名 \
+  -e DATABASE_URL=mysql://用户名:密码@数据库地址:3306/canana_mind \
+  -e PROVIDER_CONFIG_SECRET=请替换成你自己的密钥 \
+  -e STORAGE_CONFIG_SECRET= \
+  -e AUTH_LOGIN_CODE_EXPIRE_MINUTES=5 \
+  -e AUTH_SESSION_EXPIRE_DAYS=30 \
+  -v canana_uploads:/app/uploads \
+  couei/canana-vue:latest
+```
+
+如果镜像已经提前 `docker pull` 到本机，更新时可执行：
+
+```bash
+docker stop canana-vue-app || true
+docker rm canana-vue-app || true
+docker run -d \
+  --name canana-vue-app \
+  --restart unless-stopped \
+  -p 5409:5409 \
+  -e APP_PORT=5409 \
+  -e VITE_API_BASE_URL=https://你的域名或接口地址 \
+  -e STATIC_DIST_DIR=/app/dist \
+  -e UPLOADS_DIR=/app/uploads \
+  -e CORS_ALLOWED_ORIGINS=https://你的前端域名 \
+  -e DATABASE_URL=mysql://用户名:密码@数据库地址:3306/canana_mind \
+  -e PROVIDER_CONFIG_SECRET=请替换成你自己的密钥 \
+  -e STORAGE_CONFIG_SECRET= \
+  -e AUTH_LOGIN_CODE_EXPIRE_MINUTES=5 \
+  -e AUTH_SESSION_EXPIRE_DAYS=30 \
+  -v canana_uploads:/app/uploads \
+  couei/canana-vue:latest
+```
+
+说明：
+
+- `docker run` 方式下，只需要传 `APP_PORT`，容器内服务会直接监听这个端口
+- 上传目录通过 `-v canana_uploads:/app/uploads` 持久化
+- 如果你使用明确版本 tag，把最后一行镜像名替换成对应 tag 即可
+
+#### 4. 查看运行状态
+
+```bash
+docker ps
+docker logs -f canana-vue-app
+```
+
+#### 5. 校验新镜像是否生效
+
+进入容器后，可检查后端运行包是否已更新：
+
+```bash
+docker exec -it canana-vue-app sh
+grep -n "request-aborted" /app/server/index.js
+grep -n "create_output_invalid" /app/server/index.js
+```
+
+如果能搜到对应标记，说明最新镜像已经真正生效。
+
+### 本地媒体存储
+
+当前项目已提供第一版本地媒体存储层：
+
+- 上传接口：`POST /api/storage/upload`
+- 公开访问前缀：`/uploads/...`
+- 默认本地目录：`uploads/`
+
+后续可在此基础上继续切换到 MinIO / S3，而不需要重写业务层。
+
+### 对象存储配置
+
+当前项目已经支持统一的 **S3 兼容对象存储方案**：
+
+- 配置接口：`/api/storage/configs`
+- 上传接口：`/api/storage/upload`
+- 上传策略：**优先上传到当前启用的对象存储配置；若未配置则自动回退本地 `uploads/`**
+
+后端对象存储配置字段包含：
+
+- `名称`
+- `编码`
+- `Access Key`
+- `Secret Key`
+- `Endpoint`
+- `Bucket`
+- `域名`
+- `区域`
+- `排序`
+- `描述`
+- `状态`
+
+相关环境变量：
+
+- `STORAGE_CONFIG_SECRET`：对象存储配置加密密钥
+- `UPLOADS_DIR`：本地回退存储目录
 
 ### 预览构建结果
 

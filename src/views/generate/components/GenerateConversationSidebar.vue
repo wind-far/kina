@@ -77,7 +77,10 @@
       >
         <div
           class="conversation-item-MI_69d"
-          :class="{ 'active-aic4ZS': activeSessionId === session.id }"
+          :class="{
+            'active-aic4ZS': activeSessionId === session.id,
+            'menu-open-lVbR4V': openedSessionMenuId === session.id,
+          }"
           @click="emit('select-session', session.id)"
         >
           <div class="item-media-IKBsbV">
@@ -96,9 +99,12 @@
             <span class="item-name-k1u50X">{{ session.title }}</span>
           </div>
           <el-dropdown
+            class="more-dropdown-trigger-JKx2pQ"
             trigger="click"
             placement="bottom-end"
+            :offset="2"
             popper-class="conversation-dropdown-panel-YLxZyR"
+            @visible-change="openedSessionMenuId = $event ? session.id : ''"
             @command="handleSessionDropdownCommand(session.id, $event)"
           >
             <div class="more-button-LARylx" @click.stop>
@@ -110,8 +116,26 @@
             </div>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item class="menu-item-IIjppP" command="rename">重命名</el-dropdown-item>
-                <el-dropdown-item class="menu-item-IIjppP" command="delete">删除</el-dropdown-item>
+                <el-dropdown-item class="menu-item-IIjppP" command="rename">
+                  <span class="menu-item-content-o9vlmB">
+                    <svg class="menu-item-icon-K8w8qM" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                      <g>
+                        <path data-follow-fill="currentColor" d="M16.293 3.293a1 1 0 0 1 1.414 0l3 3a1 1 0 0 1 0 1.414l-9.5 9.5a1 1 0 0 1-.464.263l-4 1a1 1 0 0 1-1.213-1.213l1-4a1 1 0 0 1 .263-.464l9.5-9.5Zm.707 2.121-8.883 8.884-.5 2 2-.5L18.5 6.914l-1.5-1.5ZM4 20a1 1 0 0 1 1-1h15a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Z" fill="currentColor"></path>
+                      </g>
+                    </svg>
+                    <span class="menu-item-label-IYf2z9">重命名</span>
+                  </span>
+                </el-dropdown-item>
+                <el-dropdown-item class="menu-item-IIjppP danger-zMx4rT" command="delete">
+                  <span class="menu-item-content-o9vlmB">
+                    <svg class="menu-item-icon-K8w8qM" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                      <g>
+                        <path data-follow-fill="currentColor" d="M9 3a1 1 0 0 0-1 1v1H5a1 1 0 1 0 0 2h1v11a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7h1a1 1 0 1 0 0-2h-3V4a1 1 0 0 0-1-1H9Zm5 2h-4V5h4V5Zm-6 2h8v11a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V7Zm2 3a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0v-4a1 1 0 0 1 1-1Zm4 0a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0v-4a1 1 0 0 1 1-1Z" fill="currentColor"></path>
+                      </g>
+                    </svg>
+                    <span class="menu-item-label-IYf2z9">删除</span>
+                  </span>
+                </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -182,6 +206,7 @@ const collapseToggleIconPath = 'M17.5 3A4.5 4.5 0 0 1 22 7.5v9a4.5 4.5 0 0 1-4.5
 
 const listRef = ref<HTMLElement | null>(null)
 const isListScrolled = ref(false)
+const openedSessionMenuId = ref('')
 
 // 对齐参考 HTML 的吸顶分割线表现：列表滚动后显示细分隔线。
 const syncListScrolledState = () => {
@@ -222,6 +247,7 @@ const handleSessionCommand = (id: string, command: string | number | object) => 
 
 const handleSessionDropdownCommand = (id: string, command: string | number | object) => {
   handleSessionCommand(id, command)
+  openedSessionMenuId.value = ''
 }
 </script>
 
@@ -672,9 +698,20 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     opacity: 0;
     padding: 0;
     pointer-events: none;
-    position: absolute;
-    right: 6px;
     transition: opacity .15s ease, color .15s ease
+}
+
+.more-dropdown-trigger-JKx2pQ {
+    align-items: center;
+    display: flex;
+    height: 24px;
+    justify-content: center;
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    z-index: 1
 }
 
 .more-button-LARylx:hover {
@@ -690,16 +727,89 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     pointer-events: auto
 }
 
+.conversation-item-MI_69d.menu-open-lVbR4V .more-button-LARylx {
+    opacity: 1;
+    pointer-events: auto
+}
+
 .menu-item-IIjppP:hover {
-    background: var(--bg-block-primary-hover, rgba(204, 221, 255, .12))
+    background: var(--bg-block-secondary-hover, rgba(255, 255, 255, .08))
 }
 
 .menu-item-IIjppP:active {
-    background: var(--bg-block-primary-pressed, rgba(204, 221, 255, .24))
+    background: var(--bg-block-secondary-pressed, rgba(255, 255, 255, .12))
 }
 
 .conversation-dropdown-panel-YLxZyR {
+    background: var(--bg-dropdown-menu, #1c1e22) !important;
+    border: 1px solid var(--stroke-primary, rgba(204, 221, 255, .1)) !important;
+    border-radius: 12px !important;
+    box-shadow: var(--shadow-dropdown-menu, 0 8px 24px rgba(0, 0, 0, .24)) !important;
+    margin-top: -2px !important;
+    min-width: 160px;
+    padding: 0 !important;
+    transform-origin: top right !important;
+}
+
+.conversation-dropdown-panel-YLxZyR .el-popper__arrow,
+.conversation-dropdown-panel-YLxZyR .el-popper__arrow:before {
+    display: none !important
+}
+
+.conversation-dropdown-panel-YLxZyR .el-dropdown-menu {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0
+}
+
+.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item {
+    align-items: stretch;
     border-radius: 12px;
-    padding: 6px;
+    color: var(--text-primary, #f5fbff);
+    display: flex;
+    min-height: 40px;
+    padding: 0
+}
+
+.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:not(.is-disabled):focus {
+    background: var(--bg-block-secondary-hover, rgba(255, 255, 255, .08));
+    color: var(--text-primary, #f5fbff)
+}
+
+.menu-item-content-o9vlmB {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    min-height: 40px;
+    padding: 0 12px;
+    width: 100%
+}
+
+.menu-item-icon-K8w8qM {
+    color: inherit;
+    flex-shrink: 0;
+    height: 16px;
+    width: 16px
+}
+
+.menu-item-label-IYf2z9 {
+    color: var(--text-primary, #f5fbff);
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 22px
+}
+
+.conversation-dropdown-panel-YLxZyR .danger-zMx4rT {
+    color: var(--text-primary, #f5fbff)
+}
+
+.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:hover,
+.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:hover .menu-item-label-IYf2z9,
+.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:hover .menu-item-icon-K8w8qM,
+.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:focus,
+.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:focus .menu-item-label-IYf2z9,
+.conversation-dropdown-panel-YLxZyR .el-dropdown-menu__item:focus .menu-item-icon-K8w8qM {
+    color: var(--text-primary, #f5fbff)
 }
 </style>

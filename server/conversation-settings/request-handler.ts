@@ -32,7 +32,10 @@ export const handleAdminConversationSettingsRequest = async (req: any, res: any)
 
     if (req.method === 'PUT') {
       const payload = await readSystemConfigBody(req)
-      const data = await saveAdminConversationSettings(payload.conversationSettings || {})
+      const data = await saveAdminConversationSettings({
+        conversationSettings: payload.conversationSettings || {},
+        generationProgressSettings: payload.generationProgressSettings,
+      })
       sendJson(res, 200, { data, message: '会话配置已保存' })
       return
     }

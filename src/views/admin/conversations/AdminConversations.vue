@@ -397,8 +397,8 @@ const applyConversationSettings = (value?: ConversationSettingsConfig | null) =>
 const loadConversationSettings = async () => {
   try {
     const result = await getAdminConversationSettings()
-    applyConversationSettings(result)
-    pagination.pageSize = Number(result?.listDisplay?.defaultPageSize || pagination.pageSize)
+    applyConversationSettings(result?.conversationSettings)
+    pagination.pageSize = Number(result?.conversationSettings?.listDisplay?.defaultPageSize || pagination.pageSize)
   } catch {
     applyConversationSettings(createDefaultConversationSettings())
   }

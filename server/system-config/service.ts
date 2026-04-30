@@ -184,6 +184,7 @@ const normalizeStringList = (value: unknown, fallback: string[]) => {
 }
 
 export const createDefaultConversationSettings = () => createDefaultSystemConfig().conversationSettings
+export const getDefaultGenerationProgressSettings = () => createDefaultSystemConfig().generationProgressSettings
 
 export const normalizeConversationSettings = (input?: SystemConversationSettingsPayload | null) => {
   const defaults = createDefaultConversationSettings()

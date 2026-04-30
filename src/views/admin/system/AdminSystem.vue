@@ -1,283 +1,287 @@
 <template>
   <AdminPageContainer title="系统设置" description="统一维护站点信息、政策协议以及登录方式配置。">
-    <div class="admin-grid admin-grid--stats">
-      <div class="admin-stat-card">
-        <div class="admin-stat-card__label">站点名称</div>
-        <div class="admin-stat-card__value">{{ systemForm.siteInfo.siteName || '未设置' }}</div>
-        <div class="admin-stat-card__hint">登录弹窗标题与浏览器标题都会复用这里的配置</div>
-      </div>
-      <div class="admin-stat-card">
-        <div class="admin-stat-card__label">启用登录方式</div>
-        <div class="admin-stat-card__value">{{ enabledMethodCount }}</div>
-        <div class="admin-stat-card__hint">当前对前台用户可见且可用的登录方式数量</div>
-      </div>
-      <div class="admin-stat-card">
-        <div class="admin-stat-card__label">协议勾选</div>
-        <div class="admin-stat-card__value">{{ systemForm.policySettings.agreementRequired ? '开启' : '关闭' }}</div>
-        <div class="admin-stat-card__hint">控制登录前是否必须勾选协议</div>
-      </div>
-    </div>
-
-    <div class="admin-system-tabs">
+    <template #actions>
       <button
-        v-for="item in tabItems"
-        :key="item.key"
-        class="admin-system-tabs__item"
-        :class="{ 'is-active': currentTab === item.key }"
+        v-if="currentTab !== 'login'"
+        class="admin-button admin-button--primary"
         type="button"
-        @click="currentTab = item.key"
+        :disabled="systemSaving || loading"
+        @click="handleSaveSystemSettings"
       >
-        <span class="admin-system-tabs__title">{{ item.label }}</span>
-        <span class="admin-system-tabs__desc">{{ item.description }}</span>
+        {{ systemSaving ? '保存中...' : '保存当前分组' }}
       </button>
+      <button
+        v-else
+        class="admin-button admin-button--primary"
+        type="button"
+        :disabled="loading || methodSaving || !authMethods.length"
+        @click="handleSaveAuthMethods"
+      >
+        {{ methodSaving ? '保存中...' : '保存登录方式' }}
+      </button>
+    </template>
+
+    <div class="admin-grid admin-grid--stats">
+      <AdminStatCard label="站点名称" :value="systemForm.siteInfo.siteName || '未设置'" hint="登录弹窗标题与浏览器标题都会复用这里的配置" />
+      <AdminStatCard label="启用登录方式" :value="enabledMethodCount" hint="当前对前台用户可见且可用的登录方式数量" />
+      <AdminStatCard label="协议勾选" :value="systemForm.policySettings.agreementRequired ? '开启' : '关闭'" hint="控制登录前是否必须勾选协议" />
+      <AdminStatCard label="当前分组" :value="activeTabMeta.label" :hint="activeTabMeta.description" />
     </div>
 
-    <div v-if="currentTab === 'site'" class="admin-system-panel">
-      <div class="admin-card">
+    <div class="admin-system-shell">
+      <aside class="admin-system-nav admin-card">
         <div class="admin-card__header">
           <div>
-            <h4 class="admin-card__title">站点信息</h4>
-            <div class="admin-card__desc">配置站点名称、描述、Logo、图标以及备案信息。</div>
+            <h4 class="admin-card__title">配置分组</h4>
+            <div class="admin-card__desc">按品牌、协议、进度和登录四类能力统一维护系统配置。</div>
           </div>
         </div>
-        <div class="admin-card__content">
-          <form class="admin-form" @submit.prevent="handleSaveSystemSettings">
-            <div class="admin-form__grid">
-              <div class="admin-form__field">
-                <label class="admin-form__label" for="system-site-name">站点名称</label>
-                <input id="system-site-name" v-model.trim="systemForm.siteInfo.siteName" class="admin-input" type="text" placeholder="例如：Canana AI">
+        <div class="admin-card__content admin-system-nav__content">
+          <button
+            v-for="item in tabItems"
+            :key="item.key"
+            class="admin-system-tabs__item"
+            :class="{ 'is-active': currentTab === item.key }"
+            type="button"
+            @click="currentTab = item.key"
+          >
+            <span class="admin-system-tabs__title">{{ item.label }}</span>
+            <span class="admin-system-tabs__desc">{{ item.description }}</span>
+          </button>
+        </div>
+      </aside>
+
+      <div class="admin-system-main">
+        <div class="admin-system-section-head admin-card">
+          <div class="admin-card__content">
+            <div class="admin-system-section-head__inner">
+              <div>
+                <div class="admin-system-section-head__eyebrow">当前分组</div>
+                <h3 class="admin-system-section-head__title">{{ activeTabMeta.label }}</h3>
+                <p class="admin-system-section-head__desc">{{ activeTabMeta.description }}</p>
               </div>
-              <div class="admin-form__field">
-                <label class="admin-form__label" for="system-site-icon">站点图标</label>
-                <input id="system-site-icon" v-model.trim="systemForm.siteInfo.siteIconUrl" class="admin-input" type="text" placeholder="favicon 地址">
+              <div class="admin-system-section-head__tips">
+                <span class="admin-system-section-head__tip">
+                  保存后会同步影响前台展示与后台默认行为
+                </span>
               </div>
-              <div class="admin-form__field admin-form__field--full">
-                <label class="admin-form__label" for="system-site-description">站点描述</label>
-                <textarea id="system-site-description" v-model.trim="systemForm.siteInfo.siteDescription" class="admin-textarea" placeholder="站点简介、SEO 描述或首页说明"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="currentTab === 'site'" class="admin-system-panel">
+          <form class="admin-system-form-grid" @submit.prevent="handleSaveSystemSettings">
+            <div class="admin-card">
+              <div class="admin-card__header">
+                <div>
+                  <h4 class="admin-card__title">品牌基础</h4>
+                  <div class="admin-card__desc">配置站点名称、描述、Logo 与图标，统一前后台品牌感知。</div>
+                </div>
               </div>
-              <div class="admin-form__field admin-form__field--full">
-                <label class="admin-form__label" for="system-site-logo">站点 Logo</label>
-                <input id="system-site-logo" v-model.trim="systemForm.siteInfo.siteLogoUrl" class="admin-input" type="text" placeholder="Logo 图片地址">
-              </div>
-              <div class="admin-form__field">
-                <label class="admin-form__label" for="system-site-icp-text">备案文案</label>
-                <input id="system-site-icp-text" v-model.trim="systemForm.siteInfo.icpText" class="admin-input" type="text" placeholder="例如：粤ICP备xxxx号">
-              </div>
-              <div class="admin-form__field">
-                <label class="admin-form__label" for="system-site-icp-link">备案链接</label>
-                <input id="system-site-icp-link" v-model.trim="systemForm.siteInfo.icpLink" class="admin-input" type="text" placeholder="https://beian.miit.gov.cn">
-              </div>
-              <div class="admin-form__field admin-form__field--full">
-                <label class="admin-form__label" for="system-site-copyright">版权文案</label>
-                <input id="system-site-copyright" v-model.trim="systemForm.siteInfo.copyrightText" class="admin-input" type="text" placeholder="例如：© 2026 Canana. All rights reserved.">
+              <div class="admin-card__content">
+                <div class="admin-form__grid">
+                  <div class="admin-form__field">
+                    <label class="admin-form__label" for="system-site-name">站点名称</label>
+                    <input id="system-site-name" v-model.trim="systemForm.siteInfo.siteName" class="admin-input" type="text" placeholder="例如：Canana AI">
+                  </div>
+                  <div class="admin-form__field">
+                    <label class="admin-form__label" for="system-site-icon">站点图标</label>
+                    <input id="system-site-icon" v-model.trim="systemForm.siteInfo.siteIconUrl" class="admin-input" type="text" placeholder="favicon 地址">
+                  </div>
+                  <div class="admin-form__field admin-form__field--full">
+                    <label class="admin-form__label" for="system-site-description">站点描述</label>
+                    <textarea id="system-site-description" v-model.trim="systemForm.siteInfo.siteDescription" class="admin-textarea" placeholder="站点简介、SEO 描述或首页说明"></textarea>
+                  </div>
+                  <div class="admin-form__field admin-form__field--full">
+                    <label class="admin-form__label" for="system-site-logo">站点 Logo</label>
+                    <input id="system-site-logo" v-model.trim="systemForm.siteInfo.siteLogoUrl" class="admin-input" type="text" placeholder="Logo 图片地址">
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div class="admin-form__footer">
-              <button class="admin-button admin-button--primary" type="submit" :disabled="systemSaving || loading">
-                {{ systemSaving ? '保存中...' : '保存站点信息' }}
-              </button>
+            <div class="admin-card">
+              <div class="admin-card__header">
+                <div>
+                  <h4 class="admin-card__title">页脚与备案</h4>
+                  <div class="admin-card__desc">维护备案信息与版权文案，保证网站页脚信息完整合规。</div>
+                </div>
+              </div>
+              <div class="admin-card__content">
+                <div class="admin-form__grid">
+                  <div class="admin-form__field">
+                    <label class="admin-form__label" for="system-site-icp-text">备案文案</label>
+                    <input id="system-site-icp-text" v-model.trim="systemForm.siteInfo.icpText" class="admin-input" type="text" placeholder="例如：粤ICP备xxxx号">
+                  </div>
+                  <div class="admin-form__field">
+                    <label class="admin-form__label" for="system-site-icp-link">备案链接</label>
+                    <input id="system-site-icp-link" v-model.trim="systemForm.siteInfo.icpLink" class="admin-input" type="text" placeholder="https://beian.miit.gov.cn">
+                  </div>
+                  <div class="admin-form__field admin-form__field--full">
+                    <label class="admin-form__label" for="system-site-copyright">版权文案</label>
+                    <input id="system-site-copyright" v-model.trim="systemForm.siteInfo.copyrightText" class="admin-input" type="text" placeholder="例如：© 2026 Canana. All rights reserved.">
+                  </div>
+                </div>
+              </div>
             </div>
           </form>
         </div>
-      </div>
-    </div>
 
-    <div v-else-if="currentTab === 'policy'" class="admin-system-panel">
-      <div class="admin-card">
-        <div class="admin-card__header">
-          <div>
-            <h4 class="admin-card__title">政策协议</h4>
-            <div class="admin-card__desc">配置登录弹窗展示的协议名称、跳转链接、提示文案和详情正文。</div>
-          </div>
-        </div>
-        <div class="admin-card__content">
-          <form class="admin-form" @submit.prevent="handleSaveSystemSettings">
-            <div class="admin-form__grid">
-              <div class="admin-form__field admin-form__field--full">
-                <label class="admin-form__label">协议开关</label>
-                <label class="admin-switch-row">
-                  <input v-model="systemForm.policySettings.agreementRequired" type="checkbox">
-                  <span>登录前必须勾选协议</span>
-                </label>
+        <div v-else-if="currentTab === 'policy'" class="admin-system-panel">
+          <form class="admin-system-form-grid" @submit.prevent="handleSaveSystemSettings">
+            <div class="admin-card">
+              <div class="admin-card__header">
+                <div>
+                  <h4 class="admin-card__title">协议开关与登录文案</h4>
+                  <div class="admin-card__desc">统一控制登录勾选协议、前置提示及登录弹窗欢迎文案。</div>
+                </div>
               </div>
-              <div class="admin-form__field admin-form__field--full">
-                <label class="admin-form__label" for="system-agreement-prefix">前置提示文案</label>
-                <input id="system-agreement-prefix" v-model.trim="systemForm.policySettings.agreementTextPrefix" class="admin-input" type="text" placeholder="例如：已阅读并同意">
-              </div>
-              <div class="admin-form__field">
-                <label class="admin-form__label" for="system-agreement-title">用户协议标题</label>
-                <input id="system-agreement-title" v-model.trim="systemForm.policySettings.userAgreementTitle" class="admin-input" type="text" placeholder="用户服务协议">
-              </div>
-              <div class="admin-form__field">
-                <label class="admin-form__label" for="system-agreement-url">用户协议链接</label>
-                <input id="system-agreement-url" v-model.trim="systemForm.policySettings.userAgreementUrl" class="admin-input" type="text" placeholder="https://...">
-              </div>
-              <div class="admin-form__field admin-form__field--full">
-                <label class="admin-form__label" for="system-agreement-content">用户协议正文</label>
-                <textarea id="system-agreement-content" v-model.trim="systemForm.policySettings.userAgreementContent" class="admin-textarea admin-system-json" placeholder="可填写前台协议详情页展示内容"></textarea>
-              </div>
-              <div class="admin-form__field">
-                <label class="admin-form__label" for="system-privacy-title">隐私政策标题</label>
-                <input id="system-privacy-title" v-model.trim="systemForm.policySettings.privacyPolicyTitle" class="admin-input" type="text" placeholder="隐私政策">
-              </div>
-              <div class="admin-form__field">
-                <label class="admin-form__label" for="system-privacy-url">隐私政策链接</label>
-                <input id="system-privacy-url" v-model.trim="systemForm.policySettings.privacyPolicyUrl" class="admin-input" type="text" placeholder="https://...">
-              </div>
-              <div class="admin-form__field admin-form__field--full">
-                <label class="admin-form__label" for="system-privacy-content">隐私政策正文</label>
-                <textarea id="system-privacy-content" v-model.trim="systemForm.policySettings.privacyPolicyContent" class="admin-textarea admin-system-json" placeholder="可填写前台隐私政策详情页展示内容"></textarea>
-              </div>
-              <div class="admin-form__field">
-                <label class="admin-form__label" for="system-ai-title">AI 须知标题</label>
-                <input id="system-ai-title" v-model.trim="systemForm.policySettings.aiNoticeTitle" class="admin-input" type="text" placeholder="AI功能使用须知">
-              </div>
-              <div class="admin-form__field">
-                <label class="admin-form__label" for="system-ai-url">AI 须知链接</label>
-                <input id="system-ai-url" v-model.trim="systemForm.policySettings.aiNoticeUrl" class="admin-input" type="text" placeholder="https://...">
-              </div>
-              <div class="admin-form__field admin-form__field--full">
-                <label class="admin-form__label" for="system-ai-content">AI 须知正文</label>
-                <textarea id="system-ai-content" v-model.trim="systemForm.policySettings.aiNoticeContent" class="admin-textarea admin-system-json" placeholder="可填写前台 AI 功能使用须知详情页展示内容"></textarea>
-              </div>
-              <div class="admin-form__field admin-form__field--full">
-                <label class="admin-form__label" for="system-login-title">登录标题</label>
-                <input id="system-login-title" v-model.trim="systemForm.loginSettings.welcomeTitle" class="admin-input" type="text" placeholder="欢迎登录">
-              </div>
-              <div class="admin-form__field admin-form__field--full">
-                <label class="admin-form__label" for="system-login-subtitle">登录副标题</label>
-                <textarea id="system-login-subtitle" v-model.trim="systemForm.loginSettings.welcomeSubtitle" class="admin-textarea" placeholder="展示在登录弹窗标题下方，可填写品牌口号或提示"></textarea>
+              <div class="admin-card__content">
+                <div class="admin-form__grid">
+                  <div class="admin-form__field admin-form__field--full">
+                    <label class="admin-form__label">协议开关</label>
+                    <label class="admin-switch-row">
+                      <input v-model="systemForm.policySettings.agreementRequired" type="checkbox">
+                      <span>登录前必须勾选协议</span>
+                    </label>
+                  </div>
+                  <div class="admin-form__field admin-form__field--full">
+                    <label class="admin-form__label" for="system-agreement-prefix">前置提示文案</label>
+                    <input id="system-agreement-prefix" v-model.trim="systemForm.policySettings.agreementTextPrefix" class="admin-input" type="text" placeholder="例如：已阅读并同意">
+                  </div>
+                  <div class="admin-form__field admin-form__field--full">
+                    <label class="admin-form__label" for="system-login-title">登录标题</label>
+                    <input id="system-login-title" v-model.trim="systemForm.loginSettings.welcomeTitle" class="admin-input" type="text" placeholder="欢迎登录">
+                  </div>
+                  <div class="admin-form__field admin-form__field--full">
+                    <label class="admin-form__label" for="system-login-subtitle">登录副标题</label>
+                    <textarea id="system-login-subtitle" v-model.trim="systemForm.loginSettings.welcomeSubtitle" class="admin-textarea" placeholder="展示在登录弹窗标题下方，可填写品牌口号或提示"></textarea>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div class="admin-form__footer">
-              <button class="admin-button admin-button--primary" type="submit" :disabled="systemSaving || loading">
-                {{ systemSaving ? '保存中...' : '保存政策协议' }}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-
-    <div v-else-if="currentTab === 'progress'" class="admin-system-panel">
-      <div class="admin-card">
-        <div class="admin-card__header">
-          <div>
-            <h4 class="admin-card__title">生成进度文案</h4>
-            <div class="admin-card__desc">按阶段配置“造梦中”徽章的展示文案、百分比和说明，前端会自动按 SSE 阶段映射显示。</div>
-          </div>
-          <div class="admin-page__actions">
-            <button class="admin-button admin-button--secondary" type="button" @click="expandAllProgressStages">全部展开</button>
-            <button class="admin-button admin-button--secondary" type="button" @click="collapseAllProgressStages">全部折叠</button>
-            <button class="admin-button admin-button--secondary" type="button" @click="resetGenerationProgressSettings">恢复默认文案</button>
-          </div>
-        </div>
-        <div class="admin-card__content">
-          <form class="admin-form" @submit.prevent="handleSaveSystemSettings">
-            <div class="admin-form__grid">
-              <div class="admin-form__field admin-form__field--full">
-                <label class="admin-form__label">配置开关</label>
-                <label class="admin-switch-row">
-                  <input v-model="systemForm.generationProgressSettings.enabled" type="checkbox">
-                  <span>启用后台生成进度文案配置</span>
-                </label>
-              </div>
-              <div
-                v-for="stage in systemForm.generationProgressSettings.stages"
-                :key="stage.key"
-                class="admin-form__field admin-form__field--full"
-              >
-                <div class="admin-system-stage-card">
-                  <div class="admin-system-stage-card__header">
-                    <div>
-                      <div class="admin-system-stage-card__title-row">
-                        <div class="admin-system-stage-card__title">{{ stage.label || stage.key }}</div>
-                        <span class="admin-chip admin-system-stage-card__key">{{ stage.key }}</span>
-                      </div>
-                      <div class="admin-system-stage-card__desc">{{ stage.description || '未填写阶段说明' }}</div>
-                    </div>
-                    <div class="admin-system-stage-card__header-actions">
-                      <span class="admin-status" :class="stage.showPercent ? 'admin-status--success' : 'admin-status--muted'">
-                        {{ stage.showPercent ? '显示进度' : '纯文案' }}
-                      </span>
-                      <label class="admin-switch-row">
-                        <input v-model="stage.showPercent" type="checkbox">
-                        <span>显示百分比</span>
-                      </label>
-                      <button class="admin-inline-button" type="button" @click="toggleProgressStageCollapse(stage.key)">
-                        {{ collapsedProgressStages.has(stage.key) ? '展开' : '折叠' }}
-                      </button>
-                    </div>
+            <div class="admin-system-policy-grid">
+              <div class="admin-card">
+                <div class="admin-card__header">
+                  <div>
+                    <h4 class="admin-card__title">用户协议</h4>
+                    <div class="admin-card__desc">维护标题、链接与详情正文。</div>
                   </div>
-                  <div v-if="!collapsedProgressStages.has(stage.key)" class="admin-system-stage-card__preview">
-                    <span class="admin-system-stage-card__preview-label">前台预览</span>
-                    <span class="admin-system-stage-card__badge">
-                      {{ buildProgressStagePreview(stage) }}
-                    </span>
-                  </div>
-                  <div v-if="!collapsedProgressStages.has(stage.key)" class="admin-form__grid admin-system-stage-card__body">
+                </div>
+                <div class="admin-card__content">
+                  <div class="admin-form__grid">
                     <div class="admin-form__field">
-                      <label class="admin-form__label">展示文案</label>
-                      <input v-model.trim="stage.label" class="admin-input" type="text" placeholder="例如：生成中">
+                      <label class="admin-form__label" for="system-agreement-title">用户协议标题</label>
+                      <input id="system-agreement-title" v-model.trim="systemForm.policySettings.userAgreementTitle" class="admin-input" type="text" placeholder="用户服务协议">
                     </div>
                     <div class="admin-form__field">
-                      <label class="admin-form__label">展示百分比</label>
-                      <input v-model.number="stage.percent" class="admin-input" type="number" min="0" max="100" placeholder="0-100">
+                      <label class="admin-form__label" for="system-agreement-url">用户协议链接</label>
+                      <input id="system-agreement-url" v-model.trim="systemForm.policySettings.userAgreementUrl" class="admin-input" type="text" placeholder="https://...">
                     </div>
                     <div class="admin-form__field admin-form__field--full">
-                      <label class="admin-form__label">阶段说明</label>
-                      <textarea v-model.trim="stage.description" class="admin-textarea" placeholder="用于后台识别当前阶段含义"></textarea>
+                      <label class="admin-form__label" for="system-agreement-content">用户协议正文</label>
+                      <textarea id="system-agreement-content" v-model.trim="systemForm.policySettings.userAgreementContent" class="admin-textarea admin-system-json" placeholder="可填写前台协议详情页展示内容"></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="admin-card">
+                <div class="admin-card__header">
+                  <div>
+                    <h4 class="admin-card__title">隐私政策</h4>
+                    <div class="admin-card__desc">维护标题、链接与详情正文。</div>
+                  </div>
+                </div>
+                <div class="admin-card__content">
+                  <div class="admin-form__grid">
+                    <div class="admin-form__field">
+                      <label class="admin-form__label" for="system-privacy-title">隐私政策标题</label>
+                      <input id="system-privacy-title" v-model.trim="systemForm.policySettings.privacyPolicyTitle" class="admin-input" type="text" placeholder="隐私政策">
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-form__label" for="system-privacy-url">隐私政策链接</label>
+                      <input id="system-privacy-url" v-model.trim="systemForm.policySettings.privacyPolicyUrl" class="admin-input" type="text" placeholder="https://...">
+                    </div>
+                    <div class="admin-form__field admin-form__field--full">
+                      <label class="admin-form__label" for="system-privacy-content">隐私政策正文</label>
+                      <textarea id="system-privacy-content" v-model.trim="systemForm.policySettings.privacyPolicyContent" class="admin-textarea admin-system-json" placeholder="可填写前台隐私政策详情页展示内容"></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="admin-card">
+                <div class="admin-card__header">
+                  <div>
+                    <h4 class="admin-card__title">AI 须知</h4>
+                    <div class="admin-card__desc">维护标题、链接与详情正文。</div>
+                  </div>
+                </div>
+                <div class="admin-card__content">
+                  <div class="admin-form__grid">
+                    <div class="admin-form__field">
+                      <label class="admin-form__label" for="system-ai-title">AI 须知标题</label>
+                      <input id="system-ai-title" v-model.trim="systemForm.policySettings.aiNoticeTitle" class="admin-input" type="text" placeholder="AI功能使用须知">
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-form__label" for="system-ai-url">AI 须知链接</label>
+                      <input id="system-ai-url" v-model.trim="systemForm.policySettings.aiNoticeUrl" class="admin-input" type="text" placeholder="https://...">
+                    </div>
+                    <div class="admin-form__field admin-form__field--full">
+                      <label class="admin-form__label" for="system-ai-content">AI 须知正文</label>
+                      <textarea id="system-ai-content" v-model.trim="systemForm.policySettings.aiNoticeContent" class="admin-textarea admin-system-json" placeholder="可填写前台 AI 功能使用须知详情页展示内容"></textarea>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-            <div class="admin-form__footer">
-              <button class="admin-button admin-button--primary" type="submit" :disabled="systemSaving || loading">
-                {{ systemSaving ? '保存中...' : '保存生成文案' }}
-              </button>
-            </div>
           </form>
         </div>
-      </div>
-    </div>
 
-    <div v-else class="admin-system-panel">
-      <div class="admin-card">
-        <div class="admin-card__header">
-          <div>
-            <h4 class="admin-card__title">登录方式配置说明</h4>
-            <div class="admin-card__desc">当前页面用于维护登录入口展示、验证码渠道参数以及 OAuth 基础参数。</div>
+        <div v-else class="admin-system-panel">
+          <div class="admin-card">
+            <div class="admin-card__header">
+              <div>
+                <h4 class="admin-card__title">登录方式概览</h4>
+                <div class="admin-card__desc">统一维护登录入口展示、验证码参数以及 OAuth 基础参数。</div>
+              </div>
+            </div>
+            <div class="admin-card__content">
+              <div class="admin-system-login-overview">
+                <div class="admin-system-login-overview__item">
+                  <div class="admin-system-login-overview__title">配置说明</div>
+                  <div class="admin-system-login-overview__desc">
+                    验证码登录可填写短信或邮件发送参数；OAuth 登录支持授权地址生成，回调换 Token 与用户绑定逻辑需后端继续接入。
+                  </div>
+                </div>
+                <div class="admin-system-login-overview__item">
+                  <div class="admin-system-login-overview__title">当前状态</div>
+                  <div class="admin-system-login-overview__desc">
+                    已配置 {{ authMethods.length }} 项登录方式，其中 {{ enabledMethodCount }} 项处于启用状态。
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-        <div class="admin-card__content">
-          <div class="admin-form__hint">
-            验证码登录可填写短信或邮件发送参数；OAuth 登录当前支持授权地址生成，回调换 Token 与用户绑定逻辑需后端继续接入。
-          </div>
-        </div>
-      </div>
 
-      <div class="admin-card admin-system-methods-card">
-        <div class="admin-card__header">
-          <div>
-            <h4 class="admin-card__title">登录方式</h4>
-            <div class="admin-card__desc">按卡片管理登录入口，弹窗内完成新增、编辑和参数配置，最后统一保存到后端。</div>
-          </div>
-          <div class="admin-page__actions">
-            <button class="admin-button admin-button--secondary" type="button" @click="openCreateMethodDialog" :disabled="loading || methodSaving || !creatableMethodTemplates.length">
-              {{ creatableMethodTemplates.length ? '新增登录方式' : '已全部添加' }}
-            </button>
-            <button class="admin-button admin-button--primary" type="button" @click="handleSaveAuthMethods" :disabled="loading || methodSaving || !authMethods.length">
-              {{ methodSaving ? '保存中...' : '保存登录方式' }}
-            </button>
-          </div>
-        </div>
-        <div class="admin-card__content">
-          <div v-if="loading" class="admin-empty">正在加载系统设置...</div>
-          <div v-else-if="!authMethods.length" class="admin-empty">暂无登录方式配置，请先检查后端认证配置初始化是否正常。</div>
-          <div v-else class="admin-provider-grid admin-system-method-grid">
+          <div class="admin-card admin-system-methods-card">
+            <div class="admin-card__header">
+              <div>
+                <h4 class="admin-card__title">登录方式</h4>
+                <div class="admin-card__desc">按卡片管理登录入口，弹窗内完成新增、编辑和参数配置，最后统一保存到后端。</div>
+              </div>
+              <div class="admin-page__actions">
+                <button class="admin-button admin-button--secondary" type="button" @click="openCreateMethodDialog" :disabled="loading || methodSaving || !creatableMethodTemplates.length">
+                  {{ creatableMethodTemplates.length ? '新增登录方式' : '已全部添加' }}
+                </button>
+              </div>
+            </div>
+            <div class="admin-card__content">
+              <div v-if="loading" class="admin-empty">正在加载系统设置...</div>
+              <div v-else-if="!authMethods.length" class="admin-empty">暂无登录方式配置，请先检查后端认证配置初始化是否正常。</div>
+              <div v-else class="admin-provider-grid admin-system-method-grid">
             <button
               class="admin-provider-create-card admin-system-method-create"
               type="button"
@@ -370,6 +374,8 @@
                   {{ method.isVisible ? '隐藏' : '显示' }}
                 </button>
                 <button class="admin-inline-button admin-inline-button--danger" type="button" @click="removeMethod(method.methodType)">删除</button>
+              </div>
+            </div>
               </div>
             </div>
           </div>
@@ -571,6 +577,7 @@
 import { ElMessage } from 'element-plus'
 import { Delete, Edit, MoreFilled } from '@element-plus/icons-vue'
 import { computed, onMounted, reactive, ref } from 'vue'
+import AdminStatCard from '@/components/admin/common/AdminStatCard.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
 import {
   listAuthMethodConfigs,
@@ -633,20 +640,21 @@ interface AuthMethodTemplate {
 }
 
 const loading = ref(false)
-const currentTab = ref<'site' | 'policy' | 'progress' | 'login'>('site')
+const currentTab = ref<'site' | 'policy' | 'login'>('site')
 const tabItems = [
   { key: 'site', label: '站点信息', description: '品牌、标题、页脚与备案信息' },
   { key: 'policy', label: '政策协议', description: '协议文案、正文与登录提示' },
-  { key: 'progress', label: '生成文案', description: '进度阶段、百分比与徽章文案' },
   { key: 'login', label: '登录方式', description: '启用状态、排序与登录字段' },
 ] as const
+const activeTabMeta = computed(() => {
+  return tabItems.find(item => item.key === currentTab.value) || tabItems[0]
+})
 const systemSaving = ref(false)
 const methodSaving = ref(false)
 const methodDialogVisible = ref(false)
 const activeMethodMenuType = ref<AuthMethodType | ''>('')
 const editingMethodType = ref<AuthMethodType | ''>('')
 const authMethods = ref<EditableAuthMethod[]>([])
-const collapsedProgressStages = ref<Set<string>>(new Set())
 const { applyPublicSystemSettings } = useSystemSettingsStore()
 
 const AUTH_METHOD_TEMPLATES: AuthMethodTemplate[] = [
@@ -836,8 +844,6 @@ const createDefaultSystemForm = (): SystemConfigPayload => ({
   },
   conversationSettings: createDefaultConversationSettings(),
 })
-
-const createDefaultGenerationProgressStages = () => createDefaultSystemForm().generationProgressSettings.stages.map(item => ({ ...item }))
 
 const systemForm = reactive<SystemConfigPayload>(createDefaultSystemForm())
 const methodForm = reactive<EditableAuthMethod>(createEditableAuthMethod(AUTH_METHOD_TEMPLATES[0]))
@@ -1191,46 +1197,6 @@ const buildSystemPayload = (): SystemConfigPayload => ({
   conversationSettings: JSON.parse(JSON.stringify(systemForm.conversationSettings)),
 })
 
-// 生成文案配置在后台实时预览成前台徽章文案，便于运营直接确认效果。
-const buildProgressStagePreview = (stage: {
-  label: string
-  percent: number
-  showPercent: boolean
-}) => {
-  const label = String(stage.label || '').trim() || '未命名阶段'
-  const percent = Number.isFinite(Number(stage.percent)) ? Math.max(0, Math.min(100, Number(stage.percent))) : 0
-  return stage.showPercent ? `${percent}%${label}` : label
-}
-
-// 切换单个生成阶段卡片折叠状态，方便批量配置时聚焦当前项。
-const toggleProgressStageCollapse = (stageKey: string) => {
-  const next = new Set(collapsedProgressStages.value)
-  if (next.has(stageKey)) {
-    next.delete(stageKey)
-  } else {
-    next.add(stageKey)
-  }
-  collapsedProgressStages.value = next
-}
-
-// 全部折叠生成文案配置卡片。
-const collapseAllProgressStages = () => {
-  collapsedProgressStages.value = new Set(systemForm.generationProgressSettings.stages.map(item => item.key))
-}
-
-// 全部展开生成文案配置卡片。
-const expandAllProgressStages = () => {
-  collapsedProgressStages.value = new Set()
-}
-
-// 恢复默认生成文案配置，便于快速回退到系统推荐值。
-const resetGenerationProgressSettings = () => {
-  systemForm.generationProgressSettings.enabled = true
-  systemForm.generationProgressSettings.stages = createDefaultGenerationProgressStages()
-  collapsedProgressStages.value = new Set()
-  ElMessage.success('已恢复默认生成文案')
-}
-
 // 把后台表单重新合并成后端可直接保存的配置结构。
 const buildAuthMethodPayload = (): AuthMethodConfigPayload[] => {
   return authMethods.value.map((method) => {
@@ -1379,6 +1345,173 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.admin-system-shell {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.admin-system-nav {
+  position: sticky;
+  top: 24px;
+}
+
+.admin-system-nav__content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-system-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-system-section-head__inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.admin-system-section-head__eyebrow {
+  margin-bottom: 8px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-system-section-head__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.admin-system-section-head__desc {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.admin-system-section-head__tips {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-system-section-head__tip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--brand-primary, #6b8cff) 22%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-primary, #6b8cff) 8%, var(--bg-surface));
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.admin-system-tabs__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 16px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.admin-system-tabs__item:hover,
+.admin-system-tabs__item.is-active {
+  border-color: color-mix(in srgb, var(--brand-primary, #6b8cff) 32%, transparent);
+  background: color-mix(in srgb, var(--brand-primary, #6b8cff) 10%, var(--bg-surface));
+  color: var(--text-primary);
+}
+
+.admin-system-tabs__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.admin-system-tabs__desc {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.admin-system-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-system-form-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-system-policy-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-system-progress-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.admin-system-progress-summary__item,
+.admin-system-login-overview__item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-surface) 92%, var(--bg-block-secondary-default));
+}
+
+.admin-system-progress-summary__label,
+.admin-system-login-overview__title {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.admin-system-progress-summary__value {
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.admin-system-stage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-system-login-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-system-login-overview__desc {
+  color: var(--text-tertiary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
 .admin-system-stage-card {
   border: 1px solid var(--line-divider, #00000014);
   border-radius: 18px;
@@ -1473,7 +1606,32 @@ onMounted(() => {
   padding-top: 2px;
 }
 
+@media (max-width: 1200px) {
+  .admin-system-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-system-nav {
+    position: static;
+  }
+
+  .admin-system-nav__content {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 900px) {
+  .admin-system-nav__content,
+  .admin-system-progress-summary,
+  .admin-system-login-overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-system-section-head__inner {
+    flex-direction: column;
+  }
+
   .admin-system-stage-card__header {
     flex-direction: column;
     align-items: flex-start;

@@ -41,6 +41,16 @@ export const adminNavGroups: AdminNavGroup[] = [
     ],
   },
   {
+    title: '会话管理',
+    items: [
+      {
+        label: '会话列表',
+        path: '/admin/conversations',
+        description: '管理全站创作会话与会话明细',
+      },
+    ],
+  },
+  {
     title: '系统配置',
     items: [
       {

@@ -11,6 +11,7 @@ const PolicyDetail = () => import('../views/policies/PolicyDetail.vue')
 const AdminLayout = () => import('../components/admin/layout/AdminLayout.vue')
 const AdminDashboard = () => import('../views/admin/dashboard/AdminDashboard.vue')
 const AdminAssets = () => import('../views/admin/assets/AdminAssets.vue')
+const AdminConversations = () => import('../views/admin/conversations/AdminConversations.vue')
 const AdminGenerations = () => import('../views/admin/generations/AdminGenerations.vue')
 const AdminMarketing = () => import('../views/admin/marketing/AdminMarketing.vue')
 const AdminSkills = () => import('../views/admin/skills/AdminSkills.vue')
@@ -96,6 +97,15 @@ const routes: RouteRecordRaw[] = [
         path: 'assets',
         name: 'AdminAssets',
         component: AdminAssets,
+        meta: {
+          requiresAuth: true,
+          requiresAdmin: true,
+        },
+      },
+      {
+        path: 'conversations',
+        name: 'AdminConversations',
+        component: AdminConversations,
         meta: {
           requiresAuth: true,
           requiresAdmin: true,

@@ -6,7 +6,21 @@ import type {
   SystemConversationSettingsPayload,
 } from './shared'
 
-const SYSTEM_CONFIG_CODE = 'DEFAULT'
+const SYSTEM_CONFIG_CODES = {
+  siteInfo: 'SITE_INFO',
+  policySettings: 'POLICY_SETTINGS',
+  loginSettings: 'LOGIN_SETTINGS',
+  generationProgressSettings: 'GENERATION_PROGRESS_SETTINGS',
+  conversationSettings: 'CONVERSATION_SETTINGS',
+} as const
+
+const SYSTEM_CONFIG_NAMES = {
+  [SYSTEM_CONFIG_CODES.siteInfo]: '站点信息',
+  [SYSTEM_CONFIG_CODES.policySettings]: '政策协议',
+  [SYSTEM_CONFIG_CODES.loginSettings]: '登录设置',
+  [SYSTEM_CONFIG_CODES.generationProgressSettings]: '生成进度设置',
+  [SYSTEM_CONFIG_CODES.conversationSettings]: '会话设置',
+} as const
 
 const DEFAULT_CREATION_MODE_OPTIONS = [
   { value: 'agent', label: 'Agent 模式' },
@@ -354,28 +368,72 @@ const normalizeSystemConfig = (input?: SystemConfigPayload | null) => {
   }
 }
 
-const findSystemConfigRow = async () => {
+const listSystemConfigRows = async () => {
   const rows = await prisma.$queryRawUnsafe<any[]>(
-    'SELECT * FROM system_settings WHERE code = ? LIMIT 1',
-    SYSTEM_CONFIG_CODE,
+    'SELECT * FROM system_settings',
   )
 
-  return Array.isArray(rows) && rows[0] ? rows[0] : null
+  return Array.isArray(rows) ? rows : []
+}
+
+const buildSystemConfigRowMap = (rows: any[]) => {
+  return rows.reduce<Map<string, any>>((map, row) => {
+    const code = String(row?.code || '').trim()
+    if (code) {
+      map.set(code, row)
+    }
+    return map
+  }, new Map())
+}
+
+type RawExecutor = {
+  $queryRawUnsafe: <T = unknown>(query: string, ...values: any[]) => Promise<T>
+  $executeRawUnsafe: (query: string, ...values: any[]) => Promise<number>
+}
+
+const upsertSystemConfigItem = async (executor: RawExecutor, code: string, config: unknown) => {
+  const rows = await executor.$queryRawUnsafe<any[]>(
+    'SELECT id FROM system_settings WHERE code = ? LIMIT 1',
+    code,
+  )
+  const existingRow = Array.isArray(rows) && rows[0] ? rows[0] : null
+  const rowId = existingRow?.id ? String(existingRow.id) : crypto.randomUUID()
+  const name = SYSTEM_CONFIG_NAMES[code as keyof typeof SYSTEM_CONFIG_NAMES] || code
+
+  await executor.$executeRawUnsafe(
+    `INSERT INTO system_settings (
+      id,
+      code,
+      name,
+      config_json,
+      created_at,
+      updated_at
+    ) VALUES (?, ?, ?, ?, NOW(), NOW())
+    ON DUPLICATE KEY UPDATE
+      name = VALUES(name),
+      config_json = VALUES(config_json),
+      updated_at = NOW()`,
+    rowId,
+    code,
+    name,
+    JSON.stringify(config ?? null),
+  )
 }
 
 // 读取后台系统设置。
 export const getAdminSystemConfig = async () => {
-  const row = await findSystemConfigRow()
-  if (!row) {
+  const rows = await listSystemConfigRows()
+  if (!rows.length) {
     return createDefaultSystemConfig()
   }
 
+  const rowMap = buildSystemConfigRowMap(rows)
   return normalizeSystemConfig({
-    siteInfo: readPlainObject(row.site_info_json),
-    policySettings: readPlainObject(row.policy_json),
-    loginSettings: readPlainObject(row.login_settings_json),
-    generationProgressSettings: readPlainObject(readPlainObject(row.login_settings_json).generationProgressSettings),
-    conversationSettings: readPlainObject(readPlainObject(row.login_settings_json).conversationSettings),
+    siteInfo: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.siteInfo)?.config_json),
+    policySettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.policySettings)?.config_json),
+    loginSettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.loginSettings)?.config_json),
+    generationProgressSettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.generationProgressSettings)?.config_json),
+    conversationSettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.conversationSettings)?.config_json),
   })
 }
 
@@ -387,34 +445,14 @@ export const getPublicSystemConfig = async () => {
 // 保存后台系统设置。
 export const saveAdminSystemConfig = async (payload: SystemConfigPayload) => {
   const normalized = normalizeSystemConfig(payload)
-  const existing = await findSystemConfigRow()
-  const rowId = existing?.id ? String(existing.id) : crypto.randomUUID()
 
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO system_settings (
-      id,
-      code,
-      site_info_json,
-      policy_json,
-      login_settings_json,
-      created_at,
-      updated_at
-    ) VALUES (?, ?, ?, ?, ?, NOW(), NOW())
-    ON DUPLICATE KEY UPDATE
-      site_info_json = VALUES(site_info_json),
-      policy_json = VALUES(policy_json),
-      login_settings_json = VALUES(login_settings_json),
-      updated_at = NOW()`,
-    rowId,
-    SYSTEM_CONFIG_CODE,
-    JSON.stringify(normalized.siteInfo),
-    JSON.stringify(normalized.policySettings),
-    JSON.stringify({
-      ...normalized.loginSettings,
-      generationProgressSettings: normalized.generationProgressSettings,
-      conversationSettings: normalized.conversationSettings,
-    }),
-  )
+  await prisma.$transaction(async (tx) => {
+    await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.siteInfo, normalized.siteInfo)
+    await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.policySettings, normalized.policySettings)
+    await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.loginSettings, normalized.loginSettings)
+    await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.generationProgressSettings, normalized.generationProgressSettings)
+    await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.conversationSettings, normalized.conversationSettings)
+  })
 
   return normalized
 }

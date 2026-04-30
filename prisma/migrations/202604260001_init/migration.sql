@@ -7,6 +7,7 @@ CREATE TABLE `app_users` (
   `avatar_url` TEXT NULL COMMENT '用户头像地址',
   `email` VARCHAR(191) NULL COMMENT '用户邮箱',
   `phone` VARCHAR(32) NULL COMMENT '用户手机号',
+  `role` ENUM('USER', 'ADMIN') NOT NULL DEFAULT 'USER' COMMENT '用户角色：普通用户、后台管理员',
   `status` ENUM('ANONYMOUS', 'ACTIVE', 'DISABLED') NOT NULL DEFAULT 'ANONYMOUS' COMMENT '用户状态：匿名、启用、禁用',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '更新时间',

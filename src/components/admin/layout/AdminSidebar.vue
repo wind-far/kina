@@ -30,6 +30,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { adminNavGroups } from './admin-nav'
 import { useAdminLayoutContext } from './useAdminLayout'
@@ -37,7 +38,18 @@ import { useAdminLayoutContext } from './useAdminLayout'
 const route = useRoute()
 const { closeMobileSidebar, isDesktopCollapsed, mobileSidebarOpen } = useAdminLayoutContext()
 
-const isActive = (path: string) => route.path === path || route.path.startsWith(path + '/')
+const navPaths = computed(() => {
+  return adminNavGroups
+    .flatMap(group => group.items.map(item => item.path))
+    .sort((left, right) => right.length - left.length)
+})
+
+const getActivePath = () => {
+  const currentPath = String(route.path || '').trim()
+  return navPaths.value.find(path => currentPath === path || currentPath.startsWith(`${path}/`)) || ''
+}
+
+const isActive = (path: string) => getActivePath() === path
 
 // 侧栏折叠后仅保留一个短标签，保证导航仍可识别。
 const getShortLabel = (label: string) => {

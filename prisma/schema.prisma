@@ -947,15 +947,14 @@ model UserCheckinRecord {
 }
 
 /// 系统设置表。
-/// 用于存储站点信息、政策协议与登录界面文案等全局配置。
+/// 使用配置编码区分不同系统配置项，每行存储一个配置块。
 model SystemSetting {
-  id                String   @id @default(cuid()) @db.VarChar(36)
-  code              String   @unique(map: "uk_system_settings_code") @db.VarChar(50)
-  siteInfoJson      Json?    @map("site_info_json")
-  policyJson        Json?    @map("policy_json")
-  loginSettingsJson Json?    @map("login_settings_json")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(cuid()) @db.VarChar(36)
+  code       String   @unique(map: "uk_system_settings_code") @db.VarChar(100)
+  name       String   @db.VarChar(100)
+  configJson Json?    @map("config_json")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@map("system_settings")
 }

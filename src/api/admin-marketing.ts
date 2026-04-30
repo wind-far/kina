@@ -170,6 +170,9 @@ export interface PointCompensationExecuteResult {
 export interface AdminPointLogItem {
   id: string
   userId: string
+  userName: string
+  userEmail: string
+  userPhone: string
   accountNo: string
   changeType: string
   action: string

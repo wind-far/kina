@@ -221,6 +221,9 @@ interface GenerationPointCompensationCandidate {
 interface AdminPointLogListItem {
   id: string
   userId: string
+  userName: string
+  userEmail: string
+  userPhone: string
   accountNo: string
   changeType: string
   action: string
@@ -306,6 +309,7 @@ const buildPointCompensationCandidate = (input: {
 const buildAdminPointLogItem = (input: {
   pointLog: any
   refundedAssociationNos: Set<string>
+  user?: any | null
   generationRecord?: any | null
 }) => {
   const meta = readPointLogMeta(input.pointLog.metaJson)
@@ -326,6 +330,9 @@ const buildAdminPointLogItem = (input: {
   return {
     id: String(input.pointLog.id || '').trim(),
     userId: String(input.pointLog.userId || '').trim(),
+    userName: String(input.user?.name || '').trim(),
+    userEmail: String(input.user?.email || '').trim(),
+    userPhone: String(input.user?.phone || '').trim(),
     accountNo: String(input.pointLog.accountNo || '').trim(),
     changeType: String(input.pointLog.changeType || '').trim(),
     action: String(input.pointLog.action || '').trim(),
@@ -434,13 +441,36 @@ export const listAdminPointLogs = async (query: MarketingPointLogQueryPayload = 
     : []
 
   const generationRecordMap = new Map(generationRecords.map((item) => [item.id, item]))
+  const userIds = Array.from(new Set(
+    pointLogs
+      .map((item) => String(item.userId || '').trim())
+      .filter(Boolean),
+  ))
+  const users = userIds.length
+    ? await prisma.appUser.findMany({
+      where: {
+        id: {
+          in: userIds,
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+      },
+    })
+    : []
+  const userMap = new Map(users.map((item) => [item.id, item]))
 
   const filteredItems = pointLogs
     .map((pointLog) => {
       const generationRecordId = String(readPointLogMeta(pointLog.metaJson).generationRecordId || '').trim()
+      const userId = String(pointLog.userId || '').trim()
       return buildAdminPointLogItem({
         pointLog,
         refundedAssociationNos,
+        user: userId ? userMap.get(userId) || null : null,
         generationRecord: generationRecordId ? generationRecordMap.get(generationRecordId) || null : null,
       })
     })
@@ -463,6 +493,9 @@ export const listAdminPointLogs = async (query: MarketingPointLogQueryPayload = 
           item.associationNo,
           item.sourceId,
           item.userId,
+          item.userName,
+          item.userEmail,
+          item.userPhone,
           item.remark,
           item.modelName,
           item.modelKey,

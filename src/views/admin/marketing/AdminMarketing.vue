@@ -72,22 +72,6 @@
             </div>
           </div>
         </div>
-
-        <div class="admin-card admin-marketing-sidebar-card">
-          <div class="admin-card__header">
-            <div>
-              <h4 class="admin-card__title">当前重点</h4>
-              <div class="admin-card__desc">给运营一个更直接的上下文。</div>
-            </div>
-          </div>
-          <div class="admin-card__content">
-            <div class="admin-marketing-focus">
-              <div class="admin-marketing-focus__title">{{ currentToolInfo.title }}</div>
-              <div class="admin-marketing-focus__desc">{{ currentToolInfo.focus }}</div>
-              <div class="admin-marketing-focus__meta">{{ currentToolInfo.meta }}</div>
-            </div>
-          </div>
-        </div>
       </aside>
 
       <div class="admin-marketing-main">
@@ -296,6 +280,9 @@
                 <button class="admin-button admin-button--secondary" type="button" :disabled="compensationLoading" @click="loadPointLogs">
                   {{ compensationLoading ? '刷新中...' : '刷新流水' }}
                 </button>
+                <button class="admin-button admin-button--secondary" type="button" @click="openManualCompensationDialog">
+                  手动补偿
+                </button>
                 <button
                   class="admin-button admin-button--primary"
                   type="button"
@@ -307,49 +294,95 @@
               </div>
             </div>
             <div class="admin-card__content">
-              <div class="admin-marketing-log-filters">
-                <input v-model.trim="pointLogQuery.keyword" class="admin-input" type="text" placeholder="搜索流水号、备注、模型、任务提示词">
-                <select v-model="pointLogQuery.action" class="admin-select">
-                  <option value="">全部动作</option>
-                  <option value="INCREASE">收入</option>
-                  <option value="DECREASE">支出</option>
-                </select>
-                <select v-model="pointLogQuery.sourceType" class="admin-select">
-                  <option value="">全部来源</option>
-                  <option value="GENERATION_CONSUME">生成消费</option>
-                  <option value="RECHARGE_ORDER">充值</option>
-                  <option value="MEMBERSHIP_ORDER">订阅</option>
-                  <option value="REWARD_RULE">奖励规则</option>
-                  <option value="CHECKIN">签到</option>
-                  <option value="CARD_REDEEM">卡密兑换</option>
-                </select>
-                <select v-model="pointLogQuery.endpointType" class="admin-select">
-                  <option value="">全部终端</option>
-                  <option value="chat">CHAT</option>
-                  <option value="image">IMAGE</option>
-                  <option value="video">VIDEO</option>
-                </select>
-                <select v-model="pointLogQuery.refundStatus" class="admin-select">
-                  <option value="">全部退款状态</option>
-                  <option value="compensable">待补偿</option>
-                  <option value="refunded">已退款</option>
-                  <option value="unrefunded">未退款</option>
-                </select>
-                <select v-model.number="pointLogQuery.days" class="admin-select">
-                  <option :value="7">近 7 天</option>
-                  <option :value="30">近 30 天</option>
-                  <option :value="90">近 90 天</option>
-                </select>
-                <button class="admin-button admin-button--secondary" type="button" :disabled="compensationLoading" @click="handleApplyPointLogFilters">
-                  应用筛选
-                </button>
+              <div class="admin-marketing-log-toolbar">
+                <div class="admin-marketing-log-toolbar__search">
+                  <div class="admin-marketing-log-filter-field admin-marketing-log-filter-field--search">
+                    <span class="admin-marketing-log-filter-field__label">关键词搜索</span>
+                    <input
+                      v-model.trim="pointLogQuery.keyword"
+                      class="admin-input admin-marketing-log-filter-field__control"
+                      type="text"
+                      placeholder="搜索用户、流水号、备注、模型、任务提示词"
+                      @keydown.enter.prevent="handleApplyPointLogFilters"
+                    >
+                  </div>
+                  <div class="admin-marketing-log-toolbar__actions">
+                    <button class="admin-button admin-button--secondary" type="button" :disabled="compensationLoading" @click="handleResetPointLogFilters">
+                      重置
+                    </button>
+                    <button class="admin-button admin-button--primary" type="button" :disabled="compensationLoading" @click="handleApplyPointLogFilters">
+                      {{ compensationLoading ? '筛选中...' : '应用筛选' }}
+                    </button>
+                  </div>
+                </div>
+
+                <div class="admin-marketing-log-filters">
+                  <label class="admin-marketing-log-filter-field">
+                    <span class="admin-marketing-log-filter-field__label">动作类型</span>
+                    <select v-model="pointLogQuery.action" class="admin-select admin-marketing-log-filter-field__control">
+                      <option value="">全部动作</option>
+                      <option value="INCREASE">收入</option>
+                      <option value="DECREASE">支出</option>
+                    </select>
+                  </label>
+                  <label class="admin-marketing-log-filter-field">
+                    <span class="admin-marketing-log-filter-field__label">来源渠道</span>
+                    <select v-model="pointLogQuery.sourceType" class="admin-select admin-marketing-log-filter-field__control">
+                      <option value="">全部来源</option>
+                      <option value="GENERATION_CONSUME">生成消费</option>
+                      <option value="RECHARGE_ORDER">充值</option>
+                      <option value="MEMBERSHIP_ORDER">订阅</option>
+                      <option value="REWARD_RULE">奖励规则</option>
+                      <option value="CHECKIN">签到</option>
+                      <option value="CARD_REDEEM">卡密兑换</option>
+                    </select>
+                  </label>
+                  <label class="admin-marketing-log-filter-field">
+                    <span class="admin-marketing-log-filter-field__label">终端类型</span>
+                    <select v-model="pointLogQuery.endpointType" class="admin-select admin-marketing-log-filter-field__control">
+                      <option value="">全部终端</option>
+                      <option value="chat">CHAT</option>
+                      <option value="image">IMAGE</option>
+                      <option value="video">VIDEO</option>
+                    </select>
+                  </label>
+                  <label class="admin-marketing-log-filter-field">
+                    <span class="admin-marketing-log-filter-field__label">退款状态</span>
+                    <select v-model="pointLogQuery.refundStatus" class="admin-select admin-marketing-log-filter-field__control">
+                      <option value="">全部退款状态</option>
+                      <option value="compensable">待补偿</option>
+                      <option value="refunded">已退款</option>
+                      <option value="unrefunded">未退款</option>
+                    </select>
+                  </label>
+                  <label class="admin-marketing-log-filter-field">
+                    <span class="admin-marketing-log-filter-field__label">时间窗口</span>
+                    <select v-model.number="pointLogQuery.days" class="admin-select admin-marketing-log-filter-field__control">
+                      <option :value="7">近 7 天</option>
+                      <option :value="30">近 30 天</option>
+                      <option :value="90">近 90 天</option>
+                    </select>
+                  </label>
+                </div>
               </div>
 
               <div class="admin-marketing-log-summary">
-                <span class="admin-chip">明细 {{ pointLogSummary.totalCount }}</span>
-                <span class="admin-chip">可补偿 {{ pointLogSummary.compensableCount }}</span>
-                <span class="admin-chip">已退款 {{ pointLogSummary.refundCount }}</span>
-                <span class="admin-chip">窗口 {{ pointLogSummary.windowDays }} 天</span>
+                <div class="admin-marketing-log-summary__item">
+                  <span class="admin-marketing-log-summary__label">命中明细</span>
+                  <strong class="admin-marketing-log-summary__value">{{ pointLogSummary.totalCount }}</strong>
+                </div>
+                <div class="admin-marketing-log-summary__item">
+                  <span class="admin-marketing-log-summary__label">待补偿</span>
+                  <strong class="admin-marketing-log-summary__value">{{ pointLogSummary.compensableCount }}</strong>
+                </div>
+                <div class="admin-marketing-log-summary__item">
+                  <span class="admin-marketing-log-summary__label">已退款</span>
+                  <strong class="admin-marketing-log-summary__value">{{ pointLogSummary.refundCount }}</strong>
+                </div>
+                <div class="admin-marketing-log-summary__item">
+                  <span class="admin-marketing-log-summary__label">统计窗口</span>
+                  <strong class="admin-marketing-log-summary__value">{{ pointLogSummary.windowDays }} 天</strong>
+                </div>
               </div>
 
               <div v-if="!pointLogs.length" class="admin-empty">当前筛选条件下暂无积分流水。</div>
@@ -364,21 +397,54 @@
                     >
                   </div>
                   <div class="admin-point-log-item__main">
-                    <div class="admin-list-item__title">{{ getPointLogTitle(item) }}</div>
-                    <div class="admin-list-item__meta">
-                      {{ item.action === 'DECREASE' ? '-' : '+' }}{{ item.changeAmount }} 积分 · 余额 {{ item.balanceAfter }} · {{ formatDateText(item.createdAt) }}
+                    <div class="admin-point-log-item__headline">
+                      <div class="admin-list-item__title">{{ getPointLogTitle(item) }}</div>
+                      <span class="admin-chip admin-point-log-item__amount" :class="item.action === 'DECREASE' ? 'is-decrease' : 'is-increase'">
+                        {{ item.action === 'DECREASE' ? '-' : '+' }}{{ item.changeAmount }} 积分
+                      </span>
                     </div>
-                    <div class="admin-list-item__meta">
-                      来源 {{ item.sourceType }} · 终端 {{ item.endpointType || '-' }} · 流水号 {{ item.associationNo || item.accountNo }}
+                    <div class="admin-point-log-item__meta-grid">
+                      <div class="admin-list-item__meta">
+                        用户 {{ resolvePointLogUserText(item) }} · ID {{ item.userId || '-' }}
+                        <button
+                          v-if="item.userId"
+                          class="admin-inline-button admin-point-log-item__copy-button"
+                          type="button"
+                          @click.prevent="handleCopyPointLogText('user', item.id, item.userId)"
+                        >
+                          {{ resolveCopyButtonText('user', item.id, '复制用户ID') }}
+                        </button>
+                      </div>
+                      <div class="admin-list-item__meta">余额 {{ item.balanceAfter }} · 可用 {{ item.availableAmount }}</div>
                     </div>
+                    <div class="admin-point-log-item__meta-grid">
+                      <div class="admin-list-item__meta">来源 {{ item.sourceType }} · 终端 {{ item.endpointType || '-' }}</div>
+                      <div class="admin-list-item__meta">
+                        流水号 {{ item.associationNo || item.accountNo }}
+                        <button
+                          v-if="item.associationNo || item.accountNo"
+                          class="admin-inline-button admin-point-log-item__copy-button"
+                          type="button"
+                          @click.prevent="handleCopyPointLogText('association', item.id, item.associationNo || item.accountNo)"
+                        >
+                          {{ resolveCopyButtonText('association', item.id, '复制流水号') }}
+                        </button>
+                      </div>
+                    </div>
+                    <div class="admin-list-item__meta">发生时间 {{ formatDateText(item.createdAt) }}</div>
                     <div v-if="item.generationPrompt || item.generationErrorMessage" class="admin-list-item__meta">
                       {{ item.generationPrompt || '未记录任务提示词' }}<span v-if="item.generationErrorMessage"> · 错误：{{ item.generationErrorMessage }}</span>
                     </div>
                   </div>
-                  <div class="admin-point-log-item__status">
+                  <div class="admin-point-log-item__aside">
+                    <div class="admin-point-log-item__status">
                     <span class="admin-status" :class="resolvePointLogStatusClass(item)">
                       {{ resolvePointLogStatusText(item) }}
                     </span>
+                    </div>
+                    <div class="admin-point-log-item__compensation-reason">
+                      {{ item.compensationReason }}
+                    </div>
                   </div>
                   <div class="admin-row-actions">
                     <button
@@ -402,50 +468,52 @@
               </div>
             </div>
           </div>
-
-          <div class="admin-card admin-marketing-module-card">
-            <div class="admin-card__header">
-              <div>
-                <h4 class="admin-card__title">手动补偿</h4>
-                <div class="admin-card__desc">用于处理历史遗留漏账或缺少生成记录关联的流水，请按关联号逐条核实后执行。</div>
-              </div>
-            </div>
-            <div class="admin-card__content">
-              <div class="admin-form">
-                <div class="admin-form__field">
-                  <label class="admin-form__label">手动输入关联号</label>
-                  <textarea
-                    v-model.trim="compensationForm.manualAssociationNos"
-                    class="admin-textarea"
-                    rows="8"
-                    placeholder="每行一个关联号，或使用逗号分隔，例如：&#10;GTK1777512523146OM0MFW&#10;GTK1777512456545MH6GTH"
-                  />
-                </div>
-                <div class="admin-form__field">
-                  <label class="admin-form__label">补偿备注</label>
-                  <textarea
-                    v-model.trim="compensationForm.note"
-                    class="admin-textarea"
-                    rows="4"
-                    placeholder="例如：修复对话失败退款漏账后，补偿 2026-04-30 历史遗留记录"
-                  />
-                </div>
-                <label class="admin-checkbox">
-                  <input v-model="compensationForm.forceManual" type="checkbox">
-                  <span>允许补偿缺少生成记录关联的历史流水（请先人工确认任务确实失败）</span>
-                </label>
-                <div class="admin-row-actions">
-                  <button class="admin-button admin-button--secondary" type="button" @click="fillLegacyCompensationExample">填入当前遗留样例</button>
-                  <button class="admin-button admin-button--primary" type="button" :disabled="compensationSubmitting" @click="handleExecuteManualCompensation">
-                    {{ compensationSubmitting ? '执行中...' : '执行手动补偿' }}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </section>
+
+    <div v-if="manualCompensationDialogVisible" class="admin-dialog-mask" @click="closeManualCompensationDialog">
+      <div class="admin-dialog admin-dialog--provider-form" @click.stop>
+        <div class="admin-dialog__header">
+          <div>
+            <h3 class="admin-dialog__title">手动补偿</h3>
+            <div class="admin-dialog__desc">用于处理历史遗留漏账或缺少生成记录关联的流水，请按关联号逐条核实后执行。</div>
+          </div>
+          <button class="admin-dialog__close" type="button" @click="closeManualCompensationDialog">×</button>
+        </div>
+        <div class="admin-dialog__body admin-form">
+          <div class="admin-form__field">
+            <label class="admin-form__label">手动输入关联号</label>
+            <textarea
+              v-model.trim="compensationForm.manualAssociationNos"
+              class="admin-textarea"
+              rows="8"
+              placeholder="每行一个关联号，或使用逗号分隔，例如：&#10;GTK1777512523146OM0MFW&#10;GTK1777512456545MH6GTH"
+            />
+          </div>
+          <div class="admin-form__field">
+            <label class="admin-form__label">补偿备注</label>
+            <textarea
+              v-model.trim="compensationForm.note"
+              class="admin-textarea"
+              rows="4"
+              placeholder="例如：修复对话失败退款漏账后，补偿 2026-04-30 历史遗留记录"
+            />
+          </div>
+          <label class="admin-checkbox">
+            <input v-model="compensationForm.forceManual" type="checkbox">
+            <span>允许补偿缺少生成记录关联的历史流水（请先人工确认任务确实失败）</span>
+          </label>
+          <div class="admin-form__footer">
+            <button class="admin-button admin-button--secondary" type="button" @click="fillLegacyCompensationExample">填入当前遗留样例</button>
+            <button class="admin-button admin-button--secondary" type="button" @click="closeManualCompensationDialog">取消</button>
+            <button class="admin-button admin-button--primary" type="button" :disabled="compensationSubmitting" @click="handleExecuteManualCompensation">
+              {{ compensationSubmitting ? '执行中...' : '执行手动补偿' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div v-if="levelDialogVisible" class="admin-dialog-mask" @click="closeLevelDialog">
       <div class="admin-dialog admin-dialog--provider-form" @click.stop>
@@ -902,6 +970,7 @@ const submitting = ref(false)
 const codesLoading = ref(false)
 const compensationLoading = ref(false)
 const compensationSubmitting = ref(false)
+const pointLogCopiedKey = ref('')
 const activeTool = ref<MarketingToolKey>('membership')
 const selectedCompensationAssociationNos = ref<string[]>([])
 const pointLogQuery = reactive({
@@ -1109,6 +1178,7 @@ const batchForm = reactive(createBatchForm())
 
 const codesDialogVisible = ref(false)
 const currentBatch = ref<CardBatchItem | null>(null)
+const manualCompensationDialogVisible = ref(false)
 
 // 用于把表单重置为最新初始值，避免多次弹窗编辑残留脏数据。
 const assignForm = <T extends Record<string, any>>(target: T, source: T) => {
@@ -1273,6 +1343,64 @@ const toggleCompensationSelection = (associationNo: string) => {
   selectedCompensationAssociationNos.value = Array.from(current)
 }
 
+// 统一处理后台复制动作，优先使用 Clipboard API，失败时自动回退到选区复制。
+const copyText = async (value: string) => {
+  const text = String(value || '').trim()
+  if (!text) {
+    throw new Error('empty_text')
+  }
+
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const textArea = document.createElement('textarea')
+  textArea.value = text
+  textArea.style.position = 'fixed'
+  textArea.style.opacity = '0'
+  textArea.style.pointerEvents = 'none'
+  document.body.appendChild(textArea)
+  textArea.focus()
+  textArea.select()
+  const copied = document.execCommand('copy')
+  document.body.removeChild(textArea)
+  if (!copied) {
+    throw new Error('copy_failed')
+  }
+}
+
+const buildPointLogCopyKey = (field: 'user' | 'association', recordId: string) => {
+  return `${field}:${recordId}`
+}
+
+const resolveCopyButtonText = (field: 'user' | 'association', recordId: string, fallback: string) => {
+  return pointLogCopiedKey.value === buildPointLogCopyKey(field, recordId) ? '已复制' : fallback
+}
+
+const handleCopyPointLogText = async (field: 'user' | 'association', recordId: string, value: string) => {
+  try {
+    await copyText(value)
+    const currentKey = buildPointLogCopyKey(field, recordId)
+    pointLogCopiedKey.value = currentKey
+    window.setTimeout(() => {
+      if (pointLogCopiedKey.value === currentKey) {
+        pointLogCopiedKey.value = ''
+      }
+    }, 1600)
+  } catch {
+    window.alert('复制失败，请稍后重试。')
+  }
+}
+
+const openManualCompensationDialog = () => {
+  manualCompensationDialogVisible.value = true
+}
+
+const closeManualCompensationDialog = () => {
+  manualCompensationDialogVisible.value = false
+}
+
 const loadPointLogs = async () => {
   compensationLoading.value = true
   try {
@@ -1299,6 +1427,17 @@ const loadPointLogs = async () => {
 }
 
 const handleApplyPointLogFilters = async () => {
+  pointLogPagination.page = 1
+  await loadPointLogs()
+}
+
+const handleResetPointLogFilters = async () => {
+  pointLogQuery.keyword = ''
+  pointLogQuery.action = ''
+  pointLogQuery.sourceType = ''
+  pointLogQuery.endpointType = ''
+  pointLogQuery.refundStatus = ''
+  pointLogQuery.days = 30
   pointLogPagination.page = 1
   await loadPointLogs()
 }
@@ -1385,6 +1524,7 @@ const handleExecuteManualCompensation = async () => {
     compensationForm.manualAssociationNos = ''
     compensationForm.note = ''
     compensationForm.forceManual = false
+    closeManualCompensationDialog()
     await loadPointLogs()
     window.alert(`手动补偿完成：成功 ${result.refundedCount} 条，跳过 ${result.skippedCount} 条。`)
   } finally {
@@ -1402,6 +1542,19 @@ const getPointLogTitle = (item: AdminPointLogItem) => {
   if (item.sourceType === 'CARD_REDEEM') return '卡密兑换'
   if (item.sourceType === 'REWARD_RULE') return '奖励规则发放'
   return '积分流水'
+}
+
+const resolvePointLogUserText = (item: AdminPointLogItem) => {
+  if (item.userName) {
+    if (item.userPhone) {
+      return `${item.userName}（${item.userPhone}）`
+    }
+    if (item.userEmail) {
+      return `${item.userName}（${item.userEmail}）`
+    }
+    return item.userName
+  }
+  return item.userPhone || item.userEmail || '未知用户'
 }
 
 const resolvePointLogStatusText = (item: AdminPointLogItem) => {
@@ -1896,25 +2049,6 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.admin-marketing-focus {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.admin-marketing-focus__title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.admin-marketing-focus__desc,
-.admin-marketing-focus__meta {
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--text-secondary);
-}
-
 .admin-marketing-section-shell {
   display: flex;
   flex-direction: column;
@@ -1940,18 +2074,132 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+.admin-marketing-log-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 16px;
+  background: var(--bg-block-primary-default, rgba(255, 255, 255, 0.03));
+}
+
+.admin-marketing-log-toolbar__search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.admin-marketing-log-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .admin-marketing-log-filters {
   display: grid;
-  grid-template-columns: minmax(220px, 1.3fr) repeat(5, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
-  margin-bottom: 14px;
+}
+
+.admin-marketing-log-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-marketing-log-filter-field--search {
+  min-width: 0;
+}
+
+.admin-marketing-log-filter-field__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.admin-marketing-log-filter-field__control {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
+}
+
+.admin-marketing-log-filter-field__control:focus {
+  border-color: color-mix(in srgb, var(--brand-main-default) 48%, var(--line-divider, #00000014));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-main-default) 14%, transparent);
+  outline: none;
+}
+
+.admin-marketing-log-filter-field__control.admin-input {
+  padding: 0 14px;
+}
+
+.admin-marketing-log-filter-field__control.admin-select {
+  padding: 0 42px 0 14px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-tertiary) 50%),
+    linear-gradient(135deg, var(--text-tertiary) 50%, transparent 50%),
+    linear-gradient(to right, color-mix(in srgb, var(--line-divider, #00000014) 100%, transparent), color-mix(in srgb, var(--line-divider, #00000014) 100%, transparent));
+  background-position:
+    calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px),
+    calc(100% - 38px) 50%;
+  background-size:
+    6px 6px,
+    6px 6px,
+    1px 18px;
+  background-repeat: no-repeat;
+}
+
+.admin-marketing-log-filter-field__control.admin-select:hover {
+  border-color: color-mix(in srgb, var(--brand-main-default) 26%, var(--line-divider, #00000014));
+  background-color: color-mix(in srgb, var(--bg-surface) 92%, var(--brand-main-default) 8%);
+}
+
+.admin-marketing-log-filter-field__control.admin-select option {
+  color: var(--text-primary);
+  background: var(--bg-surface);
 }
 
 .admin-marketing-log-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.admin-marketing-log-summary__item {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 14px;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 84px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line-divider, #00000014);
+  background: var(--bg-block-primary-default, rgba(255, 255, 255, 0.03));
+}
+
+.admin-marketing-log-summary__label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.admin-marketing-log-summary__value {
+  font-size: 24px;
+  line-height: 1.1;
+  color: var(--text-primary);
 }
 
 .admin-point-log-list {
@@ -1961,9 +2209,13 @@ onMounted(() => {
 }
 
 .admin-point-log-item {
-  grid-template-columns: auto minmax(0, 1.6fr) auto auto;
-  gap: 12px;
+  grid-template-columns: auto minmax(0, 1.8fr) minmax(180px, 0.7fr) auto;
+  gap: 14px;
   align-items: flex-start;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--line-divider, #00000014);
+  background: var(--bg-block-primary-default, rgba(255, 255, 255, 0.025));
 }
 
 .admin-point-log-item__check {
@@ -1973,14 +2225,64 @@ onMounted(() => {
 .admin-point-log-item__main {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   min-width: 0;
+}
+
+.admin-point-log-item__headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-point-log-item__amount {
+  white-space: nowrap;
+}
+
+.admin-point-log-item__amount.is-increase {
+  color: var(--brand-main-default);
+}
+
+.admin-point-log-item__amount.is-decrease {
+  color: #ff8a65;
+}
+
+.admin-point-log-item__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.admin-point-log-item__copy-button {
+  margin-left: 8px;
+  padding: 0;
+  min-height: auto;
+  border: none;
+  background: transparent;
+  color: var(--brand-main-default);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.admin-point-log-item__aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
 }
 
 .admin-point-log-item__status {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+}
+
+.admin-point-log-item__compensation-reason {
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: right;
+  color: var(--text-tertiary);
 }
 
 .admin-membership-billing-list {
@@ -2064,12 +2366,36 @@ onMounted(() => {
     grid-template-columns: 1fr 1fr;
   }
 
+  .admin-marketing-log-toolbar__search {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-marketing-log-toolbar__actions {
+    justify-content: flex-end;
+  }
+
   .admin-marketing-log-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-marketing-log-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .admin-point-log-item,
   .admin-compensation-item {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-point-log-item__aside {
+    align-items: flex-start;
+  }
+
+  .admin-point-log-item__compensation-reason {
+    text-align: left;
+  }
+
+  .admin-point-log-item__meta-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -2089,6 +2415,24 @@ onMounted(() => {
 
   .admin-marketing-log-filters {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-marketing-log-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-marketing-log-toolbar__actions {
+    justify-content: stretch;
+    flex-direction: column;
+  }
+
+  .admin-marketing-log-toolbar__actions .admin-button {
+    width: 100%;
+  }
+
+  .admin-point-log-item__headline {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>

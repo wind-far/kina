@@ -8,11 +8,11 @@
 
     <section class="admin-marketing-hero">
       <div class="admin-marketing-hero__main">
-        <div class="admin-marketing-hero__eyebrow">运营工作台</div>
-        <h3 class="admin-marketing-hero__title">把会员、积分、激励与补偿操作收拢到一个专业后台视图</h3>
+        <div class="admin-marketing-hero__eyebrow">营销工作台</div>
+        <h3 class="admin-marketing-hero__title">统一管理会员、积分、激励与补偿等核心运营能力</h3>
         <p class="admin-marketing-hero__desc">
-          当前聚焦 <strong>{{ currentToolInfo.title }}</strong>，用于 {{ currentToolInfo.description }}。
-          运营同学可以先看概览，再从左侧切到具体模块处理日常动作。
+          当前模块为 <strong>{{ currentToolInfo.title }}</strong>，主要用于 {{ currentToolInfo.description }}。
+          可结合左侧模块导航快速切换到具体业务域，集中处理日常运营动作。
         </p>
         <div class="admin-marketing-hero__chips">
           <span class="admin-chip">当前模块：{{ currentToolInfo.title }}</span>

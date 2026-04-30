@@ -101,7 +101,7 @@
 
         <div v-if="activeTool === 'membership'" class="admin-marketing-section-shell">
           <div class="admin-grid admin-grid--two admin-marketing-panel-grid">
-            <div class="admin-card">
+            <div class="admin-card admin-marketing-module-card">
               <div class="admin-card__header">
                 <div>
                   <h4 class="admin-card__title">会员等级</h4>
@@ -134,7 +134,7 @@
               </div>
             </div>
 
-            <div class="admin-card">
+            <div class="admin-card admin-marketing-module-card">
               <div class="admin-card__header">
                 <div>
                   <h4 class="admin-card__title">会员计划</h4>
@@ -170,7 +170,7 @@
         </div>
 
         <div v-else-if="activeTool === 'recharge'" class="admin-marketing-section-shell">
-          <div class="admin-card">
+          <div class="admin-card admin-marketing-module-card">
             <div class="admin-card__header">
               <div>
                 <h4 class="admin-card__title">积分充值</h4>
@@ -200,6 +200,10 @@
                     <span>售价</span>
                     <strong>{{ formatMoney(item.price) }}</strong>
                   </div>
+                  <div class="admin-marketing-package-card__footer">
+                    <span class="admin-marketing-package-card__footer-text">排序 {{ item.sortOrder }}</span>
+                    <span v-if="item.originalPrice" class="admin-marketing-package-card__footer-text">原价 {{ formatMoney(item.originalPrice) }}</span>
+                  </div>
                   <div class="admin-provider-tile__actions">
                     <button class="admin-inline-button" type="button" @click="openPackageDialog(item)">编辑</button>
                     <button class="admin-inline-button admin-inline-button--danger" type="button" @click="handleDeletePackage(item)">删除</button>
@@ -211,7 +215,7 @@
         </div>
 
         <div v-else-if="activeTool === 'rewards'" class="admin-marketing-section-shell">
-          <div class="admin-card">
+          <div class="admin-card admin-marketing-module-card">
             <div class="admin-card__header">
               <div>
                 <h4 class="admin-card__title">奖励中心</h4>
@@ -246,7 +250,7 @@
         </div>
 
         <div v-else-if="activeTool === 'cdk'" class="admin-marketing-section-shell">
-          <div class="admin-card">
+          <div class="admin-card admin-marketing-module-card">
             <div class="admin-card__header">
               <div>
                 <h4 class="admin-card__title">卡密兑换</h4>
@@ -282,90 +286,159 @@
         </div>
 
         <div v-else class="admin-marketing-section-shell">
-          <div class="admin-grid admin-grid--two admin-marketing-panel-grid">
-            <div class="admin-card">
-              <div class="admin-card__header">
-                <div>
-                  <h4 class="admin-card__title">失败未退款候选</h4>
-                  <div class="admin-card__desc">自动扫描近 {{ compensationQuery.days }} 天内失败或停止、且缺少退款流水的生成任务。</div>
-                </div>
-                <div class="admin-row-actions">
-                  <button class="admin-button admin-button--secondary" type="button" :disabled="compensationLoading" @click="loadCompensationCandidates">
-                    {{ compensationLoading ? '扫描中...' : '重新扫描' }}
-                  </button>
-                  <button
-                    class="admin-button admin-button--primary"
-                    type="button"
-                    :disabled="compensationSubmitting || !selectedCompensationAssociationNos.length"
-                    @click="handleExecuteCandidateCompensation"
-                  >
-                    {{ compensationSubmitting ? '执行中...' : `补偿已选 ${selectedCompensationAssociationNos.length} 项` }}
-                  </button>
-                </div>
+          <div class="admin-card admin-marketing-module-card">
+            <div class="admin-card__header">
+              <div>
+                <h4 class="admin-card__title">积分流水明细</h4>
+                <div class="admin-card__desc">支持按动作、来源、终端类型、退款状态和关键词筛选，并可对失败未退款流水直接补偿。</div>
               </div>
-              <div class="admin-card__content">
-                <div v-if="!compensationCandidates.length" class="admin-empty">当前没有自动识别到待补偿记录。</div>
-                <div v-else class="admin-list admin-compensation-list">
-                  <label v-for="item in compensationCandidates" :key="item.associationNo" class="admin-list-item admin-compensation-item">
-                    <div class="admin-compensation-item__check">
-                      <input
-                        :checked="selectedCompensationAssociationNos.includes(item.associationNo)"
-                        type="checkbox"
-                        @change="toggleCompensationSelection(item.associationNo)"
-                      >
-                    </div>
-                    <div class="admin-compensation-item__body">
-                      <div class="admin-list-item__title">{{ item.generationPrompt || '未命名任务' }}</div>
-                      <div class="admin-list-item__meta">
-                        {{ item.endpointType.toUpperCase() }} · {{ item.modelName || item.modelKey }} · {{ item.pointCost }} 积分 · {{ formatDateText(item.consumedAt) }}
-                      </div>
-                      <div class="admin-list-item__meta">
-                        任务状态 {{ item.generationStatus || '未知' }} · 流水号 {{ item.associationNo }}
-                      </div>
-                      <div class="admin-list-item__meta admin-compensation-item__error">{{ item.generationErrorMessage || item.compensationReason }}</div>
-                    </div>
-                  </label>
-                </div>
+              <div class="admin-row-actions">
+                <button class="admin-button admin-button--secondary" type="button" :disabled="compensationLoading" @click="loadPointLogs">
+                  {{ compensationLoading ? '刷新中...' : '刷新流水' }}
+                </button>
+                <button
+                  class="admin-button admin-button--primary"
+                  type="button"
+                  :disabled="compensationSubmitting || !selectedCompensationAssociationNos.length"
+                  @click="handleExecuteSelectedPointLogCompensation"
+                >
+                  {{ compensationSubmitting ? '补偿中...' : `补偿已选 ${selectedCompensationAssociationNos.length} 条` }}
+                </button>
               </div>
             </div>
-
-            <div class="admin-card">
-              <div class="admin-card__header">
-                <div>
-                  <h4 class="admin-card__title">手动补偿</h4>
-                  <div class="admin-card__desc">用于处理历史遗留漏账或缺少生成记录关联的流水，请按关联号逐条核实后执行。</div>
-                </div>
+            <div class="admin-card__content">
+              <div class="admin-marketing-log-filters">
+                <input v-model.trim="pointLogQuery.keyword" class="admin-input" type="text" placeholder="搜索流水号、备注、模型、任务提示词">
+                <select v-model="pointLogQuery.action" class="admin-select">
+                  <option value="">全部动作</option>
+                  <option value="INCREASE">收入</option>
+                  <option value="DECREASE">支出</option>
+                </select>
+                <select v-model="pointLogQuery.sourceType" class="admin-select">
+                  <option value="">全部来源</option>
+                  <option value="GENERATION_CONSUME">生成消费</option>
+                  <option value="RECHARGE_ORDER">充值</option>
+                  <option value="MEMBERSHIP_ORDER">订阅</option>
+                  <option value="REWARD_RULE">奖励规则</option>
+                  <option value="CHECKIN">签到</option>
+                  <option value="CARD_REDEEM">卡密兑换</option>
+                </select>
+                <select v-model="pointLogQuery.endpointType" class="admin-select">
+                  <option value="">全部终端</option>
+                  <option value="chat">CHAT</option>
+                  <option value="image">IMAGE</option>
+                  <option value="video">VIDEO</option>
+                </select>
+                <select v-model="pointLogQuery.refundStatus" class="admin-select">
+                  <option value="">全部退款状态</option>
+                  <option value="compensable">待补偿</option>
+                  <option value="refunded">已退款</option>
+                  <option value="unrefunded">未退款</option>
+                </select>
+                <select v-model.number="pointLogQuery.days" class="admin-select">
+                  <option :value="7">近 7 天</option>
+                  <option :value="30">近 30 天</option>
+                  <option :value="90">近 90 天</option>
+                </select>
+                <button class="admin-button admin-button--secondary" type="button" :disabled="compensationLoading" @click="handleApplyPointLogFilters">
+                  应用筛选
+                </button>
               </div>
-              <div class="admin-card__content">
-                <div class="admin-form">
-                  <div class="admin-form__field">
-                    <label class="admin-form__label">手动输入关联号</label>
-                    <textarea
-                      v-model.trim="compensationForm.manualAssociationNos"
-                      class="admin-textarea"
-                      rows="8"
-                      placeholder="每行一个关联号，或使用逗号分隔，例如：&#10;GTK1777512523146OM0MFW&#10;GTK1777512456545MH6GTH"
-                    />
+
+              <div class="admin-marketing-log-summary">
+                <span class="admin-chip">明细 {{ pointLogSummary.totalCount }}</span>
+                <span class="admin-chip">可补偿 {{ pointLogSummary.compensableCount }}</span>
+                <span class="admin-chip">已退款 {{ pointLogSummary.refundCount }}</span>
+                <span class="admin-chip">窗口 {{ pointLogSummary.windowDays }} 天</span>
+              </div>
+
+              <div v-if="!pointLogs.length" class="admin-empty">当前筛选条件下暂无积分流水。</div>
+              <div v-else class="admin-list admin-point-log-list">
+                <label v-for="item in pointLogs" :key="item.id" class="admin-list-item admin-point-log-item">
+                  <div class="admin-point-log-item__check">
+                    <input
+                      :checked="selectedCompensationAssociationNos.includes(item.associationNo)"
+                      :disabled="!item.canCompensate"
+                      type="checkbox"
+                      @change="toggleCompensationSelection(item.associationNo)"
+                    >
                   </div>
-                  <div class="admin-form__field">
-                    <label class="admin-form__label">补偿备注</label>
-                    <textarea
-                      v-model.trim="compensationForm.note"
-                      class="admin-textarea"
-                      rows="4"
-                      placeholder="例如：修复对话失败退款漏账后，补偿 2026-04-30 历史遗留记录"
-                    />
+                  <div class="admin-point-log-item__main">
+                    <div class="admin-list-item__title">{{ getPointLogTitle(item) }}</div>
+                    <div class="admin-list-item__meta">
+                      {{ item.action === 'DECREASE' ? '-' : '+' }}{{ item.changeAmount }} 积分 · 余额 {{ item.balanceAfter }} · {{ formatDateText(item.createdAt) }}
+                    </div>
+                    <div class="admin-list-item__meta">
+                      来源 {{ item.sourceType }} · 终端 {{ item.endpointType || '-' }} · 流水号 {{ item.associationNo || item.accountNo }}
+                    </div>
+                    <div v-if="item.generationPrompt || item.generationErrorMessage" class="admin-list-item__meta">
+                      {{ item.generationPrompt || '未记录任务提示词' }}<span v-if="item.generationErrorMessage"> · 错误：{{ item.generationErrorMessage }}</span>
+                    </div>
                   </div>
-                  <label class="admin-checkbox">
-                    <input v-model="compensationForm.forceManual" type="checkbox">
-                    <span>允许补偿缺少生成记录关联的历史流水（请先人工确认任务确实失败）</span>
-                  </label>
+                  <div class="admin-point-log-item__status">
+                    <span class="admin-status" :class="resolvePointLogStatusClass(item)">
+                      {{ resolvePointLogStatusText(item) }}
+                    </span>
+                  </div>
                   <div class="admin-row-actions">
-                    <button class="admin-button admin-button--secondary" type="button" @click="fillLegacyCompensationExample">填入当前遗留样例</button>
-                    <button class="admin-button admin-button--primary" type="button" :disabled="compensationSubmitting" @click="handleExecuteManualCompensation">
-                      {{ compensationSubmitting ? '执行中...' : '执行手动补偿' }}
+                    <button
+                      v-if="item.canCompensate"
+                      class="admin-inline-button"
+                      type="button"
+                      :disabled="compensationSubmitting"
+                      @click.prevent="handleExecuteSinglePointLogCompensation(item.associationNo)"
+                    >
+                      失败补偿
                     </button>
                   </div>
+                </label>
+                <AdminPagination
+                  v-model:page="pointLogPagination.page"
+                  v-model:page-size="pointLogPagination.pageSize"
+                  :total="pointLogSummary.totalCount"
+                  :disabled="compensationLoading || compensationSubmitting"
+                  @change="handlePointLogPaginationChange"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="admin-card admin-marketing-module-card">
+            <div class="admin-card__header">
+              <div>
+                <h4 class="admin-card__title">手动补偿</h4>
+                <div class="admin-card__desc">用于处理历史遗留漏账或缺少生成记录关联的流水，请按关联号逐条核实后执行。</div>
+              </div>
+            </div>
+            <div class="admin-card__content">
+              <div class="admin-form">
+                <div class="admin-form__field">
+                  <label class="admin-form__label">手动输入关联号</label>
+                  <textarea
+                    v-model.trim="compensationForm.manualAssociationNos"
+                    class="admin-textarea"
+                    rows="8"
+                    placeholder="每行一个关联号，或使用逗号分隔，例如：&#10;GTK1777512523146OM0MFW&#10;GTK1777512456545MH6GTH"
+                  />
+                </div>
+                <div class="admin-form__field">
+                  <label class="admin-form__label">补偿备注</label>
+                  <textarea
+                    v-model.trim="compensationForm.note"
+                    class="admin-textarea"
+                    rows="4"
+                    placeholder="例如：修复对话失败退款漏账后，补偿 2026-04-30 历史遗留记录"
+                  />
+                </div>
+                <label class="admin-checkbox">
+                  <input v-model="compensationForm.forceManual" type="checkbox">
+                  <span>允许补偿缺少生成记录关联的历史流水（请先人工确认任务确实失败）</span>
+                </label>
+                <div class="admin-row-actions">
+                  <button class="admin-button admin-button--secondary" type="button" @click="fillLegacyCompensationExample">填入当前遗留样例</button>
+                  <button class="admin-button admin-button--primary" type="button" :disabled="compensationSubmitting" @click="handleExecuteManualCompensation">
+                    {{ compensationSubmitting ? '执行中...' : '执行手动补偿' }}
+                  </button>
                 </div>
               </div>
             </div>
@@ -772,6 +845,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import AdminPagination from '@/components/admin/common/AdminPagination.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
 import {
   createCardBatch,
@@ -785,11 +859,11 @@ import {
   deleteRechargePackage,
   deleteRewardRule,
   getAdminMarketingOverview,
+  listAdminPointLogs,
   listCardBatches,
   listCardCodesByBatch,
   listMembershipLevels,
   listMembershipPlans,
-  listPointCompensationCandidates,
   listRechargePackages,
   listRewardRules,
   executePointCompensation,
@@ -801,11 +875,11 @@ import {
   type AdminMarketingOverview,
   type CardBatchItem,
   type CardCodeItem,
+  type AdminPointLogItem,
+  type AdminPointLogListResult,
   type MembershipLevelItem,
   type MembershipPlanBillingItem,
   type MembershipPlanItem,
-  type PointCompensationCandidateItem,
-  type PointCompensationCandidateResult,
   type RechargePackageItem,
   type RewardRuleItem,
 } from '@/api/admin-marketing'
@@ -821,7 +895,7 @@ const packages = ref<RechargePackageItem[]>([])
 const rewardRules = ref<RewardRuleItem[]>([])
 const cardBatches = ref<CardBatchItem[]>([])
 const cardCodes = ref<CardCodeItem[]>([])
-const compensationCandidates = ref<PointCompensationCandidateItem[]>([])
+const pointLogs = ref<AdminPointLogItem[]>([])
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -830,19 +904,31 @@ const compensationLoading = ref(false)
 const compensationSubmitting = ref(false)
 const activeTool = ref<MarketingToolKey>('membership')
 const selectedCompensationAssociationNos = ref<string[]>([])
-const compensationQuery = reactive({
+const pointLogQuery = reactive({
   days: 30,
-  limit: 100,
+  action: '',
+  sourceType: '',
+  endpointType: '',
+  refundStatus: '',
+  keyword: '',
+})
+const pointLogPagination = reactive({
+  page: 1,
+  pageSize: 10,
 })
 const compensationForm = reactive({
   manualAssociationNos: '',
   note: '',
   forceManual: false,
 })
-const compensationSummary = reactive<PointCompensationCandidateResult['summary']>({
-  candidateCount: 0,
-  totalPointCost: 0,
+const pointLogSummary = reactive<AdminPointLogListResult['summary']>({
+  totalCount: 0,
+  compensableCount: 0,
+  refundCount: 0,
   windowDays: 30,
+  page: 1,
+  pageSize: 10,
+  totalPages: 1,
 })
 
 const marketingTools = computed(() => [
@@ -877,9 +963,9 @@ const marketingTools = computed(() => [
   {
     key: 'compensation' as MarketingToolKey,
     icon: '🧾',
-    title: '积分补偿',
-    description: '补偿失败未退款任务，处理历史漏账',
-    meta: () => `${compensationSummary.candidateCount} 条待处理`,
+    title: '积分流水',
+    description: '查看积分明细、筛选状态并处理失败补偿',
+    meta: () => `${pointLogSummary.totalCount} 条流水 / 可补偿 ${pointLogSummary.compensableCount} 条`,
   },
 ])
 
@@ -917,10 +1003,10 @@ const currentToolInfo = computed(() => {
     }
   }
   return {
-    title: '积分补偿',
-    description: '处理失败未退款任务与历史漏账补偿',
-    focus: '适合客服补账、运营审计和异常积分兜底场景。',
-    meta: `${compensationSummary.candidateCount} 条自动候选 / 待补 ${compensationSummary.totalPointCost} 积分`,
+    title: '积分流水',
+    description: '查看积分明细、筛选状态并处理失败补偿',
+    focus: '适合运营核对每一笔积分变动，并在失败未退款的生成流水上直接执行补偿。',
+    meta: `${pointLogSummary.totalCount} 条流水 / 可补偿 ${pointLogSummary.compensableCount} 条`,
   }
 })
 
@@ -1187,19 +1273,40 @@ const toggleCompensationSelection = (associationNo: string) => {
   selectedCompensationAssociationNos.value = Array.from(current)
 }
 
-const loadCompensationCandidates = async () => {
+const loadPointLogs = async () => {
   compensationLoading.value = true
   try {
-    const result = await listPointCompensationCandidates(compensationQuery)
-    compensationCandidates.value = Array.isArray(result.items) ? result.items : []
-    compensationSummary.candidateCount = Number(result.summary?.candidateCount || 0)
-    compensationSummary.totalPointCost = Number(result.summary?.totalPointCost || 0)
-    compensationSummary.windowDays = Number(result.summary?.windowDays || compensationQuery.days)
+    const result = await listAdminPointLogs({
+      ...pointLogQuery,
+      page: pointLogPagination.page,
+      pageSize: pointLogPagination.pageSize,
+    })
+    pointLogs.value = Array.isArray(result.items) ? result.items : []
+    pointLogSummary.totalCount = Number(result.summary?.totalCount || 0)
+    pointLogSummary.compensableCount = Number(result.summary?.compensableCount || 0)
+    pointLogSummary.refundCount = Number(result.summary?.refundCount || 0)
+    pointLogSummary.windowDays = Number(result.summary?.windowDays || pointLogQuery.days)
+    pointLogSummary.page = Number(result.summary?.page || pointLogPagination.page)
+    pointLogSummary.pageSize = Number(result.summary?.pageSize || pointLogPagination.pageSize)
+    pointLogSummary.totalPages = Number(result.summary?.totalPages || 1)
     selectedCompensationAssociationNos.value = selectedCompensationAssociationNos.value
-      .filter((item) => compensationCandidates.value.some((candidate) => candidate.associationNo === item))
+      .filter((item) => pointLogs.value.some((log) => log.associationNo === item && log.canCompensate))
+    pointLogPagination.page = pointLogSummary.page
+    pointLogPagination.pageSize = pointLogSummary.pageSize
   } finally {
     compensationLoading.value = false
   }
+}
+
+const handleApplyPointLogFilters = async () => {
+  pointLogPagination.page = 1
+  await loadPointLogs()
+}
+
+const handlePointLogPaginationChange = async (payload: { page: number; pageSize: number }) => {
+  pointLogPagination.page = payload.page
+  pointLogPagination.pageSize = payload.pageSize
+  await loadPointLogs()
 }
 
 const fillLegacyCompensationExample = () => {
@@ -1213,9 +1320,9 @@ const fillLegacyCompensationExample = () => {
   compensationForm.forceManual = true
 }
 
-const handleExecuteCandidateCompensation = async () => {
+const handleExecuteSelectedPointLogCompensation = async () => {
   if (!selectedCompensationAssociationNos.value.length) {
-    window.alert('请先选择需要补偿的候选记录。')
+    window.alert('请先选择需要补偿的流水记录。')
     return
   }
   if (!window.confirm(`确认补偿已选中的 ${selectedCompensationAssociationNos.value.length} 条积分流水吗？`)) {
@@ -1230,7 +1337,28 @@ const handleExecuteCandidateCompensation = async () => {
       forceManual: false,
     })
     selectedCompensationAssociationNos.value = []
-    await loadCompensationCandidates()
+    await loadPointLogs()
+    window.alert(`补偿完成：成功 ${result.refundedCount} 条，跳过 ${result.skippedCount} 条。`)
+  } finally {
+    compensationSubmitting.value = false
+  }
+}
+
+const handleExecuteSinglePointLogCompensation = async (associationNo: string) => {
+  if (!associationNo) {
+    return
+  }
+  if (!window.confirm(`确认补偿流水 ${associationNo} 吗？`)) {
+    return
+  }
+  compensationSubmitting.value = true
+  try {
+    const result = await executePointCompensation({
+      associationNos: [associationNo],
+      note: compensationForm.note || '后台单条失败补偿',
+      forceManual: false,
+    })
+    await loadPointLogs()
     window.alert(`补偿完成：成功 ${result.refundedCount} 条，跳过 ${result.skippedCount} 条。`)
   } finally {
     compensationSubmitting.value = false
@@ -1257,24 +1385,54 @@ const handleExecuteManualCompensation = async () => {
     compensationForm.manualAssociationNos = ''
     compensationForm.note = ''
     compensationForm.forceManual = false
-    await loadCompensationCandidates()
+    await loadPointLogs()
     window.alert(`手动补偿完成：成功 ${result.refundedCount} 条，跳过 ${result.skippedCount} 条。`)
   } finally {
     compensationSubmitting.value = false
   }
 }
 
+const getPointLogTitle = (item: AdminPointLogItem) => {
+  if (item.remark) {
+    return item.remark
+  }
+  if (item.sourceType === 'RECHARGE_ORDER') return '充值到账'
+  if (item.sourceType === 'MEMBERSHIP_ORDER') return '订阅积分到账'
+  if (item.sourceType === 'CHECKIN') return '签到奖励'
+  if (item.sourceType === 'CARD_REDEEM') return '卡密兑换'
+  if (item.sourceType === 'REWARD_RULE') return '奖励规则发放'
+  return '积分流水'
+}
+
+const resolvePointLogStatusText = (item: AdminPointLogItem) => {
+  if (item.canCompensate) return '待补偿'
+  if (item.refunded) return '已退款'
+  if (item.generationStatus === 'FAILED') return '失败未退'
+  if (item.generationStatus === 'STOPPED') return '停止未退'
+  return item.action === 'DECREASE' ? '已支出' : '已入账'
+}
+
+const resolvePointLogStatusClass = (item: AdminPointLogItem) => {
+  if (item.canCompensate) return 'admin-status--warning'
+  if (item.refunded) return 'admin-status--success'
+  return item.action === 'DECREASE' ? 'admin-status--muted' : 'admin-status--success'
+}
+
 const loadAllData = async () => {
   loading.value = true
   try {
-    const [overviewData, levelData, planData, packageData, rewardData, batchData, compensationData] = await Promise.all([
+    const [overviewData, levelData, planData, packageData, rewardData, batchData, pointLogData] = await Promise.all([
       getAdminMarketingOverview(),
       listMembershipLevels(),
       listMembershipPlans(),
       listRechargePackages(),
       listRewardRules(),
       listCardBatches(),
-      listPointCompensationCandidates(compensationQuery),
+      listAdminPointLogs({
+        ...pointLogQuery,
+        page: pointLogPagination.page,
+        pageSize: pointLogPagination.pageSize,
+      }),
     ])
     overview.value = overviewData
     levels.value = levelData
@@ -1282,10 +1440,18 @@ const loadAllData = async () => {
     packages.value = packageData
     rewardRules.value = rewardData
     cardBatches.value = batchData
-    compensationCandidates.value = Array.isArray(compensationData.items) ? compensationData.items : []
-    compensationSummary.candidateCount = Number(compensationData.summary?.candidateCount || 0)
-    compensationSummary.totalPointCost = Number(compensationData.summary?.totalPointCost || 0)
-    compensationSummary.windowDays = Number(compensationData.summary?.windowDays || compensationQuery.days)
+    pointLogs.value = Array.isArray(pointLogData.items) ? pointLogData.items : []
+    pointLogSummary.totalCount = Number(pointLogData.summary?.totalCount || 0)
+    pointLogSummary.compensableCount = Number(pointLogData.summary?.compensableCount || 0)
+    pointLogSummary.refundCount = Number(pointLogData.summary?.refundCount || 0)
+    pointLogSummary.windowDays = Number(pointLogData.summary?.windowDays || pointLogQuery.days)
+    pointLogSummary.page = Number(pointLogData.summary?.page || pointLogPagination.page)
+    pointLogSummary.pageSize = Number(pointLogData.summary?.pageSize || pointLogPagination.pageSize)
+    pointLogSummary.totalPages = Number(pointLogData.summary?.totalPages || 1)
+    selectedCompensationAssociationNos.value = selectedCompensationAssociationNos.value
+      .filter((item) => pointLogs.value.some((log) => log.associationNo === item && log.canCompensate))
+    pointLogPagination.page = pointLogSummary.page
+    pointLogPagination.pageSize = pointLogSummary.pageSize
   } finally {
     loading.value = false
   }
@@ -1754,6 +1920,69 @@ onMounted(() => {
   flex-direction: column;
   gap: 18px;
 }
+
+.admin-marketing-module-card {
+  border-radius: 22px;
+}
+
+.admin-marketing-package-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 2px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.admin-marketing-package-card__footer-text {
+  white-space: nowrap;
+}
+
+.admin-marketing-log-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.3fr) repeat(5, minmax(0, 1fr)) auto;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.admin-marketing-log-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.admin-point-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-point-log-item {
+  grid-template-columns: auto minmax(0, 1.6fr) auto auto;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.admin-point-log-item__check {
+  padding-top: 4px;
+}
+
+.admin-point-log-item__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-point-log-item__status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .admin-membership-billing-list {
   display: flex;
   flex-direction: column;
@@ -1835,6 +2064,11 @@ onMounted(() => {
     grid-template-columns: 1fr 1fr;
   }
 
+  .admin-marketing-log-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-point-log-item,
   .admin-compensation-item {
     grid-template-columns: 1fr;
   }
@@ -1851,6 +2085,10 @@ onMounted(() => {
 
   .admin-marketing-main__meta {
     white-space: normal;
+  }
+
+  .admin-marketing-log-filters {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

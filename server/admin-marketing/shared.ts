@@ -81,6 +81,17 @@ export interface MarketingPointCompensationQueryPayload {
   limit?: number
 }
 
+export interface MarketingPointLogQueryPayload {
+  days?: number
+  page?: number
+  pageSize?: number
+  action?: string
+  sourceType?: string
+  endpointType?: string
+  refundStatus?: string
+  keyword?: string
+}
+
 export interface MarketingPointCompensationExecutePayload {
   associationNos?: string[]
   note?: string

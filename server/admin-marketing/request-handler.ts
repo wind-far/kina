@@ -6,6 +6,7 @@ import {
   ADMIN_MARKETING_MEMBERSHIP_LEVELS_PATH,
   ADMIN_MARKETING_MEMBERSHIP_PLANS_PATH,
   ADMIN_MARKETING_OVERVIEW_PATH,
+  ADMIN_MARKETING_POINT_LOGS_PATH,
   ADMIN_MARKETING_POINT_COMPENSATION_CANDIDATES_PATH,
   ADMIN_MARKETING_POINT_COMPENSATION_EXECUTE_PATH,
   ADMIN_MARKETING_RECHARGE_PACKAGES_PATH,
@@ -20,6 +21,7 @@ import {
   executeGenerationPointCompensation,
   getAdminMarketingOverview,
   listCardBatches,
+  listAdminPointLogs,
   listGenerationPointCompensationCandidates,
   listCardCodesByBatch,
   listMembershipLevels,
@@ -68,6 +70,22 @@ export const handleAdminMarketingRequest = async (req: any, res: any) => {
 
     if (req.method === 'GET' && requestPath === ADMIN_MARKETING_OVERVIEW_PATH) {
       const data = await getAdminMarketingOverview()
+      sendJson(res, 200, { data })
+      return
+    }
+
+    if (req.method === 'GET' && requestPath === ADMIN_MARKETING_POINT_LOGS_PATH) {
+      const requestUrl = new URL(String(req.url || ''), 'http://127.0.0.1')
+      const data = await listAdminPointLogs({
+        days: Number(requestUrl.searchParams.get('days') || 30),
+        page: Number(requestUrl.searchParams.get('page') || 1),
+        pageSize: Number(requestUrl.searchParams.get('pageSize') || 10),
+        action: String(requestUrl.searchParams.get('action') || ''),
+        sourceType: String(requestUrl.searchParams.get('sourceType') || ''),
+        endpointType: String(requestUrl.searchParams.get('endpointType') || ''),
+        refundStatus: String(requestUrl.searchParams.get('refundStatus') || ''),
+        keyword: String(requestUrl.searchParams.get('keyword') || ''),
+      })
       sendJson(res, 200, { data })
       return
     }

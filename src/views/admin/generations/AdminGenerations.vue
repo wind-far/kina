@@ -50,7 +50,7 @@
         <div v-if="loading" class="admin-empty">正在加载生成记录...</div>
         <div v-else-if="filteredRecords.length === 0" class="admin-empty">当前筛选条件下还没有生成记录。</div>
         <div v-else class="admin-generation-list">
-          <div v-for="record in filteredRecords" :key="record.id" class="admin-generation-card">
+          <div v-for="record in paginatedRecords" :key="record.id" class="admin-generation-card">
             <div class="admin-generation-card__preview">
               <img
                 v-if="getPreviewUrl(record)"
@@ -109,6 +109,12 @@
               </div>
             </div>
           </div>
+          <AdminPagination
+            v-model:page="pagination.page"
+            v-model:page-size="pagination.pageSize"
+            :total="filteredRecords.length"
+            :disabled="loading"
+          />
         </div>
       </div>
     </div>
@@ -117,6 +123,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import AdminPagination from '@/components/admin/common/AdminPagination.vue'
 import AdminStatCard from '@/components/admin/common/AdminStatCard.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
 import { listGenerationRecords, type PersistedGenerationRecord } from '@/api/generation-records'
@@ -133,6 +140,10 @@ const filters = reactive<{
 }>({
   type: 'all',
   status: 'all',
+})
+const pagination = reactive({
+  page: 1,
+  pageSize: 10,
 })
 
 const typeOptions: Array<{ label: string; value: GenerationTypeFilter }> = [
@@ -177,6 +188,11 @@ const filteredRecords = computed(() => {
   })
 })
 
+const paginatedRecords = computed(() => {
+  const start = (pagination.page - 1) * pagination.pageSize
+  return filteredRecords.value.slice(start, start + pagination.pageSize)
+})
+
 const completedCount = computed(() => records.value.filter((record) => getRecordStatus(record) === 'completed').length)
 const failedCount = computed(() => records.value.filter((record) => getRecordStatus(record) === 'failed').length)
 
@@ -187,6 +203,7 @@ const loadRecords = async () => {
     records.value = [...list].sort((first, second) => {
       return new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()
     })
+    pagination.page = 1
   } finally {
     loading.value = false
   }
@@ -194,10 +211,12 @@ const loadRecords = async () => {
 
 const setType = (type: GenerationTypeFilter) => {
   filters.type = type
+  pagination.page = 1
 }
 
 const setStatus = (status: GenerationStatusFilter) => {
   filters.status = status
+  pagination.page = 1
 }
 
 const getPreviewUrl = (record: PersistedGenerationRecord) => {

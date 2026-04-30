@@ -4,6 +4,7 @@ import { refundGenerationPoints } from '../marketing-center/service'
 import type {
   MarketingCardBatchPayload,
   MarketingPointCompensationExecutePayload,
+  MarketingPointLogQueryPayload,
   MarketingPointCompensationQueryPayload,
   MarketingMembershipBillingRulePayload,
   MarketingMembershipLevelPayload,
@@ -217,6 +218,34 @@ interface GenerationPointCompensationCandidate {
   compensationReason: string
 }
 
+interface AdminPointLogListItem {
+  id: string
+  userId: string
+  accountNo: string
+  changeType: string
+  action: string
+  changeAmount: number
+  balanceAfter: number
+  availableAmount: number
+  sourceType: string
+  sourceId: string
+  associationNo: string
+  remark: string
+  endpointType: string
+  providerId: string
+  modelKey: string
+  modelName: string
+  generationRecordId: string
+  generationStatus: string
+  generationPrompt: string
+  generationErrorMessage: string
+  taskType: string
+  createdAt: string
+  refunded: boolean
+  canCompensate: boolean
+  compensationReason: string
+}
+
 const readPointLogMeta = (value: unknown) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {} as Record<string, unknown>
@@ -272,6 +301,199 @@ const buildPointCompensationCandidate = (input: {
         ? '当前记录未处于失败/停止状态'
         : '消费流水缺少生成记录关联，需走手动补偿',
   } satisfies GenerationPointCompensationCandidate
+}
+
+const buildAdminPointLogItem = (input: {
+  pointLog: any
+  refundedAssociationNos: Set<string>
+  generationRecord?: any | null
+}) => {
+  const meta = readPointLogMeta(input.pointLog.metaJson)
+  const endpointType = normalizeEndpointType(meta.endpointType)
+  const associationNo = String(input.pointLog.associationNo || input.pointLog.sourceId || '').trim()
+  const generationRecordId = String(meta.generationRecordId || '').trim()
+  const generationStatus = String(input.generationRecord?.status || '').trim()
+  const isConsumeLog = String(input.pointLog.changeType || '').toUpperCase() === 'CONSUME'
+  const refunded = associationNo ? input.refundedAssociationNos.has(associationNo) : false
+  const canCompensate = Boolean(
+    isConsumeLog
+    && !refunded
+    && endpointType
+    && generationRecordId
+    && (generationStatus === 'FAILED' || generationStatus === 'STOPPED'),
+  )
+
+  return {
+    id: String(input.pointLog.id || '').trim(),
+    userId: String(input.pointLog.userId || '').trim(),
+    accountNo: String(input.pointLog.accountNo || '').trim(),
+    changeType: String(input.pointLog.changeType || '').trim(),
+    action: String(input.pointLog.action || '').trim(),
+    changeAmount: Number(input.pointLog.changeAmount || 0),
+    balanceAfter: Number(input.pointLog.balanceAfter || 0),
+    availableAmount: Number(input.pointLog.availableAmount || 0),
+    sourceType: String(input.pointLog.sourceType || '').trim(),
+    sourceId: String(input.pointLog.sourceId || '').trim(),
+    associationNo,
+    remark: String(input.pointLog.remark || '').trim(),
+    endpointType,
+    providerId: String(meta.providerId || '').trim(),
+    modelKey: String(meta.modelKey || '').trim(),
+    modelName: String(meta.modelName || '').trim(),
+    generationRecordId,
+    generationStatus,
+    generationPrompt: String(input.generationRecord?.prompt || '').trim(),
+    generationErrorMessage: String(input.generationRecord?.errorMessage || '').trim(),
+    taskType: String(meta.taskType || '').trim(),
+    createdAt: input.pointLog.createdAt instanceof Date
+      ? input.pointLog.createdAt.toISOString()
+      : String(input.pointLog.createdAt || ''),
+    refunded,
+    canCompensate,
+    compensationReason: canCompensate
+      ? '失败任务未退款，可直接补偿'
+      : refunded
+        ? '该关联号已存在退款流水'
+        : generationRecordId
+          ? '当前流水不可补偿'
+          : '当前流水未关联生成记录',
+  } satisfies AdminPointLogListItem
+}
+
+// 查询后台积分流水明细，支持按动作、来源、终端类型、退款状态和关键词筛选。
+export const listAdminPointLogs = async (query: MarketingPointLogQueryPayload = {}) => {
+  const days = Math.min(180, Math.max(1, toInt(query.days, 30)))
+  const page = Math.max(1, toInt(query.page, 1))
+  const pageSize = Math.min(100, Math.max(10, toInt(query.pageSize, 10)))
+  const startTime = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+  const action = toStringValue(query.action).toUpperCase()
+  const sourceType = toStringValue(query.sourceType).toUpperCase()
+  const endpointType = normalizeEndpointType(query.endpointType)
+  const refundStatus = toStringValue(query.refundStatus).toLowerCase()
+  const keyword = toStringValue(query.keyword).toLowerCase()
+
+  const pointLogs = await prisma.pointAccountLog.findMany({
+    where: {
+      createdAt: {
+        gte: startTime,
+      },
+      ...(action ? { action: action as any } : {}),
+      ...(sourceType ? { sourceType: sourceType as any } : {}),
+    },
+    orderBy: [
+      { createdAt: 'desc' },
+      { id: 'desc' },
+    ],
+  })
+
+  const associationNos = Array.from(new Set(
+    pointLogs
+      .map((item) => String(item.associationNo || item.sourceId || '').trim())
+      .filter(Boolean),
+  ))
+
+  const refundLogs = associationNos.length
+    ? await prisma.pointAccountLog.findMany({
+      where: {
+        sourceType: 'GENERATION_CONSUME',
+        changeType: 'REFUND',
+        associationNo: {
+          in: associationNos,
+        },
+      },
+      select: {
+        associationNo: true,
+      },
+    })
+    : []
+
+  const refundedAssociationNos = new Set(
+    refundLogs.map((item) => String(item.associationNo || '').trim()).filter(Boolean),
+  )
+
+  const generationRecordIds = Array.from(new Set(
+    pointLogs
+      .map((item) => String(readPointLogMeta(item.metaJson).generationRecordId || '').trim())
+      .filter(Boolean),
+  ))
+
+  const generationRecords = generationRecordIds.length
+    ? await prisma.generationRecord.findMany({
+      where: {
+        id: {
+          in: generationRecordIds,
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        prompt: true,
+        errorMessage: true,
+      },
+    })
+    : []
+
+  const generationRecordMap = new Map(generationRecords.map((item) => [item.id, item]))
+
+  const filteredItems = pointLogs
+    .map((pointLog) => {
+      const generationRecordId = String(readPointLogMeta(pointLog.metaJson).generationRecordId || '').trim()
+      return buildAdminPointLogItem({
+        pointLog,
+        refundedAssociationNos,
+        generationRecord: generationRecordId ? generationRecordMap.get(generationRecordId) || null : null,
+      })
+    })
+    .filter((item) => {
+      if (endpointType && item.endpointType !== endpointType) {
+        return false
+      }
+      if (refundStatus === 'compensable' && !item.canCompensate) {
+        return false
+      }
+      if (refundStatus === 'refunded' && !item.refunded) {
+        return false
+      }
+      if (refundStatus === 'unrefunded' && item.refunded) {
+        return false
+      }
+      if (keyword) {
+        const haystack = [
+          item.accountNo,
+          item.associationNo,
+          item.sourceId,
+          item.userId,
+          item.remark,
+          item.modelName,
+          item.modelKey,
+          item.generationPrompt,
+          item.generationErrorMessage,
+        ].join(' ').toLowerCase()
+        if (!haystack.includes(keyword)) {
+          return false
+        }
+      }
+      return true
+    })
+
+  const totalCount = filteredItems.length
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const startIndex = (currentPage - 1) * pageSize
+  const items = filteredItems.slice(startIndex, startIndex + pageSize)
+
+  return serializeMarketingRecord({
+    summary: {
+      totalCount,
+      compensableCount: filteredItems.filter((item) => item.canCompensate).length,
+      refundCount: filteredItems.filter((item) => item.refunded).length,
+      windowDays: days,
+      page: currentPage,
+      pageSize,
+      totalPages,
+    },
+    items,
+  })
 }
 
 // 查询生成任务积分补偿候选列表，只返回失败/停止且尚未退款的可补偿任务。

@@ -167,6 +167,47 @@ export interface PointCompensationExecuteResult {
   skippedItems: Array<Record<string, unknown>>
 }
 
+export interface AdminPointLogItem {
+  id: string
+  userId: string
+  accountNo: string
+  changeType: string
+  action: string
+  changeAmount: number
+  balanceAfter: number
+  availableAmount: number
+  sourceType: string
+  sourceId: string
+  associationNo: string
+  remark: string
+  endpointType: string
+  providerId: string
+  modelKey: string
+  modelName: string
+  generationRecordId: string
+  generationStatus: string
+  generationPrompt: string
+  generationErrorMessage: string
+  taskType: string
+  createdAt: string
+  refunded: boolean
+  canCompensate: boolean
+  compensationReason: string
+}
+
+export interface AdminPointLogListResult {
+  summary: {
+    totalCount: number
+    compensableCount: number
+    refundCount: number
+    windowDays: number
+    page: number
+    pageSize: number
+    totalPages: number
+  }
+  items: AdminPointLogItem[]
+}
+
 const ADMIN_MARKETING_BASE_PATH = '/api/admin/marketing'
 const OVERVIEW_PATH = `${ADMIN_MARKETING_BASE_PATH}/overview`
 const MEMBERSHIP_LEVELS_PATH = `${ADMIN_MARKETING_BASE_PATH}/membership-levels`
@@ -174,6 +215,7 @@ const MEMBERSHIP_PLANS_PATH = `${ADMIN_MARKETING_BASE_PATH}/membership-plans`
 const RECHARGE_PACKAGES_PATH = `${ADMIN_MARKETING_BASE_PATH}/recharge-packages`
 const REWARD_RULES_PATH = `${ADMIN_MARKETING_BASE_PATH}/reward-rules`
 const CARD_BATCHES_PATH = `${ADMIN_MARKETING_BASE_PATH}/card-batches`
+const POINT_LOGS_PATH = `${ADMIN_MARKETING_BASE_PATH}/point-logs`
 const POINT_COMPENSATION_CANDIDATES_PATH = `${ADMIN_MARKETING_BASE_PATH}/point-compensation/candidates`
 const POINT_COMPENSATION_EXECUTE_PATH = `${ADMIN_MARKETING_BASE_PATH}/point-compensation/execute`
 
@@ -304,6 +346,33 @@ export const createCardBatch = (payload: Partial<CardBatchItem>) => requestJson<
 export const updateCardBatch = (id: string, payload: Partial<CardBatchItem>) => requestJson<CardBatchItem>(`${CARD_BATCHES_PATH}/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '卡密批次已更新' })
 export const deleteCardBatch = (id: string) => requestJson<boolean>(`${CARD_BATCHES_PATH}/${encodeURIComponent(id)}`, { method: 'DELETE' }, { showSuccessMessage: true, successMessage: '卡密批次已删除' })
 export const listCardCodesByBatch = (id: string) => requestJson<CardCodeItem[]>(`${CARD_BATCHES_PATH}/${encodeURIComponent(id)}/codes`, { method: 'GET' })
+
+// 查询后台积分流水明细，支持筛选与失败补偿标记。
+export const listAdminPointLogs = (query?: {
+  days?: number
+  page?: number
+  pageSize?: number
+  action?: string
+  sourceType?: string
+  endpointType?: string
+  refundStatus?: string
+  keyword?: string
+}) => {
+  const searchParams = new URLSearchParams()
+  if (query?.days) searchParams.set('days', String(query.days))
+  if (query?.page) searchParams.set('page', String(query.page))
+  if (query?.pageSize) searchParams.set('pageSize', String(query.pageSize))
+  if (query?.action) searchParams.set('action', query.action)
+  if (query?.sourceType) searchParams.set('sourceType', query.sourceType)
+  if (query?.endpointType) searchParams.set('endpointType', query.endpointType)
+  if (query?.refundStatus) searchParams.set('refundStatus', query.refundStatus)
+  if (query?.keyword) searchParams.set('keyword', query.keyword)
+  const suffix = searchParams.toString()
+  return requestJson<AdminPointLogListResult>(
+    suffix ? `${POINT_LOGS_PATH}?${suffix}` : POINT_LOGS_PATH,
+    { method: 'GET' },
+  )
+}
 
 // 查询失败未退款的生成积分候选列表。
 export const listPointCompensationCandidates = (query?: {

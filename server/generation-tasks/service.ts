@@ -9,7 +9,7 @@ import {
   resolveGenerationPointCost,
 } from '../marketing-center/service'
 import { resolveGenerationTaskStrategy, type GenerationTaskStrategyKey } from './strategy'
-import { buildAgentChatMessages } from '../../src/config/agentSkills'
+import { buildAgentChatMessages } from '../../src/shared/agent-skills-core'
 import {
   AgentWorkspaceStoppedError,
   getAgentWorkspaceSkillMeta,

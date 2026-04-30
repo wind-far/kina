@@ -1,4 +1,4 @@
-import { buildAgentWorkflowStrategy, getAgentSkillConfig } from '../../src/config/agentSkills'
+import { buildAgentWorkflowStrategy, getAgentSkillConfig } from '../../src/shared/agent-skills-core'
 import { getWorkspaceSkillRuntimeConfig, type SkillPlanTemplateItem } from '../skill-config/service'
 
 export interface AgentWorkspaceTaskPayload {

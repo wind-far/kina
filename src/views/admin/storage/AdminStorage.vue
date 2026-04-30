@@ -2,12 +2,12 @@
   <AdminPageContainer title="存储配置" description="集中管理对象存储配置，并清晰展示当前启用状态与本地回退策略。">
     <div class="admin-provider-toolbar">
       <input
-        v-model.trim="keyword"
+        v-model.trim="filters.keyword"
         class="admin-input admin-provider-toolbar__search"
         type="text"
         placeholder="搜索配置名称或编码"
       >
-      <select v-model="statusFilter" class="admin-input admin-provider-toolbar__status">
+      <select v-model="filters.status" class="admin-input admin-provider-toolbar__status">
         <option value="ALL">配置状态</option>
         <option value="DEFAULT">当前启用</option>
         <option value="ENABLED">已启用</option>
@@ -21,7 +21,7 @@
         class="admin-button admin-button--ghost"
         type="button"
         :disabled="loading || submitting || activatingId !== ''"
-        @click="resetFilters"
+        @click="handleResetFilters"
       >
         清空筛选
       </button>
@@ -225,6 +225,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
+import { matchesAdminKeyword, useAdminListFilters } from '@/composables/useAdminListFilters'
 import {
   activateStorageConfig,
   createStorageConfig,
@@ -239,9 +240,15 @@ const submitting = ref(false)
 const activatingId = ref('')
 const editingId = ref('')
 const dialogVisible = ref(false)
-const keyword = ref('')
-const statusFilter = ref<'ALL' | 'DEFAULT' | 'ENABLED' | 'DISABLED'>('ALL')
 const configs = ref<StorageConfigItem[]>([])
+const filters = reactive({
+  keyword: '',
+  status: 'ALL' as 'ALL' | 'DEFAULT' | 'ENABLED' | 'DISABLED',
+})
+const filterDefaults = {
+  keyword: '',
+  status: 'ALL' as 'ALL' | 'DEFAULT' | 'ENABLED' | 'DISABLED',
+}
 
 const createDefaultForm = () => ({
   name: '',
@@ -262,18 +269,20 @@ const form = reactive(createDefaultForm())
 
 const enabledCount = computed(() => configs.value.filter(item => item.isEnabled).length)
 const activeConfig = computed(() => configs.value.find(item => item.isDefault) || null)
+const { hasFilters, resetFilters } = useAdminListFilters({
+  filters,
+  defaults: filterDefaults,
+})
+
 // 统一维护筛选状态，保证列表、统计和空状态展示逻辑一致。
-const hasFilters = computed(() => keyword.value !== '' || statusFilter.value !== 'ALL')
 const filteredConfigs = computed(() => {
   return configs.value.filter((config) => {
-    const matchedKeyword = !keyword.value
-      || config.name.toLowerCase().includes(keyword.value.toLowerCase())
-      || config.code.toLowerCase().includes(keyword.value.toLowerCase())
+    const matchedKeyword = matchesAdminKeyword(filters.keyword, [config.name, config.code])
 
-    const matchedStatus = statusFilter.value === 'ALL'
-      || (statusFilter.value === 'DEFAULT' && config.isDefault)
-      || (statusFilter.value === 'ENABLED' && config.isEnabled)
-      || (statusFilter.value === 'DISABLED' && !config.isEnabled)
+    const matchedStatus = filters.status === 'ALL'
+      || (filters.status === 'DEFAULT' && config.isDefault)
+      || (filters.status === 'ENABLED' && config.isEnabled)
+      || (filters.status === 'DISABLED' && !config.isEnabled)
 
     return matchedKeyword && matchedStatus
   })
@@ -303,10 +312,8 @@ const loadConfigs = async () => {
   }
 }
 
-// 重置筛选条件时只恢复列表状态，不影响已填写的弹窗表单。
-const resetFilters = () => {
-  keyword.value = ''
-  statusFilter.value = 'ALL'
+const handleResetFilters = () => {
+  resetFilters()
 }
 
 const resetForm = () => {

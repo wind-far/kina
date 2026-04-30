@@ -7,28 +7,7 @@
     </template>
 
     <div class="admin-filter-bar">
-      <div class="admin-filter-bar__chips">
-        <button
-          v-for="option in typeOptions"
-          :key="option.value"
-          class="admin-chip-button"
-          type="button"
-          :class="{ 'is-active': filters.type === option.value }"
-          @click="setType(option.value)"
-        >
-          {{ option.label }}
-        </button>
-        <button
-          v-for="option in statusOptions"
-          :key="option.value"
-          class="admin-chip-button"
-          type="button"
-          :class="{ 'is-active': filters.status === option.value }"
-          @click="setStatus(option.value)"
-        >
-          {{ option.label }}
-        </button>
-      </div>
+      <AdminFilterChips :groups="filterChipGroups" @select="handleChipSelect" />
       <div class="admin-list-item__meta">当前基于已有记录接口做前端筛选，后续如数据量变大再升级成分页查询。</div>
     </div>
 
@@ -123,9 +102,11 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import AdminFilterChips, { type AdminFilterChipGroup } from '@/components/admin/common/AdminFilterChips.vue'
 import AdminPagination from '@/components/admin/common/AdminPagination.vue'
 import AdminStatCard from '@/components/admin/common/AdminStatCard.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
+import { useAdminPagination } from '@/composables/useAdminPagination'
 import { listGenerationRecords, type PersistedGenerationRecord } from '@/api/generation-records'
 
 type GenerationStatusFilter = 'all' | 'completed' | 'failed' | 'running'
@@ -141,9 +122,8 @@ const filters = reactive<{
   type: 'all',
   status: 'all',
 })
-const pagination = reactive({
-  page: 1,
-  pageSize: 10,
+const { pagination, resetPage, sliceItems } = useAdminPagination({
+  initialPageSize: 10,
 })
 
 const typeOptions: Array<{ label: string; value: GenerationTypeFilter }> = [
@@ -161,6 +141,21 @@ const statusOptions: Array<{ label: string; value: GenerationStatusFilter }> = [
   { label: '失败', value: 'failed' },
   { label: '进行中', value: 'running' },
 ]
+
+const filterChipGroups = computed<AdminFilterChipGroup[]>(() => [
+  {
+    key: 'type',
+    label: '类型',
+    modelValue: filters.type,
+    options: typeOptions,
+  },
+  {
+    key: 'status',
+    label: '状态',
+    modelValue: filters.status,
+    options: statusOptions,
+  },
+])
 
 const getRecordStatus = (record: PersistedGenerationRecord): GenerationStatusFilter => {
   if (record.error) {
@@ -189,8 +184,7 @@ const filteredRecords = computed(() => {
 })
 
 const paginatedRecords = computed(() => {
-  const start = (pagination.page - 1) * pagination.pageSize
-  return filteredRecords.value.slice(start, start + pagination.pageSize)
+  return sliceItems(filteredRecords.value)
 })
 
 const completedCount = computed(() => records.value.filter((record) => getRecordStatus(record) === 'completed').length)
@@ -203,7 +197,7 @@ const loadRecords = async () => {
     records.value = [...list].sort((first, second) => {
       return new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()
     })
-    pagination.page = 1
+    resetPage()
   } finally {
     loading.value = false
   }
@@ -211,12 +205,23 @@ const loadRecords = async () => {
 
 const setType = (type: GenerationTypeFilter) => {
   filters.type = type
-  pagination.page = 1
+  resetPage()
 }
 
 const setStatus = (status: GenerationStatusFilter) => {
   filters.status = status
-  pagination.page = 1
+  resetPage()
+}
+
+const handleChipSelect = (payload: { groupKey: string; value: string }) => {
+  if (payload.groupKey === 'type') {
+    setType(payload.value as GenerationTypeFilter)
+    return
+  }
+
+  if (payload.groupKey === 'status') {
+    setStatus(payload.value as GenerationStatusFilter)
+  }
 }
 
 const getPreviewUrl = (record: PersistedGenerationRecord) => {

@@ -14,28 +14,7 @@
     </div>
 
     <div class="admin-filter-bar">
-      <div class="admin-filter-bar__chips">
-        <button
-          v-for="option in roleOptions"
-          :key="option.value"
-          class="admin-chip-button"
-          type="button"
-          :class="{ 'is-active': filters.role === option.value }"
-          @click="setRole(option.value)"
-        >
-          {{ option.label }}
-        </button>
-        <button
-          v-for="option in statusOptions"
-          :key="option.value"
-          class="admin-chip-button"
-          type="button"
-          :class="{ 'is-active': filters.status === option.value }"
-          @click="setStatus(option.value)"
-        >
-          {{ option.label }}
-        </button>
-      </div>
+      <AdminFilterChips :groups="filterChipGroups" :disabled="loading" @select="handleChipSelect" />
       <div style="display: flex; gap: 10px; flex-wrap: wrap; width: 100%;">
         <input
           v-model.trim="filters.keyword"
@@ -121,6 +100,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import AdminFilterChips, { type AdminFilterChipGroup } from '@/components/admin/common/AdminFilterChips.vue'
 import AdminStatCard from '@/components/admin/common/AdminStatCard.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
 import { listAdminUsers, updateAdminUserRole, type AdminUserItem, type ListAdminUsersOptions } from '@/api/admin-users'
@@ -147,6 +127,21 @@ const statusOptions: Array<{ label: string; value: 'ALL' | 'ANONYMOUS' | 'ACTIVE
   { label: '已激活', value: 'ACTIVE' },
   { label: '已禁用', value: 'DISABLED' },
 ]
+
+const filterChipGroups = computed((): AdminFilterChipGroup[] => [
+  {
+    key: 'role',
+    label: '角色',
+    modelValue: filters.role ?? 'ALL',
+    options: roleOptions,
+  },
+  {
+    key: 'status',
+    label: '状态',
+    modelValue: filters.status ?? 'ALL',
+    options: statusOptions,
+  },
+])
 
 const adminCount = computed(() => users.value.filter(user => user.role === 'ADMIN').length)
 const userCount = computed(() => users.value.filter(user => user.role !== 'ADMIN').length)
@@ -191,6 +186,17 @@ const setStatus = (status: 'ALL' | 'ANONYMOUS' | 'ACTIVE' | 'DISABLED') => {
 
   filters.status = status
   void loadUsers()
+}
+
+const handleChipSelect = (payload: { groupKey: string; value: string }) => {
+  if (payload.groupKey === 'role') {
+    setRole(payload.value as 'ALL' | 'USER' | 'ADMIN')
+    return
+  }
+
+  if (payload.groupKey === 'status') {
+    setStatus(payload.value as 'ALL' | 'ANONYMOUS' | 'ACTIVE' | 'DISABLED')
+  }
 }
 
 const resetFilters = () => {

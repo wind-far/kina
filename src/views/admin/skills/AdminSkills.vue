@@ -70,9 +70,19 @@
         </div>
 
         <div class="admin-provider-tile__status-row">
-          <span class="admin-status" :class="skill.isEnabled ? 'admin-status--success' : 'admin-status--warning'">
-            {{ skill.isEnabled ? '已启用' : '已禁用' }}
-          </span>
+          <button
+            class="admin-status admin-status--toggle"
+            :class="[
+              skill.isEnabled ? 'admin-status--success' : 'admin-status--warning',
+              isSkillToggling(skill.skillKey) ? 'is-loading' : '',
+            ]"
+            type="button"
+            :disabled="isSkillToggling(skill.skillKey)"
+            :title="skill.isEnabled ? '点击快捷禁用' : '点击快捷启用'"
+            @click="handleToggleSkillEnabled(skill)"
+          >
+            {{ isSkillToggling(skill.skillKey) ? '切换中...' : skill.isEnabled ? '已启用' : '已禁用' }}
+          </button>
           <span class="admin-status" :class="skill.uiMode === 'WORKSPACE' ? 'admin-status--info' : 'admin-status--default'">
             {{ skill.uiMode === 'WORKSPACE' ? '工作台' : '普通对话' }}
           </span>
@@ -99,7 +109,7 @@
           <span>阶段 {{ getStageCount(skill.skillKey) }}</span>
         </div>
 
-        <div class="admin-provider-card__actions">
+        <div class="admin-provider-card__actions admin-skill-tile__actions">
           <button class="admin-inline-button" type="button" @click="openEditDialog(skill.skillKey)">编辑</button>
           <button class="admin-inline-button" type="button" @click="handleCloneSkill(skill.skillKey)">复制技能</button>
           <button class="admin-inline-button admin-inline-button--danger" type="button" :disabled="skill.isBuiltIn" @click="handleDeleteSkill(skill)">
@@ -721,6 +731,7 @@ import {
   deleteAdminSkill,
   getAdminSkillDetail,
   listAdminSkills,
+  setAdminSkillEnabled,
   type AdminSkillDetail,
   type AdminSkillExecutionMode,
   type AdminSkillPayload,
@@ -779,6 +790,7 @@ const saving = ref(false)
 const dialogVisible = ref(false)
 const editingSkillKey = ref('')
 const activeEditorTab = ref<SkillEditorTabKey>('basic-runtime')
+const togglingSkillKeys = ref<Set<string>>(new Set())
 const collapsedSectionKeys = ref<Set<SkillSectionKey>>(new Set())
 const collapsedTemplateItemKeys = ref<Set<string>>(new Set())
 const skills = ref<AdminSkillDetail['skill'][]>([])
@@ -887,6 +899,7 @@ const getPlanCount = (skillKey: string) => skillDetailMap.value[skillKey]?.planT
 const getStageCount = (skillKey: string) => skillDetailMap.value[skillKey]?.stageTemplates.length || 0
 
 const getSkillInitial = (label: string) => String(label || '').trim().slice(0, 1).toUpperCase() || 'S'
+const isSkillToggling = (skillKey: string) => togglingSkillKeys.value.has(skillKey)
 
 const buildInlineSummary = (value: string, fallback = '暂无内容') => {
   const normalizedValue = String(value || '').replace(/\s+/g, ' ').trim()
@@ -1043,6 +1056,14 @@ const resetListFilters = () => {
   uiModeFilter.value = 'ALL'
   executionModeFilter.value = 'ALL'
   categoryFilter.value = 'ALL'
+}
+
+const updateLocalSkillDetail = (detail: AdminSkillDetail) => {
+  skillDetailMap.value = {
+    ...skillDetailMap.value,
+    [detail.skill.skillKey]: detail,
+  }
+  skills.value = skills.value.map(item => item.skillKey === detail.skill.skillKey ? detail.skill : item)
 }
 
 const resetForm = () => {
@@ -1388,6 +1409,21 @@ const handleDeleteSkill = async (skill: AdminSkillDetail['skill']) => {
   await loadSkillList()
 }
 
+const handleToggleSkillEnabled = async (skill: AdminSkillDetail['skill']) => {
+  const next = new Set(togglingSkillKeys.value)
+  next.add(skill.skillKey)
+  togglingSkillKeys.value = next
+
+  try {
+    const detail = await setAdminSkillEnabled(skill.skillKey, !skill.isEnabled)
+    updateLocalSkillDetail(detail)
+  } finally {
+    const current = new Set(togglingSkillKeys.value)
+    current.delete(skill.skillKey)
+    togglingSkillKeys.value = current
+  }
+}
+
 const handleCloneSkill = async (skillKey: string) => {
   saving.value = true
   try {
@@ -1430,6 +1466,34 @@ onMounted(async () => {
   gap: 8px 16px;
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.admin-status--toggle {
+  border: none;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: transform .2s ease, opacity .2s ease, box-shadow .2s ease, filter .2s ease;
+}
+
+.admin-status--toggle:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(15, 15, 18, 0.08);
+  filter: saturate(1.05);
+}
+
+.admin-status--toggle:disabled {
+  cursor: not-allowed;
+}
+
+.admin-status--toggle.is-loading {
+  opacity: .78;
+}
+
+.admin-skill-tile__actions {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-divider, #00000014);
 }
 
 .admin-skill-toolbar {

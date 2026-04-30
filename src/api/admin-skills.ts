@@ -207,6 +207,22 @@ export const updateAdminSkill = async (skillKey: string, payload: AdminSkillPayl
   })
 }
 
+export const setAdminSkillEnabled = async (skillKey: string, isEnabled: boolean) => {
+  const response = await fetch(buildApiUrl(`${SKILLS_API_PATH}/${encodeURIComponent(skillKey)}`), {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ isEnabled }),
+  })
+
+  return readApiData<AdminSkillDetail>(response, {
+    showSuccessMessage: true,
+    successMessage: isEnabled ? '技能已启用' : '技能已禁用',
+  })
+}
+
 export const deleteAdminSkill = async (skillKey: string) => {
   const response = await fetch(buildApiUrl(`${SKILLS_API_PATH}/${encodeURIComponent(skillKey)}`), {
     method: 'DELETE',

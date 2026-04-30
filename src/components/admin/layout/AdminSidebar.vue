@@ -2,7 +2,7 @@
   <aside class="admin-sidebar" :class="{ 'is-collapsed': isDesktopCollapsed, 'is-mobile-open': mobileSidebarOpen }">
     <div class="admin-sidebar__brand">
       <h1 class="admin-sidebar__title">{{ isDesktopCollapsed ? '管' : 'Canana 管理台' }}</h1>
-      <div v-if="!isDesktopCollapsed" class="admin-sidebar__subtitle">延续当前前端主题体系的后台骨架</div>
+      <div v-if="!isDesktopCollapsed" class="admin-sidebar__subtitle">cm</div>
     </div>
 
     <nav class="admin-sidebar__nav">

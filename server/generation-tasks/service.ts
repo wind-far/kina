@@ -26,6 +26,7 @@ import {
   buildAgentStoppedRun,
   type AgentWorkspaceEvent,
 } from '../../src/shared/agent-workspace'
+import { normalizeGenerationErrorMessage } from '../../src/shared/generation-error'
 
 interface RunningGenerationTask {
   recordId: string
@@ -397,7 +398,10 @@ const requestImageGeneration = async (input: {
 
   if (!response.ok) {
     const responseText = await response.text().catch(() => '')
-    throw new Error(responseText || `图片生成失败 (${response.status})`)
+    throw new Error(normalizeGenerationErrorMessage(
+      responseText,
+      `图片生成失败 (${response.status})`,
+    ))
   }
 
   const imageUrls = isChatCompletionsEndpoint(upstream.endpoint)
@@ -1475,7 +1479,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
       return
     }
 
-    const errorMessage = error instanceof Error ? error.message : '技能任务执行失败'
+    const errorMessage = normalizeGenerationErrorMessage(error, '技能任务执行失败')
     await refundTaskPointsIfNeeded(task, 'task_failed')
     await emitWorkspaceEvent({
       type: 'run_failed',
@@ -1546,7 +1550,7 @@ const runImageTaskInBackground = (task: RunningGenerationTask, payload: Generati
         })
       } else {
         await refundTaskPointsIfNeeded(task, 'task_failed')
-        const errorMessage = error instanceof Error ? error.message : '图片生成失败'
+        const errorMessage = normalizeGenerationErrorMessage(error, '图片生成失败')
         emitTaskProgressEvent(task.recordId, {
           stage: 'failing',
           message: '任务执行异常，正在写入失败状态',
@@ -1643,7 +1647,7 @@ const runAgentTaskInBackground = (task: RunningGenerationTask, payload: Generati
           })
         }
       } else {
-        const errorMessage = error instanceof Error ? error.message : '对话生成失败'
+        const errorMessage = normalizeGenerationErrorMessage(error, '对话生成失败')
         await refundTaskPointsIfNeeded(task, 'task_failed')
         if (task.strategyKey === 'agent-workspace') {
           const currentRecord = await getGenerationRecordById(task.recordId, task.userId)

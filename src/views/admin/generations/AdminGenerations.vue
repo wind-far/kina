@@ -71,7 +71,7 @@
               </div>
 
               <div v-if="record.error" class="admin-generation-card__error">
-                <strong>错误信息：</strong>{{ record.error }}
+                <strong>错误信息：</strong>{{ formatGenerationError(record.error, '任务执行失败') }}
               </div>
 
               <div v-else-if="record.content && record.type === 'agent'" class="admin-generation-card__content-preview">
@@ -108,12 +108,17 @@ import AdminStatCard from '@/components/admin/common/AdminStatCard.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
 import { useAdminPagination } from '@/composables/useAdminPagination'
 import { listGenerationRecords, type PersistedGenerationRecord } from '@/api/generation-records'
+import { normalizeGenerationErrorMessage } from '@/shared/generation-error'
 
 type GenerationStatusFilter = 'all' | 'completed' | 'failed' | 'running'
 type GenerationTypeFilter = 'all' | PersistedGenerationRecord['type']
 
 const loading = ref(false)
 const records = ref<PersistedGenerationRecord[]>([])
+
+const formatGenerationError = (message?: string | null, fallback = '任务执行失败') => {
+  return normalizeGenerationErrorMessage(String(message || '').trim(), fallback)
+}
 
 const filters = reactive<{
   type: GenerationTypeFilter

@@ -34,6 +34,7 @@ import {
   buildAgentPendingRun,
   type AgentWorkspaceEvent,
 } from '@/shared/agent-workspace'
+import { normalizeGenerationErrorMessage } from '@/shared/generation-error'
 import { AUTH_LOGIN_SUCCESS_EVENT, useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
 import { useSystemSettingsStore } from '@/stores/system-settings'
@@ -47,6 +48,10 @@ const authStore = useAuthStore()
 const { openLoginModal } = useLoginModalStore()
 const { publicSystemSettings, loadPublicSettings } = useSystemSettingsStore()
 const conversationHeroSettings = computed(() => publicSystemSettings.value.conversationSettings.entryDisplay.hero)
+
+const formatGenerationError = (message?: string | null, fallback = '任务执行失败') => {
+  return normalizeGenerationErrorMessage(String(message || '').trim(), fallback)
+}
 
 // ContentGenerator 组件引用
 const contentGeneratorRef = ref<InstanceType<typeof ContentGenerator> | null>(null)
@@ -1081,7 +1086,7 @@ const startWorkspaceAgentTask = async (record: GeneratingRecord) => {
   } catch (error: unknown) {
     record.done = true
     record.stopped = false
-    record.error = error instanceof Error ? error.message : '技能任务生成失败'
+    record.error = formatGenerationError(error instanceof Error ? error.message : '', '技能任务生成失败')
     schedulePersistRecord(record, true)
   }
 }
@@ -1118,7 +1123,7 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
   } catch (error: unknown) {
     record.done = true
     record.stopped = false
-    record.error = error instanceof Error ? error.message : '对话生成失败'
+    record.error = formatGenerationError(error instanceof Error ? error.message : '', '对话生成失败')
     schedulePersistRecord(record, true)
   }
 }
@@ -1169,9 +1174,12 @@ const startImageGenerationTask = async (record: GeneratingRecord) => {
     record.done = true
     record.stopped = false
     record.progressStage = 'failed'
-    record.progressMessage = resolveTaskStageLabel('failed', error instanceof Error ? error.message : '图片生成失败')
+    record.progressMessage = resolveTaskStageLabel(
+      'failed',
+      formatGenerationError(error instanceof Error ? error.message : '', '图片生成失败'),
+    )
     record.progressPercent = 100
-    record.error = error instanceof Error ? error.message : '图片生成失败'
+    record.error = formatGenerationError(error instanceof Error ? error.message : '', '图片生成失败')
   }
 }
 
@@ -1333,7 +1341,7 @@ onUnmounted(() => {
                                 <GenerateAgentRecord
                                   v-if="record.type === 'agent' && record.agentRun"
                                   :run="record.agentRun"
-                                  :error-text="record.error"
+                                  :error-text="formatGenerationError(record.error, '任务执行失败')"
                                   @stop="handleStopAgentExecution(record)"
                                 />
                                 <AgentLoadingRecord
@@ -1341,7 +1349,7 @@ onUnmounted(() => {
                                   :prompt="record.prompt"
                                   :content="record.content"
                                   :done="record.done"
-                                  :error="record.error"
+                                  :error="formatGenerationError(record.error, '对话生成失败')"
                                 />
                                 <ImageLoadingRecord
                                   v-else
@@ -1358,7 +1366,7 @@ onUnmounted(() => {
                                   :stopped="Boolean(record.stopped)"
                                   :images="record.images"
                                   :conversation-entries="getRecordConversationEntries(record)"
-                                  :error="record.error"
+                                  :error="formatGenerationError(record.error, '图片生成失败')"
                                   @preview="handlePreviewRecordImage(record, $event)"
                                   @stop="handleStopImageGeneration(record)"
                                 />

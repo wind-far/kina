@@ -1,6 +1,7 @@
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
+import { normalizeGenerationErrorMessage } from '@/shared/generation-error'
 
 // 后端统一响应包结构。
 export interface ApiResponseEnvelope<T> {
@@ -69,12 +70,12 @@ export const readApiData = async <T>(
   if (!response.ok) {
     handleUnauthorizedResponse(response.status, 'read-api-data')
 
-    const errorMessage = String(
+    const errorMessage = normalizeGenerationErrorMessage(String(
       options.errorMessage
       || payload?.error?.message
       || payload?.message
       || `请求失败 (${response.status})`,
-    ).trim()
+    ).trim(), `请求失败 (${response.status})`)
 
     if (options.showErrorMessage !== false) {
       ElMessage.error(errorMessage)

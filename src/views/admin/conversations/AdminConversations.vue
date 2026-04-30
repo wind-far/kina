@@ -226,7 +226,7 @@
                   </div>
 
                   <div v-if="record.error" class="admin-session-record-card__error">
-                    <strong>错误信息：</strong>{{ record.error }}
+                    <strong>错误信息：</strong>{{ formatGenerationError(record.error, '任务执行失败') }}
                   </div>
 
                   <div v-else-if="record.content && record.type === 'agent'" class="admin-session-record-card__content-preview">
@@ -280,10 +280,14 @@ import {
   type AdminGenerationSessionType,
   type AdminSessionRecordItem,
 } from '@/api/admin-generation-sessions'
+import { normalizeGenerationErrorMessage } from '@/shared/generation-error'
 
 const loading = ref(false)
 const detailLoading = ref(false)
 const sessions = ref<AdminGenerationSessionItem[]>([])
+const formatGenerationError = (message?: string | null, fallback = '任务执行失败') => {
+  return normalizeGenerationErrorMessage(String(message || '').trim(), fallback)
+}
 const conversationSettings = reactive<ConversationSettingsConfig>(createDefaultConversationSettings())
 const summary = reactive({
   totalCount: 0,

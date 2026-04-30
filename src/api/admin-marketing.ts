@@ -132,6 +132,41 @@ export interface CardCodeItem {
   } | null
 }
 
+export interface PointCompensationCandidateItem {
+  associationNo: string
+  sourceId: string
+  userId: string
+  pointCost: number
+  endpointType: 'chat' | 'image' | 'video'
+  providerId: string
+  modelKey: string
+  modelName: string
+  taskType: string
+  generationRecordId: string
+  generationStatus: string
+  generationPrompt: string
+  generationErrorMessage: string
+  consumedAt: string
+  canCompensate: boolean
+  compensationReason: string
+}
+
+export interface PointCompensationCandidateResult {
+  summary: {
+    candidateCount: number
+    totalPointCost: number
+    windowDays: number
+  }
+  items: PointCompensationCandidateItem[]
+}
+
+export interface PointCompensationExecuteResult {
+  refundedCount: number
+  skippedCount: number
+  refundedItems: Array<Record<string, unknown>>
+  skippedItems: Array<Record<string, unknown>>
+}
+
 const ADMIN_MARKETING_BASE_PATH = '/api/admin/marketing'
 const OVERVIEW_PATH = `${ADMIN_MARKETING_BASE_PATH}/overview`
 const MEMBERSHIP_LEVELS_PATH = `${ADMIN_MARKETING_BASE_PATH}/membership-levels`
@@ -139,6 +174,8 @@ const MEMBERSHIP_PLANS_PATH = `${ADMIN_MARKETING_BASE_PATH}/membership-plans`
 const RECHARGE_PACKAGES_PATH = `${ADMIN_MARKETING_BASE_PATH}/recharge-packages`
 const REWARD_RULES_PATH = `${ADMIN_MARKETING_BASE_PATH}/reward-rules`
 const CARD_BATCHES_PATH = `${ADMIN_MARKETING_BASE_PATH}/card-batches`
+const POINT_COMPENSATION_CANDIDATES_PATH = `${ADMIN_MARKETING_BASE_PATH}/point-compensation/candidates`
+const POINT_COMPENSATION_EXECUTE_PATH = `${ADMIN_MARKETING_BASE_PATH}/point-compensation/execute`
 
 // 统一把金额字段收口为字符串，避免前端再混用 number / object / string 三种形态。
 const normalizeMoneyString = (value: unknown): string | null => {
@@ -230,11 +267,11 @@ export const listMembershipPlans = async () => {
   const items = await requestJson<MembershipPlanItem[]>(MEMBERSHIP_PLANS_PATH, { method: 'GET' })
   return Array.isArray(items) ? items.map(normalizeMembershipPlanItem) : []
 }
-export const createMembershipPlan = async (payload: Partial<MembershipPlanItem>) => {
+export const createMembershipPlan = async (payload: Record<string, unknown>) => {
   const item = await requestJson<MembershipPlanItem>(MEMBERSHIP_PLANS_PATH, { method: 'POST', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '会员计划已创建' })
   return normalizeMembershipPlanItem(item)
 }
-export const updateMembershipPlan = async (id: string, payload: Partial<MembershipPlanItem>) => {
+export const updateMembershipPlan = async (id: string, payload: Record<string, unknown>) => {
   const item = await requestJson<MembershipPlanItem>(`${MEMBERSHIP_PLANS_PATH}/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '会员计划已更新' })
   return normalizeMembershipPlanItem(item)
 }
@@ -245,11 +282,11 @@ export const listRechargePackages = async () => {
   const items = await requestJson<RechargePackageItem[]>(RECHARGE_PACKAGES_PATH, { method: 'GET' })
   return Array.isArray(items) ? items.map(normalizeRechargePackageItem) : []
 }
-export const createRechargePackage = async (payload: Partial<RechargePackageItem>) => {
+export const createRechargePackage = async (payload: Record<string, unknown>) => {
   const item = await requestJson<RechargePackageItem>(RECHARGE_PACKAGES_PATH, { method: 'POST', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '充值套餐已创建' })
   return normalizeRechargePackageItem(item)
 }
-export const updateRechargePackage = async (id: string, payload: Partial<RechargePackageItem>) => {
+export const updateRechargePackage = async (id: string, payload: Record<string, unknown>) => {
   const item = await requestJson<RechargePackageItem>(`${RECHARGE_PACKAGES_PATH}/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '充值套餐已更新' })
   return normalizeRechargePackageItem(item)
 }
@@ -267,3 +304,39 @@ export const createCardBatch = (payload: Partial<CardBatchItem>) => requestJson<
 export const updateCardBatch = (id: string, payload: Partial<CardBatchItem>) => requestJson<CardBatchItem>(`${CARD_BATCHES_PATH}/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }, { showSuccessMessage: true, successMessage: '卡密批次已更新' })
 export const deleteCardBatch = (id: string) => requestJson<boolean>(`${CARD_BATCHES_PATH}/${encodeURIComponent(id)}`, { method: 'DELETE' }, { showSuccessMessage: true, successMessage: '卡密批次已删除' })
 export const listCardCodesByBatch = (id: string) => requestJson<CardCodeItem[]>(`${CARD_BATCHES_PATH}/${encodeURIComponent(id)}/codes`, { method: 'GET' })
+
+// 查询失败未退款的生成积分候选列表。
+export const listPointCompensationCandidates = (query?: {
+  days?: number
+  limit?: number
+}) => {
+  const searchParams = new URLSearchParams()
+  if (query?.days) {
+    searchParams.set('days', String(query.days))
+  }
+  if (query?.limit) {
+    searchParams.set('limit', String(query.limit))
+  }
+  const suffix = searchParams.toString()
+  return requestJson<PointCompensationCandidateResult>(
+    suffix ? `${POINT_COMPENSATION_CANDIDATES_PATH}?${suffix}` : POINT_COMPENSATION_CANDIDATES_PATH,
+    { method: 'GET' },
+  )
+}
+
+// 执行一次人工积分补偿，支持按候选列表或手动输入编号补偿。
+export const executePointCompensation = (payload: {
+  associationNos: string[]
+  note?: string
+  forceManual?: boolean
+}) => requestJson<PointCompensationExecuteResult>(
+  POINT_COMPENSATION_EXECUTE_PATH,
+  {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  },
+  {
+    showSuccessMessage: true,
+    successMessage: '积分补偿已执行',
+  },
+)

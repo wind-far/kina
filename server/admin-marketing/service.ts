@@ -1,7 +1,10 @@
 import crypto from 'node:crypto'
 import prisma from '../db/prisma'
+import { refundGenerationPoints } from '../marketing-center/service'
 import type {
   MarketingCardBatchPayload,
+  MarketingPointCompensationExecutePayload,
+  MarketingPointCompensationQueryPayload,
   MarketingMembershipBillingRulePayload,
   MarketingMembershipLevelPayload,
   MarketingMembershipPlanPayload,
@@ -193,6 +196,327 @@ const decorateMembershipPlanRecord = (record: any, levelMap: Map<string, any>) =
 const createCardCode = () => {
   // 生成 12 位大写字母数字混合卡密，尽量贴近 BuildingAI 的使用习惯。
   return crypto.randomBytes(8).toString('base64url').replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12)
+}
+
+interface GenerationPointCompensationCandidate {
+  associationNo: string
+  sourceId: string
+  userId: string
+  pointCost: number
+  endpointType: 'chat' | 'image' | 'video'
+  providerId: string
+  modelKey: string
+  modelName: string
+  taskType: string
+  generationRecordId: string
+  generationStatus: string
+  generationPrompt: string
+  generationErrorMessage: string
+  consumedAt: string
+  canCompensate: boolean
+  compensationReason: string
+}
+
+const readPointLogMeta = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {} as Record<string, unknown>
+  }
+  return value as Record<string, unknown>
+}
+
+const normalizeEndpointType = (value: unknown): 'chat' | 'image' | 'video' | '' => {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'chat' || normalized === 'image' || normalized === 'video') {
+    return normalized
+  }
+  return ''
+}
+
+const buildPointCompensationCandidate = (input: {
+  consumeLog: any
+  generationRecord?: any | null
+}) => {
+  const meta = readPointLogMeta(input.consumeLog.metaJson)
+  const endpointType = normalizeEndpointType(meta.endpointType)
+  const generationStatus = String(input.generationRecord?.status || '').trim()
+  const hasRefund = false
+  const generationRecordId = String(meta.generationRecordId || '').trim()
+  const canCompensate = Boolean(
+    !hasRefund
+    && endpointType
+    && generationRecordId
+    && (generationStatus === 'FAILED' || generationStatus === 'STOPPED'),
+  )
+
+  return {
+    associationNo: String(input.consumeLog.associationNo || input.consumeLog.sourceId || '').trim(),
+    sourceId: String(input.consumeLog.sourceId || '').trim(),
+    userId: String(input.consumeLog.userId || '').trim(),
+    pointCost: Number(input.consumeLog.changeAmount || 0),
+    endpointType: endpointType || 'chat',
+    providerId: String(meta.providerId || '').trim(),
+    modelKey: String(meta.modelKey || '').trim(),
+    modelName: String(meta.modelName || '').trim(),
+    taskType: String(meta.taskType || '').trim(),
+    generationRecordId,
+    generationStatus,
+    generationPrompt: String(input.generationRecord?.prompt || '').trim(),
+    generationErrorMessage: String(input.generationRecord?.errorMessage || '').trim(),
+    consumedAt: input.consumeLog.createdAt instanceof Date
+      ? input.consumeLog.createdAt.toISOString()
+      : String(input.consumeLog.createdAt || ''),
+    canCompensate,
+    compensationReason: canCompensate
+      ? '生成任务失败但未发现退款流水'
+      : generationRecordId
+        ? '当前记录未处于失败/停止状态'
+        : '消费流水缺少生成记录关联，需走手动补偿',
+  } satisfies GenerationPointCompensationCandidate
+}
+
+// 查询生成任务积分补偿候选列表，只返回失败/停止且尚未退款的可补偿任务。
+export const listGenerationPointCompensationCandidates = async (query: MarketingPointCompensationQueryPayload = {}) => {
+  const days = Math.min(90, Math.max(1, toInt(query.days, 7)))
+  const limit = Math.min(200, Math.max(1, toInt(query.limit, 50)))
+  const startTime = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+
+  const consumeLogs = await prisma.pointAccountLog.findMany({
+    where: {
+      sourceType: 'GENERATION_CONSUME',
+      changeType: 'CONSUME',
+      createdAt: {
+        gte: startTime,
+      },
+    },
+    orderBy: [
+      { createdAt: 'desc' },
+      { id: 'desc' },
+    ],
+    take: limit * 4,
+  })
+
+  const associationNos = consumeLogs
+    .map((item) => String(item.associationNo || item.sourceId || '').trim())
+    .filter(Boolean)
+
+  const refundLogs = associationNos.length
+    ? await prisma.pointAccountLog.findMany({
+      where: {
+        sourceType: 'GENERATION_CONSUME',
+        changeType: 'REFUND',
+        associationNo: {
+          in: associationNos,
+        },
+      },
+      select: {
+        associationNo: true,
+      },
+    })
+    : []
+
+  const refundedAssociationNos = new Set(
+    refundLogs
+      .map((item) => String(item.associationNo || '').trim())
+      .filter(Boolean),
+  )
+
+  const generationRecordIds = consumeLogs
+    .map((item) => String(readPointLogMeta(item.metaJson).generationRecordId || '').trim())
+    .filter(Boolean)
+
+  const generationRecords = generationRecordIds.length
+    ? await prisma.generationRecord.findMany({
+      where: {
+        id: {
+          in: generationRecordIds,
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        prompt: true,
+        errorMessage: true,
+      },
+    })
+    : []
+
+  const generationRecordMap = new Map(generationRecords.map((item) => [item.id, item]))
+
+  const candidates = consumeLogs
+    .filter((item) => {
+      const associationNo = String(item.associationNo || item.sourceId || '').trim()
+      return associationNo && !refundedAssociationNos.has(associationNo)
+    })
+    .map((item) => {
+      const generationRecordId = String(readPointLogMeta(item.metaJson).generationRecordId || '').trim()
+      return buildPointCompensationCandidate({
+        consumeLog: item,
+        generationRecord: generationRecordId ? generationRecordMap.get(generationRecordId) || null : null,
+      })
+    })
+    .filter((item) => item.canCompensate)
+    .slice(0, limit)
+
+  return serializeMarketingRecord({
+    summary: {
+      candidateCount: candidates.length,
+      totalPointCost: candidates.reduce((sum, item) => sum + item.pointCost, 0),
+      windowDays: days,
+    },
+    items: candidates,
+  })
+}
+
+// 手动执行一次生成积分补偿。默认只允许补偿失败/停止且未退款的任务；对历史遗留可通过 forceManual 手工补偿。
+export const executeGenerationPointCompensation = async (
+  payload: MarketingPointCompensationExecutePayload,
+  currentUserId: string,
+) => {
+  const associationNos = Array.from(new Set(
+    (Array.isArray(payload.associationNos) ? payload.associationNos : [])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean),
+  ))
+
+  if (!associationNos.length) {
+    throw new Error('请先选择需要补偿的流水编号')
+  }
+
+  const note = toNullableString(payload.note)
+  const forceManual = toBoolean(payload.forceManual, false)
+  const consumeLogs = await prisma.pointAccountLog.findMany({
+    where: {
+      sourceType: 'GENERATION_CONSUME',
+      changeType: 'CONSUME',
+      associationNo: {
+        in: associationNos,
+      },
+    },
+    orderBy: [
+      { createdAt: 'desc' },
+      { id: 'desc' },
+    ],
+  })
+
+  const consumeLogMap = new Map(
+    consumeLogs.map((item) => [String(item.associationNo || item.sourceId || '').trim(), item]),
+  )
+
+  const refundLogs = await prisma.pointAccountLog.findMany({
+    where: {
+      sourceType: 'GENERATION_CONSUME',
+      changeType: 'REFUND',
+      associationNo: {
+        in: associationNos,
+      },
+    },
+    select: {
+      associationNo: true,
+    },
+  })
+  const refundedAssociationNos = new Set(
+    refundLogs.map((item) => String(item.associationNo || '').trim()).filter(Boolean),
+  )
+
+  const generationRecordIds = consumeLogs
+    .map((item) => String(readPointLogMeta(item.metaJson).generationRecordId || '').trim())
+    .filter(Boolean)
+
+  const generationRecords = generationRecordIds.length
+    ? await prisma.generationRecord.findMany({
+      where: {
+        id: {
+          in: generationRecordIds,
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        prompt: true,
+        errorMessage: true,
+      },
+    })
+    : []
+
+  const generationRecordMap = new Map(generationRecords.map((item) => [item.id, item]))
+  const refundedItems: Array<Record<string, unknown>> = []
+  const skippedItems: Array<Record<string, unknown>> = []
+
+  for (const associationNo of associationNos) {
+    const consumeLog = consumeLogMap.get(associationNo)
+    if (!consumeLog) {
+      skippedItems.push({
+        associationNo,
+        reason: '未找到对应消费流水',
+      })
+      continue
+    }
+
+    if (refundedAssociationNos.has(associationNo)) {
+      skippedItems.push({
+        associationNo,
+        reason: '当前流水已存在退款记录',
+      })
+      continue
+    }
+
+    const meta = readPointLogMeta(consumeLog.metaJson)
+    const endpointType = normalizeEndpointType(meta.endpointType)
+    const generationRecordId = String(meta.generationRecordId || '').trim()
+    const generationRecord = generationRecordId ? generationRecordMap.get(generationRecordId) || null : null
+    const generationStatus = String(generationRecord?.status || '').trim()
+
+    if (!endpointType) {
+      skippedItems.push({
+        associationNo,
+        reason: '流水缺少 endpointType，无法执行补偿',
+      })
+      continue
+    }
+
+    if (!forceManual && generationStatus !== 'FAILED' && generationStatus !== 'STOPPED') {
+      skippedItems.push({
+        associationNo,
+        reason: generationRecordId
+          ? '生成记录未处于失败或停止状态'
+          : '流水缺少生成记录关联，请改用手动补偿模式',
+      })
+      continue
+    }
+
+    await refundGenerationPoints({
+      userId: String(consumeLog.userId || '').trim(),
+      pointCost: Number(consumeLog.changeAmount || 0),
+      sourceId: String(consumeLog.sourceId || associationNo).trim(),
+      associationNo,
+      endpointType,
+      providerId: String(meta.providerId || '').trim(),
+      modelKey: String(meta.modelKey || '').trim(),
+      modelName: String(meta.modelName || '').trim(),
+      metaJson: {
+        refundReason: forceManual ? 'admin_manual_compensation_force' : 'admin_manual_compensation',
+        generationRecordId,
+        originalConsumeLogId: consumeLog.id,
+        compensatedByUserId: currentUserId,
+        compensationNote: note || '',
+      },
+    })
+
+    refundedItems.push({
+      associationNo,
+      pointCost: Number(consumeLog.changeAmount || 0),
+      endpointType,
+      generationRecordId,
+      generationStatus,
+    })
+  }
+
+  return serializeMarketingRecord({
+    refundedCount: refundedItems.length,
+    skippedCount: skippedItems.length,
+    refundedItems,
+    skippedItems,
+  })
 }
 
 // 查询营销中心概览数据。

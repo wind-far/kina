@@ -2,7 +2,12 @@ import { getGenerationRecordById, createGenerationRecord, updateGenerationRecord
 import type { GenerationRecordPayload } from '../generation-records/shared'
 import type { GenerationTaskStartPayload, GenerationTaskStreamEvent } from './shared'
 import { getPublicModelCatalog, resolveGatewayProviderUpstream } from '../provider-config/service'
-import { consumeGenerationPoints, refundGenerationPoints, resolveGenerationPointCost } from '../marketing-center/service'
+import {
+  attachGenerationPointRecordId,
+  consumeGenerationPoints,
+  refundGenerationPoints,
+  resolveGenerationPointCost,
+} from '../marketing-center/service'
 import { resolveGenerationTaskStrategy, type GenerationTaskStrategyKey } from './strategy'
 import { buildAgentChatMessages } from '../../src/config/agentSkills'
 import {
@@ -29,6 +34,7 @@ interface RunningGenerationTask {
   strategyKey: GenerationTaskStrategyKey
   abortController: AbortController
   associationNo: string
+  billedEndpointType: 'chat' | 'image' | 'video'
   billedPointCost: number
   billedProviderId: string
   billedModelKey: string
@@ -1459,6 +1465,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
     })
   } catch (error) {
     if (error instanceof AgentWorkspaceStoppedError) {
+      await refundTaskPointsIfNeeded(task, 'task_aborted')
       await emitWorkspaceEvent({
         type: 'run_stopped',
         taskId: task.recordId,
@@ -1468,6 +1475,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
     }
 
     const errorMessage = error instanceof Error ? error.message : '技能任务执行失败'
+    await refundTaskPointsIfNeeded(task, 'task_failed')
     await emitWorkspaceEvent({
       type: 'run_failed',
       taskId: task.recordId,
@@ -1487,7 +1495,7 @@ const refundTaskPointsIfNeeded = async (task: RunningGenerationTask, reason: str
     pointCost: task.billedPointCost,
     sourceId: task.associationNo,
     associationNo: task.associationNo,
-    endpointType: 'image',
+    endpointType: task.billedEndpointType,
     providerId: task.billedProviderId,
     modelKey: task.billedModelKey,
     modelName: task.billedModelName,
@@ -1584,6 +1592,7 @@ const runAgentTaskInBackground = (task: RunningGenerationTask, payload: Generati
         : error instanceof Error && /abort/i.test(String(error.name || error.message || ''))
 
       if (isAbortError) {
+        await refundTaskPointsIfNeeded(task, 'task_aborted')
         if (task.strategyKey === 'agent-workspace') {
           const currentRecord = await getGenerationRecordById(task.recordId, task.userId)
           const stoppedRun = currentRecord.agentRun
@@ -1634,6 +1643,7 @@ const runAgentTaskInBackground = (task: RunningGenerationTask, payload: Generati
         }
       } else {
         const errorMessage = error instanceof Error ? error.message : '对话生成失败'
+        await refundTaskPointsIfNeeded(task, 'task_failed')
         if (task.strategyKey === 'agent-workspace') {
           const currentRecord = await getGenerationRecordById(task.recordId, task.userId)
           const errorRun = currentRecord.agentRun
@@ -1712,19 +1722,49 @@ export const startGenerationTask = async (payload: GenerationTaskStartPayload, c
       throw new Error('缺少对话模型标识')
     }
 
+    const billingDetail = await resolveGenerationPointCost({
+      providerId,
+      modelKey,
+      endpointType: 'chat',
+    })
+
+    const associationNo = buildGatewayAssociationNo()
+    const pointLog = billingDetail.pointCost > 0
+      ? await consumeGenerationPoints({
+        userId: currentUserId,
+        pointCost: billingDetail.pointCost,
+        sourceId: associationNo,
+        associationNo,
+        endpointType: 'chat',
+        providerId,
+        modelKey,
+        modelName: billingDetail.modelName,
+        metaJson: {
+          source: 'generation-task',
+          taskType: 'agent-chat',
+        },
+      })
+      : null
+
     const createdRecord = await createGenerationRecord(buildInitialRecordPayload(payload), currentUserId)
+    await attachGenerationPointRecordId({
+      associationNo,
+      userId: currentUserId,
+      generationRecordId: createdRecord.id,
+    })
     const task: RunningGenerationTask = {
       recordId: createdRecord.id,
       userId: currentUserId,
       type: 'agent',
       strategyKey: strategy.key,
       abortController: new AbortController(),
-      associationNo: buildGatewayAssociationNo(),
-      billedPointCost: 0,
+      associationNo,
+      billedEndpointType: 'chat',
+      billedPointCost: pointLog ? billingDetail.pointCost : 0,
       billedProviderId: providerId,
       billedModelKey: modelKey,
-      billedModelName: String(payload.model || '').trim(),
-      refundCommitted: true,
+      billedModelName: billingDetail.modelName || String(payload.model || '').trim(),
+      refundCommitted: false,
     }
 
     runningGenerationTasks.set(createdRecord.id, task)
@@ -1752,23 +1792,65 @@ export const startGenerationTask = async (payload: GenerationTaskStartPayload, c
   }
 
   if (strategy.key === 'agent-workspace') {
+    const providerId = String((payload.requestBody || {}).providerId || '').trim()
+    const modelKey = String(payload.modelKey || '').trim()
+
+    if (!providerId) {
+      throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
+    }
+
+    if (!modelKey) {
+      throw new Error('缺少对话模型标识')
+    }
+
+    const billingDetail = await resolveGenerationPointCost({
+      providerId,
+      modelKey,
+      endpointType: 'chat',
+    })
+
+    const associationNo = buildGatewayAssociationNo()
+    const pointLog = billingDetail.pointCost > 0
+      ? await consumeGenerationPoints({
+        userId: currentUserId,
+        pointCost: billingDetail.pointCost,
+        sourceId: associationNo,
+        associationNo,
+        endpointType: 'chat',
+        providerId,
+        modelKey,
+        modelName: billingDetail.modelName,
+        metaJson: {
+          source: 'generation-task',
+          taskType: 'agent-workspace',
+          skill: String(payload.skill || '').trim(),
+        },
+      })
+      : null
+
     const initialPayload = {
       ...buildInitialRecordPayload(payload),
       agentRun: buildAgentPendingRun(`record-${Date.now()}`, String(payload.prompt || '').trim(), String(payload.skill || '').trim() || 'general') as unknown as Record<string, unknown>,
     }
     const createdRecord = await createGenerationRecord(initialPayload, currentUserId)
+    await attachGenerationPointRecordId({
+      associationNo,
+      userId: currentUserId,
+      generationRecordId: createdRecord.id,
+    })
     const task: RunningGenerationTask = {
       recordId: createdRecord.id,
       userId: currentUserId,
       type: 'agent',
       strategyKey: strategy.key,
       abortController: new AbortController(),
-      associationNo: buildGatewayAssociationNo(),
-      billedPointCost: 0,
-      billedProviderId: String((payload.requestBody || {}).providerId || '').trim(),
-      billedModelKey: String(payload.modelKey || '').trim(),
-      billedModelName: String(payload.model || '').trim(),
-      refundCommitted: true,
+      associationNo,
+      billedEndpointType: 'chat',
+      billedPointCost: pointLog ? billingDetail.pointCost : 0,
+      billedProviderId: providerId,
+      billedModelKey: modelKey,
+      billedModelName: billingDetail.modelName || String(payload.model || '').trim(),
+      refundCommitted: false,
     }
 
     runningGenerationTasks.set(createdRecord.id, task)
@@ -1830,6 +1912,11 @@ export const startGenerationTask = async (payload: GenerationTaskStartPayload, c
     : null
 
   const createdRecord = await createGenerationRecord(buildInitialRecordPayload(payload), currentUserId)
+  await attachGenerationPointRecordId({
+    associationNo,
+    userId: currentUserId,
+    generationRecordId: createdRecord.id,
+  })
 
   const task: RunningGenerationTask = {
     recordId: createdRecord.id,
@@ -1838,6 +1925,7 @@ export const startGenerationTask = async (payload: GenerationTaskStartPayload, c
     strategyKey: strategy.key,
     abortController: new AbortController(),
     associationNo,
+    billedEndpointType: 'image',
     billedPointCost: pointLog ? billingDetail.pointCost : 0,
     billedProviderId: providerId,
     billedModelKey: modelKey,

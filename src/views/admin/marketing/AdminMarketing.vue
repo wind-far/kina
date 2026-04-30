@@ -1,5 +1,5 @@
 <template>
-  <AdminPageContainer title="营销中心" description="参考 BuildingAI 的运营工具结构，集中管理会员订阅、积分充值、卡密兑换与奖励规则。">
+  <AdminPageContainer title="营销中心" description="集中管理会员订阅、积分充值、卡密兑换与奖励规则。">
     <template #actions>
       <button class="admin-button admin-button--secondary" type="button" :disabled="loading" @click="loadAllData">
         {{ loading ? '刷新中...' : '刷新数据' }}
@@ -185,7 +185,7 @@
       </div>
     </div>
 
-    <div v-else class="admin-card">
+    <div v-else-if="activeTool === 'cdk'" class="admin-card">
       <div class="admin-card__header">
         <div>
           <h4 class="admin-card__title">卡密兑换</h4>
@@ -213,6 +213,101 @@
               <button class="admin-inline-button" type="button" @click="openCodesDialog(item)">查看卡密</button>
               <button class="admin-inline-button" type="button" @click="openBatchDialog(item)">编辑</button>
               <button class="admin-inline-button admin-inline-button--danger" type="button" @click="handleDeleteBatch(item)">删除</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="admin-grid admin-grid--two admin-marketing-panel-grid">
+      <div class="admin-card">
+        <div class="admin-card__header">
+          <div>
+            <h4 class="admin-card__title">失败未退款候选</h4>
+            <div class="admin-card__desc">自动扫描近 {{ compensationQuery.days }} 天内失败或停止、且缺少退款流水的生成任务。</div>
+          </div>
+          <div class="admin-row-actions">
+            <button class="admin-button admin-button--secondary" type="button" :disabled="compensationLoading" @click="loadCompensationCandidates">
+              {{ compensationLoading ? '扫描中...' : '重新扫描' }}
+            </button>
+            <button
+              class="admin-button admin-button--primary"
+              type="button"
+              :disabled="compensationSubmitting || !selectedCompensationAssociationNos.length"
+              @click="handleExecuteCandidateCompensation"
+            >
+              {{ compensationSubmitting ? '执行中...' : `补偿已选 ${selectedCompensationAssociationNos.length} 项` }}
+            </button>
+          </div>
+        </div>
+        <div class="admin-card__content">
+          <div class="admin-marketing-list-item__badges">
+            <span class="admin-chip">候选 {{ compensationSummary.candidateCount }}</span>
+            <span class="admin-chip">待补 {{ compensationSummary.totalPointCost }} 积分</span>
+            <span class="admin-chip">窗口 {{ compensationSummary.windowDays }} 天</span>
+          </div>
+
+          <div v-if="!compensationCandidates.length" class="admin-empty">当前没有自动识别到待补偿记录。</div>
+          <div v-else class="admin-list admin-compensation-list">
+            <label v-for="item in compensationCandidates" :key="item.associationNo" class="admin-list-item admin-compensation-item">
+              <div class="admin-compensation-item__check">
+                <input
+                  :checked="selectedCompensationAssociationNos.includes(item.associationNo)"
+                  type="checkbox"
+                  @change="toggleCompensationSelection(item.associationNo)"
+                >
+              </div>
+              <div class="admin-compensation-item__body">
+                <div class="admin-list-item__title">{{ item.generationPrompt || '未命名任务' }}</div>
+                <div class="admin-list-item__meta">
+                  {{ item.endpointType.toUpperCase() }} · {{ item.modelName || item.modelKey }} · {{ item.pointCost }} 积分 · {{ formatDateText(item.consumedAt) }}
+                </div>
+                <div class="admin-list-item__meta">
+                  任务状态 {{ item.generationStatus || '未知' }} · 流水号 {{ item.associationNo }}
+                </div>
+                <div class="admin-list-item__meta admin-compensation-item__error">{{ item.generationErrorMessage || item.compensationReason }}</div>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="admin-card__header">
+          <div>
+            <h4 class="admin-card__title">手动补偿</h4>
+            <div class="admin-card__desc">用于处理历史遗留漏账或缺少生成记录关联的流水，请按关联号逐条核实后执行。</div>
+          </div>
+        </div>
+        <div class="admin-card__content">
+          <div class="admin-form">
+            <div class="admin-form__field">
+              <label class="admin-form__label">手动输入关联号</label>
+              <textarea
+                v-model.trim="compensationForm.manualAssociationNos"
+                class="admin-textarea"
+                rows="8"
+                placeholder="每行一个关联号，或使用逗号分隔，例如：&#10;GTK1777512523146OM0MFW&#10;GTK1777512456545MH6GTH"
+              />
+            </div>
+            <div class="admin-form__field">
+              <label class="admin-form__label">补偿备注</label>
+              <textarea
+                v-model.trim="compensationForm.note"
+                class="admin-textarea"
+                rows="4"
+                placeholder="例如：修复对话失败退款漏账后，补偿 2026-04-30 历史遗留记录"
+              />
+            </div>
+            <label class="admin-checkbox">
+              <input v-model="compensationForm.forceManual" type="checkbox">
+              <span>允许补偿缺少生成记录关联的历史流水（请先人工确认任务确实失败）</span>
+            </label>
+            <div class="admin-row-actions">
+              <button class="admin-button admin-button--secondary" type="button" @click="fillLegacyCompensationExample">填入当前遗留样例</button>
+              <button class="admin-button admin-button--primary" type="button" :disabled="compensationSubmitting" @click="handleExecuteManualCompensation">
+                {{ compensationSubmitting ? '执行中...' : '执行手动补偿' }}
+              </button>
             </div>
           </div>
         </div>
@@ -634,8 +729,10 @@ import {
   listCardCodesByBatch,
   listMembershipLevels,
   listMembershipPlans,
+  listPointCompensationCandidates,
   listRechargePackages,
   listRewardRules,
+  executePointCompensation,
   updateCardBatch,
   updateMembershipLevel,
   updateMembershipPlan,
@@ -647,13 +744,15 @@ import {
   type MembershipLevelItem,
   type MembershipPlanBillingItem,
   type MembershipPlanItem,
+  type PointCompensationCandidateItem,
+  type PointCompensationCandidateResult,
   type RechargePackageItem,
   type RewardRuleItem,
 } from '@/api/admin-marketing'
 import { formatMoney, normalizeMoneyString, toMoneyNumber } from '@/utils/money'
 
-// 营销中心四个核心工具，结构参考 BuildingAI 的运营工具卡片入口。
-type MarketingToolKey = 'membership' | 'recharge' | 'rewards' | 'cdk'
+// 营销中心四个核心工具。
+type MarketingToolKey = 'membership' | 'recharge' | 'rewards' | 'cdk' | 'compensation'
 
 const overview = ref<AdminMarketingOverview | null>(null)
 const levels = ref<MembershipLevelItem[]>([])
@@ -662,11 +761,29 @@ const packages = ref<RechargePackageItem[]>([])
 const rewardRules = ref<RewardRuleItem[]>([])
 const cardBatches = ref<CardBatchItem[]>([])
 const cardCodes = ref<CardCodeItem[]>([])
+const compensationCandidates = ref<PointCompensationCandidateItem[]>([])
 
 const loading = ref(false)
 const submitting = ref(false)
 const codesLoading = ref(false)
+const compensationLoading = ref(false)
+const compensationSubmitting = ref(false)
 const activeTool = ref<MarketingToolKey>('membership')
+const selectedCompensationAssociationNos = ref<string[]>([])
+const compensationQuery = reactive({
+  days: 30,
+  limit: 100,
+})
+const compensationForm = reactive({
+  manualAssociationNos: '',
+  note: '',
+  forceManual: false,
+})
+const compensationSummary = reactive<PointCompensationCandidateResult['summary']>({
+  candidateCount: 0,
+  totalPointCost: 0,
+  windowDays: 30,
+})
 
 const marketingTools = computed(() => [
   {
@@ -696,6 +813,13 @@ const marketingTools = computed(() => [
     title: '卡密兑换',
     description: '批量生成卡密并投放运营活动',
     meta: () => `${cardBatches.value.length} 个批次`,
+  },
+  {
+    key: 'compensation' as MarketingToolKey,
+    icon: '🧾',
+    title: '积分补偿',
+    description: '补偿失败未退款任务，处理历史漏账',
+    meta: () => `${compensationSummary.candidateCount} 条待处理`,
   },
 ])
 
@@ -943,16 +1067,113 @@ const getCardRewardSummary = (item: CardBatchItem) => {
   return `${item.rewardPoints} 积分`
 }
 
+const parseAssociationNoList = (value: string) => {
+  return Array.from(new Set(
+    String(value || '')
+      .split(/[\n,，\s]+/g)
+      .map((item) => item.trim())
+      .filter(Boolean),
+  ))
+}
+
+const toggleCompensationSelection = (associationNo: string) => {
+  const current = new Set(selectedCompensationAssociationNos.value)
+  if (current.has(associationNo)) {
+    current.delete(associationNo)
+  } else {
+    current.add(associationNo)
+  }
+  selectedCompensationAssociationNos.value = Array.from(current)
+}
+
+const loadCompensationCandidates = async () => {
+  compensationLoading.value = true
+  try {
+    const result = await listPointCompensationCandidates(compensationQuery)
+    compensationCandidates.value = Array.isArray(result.items) ? result.items : []
+    compensationSummary.candidateCount = Number(result.summary?.candidateCount || 0)
+    compensationSummary.totalPointCost = Number(result.summary?.totalPointCost || 0)
+    compensationSummary.windowDays = Number(result.summary?.windowDays || compensationQuery.days)
+    selectedCompensationAssociationNos.value = selectedCompensationAssociationNos.value
+      .filter((item) => compensationCandidates.value.some((candidate) => candidate.associationNo === item))
+  } finally {
+    compensationLoading.value = false
+  }
+}
+
+const fillLegacyCompensationExample = () => {
+  compensationForm.manualAssociationNos = [
+    'GTK1777512523146OM0MFW',
+    'GTK1777512456545MH6GTH',
+  ].join('\n')
+  if (!compensationForm.note) {
+    compensationForm.note = '补偿修复前产生的对话失败未退款历史流水'
+  }
+  compensationForm.forceManual = true
+}
+
+const handleExecuteCandidateCompensation = async () => {
+  if (!selectedCompensationAssociationNos.value.length) {
+    window.alert('请先选择需要补偿的候选记录。')
+    return
+  }
+  if (!window.confirm(`确认补偿已选中的 ${selectedCompensationAssociationNos.value.length} 条积分流水吗？`)) {
+    return
+  }
+
+  compensationSubmitting.value = true
+  try {
+    const result = await executePointCompensation({
+      associationNos: selectedCompensationAssociationNos.value,
+      note: compensationForm.note || '后台手动补偿失败未退款任务',
+      forceManual: false,
+    })
+    selectedCompensationAssociationNos.value = []
+    await loadCompensationCandidates()
+    window.alert(`补偿完成：成功 ${result.refundedCount} 条，跳过 ${result.skippedCount} 条。`)
+  } finally {
+    compensationSubmitting.value = false
+  }
+}
+
+const handleExecuteManualCompensation = async () => {
+  const associationNos = parseAssociationNoList(compensationForm.manualAssociationNos)
+  if (!associationNos.length) {
+    window.alert('请先输入至少一个关联号。')
+    return
+  }
+  if (!window.confirm(`确认手动补偿 ${associationNos.length} 条流水吗？该操作会直接补回积分。`)) {
+    return
+  }
+
+  compensationSubmitting.value = true
+  try {
+    const result = await executePointCompensation({
+      associationNos,
+      note: compensationForm.note || '后台手动补偿历史漏账',
+      forceManual: compensationForm.forceManual,
+    })
+    compensationForm.manualAssociationNos = ''
+    compensationForm.note = ''
+    compensationForm.forceManual = false
+    await loadCompensationCandidates()
+    window.alert(`手动补偿完成：成功 ${result.refundedCount} 条，跳过 ${result.skippedCount} 条。`)
+  } finally {
+    compensationSubmitting.value = false
+  }
+}
+
 const loadAllData = async () => {
   loading.value = true
   try {
-    const [overviewData, levelData, planData, packageData, rewardData, batchData] = await Promise.all([
+    const [overviewData, levelData, planData, packageData, rewardData, batchData, compensationData] = await Promise.all([
       getAdminMarketingOverview(),
       listMembershipLevels(),
       listMembershipPlans(),
       listRechargePackages(),
       listRewardRules(),
       listCardBatches(),
+      listPointCompensationCandidates(compensationQuery),
     ])
     overview.value = overviewData
     levels.value = levelData
@@ -960,6 +1181,10 @@ const loadAllData = async () => {
     packages.value = packageData
     rewardRules.value = rewardData
     cardBatches.value = batchData
+    compensationCandidates.value = Array.isArray(compensationData.items) ? compensationData.items : []
+    compensationSummary.candidateCount = Number(compensationData.summary?.candidateCount || 0)
+    compensationSummary.totalPointCost = Number(compensationData.summary?.totalPointCost || 0)
+    compensationSummary.windowDays = Number(compensationData.summary?.windowDays || compensationQuery.days)
   } finally {
     loading.value = false
   }
@@ -1325,9 +1550,48 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+.admin-compensation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-compensation-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.admin-compensation-item__check {
+  padding-top: 4px;
+}
+
+.admin-compensation-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-compensation-item__error {
+  color: var(--text-danger, #d14343);
+}
+
+.admin-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--text-secondary, rgba(15, 23, 42, 0.68));
+}
+
 @media (max-width: 1100px) {
   .admin-membership-billing-item {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-compensation-item {
+    grid-template-columns: 1fr;
   }
 }
 </style>

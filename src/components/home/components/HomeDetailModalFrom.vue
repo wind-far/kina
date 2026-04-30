@@ -433,7 +433,7 @@ const contentGeneratorVisible = ref(false)
 const operationMenuVisible = ref(false)
 /** 递增以强制 ContentGenerator 将当前提示词写入输入框 */
 const contentGeneratorSyncNonce = ref(0)
-/** 与 ContentGenerator 展开态联动，用于预览区底部留白（即梦式叠层） */
+/** 与 ContentGenerator 展开态联动，用于预览区底部留白 */
 const contentGeneratorExpanded = ref(true)
 const detailImageReady = ref(true)
 

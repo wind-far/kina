@@ -243,7 +243,7 @@ export const buildAgentPendingRun = (id: number | string, message: string, skill
   skill,
   status: 'thinking',
   user: {
-    name: '即梦 Agent',
+    name: 'Canana Agent',
   },
   steps: buildExecutionSteps({
     workflowLabel: '任务规划中',

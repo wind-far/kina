@@ -76,6 +76,17 @@ export interface MarketingCardBatchPayload {
   metaJson?: unknown
 }
 
+export interface MarketingPointCompensationQueryPayload {
+  days?: number
+  limit?: number
+}
+
+export interface MarketingPointCompensationExecutePayload {
+  associationNos?: string[]
+  note?: string
+  forceManual?: boolean
+}
+
 // 读取营销中心请求体。
 export const readMarketingBody = async <T = Record<string, unknown>>(req: any) => {
   const payload = await readJsonBody(req)

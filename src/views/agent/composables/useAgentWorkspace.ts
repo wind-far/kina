@@ -21,7 +21,7 @@ const createIdleRun = (): AgentRunState => ({
   skill: 'brand-design',
   status: 'idle',
   user: {
-    name: '即梦 Agent',
+    name: 'Canana Agent',
   },
   steps: [
     {
@@ -167,7 +167,7 @@ export function useAgentWorkspace() {
       skill: skillKey,
       status: 'thinking',
       user: {
-        name: '即梦 Agent',
+        name: 'Canana Agent',
       },
       steps: buildPendingSteps(),
       result: {
@@ -204,7 +204,7 @@ export function useAgentWorkspace() {
         skill: skillKey,
         status: 'completed',
         user: {
-          name: '即梦 Agent',
+          name: 'Canana Agent',
         },
         steps: nextSteps,
         result: {

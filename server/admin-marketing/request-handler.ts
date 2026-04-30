@@ -6,6 +6,8 @@ import {
   ADMIN_MARKETING_MEMBERSHIP_LEVELS_PATH,
   ADMIN_MARKETING_MEMBERSHIP_PLANS_PATH,
   ADMIN_MARKETING_OVERVIEW_PATH,
+  ADMIN_MARKETING_POINT_COMPENSATION_CANDIDATES_PATH,
+  ADMIN_MARKETING_POINT_COMPENSATION_EXECUTE_PATH,
   ADMIN_MARKETING_RECHARGE_PACKAGES_PATH,
   ADMIN_MARKETING_REWARD_RULES_PATH,
 } from './constants'
@@ -15,8 +17,10 @@ import {
   deleteMembershipPlan,
   deleteRechargePackage,
   deleteRewardRule,
+  executeGenerationPointCompensation,
   getAdminMarketingOverview,
   listCardBatches,
+  listGenerationPointCompensationCandidates,
   listCardCodesByBatch,
   listMembershipLevels,
   listMembershipPlans,
@@ -30,6 +34,7 @@ import {
 } from './service'
 import {
   type MarketingCardBatchPayload,
+  type MarketingPointCompensationExecutePayload,
   type MarketingMembershipLevelPayload,
   type MarketingMembershipPlanPayload,
   type MarketingRechargePackagePayload,
@@ -64,6 +69,23 @@ export const handleAdminMarketingRequest = async (req: any, res: any) => {
     if (req.method === 'GET' && requestPath === ADMIN_MARKETING_OVERVIEW_PATH) {
       const data = await getAdminMarketingOverview()
       sendJson(res, 200, { data })
+      return
+    }
+
+    if (req.method === 'GET' && requestPath === ADMIN_MARKETING_POINT_COMPENSATION_CANDIDATES_PATH) {
+      const requestUrl = new URL(String(req.url || ''), 'http://127.0.0.1')
+      const data = await listGenerationPointCompensationCandidates({
+        days: Number(requestUrl.searchParams.get('days') || 7),
+        limit: Number(requestUrl.searchParams.get('limit') || 50),
+      })
+      sendJson(res, 200, { data })
+      return
+    }
+
+    if (req.method === 'POST' && requestPath === ADMIN_MARKETING_POINT_COMPENSATION_EXECUTE_PATH) {
+      const payload = await readMarketingBody<MarketingPointCompensationExecutePayload>(req)
+      const data = await executeGenerationPointCompensation(payload, currentUser.id)
+      sendJson(res, 200, { data, message: '积分补偿已执行' })
       return
     }
 

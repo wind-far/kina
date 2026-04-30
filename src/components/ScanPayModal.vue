@@ -116,7 +116,7 @@ const props = withDefaults(defineProps<{
   qrCodeUrl: '',
   payIconUrl: '',
   agreementHref: '/policies/user-agreement',
-  agreementLabel: '《“即梦”付费服务协议（含自动续费条款）》',
+  agreementLabel: '《付费服务协议（含自动续费条款）》',
   submitting: false,
 })
 
@@ -134,7 +134,7 @@ const amountText = computed(() => {
 const resolvedQrCodeUrl = computed(() => String(props.qrCodeUrl || '').trim() || DEFAULT_QR_CODE_URL)
 const resolvedPayIconUrl = computed(() => String(props.payIconUrl || '').trim() || DEFAULT_PAY_ICON_URL)
 const agreementHref = computed(() => String(props.agreementHref || '').trim() || '/policies/user-agreement')
-const agreementLabel = computed(() => String(props.agreementLabel || '').trim() || '《“即梦”付费服务协议（含自动续费条款）》')
+const agreementLabel = computed(() => String(props.agreementLabel || '').trim() || '《付费服务协议（含自动续费条款）》')
 const isExternalAgreement = computed(() => /^https?:\/\//i.test(agreementHref.value))
 
 const closeModal = () => {

@@ -212,13 +212,13 @@ const readModelBillingPower = (value: unknown) => {
 export const resolveGenerationPointCost = async (input: {
   providerId: string
   modelKey: string
-  endpointType: 'image' | 'video'
+  endpointType: 'chat' | 'image' | 'video'
 }) => {
   const providerId = String(input.providerId || '').trim()
   const modelKey = String(input.modelKey || '').trim()
   const category = String(input.endpointType || '').trim().toUpperCase()
 
-  if (!providerId || !modelKey || (category !== 'IMAGE' && category !== 'VIDEO')) {
+  if (!providerId || !modelKey || (category !== 'CHAT' && category !== 'IMAGE' && category !== 'VIDEO')) {
     return {
       pointCost: 0,
       modelId: '',
@@ -255,13 +255,13 @@ export const resolveGenerationPointCost = async (input: {
   }
 }
 
-// 在真正发起图片/视频生成前扣减积分，并落一条可追踪的消费流水。
+// 在真正发起对话/图片/视频生成前扣减积分，并落一条可追踪的消费流水。
 export const consumeGenerationPoints = async (input: {
   userId: string
   pointCost: number
   sourceId: string
   associationNo: string
-  endpointType: 'image' | 'video'
+  endpointType: 'chat' | 'image' | 'video'
   providerId: string
   modelKey: string
   modelName?: string
@@ -294,7 +294,11 @@ export const consumeGenerationPoints = async (input: {
       sourceType: 'GENERATION_CONSUME',
       sourceId: input.sourceId,
       associationNo: input.associationNo,
-      remark: input.endpointType === 'video' ? '视频生成消耗积分' : '图片生成消耗积分',
+      remark: input.endpointType === 'video'
+        ? '视频生成消耗积分'
+        : input.endpointType === 'image'
+          ? '图片生成消耗积分'
+          : '对话消耗积分',
       metaJson: {
         endpointType: input.endpointType,
         providerId: input.providerId,
@@ -314,7 +318,7 @@ export const refundGenerationPoints = async (input: {
   pointCost: number
   sourceId: string
   associationNo: string
-  endpointType: 'image' | 'video'
+  endpointType: 'chat' | 'image' | 'video'
   providerId: string
   modelKey: string
   modelName?: string
@@ -334,7 +338,11 @@ export const refundGenerationPoints = async (input: {
       sourceType: 'GENERATION_CONSUME',
       sourceId: input.sourceId,
       associationNo: input.associationNo,
-      remark: input.endpointType === 'video' ? '视频生成失败，积分已退回' : '图片生成失败，积分已退回',
+      remark: input.endpointType === 'video'
+        ? '视频生成失败，积分已退回'
+        : input.endpointType === 'image'
+          ? '图片生成失败，积分已退回'
+          : '对话失败，积分已退回',
       metaJson: {
         endpointType: input.endpointType,
         providerId: input.providerId,
@@ -345,6 +353,56 @@ export const refundGenerationPoints = async (input: {
           : {}),
       },
     })
+  })
+}
+
+// 在生成任务记录创建完成后，把 generationRecordId 追写回积分消费流水，便于后续做失败补偿与审计。
+export const attachGenerationPointRecordId = async (input: {
+  associationNo: string
+  userId: string
+  generationRecordId: string
+}) => {
+  const associationNo = String(input.associationNo || '').trim()
+  const userId = String(input.userId || '').trim()
+  const generationRecordId = String(input.generationRecordId || '').trim()
+
+  if (!associationNo || !userId || !generationRecordId) {
+    return null
+  }
+
+  const pointLog = await prisma.pointAccountLog.findFirst({
+    where: {
+      associationNo,
+      userId,
+      sourceType: 'GENERATION_CONSUME',
+      changeType: 'CONSUME',
+    },
+    orderBy: [
+      { createdAt: 'desc' },
+      { id: 'desc' },
+    ],
+  })
+
+  if (!pointLog) {
+    return null
+  }
+
+  const currentMeta = pointLog.metaJson && typeof pointLog.metaJson === 'object' && !Array.isArray(pointLog.metaJson)
+    ? pointLog.metaJson as Record<string, unknown>
+    : {}
+
+  if (String(currentMeta.generationRecordId || '').trim() === generationRecordId) {
+    return pointLog
+  }
+
+  return prisma.pointAccountLog.update({
+    where: { id: pointLog.id },
+    data: {
+      metaJson: {
+        ...currentMeta,
+        generationRecordId,
+      } as any,
+    },
   })
 }
 

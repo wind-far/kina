@@ -19,6 +19,12 @@ export const ADMIN_MARKETING_REWARD_RULES_PATH = `${ADMIN_MARKETING_BASE_PATH}/r
 // 卡密批次接口。
 export const ADMIN_MARKETING_CARD_BATCHES_PATH = `${ADMIN_MARKETING_BASE_PATH}/card-batches`
 
+// 生成任务积分补偿候选列表接口。
+export const ADMIN_MARKETING_POINT_COMPENSATION_CANDIDATES_PATH = `${ADMIN_MARKETING_BASE_PATH}/point-compensation/candidates`
+
+// 生成任务积分补偿执行接口。
+export const ADMIN_MARKETING_POINT_COMPENSATION_EXECUTE_PATH = `${ADMIN_MARKETING_BASE_PATH}/point-compensation/execute`
+
 // 判断是否命中营销中心接口。
 export const isAdminMarketingPath = (requestPath: string) => {
   return requestPath === ADMIN_MARKETING_OVERVIEW_PATH
@@ -32,4 +38,6 @@ export const isAdminMarketingPath = (requestPath: string) => {
     || requestPath.startsWith(`${ADMIN_MARKETING_REWARD_RULES_PATH}/`)
     || requestPath === ADMIN_MARKETING_CARD_BATCHES_PATH
     || requestPath.startsWith(`${ADMIN_MARKETING_CARD_BATCHES_PATH}/`)
+    || requestPath === ADMIN_MARKETING_POINT_COMPENSATION_CANDIDATES_PATH
+    || requestPath === ADMIN_MARKETING_POINT_COMPENSATION_EXECUTE_PATH
 }

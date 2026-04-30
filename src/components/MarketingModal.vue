@@ -474,7 +474,7 @@ const redeemDisplayRecords = computed(() => cardRedeemRecords.value.slice(0, 3))
 const paymentAgreementHref = computed(() => systemSettingsStore.publicSystemSettings.value.policySettings.userAgreementUrl || '/policies/user-agreement')
 const paymentAgreementLabel = computed(() => {
   const policyTitle = String(systemSettingsStore.publicSystemSettings.value.policySettings.userAgreementTitle || '').trim()
-  return policyTitle ? `《${policyTitle}》` : '《“即梦”付费服务协议（含自动续费条款）》'
+  return policyTitle ? `《${policyTitle}》` : '《付费服务协议（含自动续费条款）》'
 })
 
 const redeemBenefits = [

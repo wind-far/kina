@@ -1,6 +1,6 @@
 <template>
   <header class="agent-topbar">
-    <div class="agent-topbar-title">即梦 Agent</div>
+    <div class="agent-topbar-title">Canana Agent</div>
     <div class="agent-topbar-actions">
       <button class="agent-topbar-button" type="button">时间</button>
       <button class="agent-topbar-button" type="button">生成结果</button>

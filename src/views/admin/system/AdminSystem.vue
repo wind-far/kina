@@ -21,14 +21,8 @@
       </button>
     </template>
 
-    <div class="admin-grid admin-grid--stats">
-      <template v-if="isLayoutOnlyRoute">
-        <AdminStatCard label="导航菜单项" :value="`${systemForm.homeSideMenuSettings.items.length} 项`" :hint="`当前显示 ${visibleHomeSideMenuCount} 项`" />
-        <AdminStatCard label="启用区块" :value="layoutEnabledSectionsLabel" hint="建议至少保留一个导航区块，避免前台入口缺失" />
-        <AdminStatCard label="Banner 可见数" :value="`${visibleHomeBannerCount}/${systemForm.homeLayoutSettings.banner.items.length}`" :hint="systemForm.homeLayoutSettings.banner.enabled ? 'Banner 总开关已开启' : 'Banner 总开关已关闭'" />
-        <AdminStatCard label="首屏三层图" :value="`${primaryBannerLayerConfiguredCount}/3`" hint="背景层、主图层、前景叠加图的配置进度" />
-      </template>
-      <template v-else>
+    <div v-if="!isLayoutOnlyRoute" class="admin-grid admin-grid--stats">
+      <template>
         <AdminStatCard label="站点名称" :value="systemForm.siteInfo.siteName || '未设置'" hint="登录弹窗标题与浏览器标题都会复用这里的配置" />
         <AdminStatCard label="启用登录方式" :value="enabledMethodCount" hint="当前对前台用户可见且可用的登录方式数量" />
         <AdminStatCard label="协议勾选" :value="systemForm.policySettings.agreementRequired ? '开启' : '关闭'" hint="控制登录前是否必须勾选协议" />
@@ -284,10 +278,6 @@ const createDefaultSystemForm = (): SystemConfigPayload => ({
 const systemForm = reactive<SystemConfigPayload>(createDefaultSystemForm())
 
 const {
-  visibleHomeSideMenuCount,
-  visibleHomeBannerCount,
-  primaryBannerLayerConfiguredCount,
-  layoutEnabledSectionsLabel,
   homeSideMenuBaseStatus,
   homeSideMenuItemsStatus,
   homeHeaderStatus,

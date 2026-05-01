@@ -81,7 +81,12 @@ export const adminNavGroups: AdminNavGroup[] = [
       {
         label: '系统设置',
         path: '/admin/system',
-        description: '查看部署、登录与环境信息',
+        description: '维护站点信息、协议文案与登录方式',
+      },
+      {
+        label: '布局配置',
+        path: '/admin/layout',
+        description: '单独维护导航布局、首页头部与 Banner 编排',
       },
     ],
   },

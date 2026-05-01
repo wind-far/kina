@@ -125,6 +125,101 @@ export interface SystemConversationSettingsPayload {
   managementPolicy?: SystemConversationManagementPolicyPayload
 }
 
+export interface SystemThemeModePolicyPayload {
+  allowUserToggle?: boolean
+  defaultMode?: 'dark' | 'light' | 'system' | string
+  supportSystemMode?: boolean
+}
+
+export interface SystemThemeBrandColorsPayload {
+  primary?: string
+  primaryHover?: string
+  primaryActive?: string
+  secondary?: string
+  accent?: string
+  success?: string
+  warning?: string
+  danger?: string
+}
+
+export interface SystemThemeGradientsPayload {
+  primaryGradient?: string
+  bannerGlow?: string
+}
+
+export interface SystemThemeSurfacesPayload {
+  contentMaxWidth?: number
+  cardRadius?: number
+}
+
+export interface SystemGlobalThemeSettingsPayload {
+  modePolicy?: SystemThemeModePolicyPayload
+  brandColors?: SystemThemeBrandColorsPayload
+  gradients?: SystemThemeGradientsPayload
+  surfaces?: SystemThemeSurfacesPayload
+}
+
+export interface SystemHomeSideMenuItemPayload {
+  key?: string
+  title?: string
+  section?: 'top' | 'center' | 'bottom' | string
+  iconSource?: 'default' | 'custom' | string
+  iconType?: 'system' | 'image' | string
+  icon?: string
+  inactiveIconUrl?: string
+  activeIconUrl?: string
+  visible?: boolean
+  badgeText?: string
+  badgeTone?: 'default' | 'primary' | 'success' | 'warning' | 'danger' | string
+  actionType?: 'route' | 'url' | 'dialog' | 'none' | string
+  actionValue?: string
+  sortOrder?: number
+}
+
+export interface SystemHomeSideMenuSettingsPayload {
+  enabled?: boolean
+  collapsedWidth?: number
+  drawerWidth?: number
+  drawerFloatLimitWidth?: number
+  showTopMenu?: boolean
+  showCenterMenu?: boolean
+  showBottomMenu?: boolean
+  items?: SystemHomeSideMenuItemPayload[]
+}
+
+export interface SystemHomeLayoutHeaderPayload {
+  showSiteDescription?: boolean
+  showTaskIndicator?: boolean
+  showBanner?: boolean
+}
+
+export interface SystemHomeBannerItemPayload {
+  key?: string
+  title?: string
+  subtitle?: string
+  imageSource?: 'default' | 'custom' | string
+  presetKey?: string
+  imageUrl?: string
+  backgroundImageUrl?: string
+  mainImageUrl?: string
+  overlayImageUrl?: string
+  glowColor?: string
+  actionType?: 'route' | 'url' | 'none' | string
+  actionValue?: string
+  visible?: boolean
+  sortOrder?: number
+}
+
+export interface SystemHomeBannerSettingsPayload {
+  enabled?: boolean
+  items?: SystemHomeBannerItemPayload[]
+}
+
+export interface SystemHomeLayoutSettingsPayload {
+  header?: SystemHomeLayoutHeaderPayload
+  banner?: SystemHomeBannerSettingsPayload
+}
+
 export interface SystemGenerationProgressStagePayload {
   key?: string
   label?: string
@@ -144,6 +239,9 @@ export interface SystemConfigPayload {
   loginSettings?: SystemLoginSettingsPayload
   generationProgressSettings?: SystemGenerationProgressSettingsPayload
   conversationSettings?: SystemConversationSettingsPayload
+  globalThemeSettings?: SystemGlobalThemeSettingsPayload
+  homeSideMenuSettings?: SystemHomeSideMenuSettingsPayload
+  homeLayoutSettings?: SystemHomeLayoutSettingsPayload
 }
 
 // 读取系统设置请求体。

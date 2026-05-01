@@ -4,7 +4,7 @@
       <div class="global-dreamina-container">
         <div id="dreamina" class="root_bf55f">
           <div class="top-down-layer">
-            <div class="container-moSF_y" style="--side-menu-width:76px">
+            <div class="container-moSF_y" :style="sideMenuStyleVars">
               <!-- 侧边菜单 -->
               <SideMenu />
               
@@ -737,6 +737,7 @@ import { ElMessage } from 'element-plus'
 import SideMenu from '@/components/home/components/SideMenu.vue'
 import ImagePreview from '@/components/ImagePreview.vue'
 import PublishArtworkModal from '@/components/PublishArtworkModal.vue'
+import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
 import {
   applyAssetAction,
   listAssetItems,
@@ -744,6 +745,8 @@ import {
 } from '@/api/asset-items'
 import { buildAssetUrl } from '@/api/http'
 import { AUTH_LOGIN_SUCCESS_EVENT } from '@/stores/auth'
+
+const { sideMenuStyleVars } = useHomeSideMenuConfig()
 
 // 类型定义
 type TabType = 'image' | 'video' | 'canvas' | 'editor' | 'story' | 'audio'

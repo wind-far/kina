@@ -37,6 +37,7 @@ import {
 import { normalizeGenerationErrorMessage } from '@/shared/generation-error'
 import { AUTH_LOGIN_SUCCESS_EVENT, useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
+import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
 import { useSystemSettingsStore } from '@/stores/system-settings'
 import GenerateAgentRecord from './components/GenerateAgentRecord.vue'
 import GenerateSessionList from './components/GenerateSessionList.vue'
@@ -45,6 +46,7 @@ import GenerateConversationSidebar, { type GenerateConversationSidebarItem } fro
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const { sideMenuStyleVars } = useHomeSideMenuConfig()
 const { openLoginModal } = useLoginModalStore()
 const { publicSystemSettings, loadPublicSettings } = useSystemSettingsStore()
 const conversationHeroSettings = computed(() => publicSystemSettings.value.conversationSettings.entryDisplay.hero)
@@ -1288,8 +1290,7 @@ onUnmounted(() => {
       <div class="global-dreamina-container">
         <div id="dreamina" class="root_bf55f">
           <div class="top-down-layer">
-            <div class="container-moSF_y"
-                 style="--side-menu-width:76px;--side-drawer-width:440px;--side-drawer-float-limit-width:1280px">
+            <div class="container-moSF_y" :style="sideMenuStyleVars">
               <!-- 侧边菜单 -->
               <SideMenu/>
               <div class=content-wrapper-cF1zaN>
@@ -1470,3 +1471,4 @@ onUnmounted(() => {
   text-align: center;
 }
 </style>
+const { sideMenuStyleVars } = useHomeSideMenuConfig()

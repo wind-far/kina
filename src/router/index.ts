@@ -193,6 +193,16 @@ const routes: RouteRecordRaw[] = [
           requiresAdmin: true,
         },
       },
+      {
+        path: 'layout',
+        name: 'AdminLayout',
+        component: AdminSystem,
+        meta: {
+          requiresAuth: true,
+          requiresAdmin: true,
+          defaultSystemTab: 'layout',
+        },
+      },
     ],
   },
 ]

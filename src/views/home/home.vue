@@ -4,8 +4,7 @@
       <div class="global-dreamina-container">
         <div id="dreamina" class="root_bf55f">
           <div class="top-down-layer">
-            <div class="container-moSF_y"
-                 style="--side-menu-width:76px;--side-drawer-width:440px;--side-drawer-float-limit-width:1280px">
+            <div class="container-moSF_y" :style="sideMenuStyleVars">
               <!-- 侧边菜单 -->
               <SideMenu/>
 
@@ -65,12 +64,15 @@
 <script setup>
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, ref, watch } from 'vue'
+import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
 import SideMenu from '../../components/home/components/SideMenu.vue'
 import HomeHeader from '../../components/home/components/HomeHeader.vue'
 import TabsSection from '@components/home/components/TabsSection.vue'
 import HomeDetailModalFrom from '@components/home/components/HomeDetailModalFrom.vue'
 import HomeFooter from '@components/home/components/HomeFooter.vue'
 import { applyAssetAction } from '@/api/asset-items'
+
+const { sideMenuStyleVars } = useHomeSideMenuConfig()
 
 const handleTabChange = (index) => {
   console.log('Tab changed to:', index)

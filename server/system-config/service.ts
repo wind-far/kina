@@ -12,6 +12,9 @@ const SYSTEM_CONFIG_CODES = {
   loginSettings: 'LOGIN_SETTINGS',
   generationProgressSettings: 'GENERATION_PROGRESS_SETTINGS',
   conversationSettings: 'CONVERSATION_SETTINGS',
+  globalThemeSettings: 'GLOBAL_THEME_SETTINGS',
+  homeSideMenuSettings: 'HOME_SIDE_MENU_SETTINGS',
+  homeLayoutSettings: 'HOME_LAYOUT_SETTINGS',
 } as const
 
 const SYSTEM_CONFIG_NAMES = {
@@ -20,6 +23,9 @@ const SYSTEM_CONFIG_NAMES = {
   [SYSTEM_CONFIG_CODES.loginSettings]: '登录设置',
   [SYSTEM_CONFIG_CODES.generationProgressSettings]: '生成进度设置',
   [SYSTEM_CONFIG_CODES.conversationSettings]: '会话设置',
+  [SYSTEM_CONFIG_CODES.globalThemeSettings]: '全局主题',
+  [SYSTEM_CONFIG_CODES.homeSideMenuSettings]: '首页左侧菜单',
+  [SYSTEM_CONFIG_CODES.homeLayoutSettings]: '首页布局配置',
 } as const
 
 const DEFAULT_CREATION_MODE_OPTIONS = [
@@ -38,6 +44,30 @@ const DEFAULT_ASSISTANT_ALLOWLIST = [
   'poster-design',
   'brand-design',
 ]
+
+const DEFAULT_HOME_SIDE_MENU_ITEMS = [
+  { key: 'logo', title: 'Logo', section: 'top', iconSource: 'default', iconType: 'system', icon: 'logo', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/', sortOrder: 10 },
+  { key: 'home', title: '灵感', section: 'center', iconSource: 'default', iconType: 'system', icon: 'home', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/', sortOrder: 10 },
+  { key: 'generate', title: '生成', section: 'center', iconSource: 'default', iconType: 'system', icon: 'generate', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'primary', actionType: 'route', actionValue: '/generate', sortOrder: 20 },
+  { key: 'asset', title: '资产', section: 'center', iconSource: 'default', iconType: 'system', icon: 'asset', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/asset', sortOrder: 30 },
+  { key: 'workflow', title: '工作流', section: 'center', iconSource: 'default', iconType: 'system', icon: 'workflow', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/workflow', sortOrder: 40 },
+  { key: 'account', title: '账号', section: 'center', iconSource: 'default', iconType: 'system', icon: 'account', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/account', sortOrder: 50 },
+  { key: 'publish', title: '发布', section: 'center', iconSource: 'default', iconType: 'system', icon: 'publish', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/publish', sortOrder: 60 },
+  { key: 'marketing', title: '福利', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'marketing', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'dialog', actionValue: 'marketing', sortOrder: 10 },
+  { key: 'account-entry', title: '登录', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'account', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'dialog', actionValue: 'login', sortOrder: 20 },
+  { key: 'notification', title: '通知', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'notification', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'none', actionValue: '', sortOrder: 30 },
+  { key: 'app-download', title: 'APP下载', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'app-download', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'none', actionValue: '', sortOrder: 40 },
+  { key: 'api-entry', title: 'API', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'api-entry', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'none', actionValue: '', sortOrder: 50 },
+  { key: 'settings', title: '设置', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'settings', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'none', actionValue: '', sortOrder: 60 },
+] as const
+
+const DEFAULT_HOME_BANNER_ITEMS = [
+  { key: 'motion', title: '动作模仿', subtitle: '响应更灵动', imageSource: 'default', presetKey: 'motion', imageUrl: '', backgroundImageUrl: '', mainImageUrl: '', overlayImageUrl: '', glowColor: '#2FE3FF', actionType: 'route', actionValue: '/generate?type=motion', visible: true, sortOrder: 10 },
+  { key: 'image', title: '图片生成', subtitle: '智能美学提升', imageSource: 'default', presetKey: 'image', imageUrl: '', backgroundImageUrl: '', mainImageUrl: '', overlayImageUrl: '', glowColor: '#00B1CC', actionType: 'route', actionValue: '/generate?type=image', visible: true, sortOrder: 20 },
+  { key: 'video', title: '视频生成', subtitle: '支持音画同出', imageSource: 'default', presetKey: 'video', imageUrl: '', backgroundImageUrl: '', mainImageUrl: '', overlayImageUrl: '', glowColor: '#2197FF', actionType: 'route', actionValue: '/generate?type=video', visible: true, sortOrder: 30 },
+  { key: 'digital-human', title: '数字人', subtitle: '轻松生成数字分身', imageSource: 'default', presetKey: 'digital-human', imageUrl: '', backgroundImageUrl: '', mainImageUrl: '', overlayImageUrl: '', glowColor: '#9B6BFF', actionType: 'route', actionValue: '/generate?type=digital-human', visible: true, sortOrder: 40 },
+  { key: 'agent', title: 'Agent 模式', subtitle: '多步骤智能创作', imageSource: 'default', presetKey: 'agent', imageUrl: '', backgroundImageUrl: '', mainImageUrl: '', overlayImageUrl: '', glowColor: '#FFD057', actionType: 'route', actionValue: '/generate?type=agent', visible: true, sortOrder: 50 },
+] as const
 
 const createDefaultSystemConfig = () => ({
   siteInfo: {
@@ -154,6 +184,52 @@ const createDefaultSystemConfig = () => ({
       deleteCascadeRecords: true,
     },
   },
+  globalThemeSettings: {
+    modePolicy: {
+      allowUserToggle: true,
+      defaultMode: 'dark',
+      supportSystemMode: true,
+    },
+    brandColors: {
+      primary: '#6f35ff',
+      primaryHover: '#5b28e6',
+      primaryActive: '#4c20c4',
+      secondary: '#00c2d6',
+      accent: '#ff7a59',
+      success: '#18b566',
+      warning: '#ffb020',
+      danger: '#f04438',
+    },
+    gradients: {
+      primaryGradient: 'linear-gradient(135deg, #6f35ff 0%, #ff7a59 100%)',
+      bannerGlow: '#2FE3FF',
+    },
+    surfaces: {
+      contentMaxWidth: 1440,
+      cardRadius: 20,
+    },
+  },
+  homeSideMenuSettings: {
+    enabled: true,
+    collapsedWidth: 76,
+    drawerWidth: 440,
+    drawerFloatLimitWidth: 1280,
+    showTopMenu: true,
+    showCenterMenu: true,
+    showBottomMenu: true,
+    items: DEFAULT_HOME_SIDE_MENU_ITEMS.map(item => ({ ...item })),
+  },
+  homeLayoutSettings: {
+    header: {
+      showSiteDescription: true,
+      showTaskIndicator: true,
+      showBanner: true,
+    },
+    banner: {
+      enabled: true,
+      items: DEFAULT_HOME_BANNER_ITEMS.map(item => ({ ...item })),
+    },
+  },
 })
 
 const normalizeConversationModeOptions = (value: unknown, fallback: SystemConversationModeOptionPayload[]) => {
@@ -181,6 +257,110 @@ const normalizeStringList = (value: unknown, fallback: string[]) => {
     .filter(Boolean)
 
   return items.length ? Array.from(new Set(items)) : [...fallback]
+}
+
+const normalizeHexColor = (value: unknown, fallback: string) => {
+  const normalized = String(value || '').trim()
+  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(normalized)) {
+    return normalized
+  }
+  return fallback
+}
+
+const normalizeSideMenuItems = (value: unknown, fallback: Array<Record<string, any>>) => {
+  if (!Array.isArray(value)) {
+    return fallback.map(item => ({ ...item }))
+  }
+
+  const normalized = value
+    .map((item, index) => {
+      const nextItem = readPlainObject(item)
+      const key = String(nextItem.key || '').trim()
+      if (!key) {
+        return null
+      }
+
+      const matchedFallback = fallback.find(fallbackItem => fallbackItem.key === key)
+      const defaultItem = matchedFallback || fallback[Math.max(0, Math.min(index, fallback.length - 1))]
+
+      return {
+        key,
+        title: String(nextItem.title || defaultItem?.title || key).trim(),
+        section: String(nextItem.section || defaultItem?.section || 'center').trim(),
+        iconSource: String(
+          nextItem.iconSource
+          || (nextItem.iconType === 'image' ? 'custom' : '')
+          || defaultItem?.iconSource
+          || 'default',
+        ).trim(),
+        iconType: String(
+          nextItem.iconType
+          || (nextItem.iconSource === 'custom' ? 'image' : '')
+          || defaultItem?.iconType
+          || 'system',
+        ).trim(),
+        icon: String(nextItem.icon || defaultItem?.icon || key).trim(),
+        inactiveIconUrl: String(nextItem.inactiveIconUrl || defaultItem?.inactiveIconUrl || '').trim(),
+        activeIconUrl: String(nextItem.activeIconUrl || defaultItem?.activeIconUrl || '').trim(),
+        visible: nextItem.visible !== false,
+        badgeText: String(nextItem.badgeText || '').trim(),
+        badgeTone: String(nextItem.badgeTone || defaultItem?.badgeTone || 'default').trim(),
+        actionType: String(nextItem.actionType || defaultItem?.actionType || 'none').trim(),
+        actionValue: String(nextItem.actionValue || defaultItem?.actionValue || '').trim(),
+        sortOrder: Number.isFinite(Number(nextItem.sortOrder))
+          ? Math.max(0, Math.min(9999, Number(nextItem.sortOrder)))
+          : Number(defaultItem?.sortOrder || (index + 1) * 10),
+      }
+    })
+    .filter(Boolean)
+
+  return normalized.length ? normalized : fallback.map(item => ({ ...item }))
+}
+
+const normalizeHomeBannerItems = (value: unknown, fallback: Array<Record<string, any>>) => {
+  if (!Array.isArray(value)) {
+    return fallback.map(item => ({ ...item }))
+  }
+
+  const normalized = value
+    .map((item, index) => {
+      const nextItem = readPlainObject(item)
+      const key = String(nextItem.key || '').trim()
+      if (!key) {
+        return null
+      }
+
+      const matchedFallback = fallback.find(fallbackItem => fallbackItem.key === key)
+      const defaultItem = matchedFallback || fallback[Math.max(0, Math.min(index, fallback.length - 1))]
+
+      return {
+        key,
+        title: String(nextItem.title || defaultItem?.title || key).trim(),
+        subtitle: String(nextItem.subtitle || defaultItem?.subtitle || '').trim(),
+        imageSource: (
+          nextItem.imageSource === 'custom'
+            ? 'custom'
+            : nextItem.imageSource === 'default'
+              ? 'default'
+              : String(defaultItem?.imageSource || 'default')
+        ) as 'default' | 'custom',
+        presetKey: String(nextItem.presetKey || defaultItem?.presetKey || key).trim(),
+        imageUrl: String(nextItem.imageUrl || defaultItem?.imageUrl || '').trim(),
+        backgroundImageUrl: String(nextItem.backgroundImageUrl || defaultItem?.backgroundImageUrl || '').trim(),
+        mainImageUrl: String(nextItem.mainImageUrl || defaultItem?.mainImageUrl || '').trim(),
+        overlayImageUrl: String(nextItem.overlayImageUrl || defaultItem?.overlayImageUrl || '').trim(),
+        glowColor: normalizeHexColor(nextItem.glowColor, String(defaultItem?.glowColor || '#2FE3FF')),
+        actionType: String(nextItem.actionType || defaultItem?.actionType || 'none').trim(),
+        actionValue: String(nextItem.actionValue || defaultItem?.actionValue || '').trim(),
+        visible: nextItem.visible !== false,
+        sortOrder: Number.isFinite(Number(nextItem.sortOrder))
+          ? Math.max(0, Math.min(9999, Number(nextItem.sortOrder)))
+          : Number(defaultItem?.sortOrder || (index + 1) * 10),
+      }
+    })
+    .filter(Boolean)
+
+  return normalized.length ? normalized : fallback.map(item => ({ ...item }))
 }
 
 export const createDefaultConversationSettings = () => createDefaultSystemConfig().conversationSettings
@@ -315,6 +495,15 @@ const normalizeSystemConfig = (input?: SystemConfigPayload | null) => {
   const loginSettings = readPlainObject(input?.loginSettings)
   const generationProgressSettings = readPlainObject(input?.generationProgressSettings || loginSettings.generationProgressSettings)
   const conversationSettings = normalizeConversationSettings(input?.conversationSettings || loginSettings.conversationSettings)
+  const globalThemeSettings = readPlainObject(input?.globalThemeSettings)
+  const globalThemeModePolicy = readPlainObject(globalThemeSettings.modePolicy)
+  const globalThemeBrandColors = readPlainObject(globalThemeSettings.brandColors)
+  const globalThemeGradients = readPlainObject(globalThemeSettings.gradients)
+  const globalThemeSurfaces = readPlainObject(globalThemeSettings.surfaces)
+  const homeSideMenuSettings = readPlainObject(input?.homeSideMenuSettings)
+  const homeLayoutSettings = readPlainObject(input?.homeLayoutSettings)
+  const homeLayoutHeaderSettings = readPlainObject(homeLayoutSettings.header)
+  const homeLayoutBannerSettings = readPlainObject(homeLayoutSettings.banner)
   const defaultStageMap = new Map(
     defaults.generationProgressSettings.stages.map(item => [item.key, item]),
   )
@@ -366,6 +555,64 @@ const normalizeSystemConfig = (input?: SystemConfigPayload | null) => {
       stages: normalizedStages.filter(item => defaultStageMap.has(item.key)),
     },
     conversationSettings,
+    globalThemeSettings: {
+      modePolicy: {
+        allowUserToggle: globalThemeModePolicy.allowUserToggle !== false,
+        defaultMode: globalThemeModePolicy.defaultMode === 'light' || globalThemeModePolicy.defaultMode === 'system'
+          ? globalThemeModePolicy.defaultMode
+          : 'dark',
+        supportSystemMode: globalThemeModePolicy.supportSystemMode !== false,
+      },
+      brandColors: {
+        primary: normalizeHexColor(globalThemeBrandColors.primary, defaults.globalThemeSettings.brandColors.primary),
+        primaryHover: normalizeHexColor(globalThemeBrandColors.primaryHover, defaults.globalThemeSettings.brandColors.primaryHover),
+        primaryActive: normalizeHexColor(globalThemeBrandColors.primaryActive, defaults.globalThemeSettings.brandColors.primaryActive),
+        secondary: normalizeHexColor(globalThemeBrandColors.secondary, defaults.globalThemeSettings.brandColors.secondary),
+        accent: normalizeHexColor(globalThemeBrandColors.accent, defaults.globalThemeSettings.brandColors.accent),
+        success: normalizeHexColor(globalThemeBrandColors.success, defaults.globalThemeSettings.brandColors.success),
+        warning: normalizeHexColor(globalThemeBrandColors.warning, defaults.globalThemeSettings.brandColors.warning),
+        danger: normalizeHexColor(globalThemeBrandColors.danger, defaults.globalThemeSettings.brandColors.danger),
+      },
+      gradients: {
+        primaryGradient: String(globalThemeGradients.primaryGradient || defaults.globalThemeSettings.gradients.primaryGradient).trim(),
+        bannerGlow: normalizeHexColor(globalThemeGradients.bannerGlow, defaults.globalThemeSettings.gradients.bannerGlow),
+      },
+      surfaces: {
+        contentMaxWidth: Number.isFinite(Number(globalThemeSurfaces.contentMaxWidth))
+          ? Math.max(960, Math.min(1920, Number(globalThemeSurfaces.contentMaxWidth)))
+          : defaults.globalThemeSettings.surfaces.contentMaxWidth,
+        cardRadius: Number.isFinite(Number(globalThemeSurfaces.cardRadius))
+          ? Math.max(0, Math.min(48, Number(globalThemeSurfaces.cardRadius)))
+          : defaults.globalThemeSettings.surfaces.cardRadius,
+      },
+    },
+    homeSideMenuSettings: {
+      enabled: homeSideMenuSettings.enabled !== false,
+      collapsedWidth: Number.isFinite(Number(homeSideMenuSettings.collapsedWidth))
+        ? Math.max(48, Math.min(180, Number(homeSideMenuSettings.collapsedWidth)))
+        : defaults.homeSideMenuSettings.collapsedWidth,
+      drawerWidth: Number.isFinite(Number(homeSideMenuSettings.drawerWidth))
+        ? Math.max(280, Math.min(960, Number(homeSideMenuSettings.drawerWidth)))
+        : defaults.homeSideMenuSettings.drawerWidth,
+      drawerFloatLimitWidth: Number.isFinite(Number(homeSideMenuSettings.drawerFloatLimitWidth))
+        ? Math.max(960, Math.min(2560, Number(homeSideMenuSettings.drawerFloatLimitWidth)))
+        : defaults.homeSideMenuSettings.drawerFloatLimitWidth,
+      showTopMenu: homeSideMenuSettings.showTopMenu !== false,
+      showCenterMenu: homeSideMenuSettings.showCenterMenu !== false,
+      showBottomMenu: homeSideMenuSettings.showBottomMenu !== false,
+      items: normalizeSideMenuItems(homeSideMenuSettings.items, defaults.homeSideMenuSettings.items),
+    },
+    homeLayoutSettings: {
+      header: {
+        showSiteDescription: homeLayoutHeaderSettings.showSiteDescription !== false,
+        showTaskIndicator: homeLayoutHeaderSettings.showTaskIndicator !== false,
+        showBanner: homeLayoutHeaderSettings.showBanner !== false,
+      },
+      banner: {
+        enabled: homeLayoutBannerSettings.enabled !== false,
+        items: normalizeHomeBannerItems(homeLayoutBannerSettings.items, defaults.homeLayoutSettings.banner.items),
+      },
+    },
   }
 }
 
@@ -435,6 +682,9 @@ export const getAdminSystemConfig = async () => {
     loginSettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.loginSettings)?.config_json),
     generationProgressSettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.generationProgressSettings)?.config_json),
     conversationSettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.conversationSettings)?.config_json),
+    globalThemeSettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.globalThemeSettings)?.config_json),
+    homeSideMenuSettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.homeSideMenuSettings)?.config_json),
+    homeLayoutSettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.homeLayoutSettings)?.config_json),
   })
 }
 
@@ -453,6 +703,9 @@ export const saveAdminSystemConfig = async (payload: SystemConfigPayload) => {
     await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.loginSettings, normalized.loginSettings)
     await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.generationProgressSettings, normalized.generationProgressSettings)
     await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.conversationSettings, normalized.conversationSettings)
+    await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.globalThemeSettings, normalized.globalThemeSettings)
+    await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.homeSideMenuSettings, normalized.homeSideMenuSettings)
+    await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.homeLayoutSettings, normalized.homeLayoutSettings)
   })
 
   return normalized

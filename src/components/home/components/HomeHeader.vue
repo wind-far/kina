@@ -13,9 +13,9 @@
       popup-placement="bottom"
       @send="handleSend"
     />
-    <div v-if="siteDescription" class="home-header-site-description-canana">{{ siteDescription }}</div>
-    <TaskIndicator />
-    <HomeBanner />
+    <div v-if="showSiteDescription && siteDescription" class="home-header-site-description-canana">{{ siteDescription }}</div>
+    <TaskIndicator v-if="showTaskIndicator" />
+    <HomeBanner v-if="showBanner" />
   </div>
 </template>
 
@@ -27,14 +27,19 @@ import GenerateContentGenerator from '@/components/generate/ContentGenerator.vue
 import TaskIndicator from './TaskIndicator.vue'
 import HomeBanner from './HomeBanner.vue'
 import { useSystemSettingsStore } from '@/stores/system-settings'
+import { useHomeLayoutConfig } from '@/composables/useHomeLayoutConfig'
 
 const router = useRouter()
 const systemSettingsStore = useSystemSettingsStore()
+const { headerSettings, bannerSettings } = useHomeLayoutConfig()
 const siteNamePrefix = computed(() => {
   const siteName = String(systemSettingsStore.publicSystemSettings.value.siteInfo.siteName || '').trim()
   return siteName ? `${siteName} · ` : ''
 })
 const siteDescription = computed(() => String(systemSettingsStore.publicSystemSettings.value.siteInfo.siteDescription || '').trim())
+const showSiteDescription = computed(() => headerSettings.value.showSiteDescription !== false)
+const showTaskIndicator = computed(() => headerSettings.value.showTaskIndicator !== false)
+const showBanner = computed(() => headerSettings.value.showBanner !== false && bannerSettings.value.enabled !== false)
 
 const handleSend = (message, type, options) => {
   router.push({

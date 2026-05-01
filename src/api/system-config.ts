@@ -147,12 +147,100 @@ export interface SystemGenerationProgressSettingsConfig {
   stages: SystemGenerationProgressStageConfig[]
 }
 
+export interface SystemGlobalThemeSettingsConfig {
+  modePolicy: {
+    allowUserToggle: boolean
+    defaultMode: 'dark' | 'light' | 'system'
+    supportSystemMode: boolean
+  }
+  brandColors: {
+    primary: string
+    primaryHover: string
+    primaryActive: string
+    secondary: string
+    accent: string
+    success: string
+    warning: string
+    danger: string
+  }
+  gradients: {
+    primaryGradient: string
+    bannerGlow: string
+  }
+  surfaces: {
+    contentMaxWidth: number
+    cardRadius: number
+  }
+}
+
+export interface SystemHomeSideMenuItemConfig {
+  key: string
+  title: string
+  section: 'top' | 'center' | 'bottom'
+  iconSource: 'default' | 'custom'
+  iconType: 'system' | 'image'
+  icon: string
+  inactiveIconUrl: string
+  activeIconUrl: string
+  visible: boolean
+  badgeText: string
+  badgeTone: 'default' | 'primary' | 'success' | 'warning' | 'danger'
+  actionType: 'route' | 'url' | 'dialog' | 'none'
+  actionValue: string
+  sortOrder: number
+}
+
+export interface SystemHomeSideMenuSettingsConfig {
+  enabled: boolean
+  collapsedWidth: number
+  drawerWidth: number
+  drawerFloatLimitWidth: number
+  showTopMenu: boolean
+  showCenterMenu: boolean
+  showBottomMenu: boolean
+  items: SystemHomeSideMenuItemConfig[]
+}
+
+export interface SystemHomeLayoutHeaderConfig {
+  showSiteDescription: boolean
+  showTaskIndicator: boolean
+  showBanner: boolean
+}
+
+export interface SystemHomeBannerItemConfig {
+  key: string
+  title: string
+  subtitle: string
+  imageSource: 'default' | 'custom'
+  presetKey: string
+  imageUrl: string
+  backgroundImageUrl: string
+  mainImageUrl: string
+  overlayImageUrl: string
+  glowColor: string
+  actionType: 'route' | 'url' | 'none'
+  actionValue: string
+  visible: boolean
+  sortOrder: number
+}
+
+export interface SystemHomeLayoutSettingsConfig {
+  header: SystemHomeLayoutHeaderConfig
+  banner: {
+    enabled: boolean
+    items: SystemHomeBannerItemConfig[]
+  }
+}
+
 export interface SystemConfigPayload {
   siteInfo: SystemSiteInfoConfig
   policySettings: SystemPolicyConfig
   loginSettings: SystemLoginSettingsConfig
   generationProgressSettings: SystemGenerationProgressSettingsConfig
   conversationSettings: ConversationSettingsConfig
+  globalThemeSettings: SystemGlobalThemeSettingsConfig
+  homeSideMenuSettings: SystemHomeSideMenuSettingsConfig
+  homeLayoutSettings: SystemHomeLayoutSettingsConfig
 }
 
 // 创建默认会话配置，供前后台配置页面与公共设置复用。
@@ -245,6 +333,345 @@ export const createDefaultGenerationProgressSettings = (): SystemGenerationProgr
     { key: 'stopping', label: '停止中', percent: 98, showPercent: true, description: '任务已收到停止指令，正在收口状态' },
     { key: 'stopped', label: '已停止', percent: 100, showPercent: false, description: '任务已停止' },
   ],
+})
+
+export const createDefaultGlobalThemeSettings = (): SystemGlobalThemeSettingsConfig => ({
+  modePolicy: {
+    allowUserToggle: true,
+    defaultMode: 'dark',
+    supportSystemMode: true,
+  },
+  brandColors: {
+    primary: '#6f35ff',
+    primaryHover: '#5b28e6',
+    primaryActive: '#4c20c4',
+    secondary: '#00c2d6',
+    accent: '#ff7a59',
+    success: '#18b566',
+    warning: '#ffb020',
+    danger: '#f04438',
+  },
+  gradients: {
+    primaryGradient: 'linear-gradient(135deg, #6f35ff 0%, #ff7a59 100%)',
+    bannerGlow: '#2FE3FF',
+  },
+  surfaces: {
+    contentMaxWidth: 1440,
+    cardRadius: 20,
+  },
+})
+
+export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsConfig => ({
+  enabled: true,
+  collapsedWidth: 76,
+  drawerWidth: 440,
+  drawerFloatLimitWidth: 1280,
+  showTopMenu: true,
+  showCenterMenu: true,
+  showBottomMenu: true,
+  items: [
+    {
+      key: 'logo',
+      title: 'Logo',
+      section: 'top',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'logo',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'default',
+      actionType: 'route',
+      actionValue: '/',
+      sortOrder: 10,
+    },
+    {
+      key: 'home',
+      title: '灵感',
+      section: 'center',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'home',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'default',
+      actionType: 'route',
+      actionValue: '/',
+      sortOrder: 10,
+    },
+    {
+      key: 'generate',
+      title: '生成',
+      section: 'center',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'generate',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'primary',
+      actionType: 'route',
+      actionValue: '/generate',
+      sortOrder: 20,
+    },
+    {
+      key: 'asset',
+      title: '资产',
+      section: 'center',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'asset',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'default',
+      actionType: 'route',
+      actionValue: '/asset',
+      sortOrder: 30,
+    },
+    {
+      key: 'workflow',
+      title: '工作流',
+      section: 'center',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'workflow',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'default',
+      actionType: 'route',
+      actionValue: '/workflow',
+      sortOrder: 40,
+    },
+    {
+      key: 'account',
+      title: '账号',
+      section: 'center',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'account',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'default',
+      actionType: 'route',
+      actionValue: '/account',
+      sortOrder: 50,
+    },
+    {
+      key: 'publish',
+      title: '发布',
+      section: 'center',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'publish',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'default',
+      actionType: 'route',
+      actionValue: '/publish',
+      sortOrder: 60,
+    },
+    {
+      key: 'marketing',
+      title: '福利',
+      section: 'bottom',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'marketing',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'default',
+      actionType: 'dialog',
+      actionValue: 'marketing',
+      sortOrder: 10,
+    },
+    {
+      key: 'account-entry',
+      title: '登录',
+      section: 'bottom',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'account',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'default',
+      actionType: 'dialog',
+      actionValue: 'login',
+      sortOrder: 20,
+    },
+    {
+      key: 'notification',
+      title: '通知',
+      section: 'bottom',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'notification',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'default',
+      actionType: 'none',
+      actionValue: '',
+      sortOrder: 30,
+    },
+    {
+      key: 'app-download',
+      title: 'APP下载',
+      section: 'bottom',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'app-download',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'default',
+      actionType: 'none',
+      actionValue: '',
+      sortOrder: 40,
+    },
+    {
+      key: 'api-entry',
+      title: 'API',
+      section: 'bottom',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'api-entry',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'default',
+      actionType: 'none',
+      actionValue: '',
+      sortOrder: 50,
+    },
+    {
+      key: 'settings',
+      title: '设置',
+      section: 'bottom',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'settings',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'default',
+      actionType: 'none',
+      actionValue: '',
+      sortOrder: 60,
+    },
+  ],
+})
+
+export const createDefaultHomeLayoutSettings = (): SystemHomeLayoutSettingsConfig => ({
+  header: {
+    showSiteDescription: true,
+    showTaskIndicator: true,
+    showBanner: true,
+  },
+  banner: {
+    enabled: true,
+    items: [
+      {
+        key: 'motion',
+        title: '动作模仿',
+        subtitle: '响应更灵动',
+        imageSource: 'default',
+        presetKey: 'motion',
+        imageUrl: '',
+        backgroundImageUrl: '',
+        mainImageUrl: '',
+        overlayImageUrl: '',
+        glowColor: '#2FE3FF',
+        actionType: 'route',
+        actionValue: '/generate?type=motion',
+        visible: true,
+        sortOrder: 10,
+      },
+      {
+        key: 'image',
+        title: '图片生成',
+        subtitle: '智能美学提升',
+        imageSource: 'default',
+        presetKey: 'image',
+        imageUrl: '',
+        backgroundImageUrl: '',
+        mainImageUrl: '',
+        overlayImageUrl: '',
+        glowColor: '#00B1CC',
+        actionType: 'route',
+        actionValue: '/generate?type=image',
+        visible: true,
+        sortOrder: 20,
+      },
+      {
+        key: 'video',
+        title: '视频生成',
+        subtitle: '支持音画同出',
+        imageSource: 'default',
+        presetKey: 'video',
+        imageUrl: '',
+        backgroundImageUrl: '',
+        mainImageUrl: '',
+        overlayImageUrl: '',
+        glowColor: '#2197FF',
+        actionType: 'route',
+        actionValue: '/generate?type=video',
+        visible: true,
+        sortOrder: 30,
+      },
+      {
+        key: 'digital-human',
+        title: '数字人',
+        subtitle: '轻松生成数字分身',
+        imageSource: 'default',
+        presetKey: 'digital-human',
+        imageUrl: '',
+        backgroundImageUrl: '',
+        mainImageUrl: '',
+        overlayImageUrl: '',
+        glowColor: '#9B6BFF',
+        actionType: 'route',
+        actionValue: '/generate?type=digital-human',
+        visible: true,
+        sortOrder: 40,
+      },
+      {
+        key: 'agent',
+        title: 'Agent 模式',
+        subtitle: '多步骤智能创作',
+        imageSource: 'default',
+        presetKey: 'agent',
+        imageUrl: '',
+        backgroundImageUrl: '',
+        mainImageUrl: '',
+        overlayImageUrl: '',
+        glowColor: '#FFD057',
+        actionType: 'route',
+        actionValue: '/generate?type=agent',
+        visible: true,
+        sortOrder: 50,
+      },
+    ],
+  },
 })
 
 const SYSTEM_CONFIG_PUBLIC_API_PATH = '/api/system-config/public'

@@ -3,6 +3,7 @@ import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useMarketingCenterStore } from '@/stores/marketing-center'
 import { useMarketingModalStore } from '@/stores/marketing-modal'
+import { useThemePreferenceStore } from '@/stores/theme-preference'
 import SettingsModal from './SettingsModal.vue'
 
 const props = defineProps({
@@ -24,28 +25,18 @@ const authStore = useAuthStore()
 const marketingCenterStore = useMarketingCenterStore()
 const { openMarketingModal } = useMarketingModalStore()
 
-// 主题模式: 'light' | 'dark' | 'system'
-const themeMode = ref(localStorage.getItem('theme-mode') || 'dark')
+const themeStore = useThemePreferenceStore()
 const showThemeSubmenu = ref(false)
-
-// 获取系统主题
-const getSystemTheme = () => {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
-// 当前实际主题
-const currentTheme = computed(() => {
-  if (themeMode.value === 'system') {
-    return getSystemTheme()
-  }
-  return themeMode.value
-})
+const themeMode = computed(() => themeStore.themeMode.value)
+const allowUserToggle = computed(() => themeStore.allowUserToggle.value)
+const supportSystemMode = computed(() => themeStore.supportSystemMode.value)
 
 // 主题显示文本
 const themeLabel = computed(() => {
   const labels = { light: '浅色模式', dark: '深色模式', system: '跟随系统' }
   return labels[themeMode.value]
 })
+const systemThemeLabel = computed(() => themeStore.getSystemTheme() === 'dark' ? '深色' : '浅色')
 
 const marketingBalanceText = computed(() => {
   if (!authStore.isLoggedIn.value) {
@@ -61,25 +52,11 @@ const openMarketingEntry = () => {
   })
 }
 
-// 应用主题
-const applyTheme = (theme) => {
-  document.documentElement.setAttribute('data-theme', theme)
-}
-
 // 切换主题
 const setTheme = (mode) => {
-  themeMode.value = mode
-  localStorage.setItem('theme-mode', mode)
-  applyTheme(currentTheme.value)
+  themeStore.setThemeMode(mode)
   showThemeSubmenu.value = false
   showMenu.value = false
-}
-
-// 监听系统主题变化
-const handleSystemThemeChange = (e) => {
-  if (themeMode.value === 'system') {
-    applyTheme(e.matches ? 'dark' : 'light')
-  }
 }
 
 watch(() => props.title, (val) => {
@@ -135,16 +112,11 @@ const handleSettingsSave = (data) => {
 
 onMounted(() => {
   document.addEventListener('mousedown', closeMenu)
-  // 初始化主题
-  applyTheme(currentTheme.value)
-  // 监听系统主题变化
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', handleSystemThemeChange)
   void marketingCenterStore.loadOverview()
 })
 
 onUnmounted(() => {
   document.removeEventListener('mousedown', closeMenu)
-  window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', handleSystemThemeChange)
 })
 </script>
 
@@ -198,7 +170,8 @@ onUnmounted(() => {
                 <span>新建项目</span>
               </div>
               <!-- 深色模式 -->
-              <div 
+              <div
+                v-if="allowUserToggle"
                 class="menu-item has-submenu" 
                 @mouseenter="showThemeSubmenu = true"
                 @mouseleave="showThemeSubmenu = false"
@@ -241,12 +214,12 @@ onUnmounted(() => {
                       </svg>
                     </div>
                     <!-- 跟随系统 -->
-                    <div class="menu-item" @click="setTheme('system')">
+                    <div v-if="supportSystemMode" class="menu-item" @click="setTheme('system')">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                         <rect x="2" y="4" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/>
                         <path d="M8 21h8m-4-3v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                       </svg>
-                      <span>跟随系统 · {{ getSystemTheme() === 'dark' ? '深色' : '浅色' }}</span>
+                      <span>跟随系统 · {{ systemThemeLabel }}</span>
                       <svg v-if="themeMode === 'system'" class="check" width="16" height="16" viewBox="0 0 24 24" fill="none">
                         <path d="M5 12l5 5L20 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                       </svg>

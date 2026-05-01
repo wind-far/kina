@@ -4,7 +4,7 @@
       <div class="global-dreamina-container">
         <div id="dreamina" class="root_bf55f">
           <div class="top-down-layer">
-            <div class="container-moSF_y" style="--side-menu-width:76px">
+            <div class="container-moSF_y" :style="sideMenuStyleVars">
               <SideMenu />
 
               <div class="content-wrapper-OzVFU5">
@@ -275,6 +275,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import SideMenu from '@/components/home/components/SideMenu.vue'
 import HomeDetailModalFrom from '@/components/home/components/HomeDetailModalFrom.vue'
+import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
 import { applyAssetAction, listAssetItems, type PersistedAssetItem } from '@/api/asset-items'
 import { buildAssetUrl } from '@/api/http'
 import {
@@ -285,6 +286,8 @@ import {
 } from '@/components/home/discoverMasonryLayout'
 import { AUTH_LOGIN_SUCCESS_EVENT, useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
+
+const { sideMenuStyleVars } = useHomeSideMenuConfig()
 
 interface AccountFeedItem {
   id: string

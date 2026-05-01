@@ -1,9 +1,13 @@
 import { computed, ref } from 'vue'
 import {
   createDefaultConversationSettings,
+  createDefaultGlobalThemeSettings,
+  createDefaultHomeLayoutSettings,
+  createDefaultHomeSideMenuSettings,
   getPublicSystemConfig,
   type SystemConfigPayload,
 } from '@/api/system-config'
+import { applySystemThemeRuntime } from '@/utils/theme-runtime'
 
 const createDefaultSettings = (): SystemConfigPayload => ({
   siteInfo: {
@@ -48,6 +52,9 @@ const createDefaultSettings = (): SystemConfigPayload => ({
     ],
   },
   conversationSettings: createDefaultConversationSettings(),
+  globalThemeSettings: createDefaultGlobalThemeSettings(),
+  homeSideMenuSettings: createDefaultHomeSideMenuSettings(),
+  homeLayoutSettings: createDefaultHomeLayoutSettings(),
 })
 
 const publicSystemSettings = ref<SystemConfigPayload>(createDefaultSettings())
@@ -88,10 +95,20 @@ const syncSiteRuntime = (settings: SystemConfigPayload) => {
   favicon.href = iconUrl
 }
 
+const syncThemeRuntime = (settings: SystemConfigPayload) => {
+  applySystemThemeRuntime(settings)
+}
+
 const applyPublicSystemSettings = (settings?: SystemConfigPayload | null) => {
   publicSystemSettings.value = settings || createDefaultSettings()
   syncSiteRuntime(publicSystemSettings.value)
+  syncThemeRuntime(publicSystemSettings.value)
   return publicSystemSettings.value
+}
+
+if (typeof document !== 'undefined') {
+  syncSiteRuntime(publicSystemSettings.value)
+  syncThemeRuntime(publicSystemSettings.value)
 }
 
 export const useSystemSettingsStore = () => {

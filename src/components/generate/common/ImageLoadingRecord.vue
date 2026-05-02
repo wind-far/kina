@@ -5,28 +5,15 @@
       <div class="image-record">
         <!-- 头部：提示词和标签 -->
         <div class="record-header">
-          <div class="record-header-content">
-            <div class="prompt-suffix-labels-wrapper"
-                 style="--line-height:24px;--padding-top:4px">
-              <div class="prompt-suffix-labels"
-                   style="--line-height:24px;--padding-top:4px">
-                <div class="prompt-suffix-labels-content">
-                  <span class="prompt-P_8aF8">
-                    <span class="prompt-value-container-KCtKOf">
-                      <span>{{ prompt }}</span>
-                    </span>
-                  </span>
-                  <span class="labels" style="visibility:visible">
-                    <span class="label-lhnDlt">{{ model }}</span>
-                    <span v-if="feature" class="label-lhnDlt">{{ feature }}</span>
-                    <span class="label-lhnDlt">{{ ratio }}</span>
-                    <span class="label-lhnDlt">{{ resolution }}</span>
-                    <span v-if="duration" class="label-lhnDlt">{{ duration }}</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <RecordPromptReferenceHeader
+            :prompt="prompt"
+            :model="model"
+            :ratio="ratio"
+            :resolution="resolution"
+            :duration="duration"
+            :feature="feature"
+            :reference-images="referenceImages"
+          />
         </div>
         <div
           v-if="renderedConversationEntries.length"
@@ -257,6 +244,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted, type PropType } from 'vue'
 import loadingVideoUrl from '@/assets/animations/record-loading-animation.mp4'
+import RecordPromptReferenceHeader from './RecordPromptReferenceHeader.vue'
 
 /**
  * 图片生成阶段对话节点。
@@ -282,6 +270,8 @@ const props = defineProps({
   duration: { type: String, default: '' },
   /** 功能（视频模式） */
   feature: { type: String, default: '' },
+  /** 输入参考图 */
+  referenceImages: { type: Array as PropType<string[]>, default: () => [] },
   /** 生成图片数量 */
   count: { type: Number, default: 4 },
   /** 图片宽高比数值 */
@@ -492,23 +482,6 @@ onUnmounted(() => {
 
 <style scoped>
 @import "@/views/generate/components/generate-agent-record.css";
-
-/* 修正长提示词头部被绝对定位撑出后覆盖图片区的问题 */
-:deep(.record-header .record-header-content) {
-  align-items: flex-start;
-}
-
-:deep(.record-header .prompt-suffix-labels-wrapper) {
-  height: auto;
-  max-height: none;
-  min-height: calc(var(--line-height) * 2 + var(--padding-top) * 2);
-}
-
-:deep(.record-header .prompt-suffix-labels) {
-  max-height: none;
-  overflow: visible;
-  position: relative;
-}
 
 /* 加载动画覆盖层 */
 .loading-container-VeCJoq {

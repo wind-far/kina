@@ -19,6 +19,7 @@ export interface PersistedGenerationRecord {
   duration: string
   feature: string
   skill: string
+  referenceImages?: string[]
   done: boolean
   stopped?: boolean
   agentTaskId?: string
@@ -47,6 +48,7 @@ export interface GenerationRecordUpsertPayload {
   duration: string
   feature: string
   skill: string
+  referenceImages?: string[]
   done: boolean
   stopped?: boolean
   agentTaskId?: string

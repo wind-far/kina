@@ -268,16 +268,17 @@ const handleSubmit = () => {
   }
 
   // 触发发送事件
-  if (currentType.value === 'image' && imageToolbarRef.value) {
+  if (currentType.value === 'image') {
     const toolbar = imageToolbarRef.value
-    const sizeConfig = toolbar.currentSizeConfig()
-    emit('send', message, currentType.value, {
-      model: toolbar.currentModelLabel,
-      modelKey: toolbar.currentModelVersion,
-      ratio: toolbar.currentSize,
-      resolution: sizeConfig.quality,
+    const sizeConfig = toolbar?.currentSizeConfig?.()
+    const sendOptions = {
+      model: toolbar?.currentModelLabel || '',
+      modelKey: toolbar?.currentModelVersion || '',
+      ratio: toolbar?.currentSize || '',
+      resolution: sizeConfig?.quality || '',
       referenceImages: [...imageReferenceImages.value],
-    })
+    }
+    emit('send', message, currentType.value, sendOptions)
   } else if (currentType.value === 'video' && videoToolbarRef.value) {
     const toolbar = videoToolbarRef.value
     const sizeConfig = toolbar.getCurrentSizeConfig()

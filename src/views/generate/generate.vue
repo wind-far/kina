@@ -593,6 +593,7 @@ const toGenerationRecordPayload = (record: GeneratingRecord): GenerationRecordUp
   duration: record.duration,
   feature: record.feature,
   skill: record.skill,
+  referenceImages: record.referenceImages || [],
   done: record.done,
   stopped: Boolean(record.stopped),
   agentTaskId: record.agentTaskId,
@@ -636,6 +637,7 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
   duration: record.duration,
   feature: record.feature,
   skill: record.skill,
+  referenceImages: Array.isArray(record.referenceImages) ? [...record.referenceImages] : [],
   content: record.type === 'image'
     ? (record.content || (!record.done ? '[[queued]]任务已创建，等待服务端执行' : ''))
     : record.content,
@@ -679,6 +681,9 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
     ? 100
     : Math.max(record.progressPercent || 0, mapTaskStageToProgressPercent(record.progressStage))
   record.images = Array.isArray(saved.images) ? [...saved.images] : []
+  if (Array.isArray(saved.referenceImages)) {
+    record.referenceImages = [...saved.referenceImages]
+  }
   if (saved.agentRun) {
     record.agentRun = {
       ...saved.agentRun,
@@ -1051,6 +1056,7 @@ const handleSend = async (message: string, type: CreationType, options?: { model
       ? buildAgentPendingRun(recordId, message, options?.skill || 'general')
       : undefined,
   }
+
   generatingRecords.value.unshift(record)
   touchSessionAfterRecordCreated(activeSession.id)
 
@@ -1172,6 +1178,7 @@ const startImageGenerationTask = async (record: GeneratingRecord) => {
       duration: record.duration,
       feature: record.feature,
       skill: record.skill,
+      referenceImages: Array.isArray(record.referenceImages) ? [...record.referenceImages] : [],
       requestBody: data,
     })
 
@@ -1366,6 +1373,7 @@ onUnmounted(() => {
                                   :resolution="record.resolution"
                                   :duration="record.duration"
                                   :feature="record.feature"
+                                  :reference-images="record.referenceImages || []"
                                   :progress="record.progressPercent || 0"
                                   :progress-text="record.progressMessage || ''"
                                   :done="record.done"

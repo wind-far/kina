@@ -527,10 +527,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, type PropType } from 'vue'
+import { ref, watch, type PropType } from 'vue'
 import type {
   SystemConfigPayload,
   SystemHomeBannerItemConfig,
+  SystemHomeSideMenuGroupConfig,
   SystemHomeSideMenuItemConfig,
 } from '@/api/system-config'
 
@@ -539,6 +540,12 @@ const layoutTabs = [
   { key: 'layout-home-header', label: '核对首页头部' },
   { key: 'layout-home-banner', label: '处理 Banner 视觉' },
 ] as const
+
+type ExternalLayoutAction =
+  | { type: 'edit-menu-item', menuKey: string, stamp: number }
+  | { type: 'add-menu-item', stamp: number }
+  | { type: 'edit-banner-item', bannerKey: string, stamp: number }
+  | { type: 'add-banner-item', stamp: number }
 
 const activeSection = ref<(typeof layoutTabs)[number]['key']>('layout-side-menu')
 const menuItemDialogVisible = ref(false)
@@ -572,6 +579,10 @@ const props = defineProps({
   homeBannerStatus: {
     type: String,
     required: true,
+  },
+  menuGroups: {
+    type: Array as PropType<Array<SystemHomeSideMenuGroupConfig & { items?: SystemHomeSideMenuItemConfig[] }>>,
+    default: () => [],
   },
   onSubmit: {
     type: Function as PropType<() => void>,
@@ -613,13 +624,32 @@ const props = defineProps({
     type: Function as PropType<(index: number) => void>,
     required: true,
   },
+  activeLayoutSection: {
+    type: String as PropType<(typeof layoutTabs)[number]['key']>,
+    default: 'layout-side-menu',
+  },
+  externalAction: {
+    type: Object as PropType<ExternalLayoutAction | null>,
+    default: null,
+  },
 })
+
+watch(
+  () => props.activeLayoutSection,
+  value => {
+    if (value && layoutTabs.some(tab => tab.key === value)) {
+      activeSection.value = value
+    }
+  },
+  { immediate: true },
+)
 
 function createMenuItemDraft(item: SystemHomeSideMenuItemConfig): SystemHomeSideMenuItemConfig {
   return {
     key: item.key,
     title: item.title,
     section: item.section,
+    groupKey: item.groupKey,
     iconSource: item.iconSource,
     iconType: item.iconType,
     icon: item.icon,
@@ -650,7 +680,17 @@ function closeMenuItemDialog() {
 }
 
 function submitMenuItemDialog() {
-  if (editingMenuItemIndex.value < 0 || !editingMenuItemDraft.value) {
+  if (!editingMenuItemDraft.value) {
+    closeMenuItemDialog()
+    return
+  }
+
+  if (editingMenuItemIndex.value < 0) {
+    props.form.homeSideMenuSettings.items.push({
+      ...createMenuItemDraft(editingMenuItemDraft.value),
+      key: editingMenuItemDraft.value.key || `menu-${Date.now()}`,
+      title: editingMenuItemDraft.value.title || '新菜单',
+    })
     closeMenuItemDialog()
     return
   }
@@ -730,6 +770,66 @@ function submitBannerDialog() {
   Object.assign(target, createBannerDraft(editingBannerDraft.value))
   closeBannerDialog()
 }
+
+watch(
+  () => props.externalAction,
+  action => {
+    if (!action) {
+      return
+    }
+
+    if (action.type === 'edit-menu-item') {
+      activeSection.value = 'layout-side-menu'
+      const index = props.form.homeSideMenuSettings.items.findIndex(item => item.key === action.menuKey)
+      if (index >= 0) {
+        openMenuItemDialog(index)
+      }
+      return
+    }
+
+    if (action.type === 'add-menu-item') {
+      activeSection.value = 'layout-side-menu'
+      editingMenuItemIndex.value = -1
+      editingMenuItemDraft.value = {
+        key: '',
+        title: '',
+        section: 'center',
+        groupKey: props.menuGroups.find(group => group.section === 'center')?.key || '',
+        iconSource: 'default',
+        iconType: 'system',
+        icon: 'home',
+        inactiveIconUrl: '',
+        activeIconUrl: '',
+        visible: true,
+        badgeText: '',
+        badgeTone: 'default',
+        actionType: 'route',
+        actionValue: '',
+        sortOrder: (props.form.homeSideMenuSettings.items.length + 1) * 10,
+      }
+      menuItemDialogVisible.value = true
+      return
+    }
+
+    if (action.type === 'edit-banner-item') {
+      activeSection.value = 'layout-home-banner'
+      const index = props.form.homeLayoutSettings.banner.items.findIndex(item => item.key === action.bannerKey)
+      if (index >= 0) {
+        openBannerDialog(index)
+      }
+      return
+    }
+
+    if (action.type === 'add-banner-item') {
+      activeSection.value = 'layout-home-banner'
+      props.appendHomeBannerItem()
+      const index = props.form.homeLayoutSettings.banner.items.length - 1
+      if (index >= 0) {
+        openBannerDialog(index)
+      }
+    }
+  },
+)
 </script>
 
 <style scoped>

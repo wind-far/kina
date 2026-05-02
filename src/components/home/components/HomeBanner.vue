@@ -232,10 +232,46 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHomeLayoutConfig } from '@/composables/useHomeLayoutConfig'
+import type { SystemHomeBannerItemConfig } from '@/api/system-config'
+
+const props = withDefaults(defineProps<{
+  bannerItemsOverride?: SystemHomeBannerItemConfig[]
+  disableNavigation?: boolean
+}>(), {
+  bannerItemsOverride: () => [],
+  disableNavigation: false,
+})
 
 // 首页横幅组件：第一步仅接入后台配置逻辑，保留旧版默认模板结构。
 const router = useRouter()
-const { bannerItems, bannerGridStyle } = useHomeLayoutConfig()
+const { bannerItems: storeBannerItems, bannerGridStyle: storeBannerGridStyle } = useHomeLayoutConfig()
+
+const bannerItems = computed(() => {
+  if (props.bannerItemsOverride.length > 0) {
+    return [...props.bannerItemsOverride]
+      .filter(item => item.visible)
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+  }
+
+  return storeBannerItems.value
+})
+
+const bannerGridStyle = computed(() => {
+  if (props.bannerItemsOverride.length === 0) {
+    return storeBannerGridStyle.value
+  }
+
+  const itemCount = bannerItems.value.length
+  if (itemCount <= 1) {
+    return {
+      '--banner-grid': '1fr',
+    }
+  }
+
+  return {
+    '--banner-grid': `1.53fr repeat(${Math.max(0, itemCount - 1)}, 1fr)`,
+  }
+})
 
 const hasBannerItems = computed(() => {
   return bannerItems.value.length > 0
@@ -284,6 +320,10 @@ const getButtonStyle = (index: number, fallbackColor: string) => ({
 })
 
 const handleBannerClick = (index: number) => {
+  if (props.disableNavigation) {
+    return
+  }
+
   const currentItem = getBannerItem(index, '', '')
 
   if (!currentItem.actionValue) {

@@ -88,6 +88,11 @@ export const adminNavGroups: AdminNavGroup[] = [
         path: '/admin/layout',
         description: '单独维护导航布局、首页头部与 Banner 编排',
       },
+      {
+        label: '主题配置',
+        path: '/admin/theme',
+        description: '单独维护主题模式、品牌主色、渐变与界面尺寸',
+      },
     ],
   },
 ]

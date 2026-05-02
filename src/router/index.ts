@@ -19,6 +19,7 @@ const AdminSkills = () => import('../views/admin/skills/AdminSkills.vue')
 const AdminProviders = () => import('../views/admin/providers/AdminProviders.vue')
 const AdminStorage = () => import('../views/admin/storage/AdminStorage.vue')
 const AdminSystem = () => import('../views/admin/system/AdminSystem.vue')
+const AdminTheme = () => import('../views/admin/theme/AdminTheme.vue')
 const AdminUsers = () => import('../views/admin/users/AdminUsers.vue')
 const AdminAccessDenied = () => import('../views/admin/AdminAccessDenied.vue')
 
@@ -201,6 +202,15 @@ const routes: RouteRecordRaw[] = [
           requiresAuth: true,
           requiresAdmin: true,
           defaultSystemTab: 'layout',
+        },
+      },
+      {
+        path: 'theme',
+        name: 'AdminTheme',
+        component: AdminTheme,
+        meta: {
+          requiresAuth: true,
+          requiresAdmin: true,
         },
       },
     ],

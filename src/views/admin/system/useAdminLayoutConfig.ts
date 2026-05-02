@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type {
   SystemConfigPayload,
   SystemHomeBannerItemConfig,
+  SystemHomeSideMenuGroupConfig,
   SystemHomeSideMenuItemConfig,
 } from '@/api/system-config'
 
@@ -14,7 +15,44 @@ export const HOME_BANNER_PRESET_OPTIONS: Array<{ value: SystemHomeBannerItemConf
   { value: 'agent', label: 'Agent 默认图' },
 ]
 
+const DEFAULT_CENTER_GROUP_KEY = 'group-center-main'
+const DEFAULT_BOTTOM_GROUP_KEY = 'group-bottom-system'
+
+const createFallbackGroups = (): SystemHomeSideMenuGroupConfig[] => ([
+  {
+    key: DEFAULT_CENTER_GROUP_KEY,
+    title: '主菜单',
+    section: 'center',
+    visible: true,
+    sortOrder: 10,
+  },
+  {
+    key: DEFAULT_BOTTOM_GROUP_KEY,
+    title: '底部功能',
+    section: 'bottom',
+    visible: true,
+    sortOrder: 20,
+  },
+])
+
 export function useAdminLayoutConfig(systemForm: SystemConfigPayload) {
+  const ensureHomeSideMenuGroups = () => {
+    if (!Array.isArray(systemForm.homeSideMenuSettings.groups) || systemForm.homeSideMenuSettings.groups.length === 0) {
+      systemForm.homeSideMenuSettings.groups = createFallbackGroups()
+    }
+
+    systemForm.homeSideMenuSettings.items = systemForm.homeSideMenuSettings.items.map(item => ({
+      ...item,
+      groupKey: item.section === 'center'
+        ? (item.groupKey || DEFAULT_CENTER_GROUP_KEY)
+        : item.section === 'bottom'
+          ? (item.groupKey || DEFAULT_BOTTOM_GROUP_KEY)
+          : '',
+    }))
+  }
+
+  ensureHomeSideMenuGroups()
+
   const visibleHomeSideMenuCount = computed(() => {
     return systemForm.homeSideMenuSettings.items.filter(item => item.visible).length
   })
@@ -65,6 +103,18 @@ export function useAdminLayoutConfig(systemForm: SystemConfigPayload) {
     return `${switchText} · ${visibleHomeBannerCount.value}/${systemForm.homeLayoutSettings.banner.items.length} 可见 · 首屏三层图 ${primaryBannerLayerConfiguredCount.value}/3`
   })
 
+  const normalizedMenuGroups = computed(() => {
+    ensureHomeSideMenuGroups()
+    return [...systemForm.homeSideMenuSettings.groups]
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map(group => ({
+        ...group,
+        items: [...systemForm.homeSideMenuSettings.items]
+          .filter(item => item.section === group.section && item.groupKey === group.key)
+          .sort((left, right) => left.sortOrder - right.sortOrder),
+      }))
+  })
+
   const getMenuSectionLabel = (section: string) => {
     if (section === 'top') {
       return '顶部'
@@ -86,11 +136,45 @@ export function useAdminLayoutConfig(systemForm: SystemConfigPayload) {
   }
 
   const normalizeHomeSideMenuSortOrder = () => {
-    systemForm.homeSideMenuSettings.items = systemForm.homeSideMenuSettings.items.map((item, index) => ({
-      ...item,
-      iconType: item.iconSource === 'custom' ? 'image' : 'system',
-      sortOrder: (index + 1) * 10,
-    }))
+    ensureHomeSideMenuGroups()
+    systemForm.homeSideMenuSettings.groups = systemForm.homeSideMenuSettings.groups
+      .map((group, index) => ({
+        ...group,
+        sortOrder: (index + 1) * 10,
+      }))
+
+    const itemsByGroup = new Map<string, SystemHomeSideMenuItemConfig[]>()
+    for (const item of systemForm.homeSideMenuSettings.items) {
+      const list = itemsByGroup.get(item.groupKey) || []
+      list.push(item)
+      itemsByGroup.set(item.groupKey, list)
+    }
+
+    const normalizedItems: SystemHomeSideMenuItemConfig[] = []
+    const topItems = systemForm.homeSideMenuSettings.items
+      .filter(item => item.section === 'top')
+      .map((item, index): SystemHomeSideMenuItemConfig => ({
+        ...item,
+        groupKey: '',
+        iconType: item.iconSource === 'custom' ? 'image' : 'system',
+        sortOrder: (index + 1) * 10,
+      }))
+
+    normalizedItems.push(...topItems)
+
+    for (const group of [...systemForm.homeSideMenuSettings.groups].sort((left, right) => left.sortOrder - right.sortOrder)) {
+      const groupItems = (itemsByGroup.get(group.key) || [])
+        .map((item, index): SystemHomeSideMenuItemConfig => ({
+          ...item,
+          section: group.section,
+          groupKey: group.key,
+          iconType: item.iconSource === 'custom' ? 'image' : 'system',
+          sortOrder: (index + 1) * 10,
+        }))
+      normalizedItems.push(...groupItems)
+    }
+
+    systemForm.homeSideMenuSettings.items = normalizedItems
   }
 
   const moveHomeSideMenuItem = (index: number, offset: number) => {
@@ -103,6 +187,138 @@ export function useAdminLayoutConfig(systemForm: SystemConfigPayload) {
     const [currentItem] = nextItems.splice(index, 1)
     nextItems.splice(targetIndex, 0, currentItem)
     systemForm.homeSideMenuSettings.items = nextItems
+    normalizeHomeSideMenuSortOrder()
+  }
+
+  const moveMenuGroup = (groupKey: string, offset: number) => {
+    ensureHomeSideMenuGroups()
+    const index = systemForm.homeSideMenuSettings.groups.findIndex(group => group.key === groupKey)
+    const targetIndex = index + offset
+    if (index < 0 || targetIndex < 0 || targetIndex >= systemForm.homeSideMenuSettings.groups.length) {
+      return
+    }
+
+    const nextGroups = [...systemForm.homeSideMenuSettings.groups]
+    const [currentGroup] = nextGroups.splice(index, 1)
+    nextGroups.splice(targetIndex, 0, currentGroup)
+    systemForm.homeSideMenuSettings.groups = nextGroups
+    normalizeHomeSideMenuSortOrder()
+  }
+
+  const moveMenuItemWithinGroup = (groupKey: string, itemKey: string, offset: number) => {
+    const group = normalizedMenuGroups.value.find(item => item.key === groupKey)
+    if (!group) {
+      return
+    }
+
+    const index = group.items.findIndex(item => item.key === itemKey)
+    const targetIndex = index + offset
+    if (index < 0 || targetIndex < 0 || targetIndex >= group.items.length) {
+      return
+    }
+
+    const nextItems = [...group.items]
+    const [currentItem] = nextItems.splice(index, 1)
+    nextItems.splice(targetIndex, 0, currentItem)
+
+    const reorderedGroupItems = nextItems.map((item, itemIndex): SystemHomeSideMenuItemConfig => ({
+      ...item,
+      sortOrder: (itemIndex + 1) * 10,
+      section: group.section,
+      groupKey: group.key,
+      iconType: item.iconSource === 'custom' ? 'image' : 'system',
+    }))
+
+    const untouchedItems = systemForm.homeSideMenuSettings.items.filter(item => item.groupKey !== groupKey)
+    systemForm.homeSideMenuSettings.items = [...untouchedItems, ...reorderedGroupItems]
+  }
+
+  const reorderMenuItemWithinGroup = (
+    groupKey: string,
+    sourceItemKey: string,
+    targetItemKey: string,
+    position: 'before' | 'after' = 'before',
+  ) => {
+    const group = normalizedMenuGroups.value.find(item => item.key === groupKey)
+    if (!group) {
+      return
+    }
+
+    const sourceIndex = group.items.findIndex(item => item.key === sourceItemKey)
+    const targetIndex = group.items.findIndex(item => item.key === targetItemKey)
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+      return
+    }
+
+    const nextItems = [...group.items]
+    const [currentItem] = nextItems.splice(sourceIndex, 1)
+    const adjustedTargetIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex
+    const insertIndex = position === 'after' ? adjustedTargetIndex + 1 : adjustedTargetIndex
+    nextItems.splice(insertIndex, 0, currentItem)
+
+    const reorderedGroupItems = nextItems.map((item, itemIndex): SystemHomeSideMenuItemConfig => ({
+      ...item,
+      sortOrder: (itemIndex + 1) * 10,
+      section: group.section,
+      groupKey: group.key,
+      iconType: item.iconSource === 'custom' ? 'image' : 'system',
+    }))
+
+    const untouchedItems = systemForm.homeSideMenuSettings.items.filter(item => item.groupKey !== groupKey)
+    systemForm.homeSideMenuSettings.items = [...untouchedItems, ...reorderedGroupItems]
+  }
+
+  const appendMenuGroup = (section: 'center' | 'bottom') => {
+    ensureHomeSideMenuGroups()
+    const nextIndex = systemForm.homeSideMenuSettings.groups.filter(group => group.section === section).length + 1
+    systemForm.homeSideMenuSettings.groups.push({
+      key: `group-${section}-${Date.now()}`,
+      title: section === 'center' ? `主菜单组 ${nextIndex}` : `底部功能组 ${nextIndex}`,
+      section,
+      visible: true,
+      sortOrder: systemForm.homeSideMenuSettings.groups.length * 10 + 10,
+    })
+    normalizeHomeSideMenuSortOrder()
+  }
+
+  const updateMenuGroup = (groupKey: string, payload: Partial<SystemHomeSideMenuGroupConfig>) => {
+    const target = systemForm.homeSideMenuSettings.groups.find(group => group.key === groupKey)
+    if (!target) {
+      return
+    }
+
+    Object.assign(target, payload)
+    normalizeHomeSideMenuSortOrder()
+  }
+
+  const removeMenuGroup = (groupKey: string) => {
+    if (systemForm.homeSideMenuSettings.groups.length <= 1) {
+      ElMessage.warning('至少保留一个导航分组')
+      return
+    }
+
+    const target = systemForm.homeSideMenuSettings.groups.find(group => group.key === groupKey)
+    if (!target) {
+      return
+    }
+
+    const fallbackGroup = systemForm.homeSideMenuSettings.groups.find(group => group.section === target.section && group.key !== groupKey)
+    if (!fallbackGroup) {
+      ElMessage.warning(`请先在${getMenuSectionLabel(target.section)}创建至少一个备用分组`)
+      return
+    }
+
+    systemForm.homeSideMenuSettings.items = systemForm.homeSideMenuSettings.items.map(item => {
+      if (item.groupKey === groupKey) {
+        return {
+          ...item,
+          groupKey: fallbackGroup.key,
+          section: fallbackGroup.section,
+        }
+      }
+      return item
+    })
+    systemForm.homeSideMenuSettings.groups = systemForm.homeSideMenuSettings.groups.filter(group => group.key !== groupKey)
     normalizeHomeSideMenuSortOrder()
   }
 
@@ -216,9 +432,17 @@ export function useAdminLayoutConfig(systemForm: SystemConfigPayload) {
     homeSideMenuItemsStatus,
     homeHeaderStatus,
     homeBannerStatus,
+    normalizedMenuGroups,
+    ensureHomeSideMenuGroups,
     getMenuSectionLabel,
     scrollToLayoutSection,
     moveHomeSideMenuItem,
+    moveMenuGroup,
+    moveMenuItemWithinGroup,
+    reorderMenuItemWithinGroup,
+    appendMenuGroup,
+    updateMenuGroup,
+    removeMenuGroup,
     triggerMenuIconUpload,
     handleMenuIconFileChange,
     clearMenuIcon,

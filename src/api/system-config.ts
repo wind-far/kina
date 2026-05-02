@@ -177,6 +177,7 @@ export interface SystemHomeSideMenuItemConfig {
   key: string
   title: string
   section: 'top' | 'center' | 'bottom'
+  groupKey: string
   iconSource: 'default' | 'custom'
   iconType: 'system' | 'image'
   icon: string
@@ -190,6 +191,14 @@ export interface SystemHomeSideMenuItemConfig {
   sortOrder: number
 }
 
+export interface SystemHomeSideMenuGroupConfig {
+  key: string
+  title: string
+  section: 'center' | 'bottom'
+  visible: boolean
+  sortOrder: number
+}
+
 export interface SystemHomeSideMenuSettingsConfig {
   enabled: boolean
   collapsedWidth: number
@@ -198,6 +207,7 @@ export interface SystemHomeSideMenuSettingsConfig {
   showTopMenu: boolean
   showCenterMenu: boolean
   showBottomMenu: boolean
+  groups: SystemHomeSideMenuGroupConfig[]
   items: SystemHomeSideMenuItemConfig[]
 }
 
@@ -369,11 +379,28 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
   showTopMenu: true,
   showCenterMenu: true,
   showBottomMenu: true,
+  groups: [
+    {
+      key: 'group-center-main',
+      title: '主菜单',
+      section: 'center',
+      visible: true,
+      sortOrder: 10,
+    },
+    {
+      key: 'group-bottom-system',
+      title: '底部功能',
+      section: 'bottom',
+      visible: true,
+      sortOrder: 20,
+    },
+  ],
   items: [
     {
       key: 'logo',
       title: 'Logo',
       section: 'top',
+      groupKey: '',
       iconSource: 'default',
       iconType: 'system',
       icon: 'logo',
@@ -390,6 +417,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       key: 'home',
       title: '灵感',
       section: 'center',
+      groupKey: 'group-center-main',
       iconSource: 'default',
       iconType: 'system',
       icon: 'home',
@@ -406,6 +434,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       key: 'generate',
       title: '生成',
       section: 'center',
+      groupKey: 'group-center-main',
       iconSource: 'default',
       iconType: 'system',
       icon: 'generate',
@@ -422,6 +451,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       key: 'asset',
       title: '资产',
       section: 'center',
+      groupKey: 'group-center-main',
       iconSource: 'default',
       iconType: 'system',
       icon: 'asset',
@@ -438,6 +468,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       key: 'workflow',
       title: '工作流',
       section: 'center',
+      groupKey: 'group-center-main',
       iconSource: 'default',
       iconType: 'system',
       icon: 'workflow',
@@ -454,6 +485,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       key: 'account',
       title: '账号',
       section: 'center',
+      groupKey: 'group-center-main',
       iconSource: 'default',
       iconType: 'system',
       icon: 'account',
@@ -470,6 +502,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       key: 'publish',
       title: '发布',
       section: 'center',
+      groupKey: 'group-center-main',
       iconSource: 'default',
       iconType: 'system',
       icon: 'publish',
@@ -486,6 +519,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       key: 'marketing',
       title: '福利',
       section: 'bottom',
+      groupKey: 'group-bottom-system',
       iconSource: 'default',
       iconType: 'system',
       icon: 'marketing',
@@ -502,6 +536,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       key: 'account-entry',
       title: '登录',
       section: 'bottom',
+      groupKey: 'group-bottom-system',
       iconSource: 'default',
       iconType: 'system',
       icon: 'account',
@@ -518,6 +553,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       key: 'notification',
       title: '通知',
       section: 'bottom',
+      groupKey: 'group-bottom-system',
       iconSource: 'default',
       iconType: 'system',
       icon: 'notification',
@@ -534,6 +570,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       key: 'app-download',
       title: 'APP下载',
       section: 'bottom',
+      groupKey: 'group-bottom-system',
       iconSource: 'default',
       iconType: 'system',
       icon: 'app-download',
@@ -550,6 +587,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       key: 'api-entry',
       title: 'API',
       section: 'bottom',
+      groupKey: 'group-bottom-system',
       iconSource: 'default',
       iconType: 'system',
       icon: 'api-entry',
@@ -566,6 +604,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       key: 'settings',
       title: '设置',
       section: 'bottom',
+      groupKey: 'group-bottom-system',
       iconSource: 'default',
       iconType: 'system',
       icon: 'settings',

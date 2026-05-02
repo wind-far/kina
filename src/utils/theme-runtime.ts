@@ -40,9 +40,17 @@ const clearCssVar = (name: string) => {
 }
 
 const applyBrandColors = (settings: SystemGlobalThemeSettingsConfig) => {
+  const backgrounds = settings.backgrounds
   const brandColors = settings.brandColors
   const gradients = settings.gradients
   const surfaces = settings.surfaces
+
+  setCssVar('--theme-page-background', backgrounds.page)
+  setCssVar('--theme-surface-background', backgrounds.surface)
+  setCssVar('--theme-side-menu-background', backgrounds.sideMenu)
+  setCssVar('--bg-body', backgrounds.page)
+  setCssVar('--bg-surface', backgrounds.surface)
+  setCssVar('--bg-float', backgrounds.surface)
 
   setCssVar('--brand-main-default', brandColors.primary)
   setCssVar('--brand-main-hover', brandColors.primaryHover)
@@ -90,6 +98,12 @@ export const resetSystemThemeRuntime = () => {
     '--brand-main-default',
     '--brand-main-hover',
     '--brand-main-pressed',
+    '--theme-page-background',
+    '--theme-surface-background',
+    '--theme-side-menu-background',
+    '--bg-body',
+    '--bg-surface',
+    '--bg-float',
     '--brand-main-block-default',
     '--brand-main-block-hover',
     '--brand-main-block-pressed',

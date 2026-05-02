@@ -5,7 +5,12 @@
         v-if="marketingItem"
         tabindex="0"
         role="menuitem"
-        class="lv-menu-item lv-menu-item-size-default credit-display-menu-container"
+        :class="[
+          'lv-menu-item',
+          'lv-menu-item-size-default',
+          'credit-display-menu-container',
+          { 'is-hidden-item': marketingItem.visible === false },
+        ]"
         id="SiderMenuCredit"
         @click="openMarketingEntry"
       >
@@ -26,7 +31,11 @@
         v-if="accountEntryItem && !isLoggedIn"
         tabindex="0"
         role="menuitem"
-        class="lv-menu-item lv-menu-item-size-default"
+        :class="[
+          'lv-menu-item',
+          'lv-menu-item-size-default',
+          { 'is-hidden-item': accountEntryItem.visible === false },
+        ]"
         id="SiderMenuLogin"
         @click="openLoginModal('bottom-menu')"
       >
@@ -41,7 +50,14 @@
         v-if="accountEntryItem && isLoggedIn"
         tabindex="0"
         role="menuitem"
-        :class="['lv-menu-item', 'lv-menu-item-size-default', { 'lv-menu-selected': currentPath === '/account' }]"
+        :class="[
+          'lv-menu-item',
+          'lv-menu-item-size-default',
+          {
+            'lv-menu-selected': currentPath === '/account',
+            'is-hidden-item': accountEntryItem.visible === false,
+          },
+        ]"
         id="Personal"
         @click="navigateToAccount"
       >
@@ -65,7 +81,14 @@
         :key="item.key"
         tabindex="0"
         role="menuitem"
-        :class="['lv-menu-item', 'lv-menu-item-size-default', { 'lv-menu-selected': isBottomItemActive(item) }]"
+        :class="[
+          'lv-menu-item',
+          'lv-menu-item-size-default',
+          {
+            'lv-menu-selected': isBottomItemActive(item),
+            'is-hidden-item': item.visible === false,
+          },
+        ]"
         :id="resolveMenuItemId(item.key)"
         @click="handleBottomItemClick(item)"
       >
@@ -109,27 +132,56 @@ import { useMarketingCenterStore } from '@/stores/marketing-center'
 import { useMarketingModalStore } from '@/stores/marketing-modal'
 import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
 import HomeSideMenuIcon from './HomeSideMenuIcon.vue'
+import type { SystemConfigPayload } from '@/api/system-config'
+
+const props = withDefaults(defineProps<{
+  systemSettingsOverride?: SystemConfigPayload | null
+  activeMenuKeyOverride?: string
+  activePathOverride?: string
+  previewReadonly?: boolean
+  loginStateOverride?: boolean | null
+  marketingPointsTextOverride?: string
+  avatarSrcOverride?: string
+  includeHiddenItems?: boolean
+}>(), {
+  systemSettingsOverride: null,
+  activeMenuKeyOverride: '',
+  activePathOverride: '',
+  previewReadonly: false,
+  loginStateOverride: null,
+  marketingPointsTextOverride: '',
+  avatarSrcOverride: '',
+  includeHiddenItems: false,
+})
 
 const EMPTY_AVATAR_DATA_URI = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' rx='100' fill='%23E5E7EB'/%3E%3Ccircle cx='100' cy='76' r='30' fill='%239CA3AF'/%3E%3Cpath d='M52 154c8-24 28-38 48-38s40 14 48 38' fill='%239CA3AF'/%3E%3C/svg%3E"
 
 const authStore = useAuthStore()
-const isLoggedIn = authStore.isLoggedIn
+const isLoggedIn = computed(() => props.loginStateOverride ?? authStore.isLoggedIn.value)
 const loginButtonText = authStore.loginButtonText
 const { openLoginModal } = useLoginModalStore()
 const { openMarketingModal, isVisible: marketingModalVisible } = useMarketingModalStore()
 const marketingCenterStore = useMarketingCenterStore()
-const { bottomItems, sideMenuSettings } = useHomeSideMenuConfig()
+const overrideSideMenuSettings = computed(() => props.systemSettingsOverride?.homeSideMenuSettings || null)
+const { bottomItems, sideMenuSettings } = useHomeSideMenuConfig({
+  settingsOverride: overrideSideMenuSettings,
+  includeHidden: props.includeHiddenItems,
+})
 
 const router = useRouter()
 const route = useRoute()
-const currentPath = computed(() => route.path)
+const currentPath = computed(() => props.activePathOverride || route.path)
 
 const resolvedAvatarSrc = computed(() => {
-  return authStore.currentUser.value?.avatarUrl || EMPTY_AVATAR_DATA_URI
+  return props.avatarSrcOverride || authStore.currentUser.value?.avatarUrl || EMPTY_AVATAR_DATA_URI
 })
 
 const marketingPointsText = computed(() => {
-  if (!authStore.isLoggedIn.value) {
+  if (props.marketingPointsTextOverride) {
+    return props.marketingPointsTextOverride
+  }
+
+  if (!isLoggedIn.value) {
     return '福利'
   }
   return String(marketingCenterStore.pointsBalance.value || 0)
@@ -162,18 +214,29 @@ const resolveBottomContainerClass = (key: string) => {
 }
 
 const openMarketingEntry = () => {
+  if (props.previewReadonly) {
+    return
+  }
+
   openMarketingModal({
     source: 'bottom-menu',
-    tab: authStore.isLoggedIn.value ? 'recharge' : 'membership',
+    tab: isLoggedIn.value ? 'recharge' : 'membership',
   })
 }
 
 onMounted(() => {
+  if (props.previewReadonly) {
+    return
+  }
   void marketingCenterStore.loadOverview()
 })
 
 const navigateToAccount = () => {
-  if (!authStore.isLoggedIn.value) {
+  if (props.previewReadonly) {
+    return
+  }
+
+  if (!isLoggedIn.value) {
     openLoginModal('account-entry')
     return
   }
@@ -182,6 +245,10 @@ const navigateToAccount = () => {
 }
 
 const handleBottomItemClick = (item: { actionType: string; actionValue: string }) => {
+  if (props.previewReadonly) {
+    return
+  }
+
   if (item.actionType === 'route' && item.actionValue) {
     void router.push(item.actionValue)
     return
@@ -198,6 +265,10 @@ const handleBottomItemClick = (item: { actionType: string; actionValue: string }
 }
 
 const isBottomItemActive = (item: { key: string; actionType: string; actionValue: string }) => {
+  if (props.activeMenuKeyOverride) {
+    return props.activeMenuKeyOverride === item.key
+  }
+
   if (item.actionType === 'route' && item.actionValue) {
     return currentPath.value === item.actionValue
   }

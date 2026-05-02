@@ -1,33 +1,16 @@
 <template>
-  <AdminPageContainer title="主题配置" description="在后台统一控制前台首页、前台交互、前台反馈状态和前台页面骨架。">
-    <template #actions>
-      <button
-        class="admin-button admin-button--secondary"
-        type="button"
-        :disabled="loading || saving"
-        @click="resetThemeSettings"
-      >
-        恢复默认
-      </button>
-      <button
-        class="admin-button admin-button--primary"
-        type="button"
-        :disabled="loading || saving"
-        @click="handleSave"
-      >
-        {{ saving ? '保存中...' : '保存主题配置' }}
-      </button>
-    </template>
-
+  <AdminPageContainer description="">
     <div class="admin-theme-page">
       <div v-if="loading" class="admin-empty admin-theme-loading">正在加载主题配置...</div>
 
       <template v-else>
         <section class="admin-theme-shell admin-card">
           <AdminThemeWorkbenchTopbar
-            :preview-mode="previewMode"
-            :preview-mode-options="previewModeOptions"
-            @update:preview-mode="previewMode = $event"
+            :preview-theme-class="previewThemeClass"
+            :loading="loading"
+            :saving="saving"
+            @reset="resetThemeSettings"
+            @save="handleSave"
           />
 
           <div
@@ -52,11 +35,14 @@
               :preview-secondary-banners="previewSecondaryBanners"
               :toggle-menu-visibility="toggleMenuItemVisible"
               :apply-menu-reorder="handlePreviewMenuReorder"
+              :active-theme-section-id="activeThemeSectionId"
+              :active-theme-field-id="activeThemeFieldId"
               @menu-action="handlePreviewMenuAction"
               @menu-reorder="handlePreviewMenuReorder"
               @content-block-action="handleWorkbenchContentAction"
               @banner-item-action="handleBannerItemAction"
               @banner-item-reorder="handleBannerItemReorder"
+              @theme-section-select="handleThemeSectionSelect"
             />
 
             <AdminThemeConfigRail
@@ -74,7 +60,11 @@
                   :action-color-fields="actionColorFields"
                   :accent-color-fields="accentColorFields"
                   :status-color-fields="statusColorFields"
+                  :active-preview-section="activeThemeSectionId"
+                  :active-preview-field="activeThemeFieldId"
                   @scroll-to-section="scrollToSection"
+                  @preview-focus-change="activeThemeSectionId = $event"
+                  @preview-field-change="activeThemeFieldId = $event"
                 />
               </template>
 
@@ -165,14 +155,16 @@ import {
   type SystemConfigPayload,
 } from '@/api/system-config'
 import { useSystemSettingsStore } from '@/stores/system-settings'
+import { useThemePreferenceStore } from '@/stores/theme-preference'
 import type { WorkbenchMenuActionKey } from '@/views/admin/theme/components/AdminThemeWorkbenchItemActions.vue'
 import type { WorkbenchContentBlockKey } from '@/views/admin/theme/components/AdminThemeFrontHomeHeaderPreview.vue'
 
 const loading = ref(false)
 const saving = ref(false)
-const previewMode = ref<'dark' | 'light'>('dark')
 const configPanelCollapsed = ref(false)
 const activeConfigTab = ref<'theme' | 'layout'>('theme')
+const activeThemeSectionId = ref<string | null>(null)
+const activeThemeFieldId = ref<string | null>(null)
 const activeLayoutSection = ref<'layout-side-menu' | 'layout-home-header' | 'layout-home-banner'>('layout-side-menu')
 const workbenchContentDialogVisible = ref(false)
 const editingWorkbenchContentDraft = ref<WorkbenchContentDialogDraft | null>(null)
@@ -186,6 +178,7 @@ const externalLayoutAction = ref<
   | null
 >(null)
 const { applyPublicSystemSettings } = useSystemSettingsStore()
+const themeStore = useThemePreferenceStore()
 
 const configTabs = [
   { key: 'theme', label: '主题配置', desc: '颜色、骨架、模式' },
@@ -194,6 +187,7 @@ const configTabs = [
 
 const sectionIds = {
   banner: 'theme-section-banner',
+  background: 'theme-section-background',
   action: 'theme-section-action',
   status: 'theme-section-status',
   surface: 'theme-section-surface',
@@ -202,15 +196,11 @@ const sectionIds = {
 
 const sectionSummaries = [
   { key: sectionIds.banner, title: '首页 Banner', desc: '控制前台首页首屏气质', areas: ['首页首屏', 'Banner 卡片'] },
+  { key: sectionIds.background, title: '页面背景', desc: '控制页面底色、输入面板与侧栏底色', areas: ['首页大背景', '输入面板', '左侧导航'] },
   { key: sectionIds.action, title: '按钮与交互', desc: '控制主按钮、次按钮和标签', areas: ['首页 CTA', '创作按钮', '工作流操作'] },
   { key: sectionIds.status, title: '状态反馈', desc: '控制成功、处理中和失败状态', areas: ['成功反馈', '处理中', '失败提醒'] },
   { key: sectionIds.surface, title: '页面骨架', desc: '控制内容宽度与卡片圆角', areas: ['首页内容区', '创作卡片'] },
   { key: sectionIds.mode, title: '主题模式', desc: '控制前台深浅主题策略', areas: ['全局主题', '用户切换'] },
-] as const
-
-const previewModeOptions = [
-  { value: 'dark', label: '深色预览' },
-  { value: 'light', label: '浅色预览' },
 ] as const
 
 const actionColorFields = [
@@ -229,6 +219,18 @@ const statusColorFields = [
   { key: 'warning', label: '警告色', placeholder: '#ffb020' },
   { key: 'danger', label: '错误色', placeholder: '#f04438' },
 ] as const
+
+const DEFAULT_DARK_BACKGROUNDS = {
+  page: '#0f0f12',
+  surface: '#15161a',
+  sideMenu: '#111218',
+} as const
+
+const DEFAULT_LIGHT_BACKGROUNDS = {
+  page: '#f8f9fa',
+  surface: '#ffffff',
+  sideMenu: '#ffffff',
+} as const
 
 const createDefaultSystemForm = (): SystemConfigPayload => ({
   siteInfo: {
@@ -290,12 +292,9 @@ const previewSurfaceCardStyle = computed(() => ({
 }))
 
 const previewSidebarWidth = computed(() => {
-  const baseWidth = Math.min(Math.max(systemForm.homeSideMenuSettings.drawerWidth, 180), 240)
-  const actionSafeWidth = Math.min(
-    Math.max(systemForm.homeSideMenuSettings.collapsedWidth + 188, 260),
-    320,
-  )
-  return Math.max(baseWidth, actionSafeWidth)
+  const collapsedWidth = Math.max(systemForm.homeSideMenuSettings.collapsedWidth, 0)
+  const horizontalPadding = 16
+  return Math.min(Math.max(collapsedWidth + horizontalPadding, 92), 120)
 })
 
 const previewSidebarStyle = computed(() => ({
@@ -349,12 +348,68 @@ const previewPrimaryBanner = computed(() => previewVisibleBanners.value[0] || nu
 const previewSecondaryBanners = computed(() => previewVisibleBanners.value.slice(1, 4))
 
 const previewThemeClass = computed(() => {
-  return previewMode.value === 'light' ? 'is-light' : 'is-dark'
+  return themeStore.currentTheme.value === 'light' ? 'is-light' : 'is-dark'
+})
+
+const previewResolvedBackgrounds = computed(() => {
+  const backgrounds = systemForm.globalThemeSettings.backgrounds
+
+  if (themeStore.currentTheme.value !== 'light') {
+    return backgrounds
+  }
+
+  return {
+    page: backgrounds.page === DEFAULT_DARK_BACKGROUNDS.page
+      ? DEFAULT_LIGHT_BACKGROUNDS.page
+      : backgrounds.page,
+    surface: backgrounds.surface === DEFAULT_DARK_BACKGROUNDS.surface
+      ? DEFAULT_LIGHT_BACKGROUNDS.surface
+      : backgrounds.surface,
+    sideMenu: backgrounds.sideMenu === DEFAULT_DARK_BACKGROUNDS.sideMenu
+      ? DEFAULT_LIGHT_BACKGROUNDS.sideMenu
+      : backgrounds.sideMenu,
+  }
 })
 
 const previewThemeVars = computed(() => {
   const theme = systemForm.globalThemeSettings
+  const backgrounds = previewResolvedBackgrounds.value
+  const isLight = themeStore.currentTheme.value === 'light'
+
   return {
+    '--bg-body': backgrounds.page,
+    '--bg-surface': backgrounds.surface,
+    '--bg-float': backgrounds.surface,
+    '--bg-muted': isLight ? '#f1f2f3' : '#1c1e22',
+    '--theme-page-background': backgrounds.page,
+    '--theme-surface-background': backgrounds.surface,
+    '--theme-side-menu-background': backgrounds.sideMenu,
+    '--bg-dropdown-menu': isLight ? '#ffffff' : '#1c1e22',
+    '--canvas-bg': isLight ? '#f1f2f3' : backgrounds.page,
+    '--canvas-sidebar-bg': isLight ? backgrounds.sideMenu : backgrounds.page,
+    '--text-primary': isLight ? '#0f1419' : '#f5fbff',
+    '--text-secondary': isLight ? '#536471' : '#e0f5ff99',
+    '--text-tertiary': isLight ? '#72808a' : '#e0f5ff7a',
+    '--text-placeholder': isLight ? '#536471a3' : '#e0f5ff59',
+    '--text-disabled': isLight ? '#5364715c' : '#e0f5ff33',
+    '--text-link': '#3686ad',
+    '--stroke-primary': isLight ? '#00000012' : '#ccddff1a',
+    '--stroke-secondary': isLight ? '#0000000d' : '#ccddff0f',
+    '--stroke-tertiary': isLight ? '#00000008' : '#ccddff14',
+    '--line-divider': isLight ? 'rgba(15, 20, 25, 0.12)' : 'rgba(224, 245, 255, 0.16)',
+    '--bg-block-primary-default': isLight ? '#0000000d' : '#ccddff14',
+    '--bg-block-primary-hover': isLight ? '#00000012' : '#ccddff1f',
+    '--bg-block-primary-pressed': isLight ? '#0000001a' : '#ccddff29',
+    '--bg-block-secondary-default': isLight ? '#00000008' : '#ccddff0a',
+    '--bg-block-secondary-hover': isLight ? '#0000000d' : '#ccddff14',
+    '--bg-block-secondary-pressed': isLight ? '#00000012' : '#ccddff1f',
+    '--component-input-bg': isLight ? '#ffffffeb' : '#202127b8',
+    '--component-input-bg-tab': isLight ? '#0000000d' : '#0000004d',
+    '--component-secondary-button-bg-default': isLight ? '#0000000d' : '#ccddff14',
+    '--component-secondary-button-bg-hover': isLight ? '#00000012' : '#ccddff1f',
+    '--component-secondary-button-bg-pressed': isLight ? '#0000001a' : '#ccddff29',
+    '--component-secondary-button-text-default': isLight ? '#0f1419' : '#f5fbff',
+    '--component-secondary-button-text-disabled': isLight ? '#a5acb8' : '#e0f5ff33',
     '--brand-main-default': theme.brandColors.primary,
     '--brand-main-hover': theme.brandColors.primaryHover,
     '--brand-main-pressed': theme.brandColors.primaryActive,
@@ -370,9 +425,14 @@ const previewThemeVars = computed(() => {
 const scrollToSection = async (id: string) => {
   activeConfigTab.value = 'theme'
   configPanelCollapsed.value = false
+  activeThemeSectionId.value = id
   await nextTick()
   const el = document.getElementById(id)
   el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+const handleThemeSectionSelect = (sectionId: string) => {
+  void scrollToSection(sectionId)
 }
 
 const handlePreviewMenuAction = ({ action, menuKey }: { action: WorkbenchMenuActionKey, menuKey: string }) => {

@@ -1,6 +1,25 @@
 <template>
   <div class="admin-theme-front-menu-preview" :style="styleVars">
-    <div class="admin-theme-front-menu-preview__frame sideMenu dreamina-side-menu-container side-menu visible-DXQYqc">
+    <div
+      class="admin-theme-front-menu-preview__frame sideMenu dreamina-side-menu-container side-menu visible-DXQYqc"
+      :class="{
+        'is-secondary-linked': activeThemeFieldId === 'secondary',
+        'is-background-linked': activeThemeFieldId === 'sideMenuBackground',
+      }"
+    >
+      <div class="admin-theme-front-menu-preview__visual-layer">
+        <SideMenu
+          :system-settings-override="previewSystemSettings"
+          :active-menu-key-override="activeMenuKey"
+          :include-hidden-items="true"
+          preview-readonly
+          :login-state-override="true"
+          marketing-points-text-override="105"
+          avatar-src-override=""
+        />
+      </div>
+
+      <div class="admin-theme-front-menu-preview__overlay-layer">
       <div v-if="showTopMenu && topItem" role="menu" class="lv-menu lv-menu-light lv-menu-vertical topMenu">
         <div class="lv-menu-inner">
         <div
@@ -164,6 +183,7 @@
                     <div class="upgrade-text-JHUaIS column-mode-vnmqXA">{{ item.title || '会员中心' }}</div>
                   </div>
                 </div>
+                <span v-if="!item.visible" class="admin-theme-front-menu-preview__hidden-badge">已隐藏</span>
               </div>
               <div class="admin-theme-front-menu-preview__row-actions">
                 <AdminThemeWorkbenchItemActions
@@ -201,6 +221,7 @@
                 <div class="icon-container" style="--menu-icon-size:40px">
                   <div class="login-button">{{ item.title || '登录' }}</div>
                 </div>
+                <span v-if="!item.visible" class="admin-theme-front-menu-preview__hidden-badge">已隐藏</span>
               </div>
               <div class="admin-theme-front-menu-preview__row-actions">
                 <AdminThemeWorkbenchItemActions
@@ -245,6 +266,7 @@
                     </div>
                   </div>
                 </div>
+                <span v-if="!item.visible" class="admin-theme-front-menu-preview__hidden-badge">已隐藏</span>
               </div>
               <div class="admin-theme-front-menu-preview__row-actions">
                 <AdminThemeWorkbenchItemActions
@@ -306,6 +328,7 @@
                     </div>
                   </div>
                 </div>
+                <span v-if="!item.visible" class="admin-theme-front-menu-preview__hidden-badge">已隐藏</span>
               </div>
               <div class="admin-theme-front-menu-preview__row-actions">
                 <AdminThemeWorkbenchItemActions
@@ -319,6 +342,7 @@
           </template>
         </div>
       </div>
+      </div>
     </div>
     </div>
   </div>
@@ -326,9 +350,11 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
+import SideMenu from '@/components/home/components/SideMenu.vue'
 import HomeSideMenuIcon from '@/components/home/components/HomeSideMenuIcon.vue'
 import AdminThemeWorkbenchItemActions, { type WorkbenchMenuActionKey } from './AdminThemeWorkbenchItemActions.vue'
 import type {
+  SystemConfigPayload,
   SystemSiteInfoConfig,
   SystemHomeSideMenuGroupConfig,
   SystemHomeSideMenuItemConfig,
@@ -343,6 +369,7 @@ const props = defineProps<{
   settings: SystemHomeSideMenuSettingsConfig
   siteInfo: SystemSiteInfoConfig
   activeMenuKey?: string
+  activeThemeFieldId?: string | null
   topItem?: SystemHomeSideMenuItemConfig | null
   centerGroups: MenuGroupView[]
   bottomGroups: MenuGroupView[]
@@ -448,6 +475,118 @@ const allPreviewItems = computed(() => {
   const bottomItems = props.bottomGroups.flatMap(group => group.items)
   return [...topItems, ...centerItems, ...bottomItems]
 })
+
+const previewSystemSettings = computed(() => ({
+  siteInfo: {
+    siteName: props.siteInfo.siteName || 'Canana',
+    siteDescription: props.siteInfo.siteDescription || '',
+    siteLogoUrl: props.siteInfo.siteLogoUrl || '',
+    siteIconUrl: props.siteInfo.siteIconUrl || '',
+    icpText: props.siteInfo.icpText || '',
+    icpLink: props.siteInfo.icpLink || '',
+    copyrightText: props.siteInfo.copyrightText || '',
+  },
+  policySettings: {
+    agreementRequired: true,
+    agreementTextPrefix: '',
+    userAgreementTitle: '',
+    userAgreementUrl: '',
+    userAgreementContent: '',
+    privacyPolicyTitle: '',
+    privacyPolicyUrl: '',
+    privacyPolicyContent: '',
+    aiNoticeTitle: '',
+    aiNoticeUrl: '',
+    aiNoticeContent: '',
+  },
+  loginSettings: {
+    welcomeTitle: '',
+    welcomeSubtitle: '',
+  },
+  generationProgressSettings: {
+    enabled: true,
+    stages: [],
+  },
+  conversationSettings: {
+    mode: 'drawer',
+    autoTitle: true,
+    closeConfirmationEnabled: true,
+    closeConfirmationText: '',
+    emptyStateTitle: '',
+    emptyStateDescription: '',
+    entryDisplay: {
+      hero: {
+        enabled: true,
+        showGenerateCard: true,
+        showAssetCard: true,
+        title: '',
+        description: '',
+        generateCardTitle: '',
+        generateCardDescription: '',
+        assetCardTitle: '',
+        assetCardDescription: '',
+      },
+      mode: {
+        defaultMode: 'agent',
+        options: [],
+      },
+      input: {
+        collapsedPlaceholder: '',
+        expandedPlaceholder: '',
+      },
+      workbench: {
+        titleEnabled: true,
+        generatorEnabled: true,
+        bannerEnabled: true,
+        taskIndicatorEnabled: true,
+        showSiteName: true,
+        prefixText: '',
+        suffixText: '',
+        showModeSelectorInTitle: true,
+      },
+    },
+  },
+  globalThemeSettings: {
+    brandColors: {
+      primary: '#6f35ff',
+      primaryHover: '#5b28e6',
+      primaryActive: '#4c20c4',
+      secondary: '#00c2d6',
+      accent: '#ff7a59',
+      success: '#18b566',
+      warning: '#ffb020',
+      danger: '#f04438',
+    },
+    gradients: {
+      primaryGradient: '',
+      bannerGlow: '',
+    },
+    surfaces: {
+      contentMaxWidth: 1200,
+      cardRadius: 24,
+    },
+    modePolicy: {
+      defaultMode: 'dark',
+      allowUserToggle: true,
+      supportSystemMode: true,
+    },
+  },
+  homeSideMenuSettings: {
+    ...props.settings,
+    items: allPreviewItems.value,
+  },
+  homeLayoutSettings: {
+    header: {
+      showSiteDescription: true,
+      showTaskIndicator: true,
+      showBanner: true,
+    },
+    banner: {
+      enabled: true,
+      items: [],
+    },
+  },
+}) as unknown as SystemConfigPayload)
 
 const getPreviewItemByKey = (menuKey: string) => allPreviewItems.value.find(item => item.key === menuKey)
 
@@ -620,10 +759,52 @@ onBeforeUnmount(() => {
   width: var(--side-menu-width);
   height: 100%;
   min-height: 100%;
-  background: #111218;
+  background: var(--theme-side-menu-background, #111218);
   border-radius: 24px;
   overflow: visible;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
+
+.admin-theme-front-menu-preview__visual-layer,
+.admin-theme-front-menu-preview__overlay-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.admin-theme-front-menu-preview__visual-layer {
+  z-index: 1;
+}
+
+.admin-theme-front-menu-preview__overlay-layer {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.admin-theme-front-menu-preview__overlay-layer :deep(.lv-menu-item),
+.admin-theme-front-menu-preview__overlay-layer .admin-theme-front-menu-preview__row-actions {
+  pointer-events: auto;
+}
+
+.admin-theme-front-menu-preview__frame.is-secondary-linked {
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.28), 0 14px 28px rgba(34, 211, 238, 0.12);
+}
+
+.admin-theme-front-menu-preview__frame.is-background-linked {
+  box-shadow: inset 0 0 0 2px rgba(34, 211, 238, 0.42), 0 14px 28px rgba(34, 211, 238, 0.1);
+}
+
+.admin-theme-front-menu-preview__frame.is-secondary-linked::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 46%;
+  height: 64px;
+  border-radius: 18px;
+  box-shadow: inset 0 0 0 2px rgba(34, 211, 238, 0.42);
+  pointer-events: none;
+}
+
 
 .admin-theme-front-menu-preview :deep(.topMenu) {
   position: absolute;
@@ -857,6 +1038,10 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: center;
   position: relative;
+}
+
+.admin-theme-front-menu-preview__overlay-layer .admin-theme-front-menu-preview__item-main > :not(.admin-theme-front-menu-preview__hidden-badge) {
+  opacity: 0;
 }
 
 .admin-theme-front-menu-preview__hidden-badge {

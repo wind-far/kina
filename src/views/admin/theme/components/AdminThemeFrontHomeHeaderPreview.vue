@@ -4,7 +4,12 @@
       <div
         v-if="showTitleBlock"
         class="admin-theme-front-home-preview__block admin-theme-front-home-preview__block--title"
-        :class="{ 'is-hidden-block': !workbenchSettings.titleEnabled }"
+        :class="{
+          'is-hidden-block': !workbenchSettings.titleEnabled,
+          'is-theme-linked-active': activeThemeSectionId === 'theme-section-action',
+          'is-theme-field-active': activeThemeFieldId === 'accent',
+        }"
+        @click.stop="emit('theme-section-select', 'theme-section-action')"
       >
         <div class="header-bto0dS">
           <template v-if="showSiteNameInTitle">{{ siteNamePrefix }}</template>
@@ -22,6 +27,10 @@
           </span>
           {{ workbenchSuffixText }}
         </div>
+        <div
+          v-if="activeThemeFieldId === 'accent'"
+          class="admin-theme-front-home-preview__field-hotspot admin-theme-front-home-preview__field-hotspot--accent"
+        ></div>
 
         <div class="admin-theme-front-home-preview__row-actions">
           <AdminThemeWorkbenchItemActions
@@ -35,7 +44,12 @@
       <div
         v-if="showGeneratorBlock"
         class="admin-theme-front-home-preview__block admin-theme-front-home-preview__block--generator"
-        :class="{ 'is-hidden-block': !workbenchSettings.generatorEnabled }"
+        :class="{
+          'is-hidden-block': !workbenchSettings.generatorEnabled,
+          'is-theme-linked-active': activeThemeSectionId === 'theme-section-action',
+          'is-theme-field-active': isPrimaryFieldActive,
+        }"
+        @click.stop="emit('theme-section-select', 'theme-section-action')"
       >
         <div class="admin-theme-front-home-preview__generator-mask">
           <GenerateContentGenerator
@@ -52,6 +66,10 @@
         >
           {{ siteDescription }}
         </div>
+        <div
+          v-if="isPrimaryFieldActive"
+          class="admin-theme-front-home-preview__field-hotspot admin-theme-front-home-preview__field-hotspot--primary"
+        ></div>
 
         <div class="admin-theme-front-home-preview__row-actions admin-theme-front-home-preview__row-actions--generator">
           <AdminThemeWorkbenchItemActions
@@ -65,11 +83,21 @@
       <div
         v-if="showTaskBlock"
         class="admin-theme-front-home-preview__block admin-theme-front-home-preview__block--task"
-        :class="{ 'is-hidden-block': !workbenchSettings.taskIndicatorEnabled }"
+        :class="{
+          'is-hidden-block': !workbenchSettings.taskIndicatorEnabled,
+          'is-theme-linked-active': activeThemeSectionId === 'theme-section-status',
+          'is-theme-field-active': isStatusFieldActive,
+        }"
+        @click.stop="emit('theme-section-select', 'theme-section-status')"
       >
         <div class="admin-theme-front-home-preview__task-indicator-mask">
           <TaskIndicator />
         </div>
+        <div
+          v-if="isStatusFieldActive"
+          class="admin-theme-front-home-preview__field-hotspot"
+          :class="`admin-theme-front-home-preview__field-hotspot--${activeThemeFieldId}`"
+        ></div>
 
         <div class="admin-theme-front-home-preview__row-actions admin-theme-front-home-preview__row-actions--task">
           <AdminThemeWorkbenchItemActions
@@ -83,9 +111,20 @@
       <div
         v-if="showBannerBlock"
         class="admin-theme-front-home-preview__block admin-theme-front-home-preview__block--banner"
-        :class="{ 'is-hidden-block': !workbenchSettings.bannerEnabled }"
+        :class="{
+          'is-hidden-block': !workbenchSettings.bannerEnabled,
+          'is-theme-linked-active': activeThemeSectionId === 'theme-section-banner',
+          'is-theme-field-active': isBannerFieldActive,
+        }"
+        @click.stop="emit('theme-section-select', 'theme-section-banner')"
       >
-        <div class="admin-theme-front-home-preview__banner-stage">
+        <div
+          class="admin-theme-front-home-preview__banner-stage"
+          :class="{
+            'is-gradient-linked': activeThemeFieldId === 'primaryGradient',
+            'is-glow-linked': activeThemeFieldId === 'bannerGlow',
+          }"
+        >
           <HomeBanner
             :banner-items-override="previewBannerItems"
             :disable-navigation="true"
@@ -160,12 +199,15 @@ type BannerReorderPayload = {
 const props = defineProps<{
   systemForm: SystemConfigPayload
   previewBannerItems: SystemHomeBannerItemConfig[]
+  activeThemeSectionId: string | null
+  activeThemeFieldId: string | null
 }>()
 
 const emit = defineEmits<{
   'block-action': [payload: { action: WorkbenchMenuActionKey, blockKey: WorkbenchContentBlockKey }]
   'banner-item-action': [payload: { action: WorkbenchMenuActionKey, bannerKey: string }]
   'banner-item-reorder': [payload: BannerReorderPayload]
+  'theme-section-select': [sectionId: string]
 }>()
 
 const workbenchSettings = computed(() => props.systemForm.conversationSettings.entryDisplay.workbench)
@@ -197,6 +239,18 @@ const currentModeLabel = computed(() => {
   const options = props.systemForm.conversationSettings.entryDisplay.mode.options || []
   const defaultMode = String(props.systemForm.conversationSettings.entryDisplay.mode.defaultMode || 'agent').trim()
   return options.find(item => item.value === defaultMode)?.label || options[0]?.label || 'Agent 模式'
+})
+
+const isPrimaryFieldActive = computed(() => {
+  return ['primary', 'primaryHover', 'primaryActive'].includes(props.activeThemeFieldId || '')
+})
+
+const isStatusFieldActive = computed(() => {
+  return ['success', 'warning', 'danger'].includes(props.activeThemeFieldId || '')
+})
+
+const isBannerFieldActive = computed(() => {
+  return ['primaryGradient', 'bannerGlow'].includes(props.activeThemeFieldId || '')
 })
 
 const bannerOverlayStyle = computed(() => {
@@ -383,6 +437,17 @@ onBeforeUnmount(() => {
 
 .admin-theme-front-home-preview__block {
   position: relative;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.admin-theme-front-home-preview__block.is-theme-linked-active {
+  border-radius: 20px;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.22), 0 16px 32px rgba(79, 70, 229, 0.12);
+}
+
+.admin-theme-front-home-preview__block.is-theme-field-active {
+  border-radius: 20px;
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.22), 0 16px 32px rgba(45, 212, 191, 0.12);
 }
 
 .admin-theme-front-home-preview__block:hover .admin-theme-front-home-preview__row-actions,
@@ -421,6 +486,21 @@ onBeforeUnmount(() => {
 .admin-theme-front-home-preview__banner-stage {
   position: relative;
   isolation: isolate;
+}
+
+.admin-theme-front-home-preview__banner-stage.is-gradient-linked {
+  border-radius: 22px;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.admin-theme-front-home-preview__banner-stage.is-glow-linked::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 28px;
+  background: radial-gradient(circle at 30% 40%, rgba(47, 227, 255, 0.28), transparent 60%);
+  pointer-events: none;
+  z-index: 2;
 }
 
 .admin-theme-front-home-preview__banner-overlay {
@@ -516,6 +596,51 @@ onBeforeUnmount(() => {
 .admin-theme-front-home-preview__row-actions--task,
 .admin-theme-front-home-preview__row-actions--banner {
   top: 8px;
+}
+
+.admin-theme-front-home-preview__field-hotspot {
+  position: absolute;
+  pointer-events: none;
+  z-index: 4;
+  border-radius: 16px;
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.46), 0 10px 22px rgba(45, 212, 191, 0.18);
+}
+
+.admin-theme-front-home-preview__field-hotspot--accent {
+  top: 4px;
+  left: 50%;
+  width: 140px;
+  height: 42px;
+  transform: translateX(-50%);
+}
+
+.admin-theme-front-home-preview__field-hotspot--primary {
+  left: 50%;
+  bottom: 52px;
+  width: min(420px, calc(100% - 120px));
+  height: 58px;
+  transform: translateX(-50%);
+}
+
+.admin-theme-front-home-preview__field-hotspot--success,
+.admin-theme-front-home-preview__field-hotspot--warning,
+.admin-theme-front-home-preview__field-hotspot--danger {
+  top: 6px;
+  right: 24px;
+  width: 160px;
+  height: 42px;
+}
+
+.admin-theme-front-home-preview__field-hotspot--success {
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.5), 0 10px 22px rgba(16, 185, 129, 0.18);
+}
+
+.admin-theme-front-home-preview__field-hotspot--warning {
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.5), 0 10px 22px rgba(245, 158, 11, 0.18);
+}
+
+.admin-theme-front-home-preview__field-hotspot--danger {
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.5), 0 10px 22px rgba(239, 68, 68, 0.18);
 }
 
 .is-hidden-block {

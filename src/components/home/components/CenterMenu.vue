@@ -6,7 +6,7 @@
         :key="item.key"
         tabindex="0"
         role="menuitem"
-        :class="['lv-menu-item', 'lv-menu-item-size-default', { 'lv-menu-selected': isItemActive(item) }]"
+        :class="['lv-menu-item', 'lv-menu-item-size-default', { 'lv-menu-selected': isItemActive(item), 'is-hidden-item': item.visible === false }]"
         :id="resolveMenuItemId(item.key)"
         @click="handleMenuClick(item)"
       >
@@ -50,13 +50,32 @@ import { useAuthStore } from '@/stores/auth'
 import { useRouter, useRoute } from 'vue-router'
 import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
 import HomeSideMenuIcon from './HomeSideMenuIcon.vue'
+import type { SystemConfigPayload } from '@/api/system-config'
+
+const props = withDefaults(defineProps<{
+  systemSettingsOverride?: SystemConfigPayload | null
+  activeMenuKeyOverride?: string
+  activePathOverride?: string
+  previewReadonly?: boolean
+  includeHiddenItems?: boolean
+}>(), {
+  systemSettingsOverride: null,
+  activeMenuKeyOverride: '',
+  activePathOverride: '',
+  previewReadonly: false,
+  includeHiddenItems: false,
+})
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
-const { sideMenuSettings, centerItems } = useHomeSideMenuConfig()
+const overrideSideMenuSettings = computed(() => props.systemSettingsOverride?.homeSideMenuSettings || null)
+const { sideMenuSettings, centerItems } = useHomeSideMenuConfig({
+  settingsOverride: overrideSideMenuSettings,
+  includeHidden: props.includeHiddenItems,
+})
 
-const currentPath = computed(() => route.path)
+const currentPath = computed(() => props.activePathOverride || route.path)
 
 const resolveMenuItemId = (key: string) => {
   const idMap: Record<string, string> = {
@@ -72,6 +91,10 @@ const resolveMenuItemId = (key: string) => {
 }
 
 const isItemActive = (item: { key: string; actionType: string; actionValue: string }) => {
+  if (props.activeMenuKeyOverride) {
+    return props.activeMenuKeyOverride === item.key
+  }
+
   if (item.key === 'home') {
     return currentPath.value === '/'
   }
@@ -82,6 +105,10 @@ const isItemActive = (item: { key: string; actionType: string; actionValue: stri
 }
 
 const handleMenuClick = (item: { key: string; actionType: string; actionValue: string }) => {
+  if (props.previewReadonly) {
+    return
+  }
+
   if (item.actionType !== 'route') {
     return
   }

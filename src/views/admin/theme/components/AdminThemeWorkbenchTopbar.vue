@@ -1,5 +1,11 @@
 <template>
-  <div class="admin-theme-shell__topbar">
+  <div
+    class="admin-theme-shell__topbar"
+    :class="{
+      'is-dark': previewThemeClass === 'is-dark',
+      'is-light': previewThemeClass === 'is-light',
+    }"
+  >
     <div class="admin-theme-shell__traffic-lights">
       <span class="is-red"></span>
       <span class="is-yellow"></span>
@@ -11,14 +17,20 @@
     </div>
     <div class="admin-theme-shell__actions">
       <button
-        v-for="option in previewModeOptions"
-        :key="option.value"
-        class="admin-theme-shell__mode-button"
-        :class="{ 'is-active': previewMode === option.value }"
+        class="admin-theme-shell__action-button admin-theme-shell__action-button--secondary"
         type="button"
-        @click="$emit('update:previewMode', option.value)"
+        :disabled="loading || saving"
+        @click="$emit('reset')"
       >
-        {{ option.label }}
+        恢复默认
+      </button>
+      <button
+        class="admin-theme-shell__action-button admin-theme-shell__action-button--primary"
+        type="button"
+        :disabled="loading || saving"
+        @click="$emit('save')"
+      >
+        {{ saving ? '保存中...' : '保存主题配置' }}
       </button>
     </div>
   </div>
@@ -26,12 +38,14 @@
 
 <script setup lang="ts">
 defineProps<{
-  previewMode: 'dark' | 'light'
-  previewModeOptions: ReadonlyArray<{ value: 'dark' | 'light', label: string }>
+  previewThemeClass: 'is-dark' | 'is-light'
+  loading: boolean
+  saving: boolean
 }>()
 
 defineEmits<{
-  'update:previewMode': [value: 'dark' | 'light']
+  reset: []
+  save: []
 }>()
 </script>
 
@@ -43,6 +57,12 @@ defineEmits<{
   padding: 12px 16px;
   border-bottom: 1px solid var(--line-divider, rgba(148, 163, 184, 0.18));
   background: color-mix(in srgb, var(--bg-surface, #ffffff) 92%, var(--bg-muted, #f8fafc));
+}
+
+.admin-theme-shell__topbar.is-dark {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(32, 34, 40, 0.98) 0%, rgba(28, 30, 34, 0.96) 100%);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .admin-theme-shell__traffic-lights {
@@ -85,25 +105,52 @@ defineEmits<{
 
 .admin-theme-shell__actions {
   display: inline-flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
 }
 
-.admin-theme-shell__mode-button {
+.admin-theme-shell__action-button {
   min-height: 34px;
   padding: 0 14px;
-  border: 1px solid var(--line-divider, rgba(148, 163, 184, 0.18));
-  border-radius: 10px;
-  background: transparent;
-  color: var(--text-secondary, #64748b);
-  font-size: 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, opacity 0.18s ease;
 }
 
-.admin-theme-shell__mode-button.is-active {
+.admin-theme-shell__action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.admin-theme-shell__action-button--secondary {
+  background: rgba(15, 23, 42, 0.06);
+  border-color: rgba(148, 163, 184, 0.16);
   color: var(--text-primary, #0f172a);
-  background: var(--bg-surface, #ffffff);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.admin-theme-shell__action-button--primary {
+  background: var(--brand-main-default, #6f35ff);
+  border-color: var(--brand-main-default, #6f35ff);
+  color: #fff;
+}
+
+.admin-theme-shell__topbar.is-dark .admin-theme-shell__address {
+  background: linear-gradient(180deg, rgba(245, 247, 250, 0.96) 0%, rgba(236, 239, 244, 0.92) 100%);
+  color: rgba(126, 135, 150, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+
+.admin-theme-shell__topbar.is-dark .admin-theme-shell__lock {
+  filter: saturate(0.78) brightness(0.96);
+}
+
+.admin-theme-shell__topbar.is-dark .admin-theme-shell__action-button--secondary {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(226, 232, 240, 0.92);
 }
 
 @media (max-width: 980px) {
@@ -112,9 +159,8 @@ defineEmits<{
   }
 
   .admin-theme-shell__actions {
-    width: 100%;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: flex-end;
+    flex-wrap: wrap;
   }
 }
 </style>

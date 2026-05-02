@@ -164,6 +164,11 @@ export interface SystemGlobalThemeSettingsConfig {
     defaultMode: 'dark' | 'light' | 'system'
     supportSystemMode: boolean
   }
+  backgrounds: {
+    page: string
+    surface: string
+    sideMenu: string
+  }
   brandColors: {
     primary: string
     primaryHover: string
@@ -372,6 +377,11 @@ export const createDefaultGlobalThemeSettings = (): SystemGlobalThemeSettingsCon
     allowUserToggle: true,
     defaultMode: 'dark',
     supportSystemMode: true,
+  },
+  backgrounds: {
+    page: '#0f0f12',
+    surface: '#15161a',
+    sideMenu: '#111218',
   },
   brandColors: {
     primary: '#6f35ff',
@@ -738,30 +748,64 @@ export const createDefaultHomeLayoutSettings = (): SystemHomeLayoutSettingsConfi
 const SYSTEM_CONFIG_PUBLIC_API_PATH = '/api/system-config/public'
 const SYSTEM_CONFIG_ADMIN_API_PATH = '/api/system-config/admin'
 
+const normalizeGlobalThemeSettings = (value?: SystemGlobalThemeSettingsConfig | null): SystemGlobalThemeSettingsConfig => {
+  const defaults = createDefaultGlobalThemeSettings()
+
+  return {
+    modePolicy: {
+      ...defaults.modePolicy,
+      ...(value?.modePolicy || {}),
+    },
+    backgrounds: {
+      ...defaults.backgrounds,
+      ...(value?.backgrounds || {}),
+    },
+    brandColors: {
+      ...defaults.brandColors,
+      ...(value?.brandColors || {}),
+    },
+    gradients: {
+      ...defaults.gradients,
+      ...(value?.gradients || {}),
+    },
+    surfaces: {
+      ...defaults.surfaces,
+      ...(value?.surfaces || {}),
+    },
+  }
+}
+
+const normalizeSystemConfigPayload = (payload: SystemConfigPayload): SystemConfigPayload => {
+  return {
+    ...payload,
+    globalThemeSettings: normalizeGlobalThemeSettings(payload.globalThemeSettings),
+  }
+}
+
 // 获取前台可见系统设置。
-export const getPublicSystemConfig = async () => {
+export const getPublicSystemConfig = async (): Promise<SystemConfigPayload> => {
   const response = await fetch(buildApiUrl(SYSTEM_CONFIG_PUBLIC_API_PATH), {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
   })
 
-  return readApiData<SystemConfigPayload>(response)
+  return normalizeSystemConfigPayload(await readApiData<SystemConfigPayload>(response))
 }
 
 // 获取后台系统设置。
-export const getAdminSystemConfig = async () => {
+export const getAdminSystemConfig = async (): Promise<SystemConfigPayload> => {
   const response = await fetch(buildApiUrl(SYSTEM_CONFIG_ADMIN_API_PATH), {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
   })
 
-  return readApiData<SystemConfigPayload>(response)
+  return normalizeSystemConfigPayload(await readApiData<SystemConfigPayload>(response))
 }
 
 // 保存后台系统设置。
-export const saveAdminSystemConfig = async (payload: SystemConfigPayload) => {
+export const saveAdminSystemConfig = async (payload: SystemConfigPayload): Promise<SystemConfigPayload> => {
   const response = await fetch(buildApiUrl(SYSTEM_CONFIG_ADMIN_API_PATH), {
     method: 'PUT',
     credentials: 'include',
@@ -771,8 +815,8 @@ export const saveAdminSystemConfig = async (payload: SystemConfigPayload) => {
     body: JSON.stringify(payload),
   })
 
-  return readApiData<SystemConfigPayload>(response, {
+  return normalizeSystemConfigPayload(await readApiData<SystemConfigPayload>(response, {
     showSuccessMessage: true,
     showErrorMessage: true,
-  })
+  }))
 }

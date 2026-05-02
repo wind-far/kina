@@ -2,17 +2,28 @@
   <div class="admin-theme-canvas-wrap">
     <div class="admin-theme-canvas" :class="previewThemeClass" :style="previewThemeVars">
       <div class="admin-theme-canvas__viewport">
-        <div class="admin-theme-frontstage">
-          <div class="admin-theme-frontstage__body" :style="previewFrontstageBodyStyle">
+        <div
+          class="admin-theme-frontstage"
+          :class="{ 'is-theme-linked-active': activeThemeSectionId === 'theme-section-mode' }"
+          @click="$emit('themeSectionSelect', 'theme-section-mode')"
+        >
+          <div
+            class="admin-theme-frontstage__body"
+            :class="{ 'is-theme-linked-active': activeThemeSectionId === 'theme-section-surface' }"
+            :style="previewFrontstageBodyStyle"
+            @click.stop="$emit('themeSectionSelect', 'theme-section-surface')"
+          >
             <aside
               v-if="systemForm.homeSideMenuSettings.enabled"
               class="admin-theme-frontstage__sidebar admin-theme-frontstage__sidebar--real"
+              :class="{ 'is-theme-field-active': activeThemeFieldId === 'sideMenuBackground' }"
               :style="previewSidebarStyle"
             >
               <AdminThemeFrontSideMenuPreview
                 :settings="systemForm.homeSideMenuSettings"
                 :site-info="systemForm.siteInfo"
                 :active-menu-key="previewActiveMenuKey"
+                :active-theme-field-id="activeThemeFieldId"
                 :top-item="previewTopMenuItem"
                 :center-groups="previewCenterMenuGroups"
                 :bottom-groups="previewBottomMenuGroups"
@@ -22,20 +33,29 @@
                 @menu-reorder="$emit('menuReorder', $event)"
               />
             </aside>
-            <main class="admin-theme-frontstage__main">
+            <main
+              class="admin-theme-frontstage__main"
+              :class="{ 'is-theme-field-active': activeThemeFieldId === 'pageBackground' }"
+            >
               <div class="content-wrapper-cF1zaN admin-theme-frontstage__content-wrapper">
                 <div class="main-container-nXfW_A admin-theme-frontstage__content-main">
                   <div class="content-TZbgMr admin-theme-frontstage__content-scroll">
-                    <div class="scroll-container-Jsws2j scroll-container-QnV2C9 admin-theme-frontstage__scroll-shell">
+                    <div
+                      class="scroll-container-Jsws2j scroll-container-QnV2C9 admin-theme-frontstage__scroll-shell"
+                      :class="{ 'is-theme-field-active': activeThemeFieldId === 'surfaceBackground' }"
+                    >
                       <div>
                         <div class="scroll-content-DaYLnh scroll-content admin-theme-frontstage__scroll-content">
                           <div class="section-generator admin-theme-frontstage__section-generator">
                             <AdminThemeFrontHomeHeaderPreview
                               :system-form="systemForm"
                               :preview-banner-items="previewBannerItems"
+                              :active-theme-section-id="activeThemeSectionId"
+                              :active-theme-field-id="activeThemeFieldId"
                               @block-action="$emit('contentBlockAction', $event)"
                               @banner-item-action="$emit('bannerItemAction', $event)"
                               @banner-item-reorder="$emit('bannerItemReorder', $event)"
+                              @theme-section-select="$emit('themeSectionSelect', $event)"
                             />
                           </div>
                         </div>
@@ -85,6 +105,8 @@ const props = defineProps<{
   previewBottomMenuGroups: MenuGroupView[]
   previewPrimaryBanner: SystemHomeBannerItemConfig | null
   previewSecondaryBanners: SystemHomeBannerItemConfig[]
+  activeThemeSectionId: string | null
+  activeThemeFieldId: string | null
   toggleMenuVisibility: (menuKey: string) => void
   applyMenuReorder: (payload: { sourceMenuKey: string, targetMenuKey: string, position: 'before' | 'after' }) => void
 }>()
@@ -95,6 +117,7 @@ defineEmits<{
   contentBlockAction: [payload: { action: WorkbenchMenuActionKey, blockKey: WorkbenchContentBlockKey }]
   bannerItemAction: [payload: { action: WorkbenchMenuActionKey, bannerKey: string }]
   bannerItemReorder: [payload: { sourceBannerKey: string, targetBannerKey: string, position: 'before' | 'after' }]
+  themeSectionSelect: [sectionId: string]
 }>()
 
 const previewBannerItems = computed(() => {
@@ -115,7 +138,7 @@ const previewBannerItems = computed(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-radius: 24px;
+  //border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
   transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
@@ -135,7 +158,7 @@ const previewBannerItems = computed(() => {
   flex: 1;
   min-height: 0;
   box-sizing: border-box;
-  padding: 20px;
+  //padding: 20px;
   display: grid;
   gap: 24px;
   overflow: auto;
@@ -147,15 +170,14 @@ const previewBannerItems = computed(() => {
 }
 
 .admin-theme-frontstage {
-  border-radius: 22px;
+  //border-radius: 22px;
   overflow: visible;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(18px);
+  background: transparent;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
 .admin-theme-canvas.is-dark .admin-theme-frontstage {
-  background: rgba(15, 23, 42, 0.72);
   border-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -165,6 +187,16 @@ const previewBannerItems = computed(() => {
   min-height: var(--admin-theme-side-preview-height);
   border-radius: 22px;
   overflow: hidden;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.admin-theme-frontstage.is-theme-linked-active {
+  border-color: rgba(99, 102, 241, 0.42);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.18), 0 18px 38px rgba(79, 70, 229, 0.16);
+}
+
+.admin-theme-frontstage__body.is-theme-linked-active {
+  box-shadow: inset 0 0 0 2px rgba(99, 102, 241, 0.22);
 }
 
 .admin-theme-frontstage__sidebar {
@@ -179,6 +211,11 @@ const previewBannerItems = computed(() => {
   overflow: visible;
 }
 
+.admin-theme-frontstage__sidebar.is-theme-field-active {
+  box-shadow: inset 0 0 0 2px rgba(34, 211, 238, 0.34);
+  border-radius: 24px;
+}
+
 .admin-theme-frontstage__sidebar--real {
   z-index: 6;
 }
@@ -190,6 +227,11 @@ const previewBannerItems = computed(() => {
   min-width: 0;
   min-height: var(--admin-theme-side-preview-height);
   overflow: auto;
+  background: var(--theme-page-background, var(--bg-body, #0f0f12));
+}
+
+.admin-theme-frontstage__main.is-theme-field-active {
+  box-shadow: inset 0 0 0 2px rgba(34, 211, 238, 0.3);
 }
 
 .admin-theme-frontstage__content-wrapper {
@@ -208,6 +250,10 @@ const previewBannerItems = computed(() => {
 .admin-theme-frontstage__scroll-shell {
   height: 100%;
   overflow: auto;
+}
+
+.admin-theme-frontstage__scroll-shell.is-theme-field-active {
+  box-shadow: inset 0 0 0 2px rgba(111, 53, 255, 0.26);
 }
 
 .admin-theme-frontstage__scroll-content {

@@ -144,6 +144,16 @@ export interface SystemThemeModePolicyPayload {
   supportSystemMode?: boolean
 }
 
+export interface SystemThemeBackgroundsPayload {
+  page?: string
+  surface?: string
+  sideMenu?: string
+}
+
+export interface SystemThemeVariantPayload {
+  backgrounds?: SystemThemeBackgroundsPayload
+}
+
 export interface SystemThemeBrandColorsPayload {
   primary?: string
   primaryHover?: string
@@ -167,6 +177,11 @@ export interface SystemThemeSurfacesPayload {
 
 export interface SystemGlobalThemeSettingsPayload {
   modePolicy?: SystemThemeModePolicyPayload
+  themes?: {
+    dark?: SystemThemeVariantPayload
+    light?: SystemThemeVariantPayload
+  }
+  backgrounds?: SystemThemeBackgroundsPayload
   brandColors?: SystemThemeBrandColorsPayload
   gradients?: SystemThemeGradientsPayload
   surfaces?: SystemThemeSurfacesPayload

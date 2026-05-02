@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   createDefaultConversationSettings,
   createDefaultGlobalThemeSettings,
@@ -7,7 +7,8 @@ import {
   getPublicSystemConfig,
   type SystemConfigPayload,
 } from '@/api/system-config'
-import { applySystemThemeRuntime } from '@/utils/theme-runtime'
+import { applySystemThemeRuntime, refreshSystemThemeRuntime } from '@/utils/theme-runtime'
+import { useThemePreferenceStore } from '@/stores/theme-preference'
 
 const createDefaultSettings = (): SystemConfigPayload => ({
   siteInfo: {
@@ -109,6 +110,14 @@ const applyPublicSystemSettings = (settings?: SystemConfigPayload | null) => {
 if (typeof document !== 'undefined') {
   syncSiteRuntime(publicSystemSettings.value)
   syncThemeRuntime(publicSystemSettings.value)
+
+  const themeStore = useThemePreferenceStore()
+  watch(
+    () => themeStore.currentTheme.value,
+    () => {
+      refreshSystemThemeRuntime(publicSystemSettings.value)
+    },
+  )
 }
 
 export const useSystemSettingsStore = () => {

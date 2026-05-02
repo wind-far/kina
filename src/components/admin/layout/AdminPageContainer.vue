@@ -1,7 +1,7 @@
 <template>
   <section class="admin-page">
     <div class="admin-page__container">
-      <div class="admin-page__intro">
+      <div v-if="!hideIntro" class="admin-page__intro">
         <div>
           <h3 class="admin-page__intro-title">{{ title }}</h3>
           <div class="admin-page__intro-text">{{ description }}</div>
@@ -17,8 +17,13 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  title: string
-  description: string
-}>()
+withDefaults(defineProps<{
+  title?: string
+  description?: string
+  hideIntro?: boolean
+}>(), {
+  title: '',
+  description: '',
+  hideIntro: false,
+})
 </script>

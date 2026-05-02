@@ -35,7 +35,7 @@
         <div class="admin-card__header">
           <div>
             <h4 class="admin-card__title">配置分组</h4>
-            <div class="admin-card__desc">按品牌、协议与登录分组维护系统设置；布局配置已拆为独立后台菜单。</div>
+            <div class="admin-card__desc">按品牌、协议与登录分组维护系统设置。</div>
           </div>
         </div>
         <div class="admin-card__content admin-system-nav__content">
@@ -89,7 +89,6 @@
           :home-banner-preset-options="HOME_BANNER_PRESET_OPTIONS"
           :home-side-menu-base-status="homeSideMenuBaseStatus"
           :home-side-menu-items-status="homeSideMenuItemsStatus"
-          :home-header-status="homeHeaderStatus"
           :home-banner-status="homeBannerStatus"
           :on-submit="handleSaveSystemSettings"
           :scroll-to-layout-section="scrollToLayoutSection"
@@ -280,7 +279,6 @@ const systemForm = reactive<SystemConfigPayload>(createDefaultSystemForm())
 const {
   homeSideMenuBaseStatus,
   homeSideMenuItemsStatus,
-  homeHeaderStatus,
   homeBannerStatus,
   getMenuSectionLabel,
   scrollToLayoutSection,

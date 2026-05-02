@@ -158,16 +158,25 @@ export interface SystemGenerationProgressSettingsConfig {
   stages: SystemGenerationProgressStageConfig[]
 }
 
+export interface SystemThemeBackgroundConfig {
+  page: string
+  surface: string
+  sideMenu: string
+}
+
 export interface SystemGlobalThemeSettingsConfig {
   modePolicy: {
     allowUserToggle: boolean
     defaultMode: 'dark' | 'light' | 'system'
     supportSystemMode: boolean
   }
-  backgrounds: {
-    page: string
-    surface: string
-    sideMenu: string
+  themes: {
+    dark: {
+      backgrounds: SystemThemeBackgroundConfig
+    }
+    light: {
+      backgrounds: SystemThemeBackgroundConfig
+    }
   }
   brandColors: {
     primary: string
@@ -378,10 +387,21 @@ export const createDefaultGlobalThemeSettings = (): SystemGlobalThemeSettingsCon
     defaultMode: 'dark',
     supportSystemMode: true,
   },
-  backgrounds: {
-    page: '#0f0f12',
-    surface: '#15161a',
-    sideMenu: '#111218',
+  themes: {
+    dark: {
+      backgrounds: {
+        page: '#0f0f12',
+        surface: '#15161a',
+        sideMenu: '#111218',
+      },
+    },
+    light: {
+      backgrounds: {
+        page: '#f8f9fa',
+        surface: '#ffffff',
+        sideMenu: '#ffffff',
+      },
+    },
   },
   brandColors: {
     primary: '#6f35ff',
@@ -750,15 +770,28 @@ const SYSTEM_CONFIG_ADMIN_API_PATH = '/api/system-config/admin'
 
 const normalizeGlobalThemeSettings = (value?: SystemGlobalThemeSettingsConfig | null): SystemGlobalThemeSettingsConfig => {
   const defaults = createDefaultGlobalThemeSettings()
+  const legacyBackgrounds = (value as any)?.backgrounds
+  const nextThemes = (value as any)?.themes
 
   return {
     modePolicy: {
       ...defaults.modePolicy,
       ...(value?.modePolicy || {}),
     },
-    backgrounds: {
-      ...defaults.backgrounds,
-      ...(value?.backgrounds || {}),
+    themes: {
+      dark: {
+        backgrounds: {
+          ...defaults.themes.dark.backgrounds,
+          ...(legacyBackgrounds || {}),
+          ...(nextThemes?.dark?.backgrounds || {}),
+        },
+      },
+      light: {
+        backgrounds: {
+          ...defaults.themes.light.backgrounds,
+          ...(nextThemes?.light?.backgrounds || {}),
+        },
+      },
     },
     brandColors: {
       ...defaults.brandColors,

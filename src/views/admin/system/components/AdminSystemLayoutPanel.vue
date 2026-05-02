@@ -33,25 +33,18 @@
         <div class="admin-layout-nav-workspace">
         <div id="layout-side-menu-base-panel" class="admin-card admin-layout-section-card">
           <div class="admin-card__header admin-layout-section-card__header">
-            <div>
-              <div class="admin-layout-section-card__eyebrow">导航基础层</div>
+            <div class="admin-layout-section-card__main">
               <h4 class="admin-card__title">左侧菜单基础</h4>
-              <div class="admin-card__desc">统一控制首页与创作相关页面的左侧菜单栏展示开关和宽度参数。</div>
-              <div class="admin-layout-section-card__helper">适合先由运营确认展示区块，再由开发校验收起 / 抽屉阈值。</div>
             </div>
-            <div class="admin-layout-section-card__status">{{ homeSideMenuBaseStatus }}</div>
           </div>
           <div class="admin-card__content">
             <div class="admin-layout-form-stack">
               <section class="admin-layout-form-block">
                 <div class="admin-layout-form-block__header">
-                  <div>
-                    <div class="admin-layout-form-block__title">展示策略</div>
-                    <div class="admin-layout-form-block__desc">先明确菜单整体开关，再决定顶部、中部、底部三个区块是否同时露出。</div>
-                  </div>
+                  <div class="admin-layout-form-block__title">展示策略</div>
                 </div>
-                <div class="admin-form__grid">
-                  <div class="admin-form__field admin-form__field--full">
+                <div class="admin-layout-setting-grid admin-layout-setting-grid--double">
+                  <div class="admin-layout-setting-card">
                     <label class="admin-form__label">菜单总开关</label>
                     <label class="admin-switch-row">
                       <input v-model="form.homeSideMenuSettings.enabled" type="checkbox">
@@ -59,23 +52,26 @@
                     </label>
                     <div class="admin-layout-inline-hint">关闭后，前台首页与创作入口将不再显示左侧菜单骨架。</div>
                   </div>
-                  <div class="admin-form__field admin-form__field--full">
+                  <div class="admin-layout-setting-card">
                     <label class="admin-form__label">区块显示</label>
-                    <div class="admin-user-option-grid admin-user-option-grid--three">
-                      <label class="admin-user-option-card">
+                    <div class="admin-layout-toggle-list">
+                      <label class="admin-layout-toggle-item">
                         <input v-model="form.homeSideMenuSettings.showTopMenu" type="checkbox">
-                        <span class="admin-user-option-card__title">顶部 Logo</span>
-                        <span class="admin-user-option-card__desc">控制顶部 Logo 区块展示</span>
+                        <span class="admin-layout-toggle-item__body">
+                          <span class="admin-layout-toggle-item__title">顶部 Logo</span>
+                        </span>
                       </label>
-                      <label class="admin-user-option-card">
+                      <label class="admin-layout-toggle-item">
                         <input v-model="form.homeSideMenuSettings.showCenterMenu" type="checkbox">
-                        <span class="admin-user-option-card__title">中部主菜单</span>
-                        <span class="admin-user-option-card__desc">控制创作与内容导航</span>
+                        <span class="admin-layout-toggle-item__body">
+                          <span class="admin-layout-toggle-item__title">中部主菜单</span>
+                        </span>
                       </label>
-                      <label class="admin-user-option-card">
+                      <label class="admin-layout-toggle-item">
                         <input v-model="form.homeSideMenuSettings.showBottomMenu" type="checkbox">
-                        <span class="admin-user-option-card__title">底部功能区</span>
-                        <span class="admin-user-option-card__desc">控制营销、通知和设置入口</span>
+                        <span class="admin-layout-toggle-item__body">
+                          <span class="admin-layout-toggle-item__title">底部功能区</span>
+                        </span>
                       </label>
                     </div>
                   </div>
@@ -84,12 +80,9 @@
 
               <section class="admin-layout-form-block">
                 <div class="admin-layout-form-block__header">
-                  <div>
-                    <div class="admin-layout-form-block__title">尺寸策略</div>
-                    <div class="admin-layout-form-block__desc">控制菜单在折叠态、抽屉态和浮层切换时的空间表现，建议与设计稿一并核对。</div>
-                  </div>
+                  <div class="admin-layout-form-block__title">尺寸策略</div>
                 </div>
-                <div class="admin-form__grid">
+                <div class="admin-form__grid admin-layout-number-grid">
                   <div class="admin-form__field">
                     <label class="admin-form__label">收起宽度</label>
                     <input v-model.number="form.homeSideMenuSettings.collapsedWidth" class="admin-input" type="number" min="48" max="180" step="1">
@@ -109,21 +102,7 @@
         </div>
 
         <div id="layout-side-menu-items-panel" class="admin-card admin-layout-section-card">
-          <div class="admin-card__header admin-layout-section-card__header">
-            <div>
-              <div class="admin-layout-section-card__eyebrow">导航运营</div>
-              <h4 class="admin-card__title">菜单项编排</h4>
-              <div class="admin-card__desc">配置每个菜单项的标题、分区、显示状态和跳转方式。当前图标沿用系统内置映射。</div>
-              <div class="admin-layout-section-card__helper">适合协同处理命名、排序与跳转落点，避免前台入口语义不一致。</div>
-            </div>
-            <div class="admin-layout-section-card__status">{{ homeSideMenuItemsStatus }}</div>
-          </div>
           <div class="admin-card__content">
-            <div class="admin-layout-list-head">
-              <div class="admin-layout-list-head__title">菜单项清单</div>
-              <div class="admin-layout-list-head__desc">列表里先看入口状态与排序，点击右侧“编辑”再进入完整表单，适合运营集中巡检与逐项调整。</div>
-            </div>
-
             <div class="admin-layout-menu-list">
               <div
                 v-for="(item, index) in form.homeSideMenuSettings.items"
@@ -134,19 +113,10 @@
                 <div class="admin-layout-menu-row__main">
                   <div class="admin-layout-menu-row__head">
                     <div class="admin-layout-menu-row__title">{{ item.title || item.key }}</div>
-                    <div class="admin-layout-meta-row">
-                      <span class="admin-layout-meta-badge">键名：{{ item.key }}</span>
-                      <span class="admin-layout-meta-badge">分区：{{ getMenuSectionLabel(item.section) }}</span>
-                      <span class="admin-layout-meta-badge">{{ item.visible ? '已显示' : '已隐藏' }}</span>
-                      <span class="admin-layout-meta-badge">图标：{{ item.iconSource === 'custom' ? '自定义' : item.icon }}</span>
-                      <span class="admin-layout-meta-badge">跳转：{{ item.actionType }}</span>
+                    <div class="admin-layout-menu-row__meta">
+                      <span>{{ getMenuSectionLabel(item.section) }}</span>
+                      <span>{{ item.visible ? '显示中' : '已隐藏' }}</span>
                     </div>
-                  </div>
-                  <div class="admin-layout-menu-row__summary">
-                    <span>标题：{{ item.title || '未填写' }}</span>
-                    <span>动作值：{{ item.actionValue || '未配置' }}</span>
-                    <span>排序：{{ item.sortOrder }}</span>
-                    <span>徽标：{{ item.badgeText || '无' }}</span>
                   </div>
                 </div>
                 <div class="admin-layout-menu-row__actions">
@@ -310,57 +280,12 @@
         </div>
       </div>
 
-      <div v-show="activeSection === 'layout-home-header'" id="layout-home-header" class="admin-card admin-layout-section-card">
-        <div class="admin-card__header admin-layout-section-card__header">
-          <div>
-            <div class="admin-layout-section-card__eyebrow">首页信息层</div>
-            <h4 class="admin-card__title">首页头部展示</h4>
-            <div class="admin-card__desc">控制首页欢迎区下方的说明文案、任务指示器和 Banner 展示。</div>
-            <div class="admin-layout-section-card__helper">适合先由运营确认露出策略，再统一首屏信息密度。</div>
-          </div>
-          <div class="admin-layout-section-card__status">{{ homeHeaderStatus }}</div>
-        </div>
-        <div class="admin-card__content">
-          <div class="admin-layout-form-stack">
-            <section class="admin-layout-form-block">
-              <div class="admin-layout-form-block__header">
-                <div>
-                  <div class="admin-layout-form-block__title">首屏信息密度</div>
-                  <div class="admin-layout-form-block__desc">适合由运营先确认露出组合，再由设计校验视觉层级与留白。</div>
-                </div>
-              </div>
-              <div class="admin-user-option-grid admin-user-option-grid--three">
-                <label class="admin-user-option-card">
-                  <input v-model="form.homeLayoutSettings.header.showSiteDescription" type="checkbox">
-                  <span class="admin-user-option-card__title">站点说明</span>
-                  <span class="admin-user-option-card__desc">显示首页品牌说明文案</span>
-                </label>
-                <label class="admin-user-option-card">
-                  <input v-model="form.homeLayoutSettings.header.showTaskIndicator" type="checkbox">
-                  <span class="admin-user-option-card__title">任务指示器</span>
-                  <span class="admin-user-option-card__desc">显示首页任务进度入口</span>
-                </label>
-                <label class="admin-user-option-card">
-                  <input v-model="form.homeLayoutSettings.header.showBanner" type="checkbox">
-                  <span class="admin-user-option-card__title">Banner 区域</span>
-                  <span class="admin-user-option-card__desc">显示首页横幅卡片组</span>
-                </label>
-              </div>
-            </section>
-          </div>
-        </div>
-      </div>
-
       <div v-show="activeSection === 'layout-home-banner'" id="layout-home-banner" class="admin-card admin-layout-section-card">
         <div class="admin-card__header admin-layout-section-card__header">
-          <div>
-            <div class="admin-layout-section-card__eyebrow">首页视觉层</div>
+          <div class="admin-layout-section-card__main">
             <h4 class="admin-card__title">首页 Banner 编排</h4>
-            <div class="admin-card__desc">维护首页横幅卡片的内容、跳转地址、发光色和显示顺序。首项会自动使用大卡样式。</div>
-            <div class="admin-layout-section-card__helper">建议最后处理这一层，确保结构与文案稳定后再统一视觉素材。</div>
           </div>
           <div class="admin-layout-section-card__header-actions">
-            <span class="admin-layout-section-card__status">{{ homeBannerStatus }}</span>
             <button class="admin-inline-button" type="button" @click="appendHomeBannerItem">新增 Banner</button>
           </div>
         </div>
@@ -372,11 +297,6 @@
             </label>
           </div>
 
-          <div class="admin-layout-list-head">
-            <div class="admin-layout-list-head__title">Banner 卡片清单</div>
-            <div class="admin-layout-list-head__desc">列表里先看标题、图片来源和显隐状态，点击右侧“编辑”再进入完整表单；首项三层图也统一在弹窗里维护。</div>
-          </div>
-
           <div class="admin-layout-banner-list">
             <div
               v-for="(item, index) in form.homeLayoutSettings.banner.items"
@@ -386,24 +306,16 @@
               <div class="admin-layout-banner-row__order">{{ index + 1 }}</div>
               <div class="admin-layout-banner-row__main">
                 <div class="admin-layout-banner-row__head">
-                  <div>
+                  <div class="admin-layout-banner-row__title-wrap">
                     <div class="admin-layout-banner-row__title">{{ item.title || item.key }}</div>
-                    <div class="admin-layout-meta-row">
-                      <span class="admin-layout-meta-badge">键名：{{ item.key }}</span>
-                      <span class="admin-layout-meta-badge">{{ item.visible ? '已显示' : '已隐藏' }}</span>
-                      <span class="admin-layout-meta-badge">图片：{{ item.imageSource === 'custom' ? '自定义' : '默认预设' }}</span>
-                      <span class="admin-layout-meta-badge">跳转：{{ item.actionType }}</span>
-                      <span class="admin-layout-meta-badge">发光色：{{ item.glowColor }}</span>
-                    </div>
+                    <div v-if="index === 0" class="admin-layout-item-index">首屏主 Banner</div>
                   </div>
-                  <div class="admin-layout-item-index">{{ index === 0 ? '首屏主 Banner' : `Banner ${index + 1}` }}</div>
-                </div>
-                <div class="admin-layout-banner-row__summary">
-                  <span>标题：{{ item.title || '未填写' }}</span>
-                  <span>副标题：{{ item.subtitle || '未填写' }}</span>
-                  <span>动作值：{{ item.actionValue || '未配置' }}</span>
-                  <span>排序：{{ item.sortOrder }}</span>
-                  <span v-if="index === 0">三层图：{{ item.backgroundImageUrl || item.mainImageUrl || item.overlayImageUrl ? '已配置' : '未配置' }}</span>
+                  <div class="admin-layout-banner-row__meta">
+                    <span>{{ item.visible ? '显示中' : '已隐藏' }}</span>
+                    <span>{{ item.imageSource === 'custom' ? '自定义图片' : '默认预设' }}</span>
+                    <span>{{ item.actionType === 'route' ? '路由跳转' : item.actionType === 'url' ? '外链跳转' : '无跳转' }}</span>
+                    <span v-if="index === 0">{{ item.backgroundImageUrl || item.mainImageUrl || item.overlayImageUrl ? '三层图已配置' : '三层图未配置' }}</span>
+                  </div>
                 </div>
               </div>
               <div class="admin-layout-banner-row__actions">
@@ -537,7 +449,6 @@ import type {
 
 const layoutTabs = [
   { key: 'layout-side-menu', label: '左侧导航' },
-  { key: 'layout-home-header', label: '核对首页头部' },
   { key: 'layout-home-banner', label: '处理 Banner 视觉' },
 ] as const
 
@@ -569,10 +480,6 @@ const props = defineProps({
     required: true,
   },
   homeSideMenuItemsStatus: {
-    type: String,
-    required: true,
-  },
-  homeHeaderStatus: {
     type: String,
     required: true,
   },
@@ -840,7 +747,7 @@ watch(
 }
 
 .admin-layout-panel {
-  gap: 18px;
+  gap: 14px;
 }
 
 .admin-system-form-grid {
@@ -849,13 +756,13 @@ watch(
 }
 
 .admin-layout-form-grid {
-  gap: 18px;
+  gap: 14px;
 }
 
 .admin-layout-tab-panel {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
 }
 
 .admin-layout-form-stack {
@@ -867,11 +774,11 @@ watch(
 .admin-layout-nav-workspace {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
 }
 
 .admin-layout-form-block {
-  padding: 16px;
+  padding: 14px;
   border: 1px solid var(--line-divider, #00000014);
   border-radius: 16px;
   background: color-mix(in srgb, var(--bg-surface) 96%, var(--bg-block-secondary-default));
@@ -883,10 +790,7 @@ watch(
 }
 
 .admin-layout-form-block__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  display: block;
   margin-bottom: 14px;
 }
 
@@ -896,13 +800,6 @@ watch(
   font-weight: 700;
 }
 
-.admin-layout-form-block__desc {
-  margin-top: 6px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
 .admin-layout-inline-hint {
   margin-top: 8px;
   color: var(--text-tertiary);
@@ -910,24 +807,107 @@ watch(
   line-height: 1.6;
 }
 
-.admin-layout-list-head {
+.admin-layout-toggle-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
-  padding: 14px 16px;
-  border: 1px solid var(--line-divider, #00000014);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--brand-primary, #6b8cff) 6%, var(--bg-surface));
+  gap: 10px;
 }
 
-.admin-layout-list-head__title {
+.admin-layout-toggle-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease;
+}
+
+.admin-layout-toggle-item:hover {
+  border-color: color-mix(in srgb, var(--brand-primary, #6b8cff) 32%, var(--line-divider, #00000014));
+  background: color-mix(in srgb, var(--brand-primary, #6b8cff) 4%, var(--bg-surface));
+}
+
+.admin-layout-toggle-item:has(input:checked) {
+  border-color: color-mix(in srgb, var(--brand-primary, #6b8cff) 56%, var(--line-divider, #00000014));
+  background: color-mix(in srgb, var(--brand-primary, #6b8cff) 8%, var(--bg-surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary, #6b8cff) 10%, transparent);
+}
+
+.admin-layout-toggle-item input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--brand-primary, #6b8cff);
+}
+
+.admin-layout-toggle-item__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.admin-layout-toggle-item__title {
   color: var(--text-primary);
   font-size: 14px;
   font-weight: 700;
+  line-height: 1.4;
 }
 
-.admin-layout-list-head__desc {
+.admin-user-option-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-user-option-grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-user-option-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 96px;
+  padding: 14px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease;
+}
+
+.admin-user-option-card:hover {
+  border-color: color-mix(in srgb, var(--brand-primary, #6b8cff) 32%, var(--line-divider, #00000014));
+  background: color-mix(in srgb, var(--brand-primary, #6b8cff) 4%, var(--bg-surface));
+}
+
+.admin-user-option-card:has(input:checked) {
+  border-color: color-mix(in srgb, var(--brand-primary, #6b8cff) 56%, var(--line-divider, #00000014));
+  background: color-mix(in srgb, var(--brand-primary, #6b8cff) 8%, var(--bg-surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary, #6b8cff) 10%, transparent);
+}
+
+.admin-user-option-card input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--brand-primary, #6b8cff);
+}
+
+.admin-user-option-card__title {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.admin-user-option-card__desc {
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.6;
@@ -970,7 +950,7 @@ watch(
 .admin-layout-menu-row__head {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .admin-layout-menu-row__title {
@@ -979,12 +959,11 @@ watch(
   font-weight: 700;
 }
 
-.admin-layout-menu-row__summary {
+.admin-layout-menu-row__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
-  margin-top: 10px;
-  color: var(--text-tertiary);
+  gap: 8px 12px;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -1009,9 +988,9 @@ watch(
 
 .admin-layout-banner-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-columns: 56px minmax(0, 1fr);
   gap: 14px;
-  align-items: center;
+  align-items: start;
   padding: 14px 16px;
   border: 1px solid var(--line-divider, #00000014);
   border-radius: 16px;
@@ -1038,23 +1017,41 @@ watch(
 .admin-layout-banner-row__head {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+}
+
+.admin-layout-banner-row__title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .admin-layout-banner-row__title {
   color: var(--text-primary);
   font-size: 15px;
   font-weight: 700;
+  line-height: 1.45;
+  word-break: break-word;
 }
 
-.admin-layout-banner-row__summary {
+.admin-layout-banner-row__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
-  margin-top: 10px;
-  color: var(--text-tertiary);
+  gap: 8px;
+}
+
+.admin-layout-banner-row__meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-surface) 88%, var(--bg-block-secondary-default));
+  border: 1px solid var(--line-divider, #00000014);
+  color: var(--text-secondary);
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1;
 }
 
 .admin-layout-banner-row__actions {
@@ -1062,7 +1059,9 @@ watch(
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  grid-column: 2;
+  padding-top: 2px;
 }
 
 .admin-layout-banner-dialog {
@@ -1134,19 +1133,15 @@ watch(
 }
 
 .admin-layout-toolbar-card {
-  border-color: color-mix(in srgb, var(--brand-primary, #6b8cff) 18%, var(--line-divider, #00000014));
-  background: linear-gradient(180deg, color-mix(in srgb, var(--brand-primary, #6b8cff) 5%, var(--bg-surface)) 0%, var(--bg-surface) 100%);
+  border-color: var(--line-divider, #00000014);
+  background: var(--bg-surface);
 }
 
 .admin-layout-toolbar-card__content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+  display: block;
 }
 
 .admin-layout-toolbar-card__summary {
-  flex: 1;
   min-width: 0;
 }
 
@@ -1164,33 +1159,40 @@ watch(
   flex-wrap: wrap;
   gap: 10px;
   justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .admin-layout-jump-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
-  padding: 0 16px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--brand-primary, #6b8cff) 26%, transparent);
-  background: color-mix(in srgb, var(--brand-primary, #6b8cff) 10%, var(--bg-surface));
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--brand-primary, #6b8cff) 18%, transparent);
+  background: transparent;
   color: var(--brand-primary, #6b8cff);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   transition: all .2s ease;
+  white-space: nowrap;
 }
 
 .admin-layout-jump-button:hover {
   border-color: color-mix(in srgb, var(--brand-primary, #6b8cff) 40%, transparent);
-  background: color-mix(in srgb, var(--brand-primary, #6b8cff) 16%, var(--bg-surface));
+  background: color-mix(in srgb, var(--brand-primary, #6b8cff) 10%, transparent);
 }
 
 .admin-layout-jump-button.is-active {
   border-color: color-mix(in srgb, var(--brand-primary, #6b8cff) 42%, transparent);
   background: color-mix(in srgb, var(--brand-primary, #6b8cff) 18%, var(--bg-surface));
   color: var(--text-primary);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-primary, #6b8cff) 16%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--brand-primary, #6b8cff) 16%, transparent),
+    0 10px 22px color-mix(in srgb, var(--brand-primary, #6b8cff) 10%, transparent);
 }
 
 .admin-layout-section-card {
@@ -1199,9 +1201,23 @@ watch(
 
 .admin-layout-section-card__header {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+}
+
+.admin-layout-section-card__main {
+  min-width: 0;
+}
+
+.admin-layout-section-card__aside {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: 100%;
+  width: 100%;
 }
 
 .admin-layout-section-card__header-actions {
@@ -1209,13 +1225,14 @@ watch(
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  width: 100%;
 }
 
 .admin-layout-section-card__status {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
+  min-height: 30px;
   padding: 0 12px;
   border-radius: 999px;
   border: 1px solid var(--line-divider, #00000014);
@@ -1225,11 +1242,29 @@ watch(
   line-height: 1.5;
 }
 
-.admin-layout-section-card__helper {
-  margin-top: 8px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  line-height: 1.6;
+.admin-layout-setting-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-layout-setting-grid--double {
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+}
+
+.admin-layout-setting-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100%;
+  padding: 14px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-surface) 92%, var(--bg-block-secondary-default));
+}
+
+.admin-layout-number-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .admin-layout-meta-row {
@@ -1252,14 +1287,20 @@ watch(
 }
 
 @media (max-width: 900px) {
-  .admin-layout-toolbar-card__content {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .admin-layout-toolbar-card__actions,
   .admin-layout-section-card__header-actions {
     justify-content: flex-start;
+  }
+
+  .admin-layout-section-card__aside {
+    align-items: flex-start;
+  }
+
+  .admin-layout-setting-grid--double,
+  .admin-layout-number-grid,
+  .admin-user-option-grid,
+  .admin-user-option-grid--three {
+    grid-template-columns: 1fr;
   }
 
   .admin-layout-menu-row {
@@ -1286,6 +1327,7 @@ watch(
 
   .admin-layout-banner-row__actions {
     justify-content: flex-start;
+    grid-column: auto;
   }
 
   .admin-layout-item-head {

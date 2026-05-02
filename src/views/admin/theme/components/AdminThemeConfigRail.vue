@@ -25,7 +25,6 @@
             @click="$emit('update:activeTab', tab.key)"
           >
             <span>{{ tab.label }}</span>
-            <small>{{ tab.desc }}</small>
           </button>
         </div>
 
@@ -55,7 +54,7 @@
 defineProps<{
   collapsed: boolean
   activeTab: 'theme' | 'layout'
-  tabs: ReadonlyArray<{ key: 'theme' | 'layout', label: string, desc: string }>
+  tabs: ReadonlyArray<{ key: 'theme' | 'layout', label: string }>
 }>()
 
 defineEmits<{
@@ -161,9 +160,9 @@ defineEmits<{
 }
 
 .admin-theme-config-panel__tab {
-  display: grid;
-  gap: 3px;
-  min-height: 72px;
+  display: flex;
+  align-items: center;
+  min-height: 60px;
   padding: 12px 14px;
   border: 1px solid var(--line-divider, rgba(148, 163, 184, 0.16));
   border-radius: 14px;
@@ -177,12 +176,6 @@ defineEmits<{
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary, #0f172a);
-}
-
-.admin-theme-config-panel__tab small {
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--text-secondary, #64748b);
 }
 
 .admin-theme-config-panel__tab.is-active {

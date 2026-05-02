@@ -1,5 +1,5 @@
 <template>
-  <AdminPageContainer description="">
+  <AdminPageContainer title="主题配置" description="" hide-intro>
     <div class="admin-theme-page">
       <div v-if="loading" class="admin-empty admin-theme-loading">正在加载主题配置...</div>
 
@@ -74,7 +74,6 @@
                   :home-banner-preset-options="HOME_BANNER_PRESET_OPTIONS"
                   :home-side-menu-base-status="homeSideMenuBaseStatus"
                   :home-side-menu-items-status="homeSideMenuItemsStatus"
-                  :home-header-status="homeHeaderStatus"
                   :home-banner-status="homeBannerStatus"
                   :on-submit="handleSave"
                   :scroll-to-layout-section="scrollToLayoutSection"
@@ -165,7 +164,7 @@ const configPanelCollapsed = ref(false)
 const activeConfigTab = ref<'theme' | 'layout'>('theme')
 const activeThemeSectionId = ref<string | null>(null)
 const activeThemeFieldId = ref<string | null>(null)
-const activeLayoutSection = ref<'layout-side-menu' | 'layout-home-header' | 'layout-home-banner'>('layout-side-menu')
+const activeLayoutSection = ref<'layout-side-menu' | 'layout-home-banner'>('layout-side-menu')
 const workbenchContentDialogVisible = ref(false)
 const editingWorkbenchContentDraft = ref<WorkbenchContentDialogDraft | null>(null)
 const bannerItemDialogVisible = ref(false)
@@ -181,8 +180,8 @@ const { applyPublicSystemSettings } = useSystemSettingsStore()
 const themeStore = useThemePreferenceStore()
 
 const configTabs = [
-  { key: 'theme', label: '主题配置', desc: '颜色、骨架、模式' },
-  { key: 'layout', label: '布局配置', desc: '导航、首页头部、Banner 编排' },
+  { key: 'theme', label: '主题配置' },
+  { key: 'layout', label: '布局配置' },
 ] as const
 
 const sectionIds = {
@@ -219,18 +218,6 @@ const statusColorFields = [
   { key: 'warning', label: '警告色', placeholder: '#ffb020' },
   { key: 'danger', label: '错误色', placeholder: '#f04438' },
 ] as const
-
-const DEFAULT_DARK_BACKGROUNDS = {
-  page: '#0f0f12',
-  surface: '#15161a',
-  sideMenu: '#111218',
-} as const
-
-const DEFAULT_LIGHT_BACKGROUNDS = {
-  page: '#f8f9fa',
-  surface: '#ffffff',
-  sideMenu: '#ffffff',
-} as const
 
 const createDefaultSystemForm = (): SystemConfigPayload => ({
   siteInfo: {
@@ -352,23 +339,9 @@ const previewThemeClass = computed(() => {
 })
 
 const previewResolvedBackgrounds = computed(() => {
-  const backgrounds = systemForm.globalThemeSettings.backgrounds
-
-  if (themeStore.currentTheme.value !== 'light') {
-    return backgrounds
-  }
-
-  return {
-    page: backgrounds.page === DEFAULT_DARK_BACKGROUNDS.page
-      ? DEFAULT_LIGHT_BACKGROUNDS.page
-      : backgrounds.page,
-    surface: backgrounds.surface === DEFAULT_DARK_BACKGROUNDS.surface
-      ? DEFAULT_LIGHT_BACKGROUNDS.surface
-      : backgrounds.surface,
-    sideMenu: backgrounds.sideMenu === DEFAULT_DARK_BACKGROUNDS.sideMenu
-      ? DEFAULT_LIGHT_BACKGROUNDS.sideMenu
-      : backgrounds.sideMenu,
-  }
+  return themeStore.currentTheme.value === 'light'
+    ? systemForm.globalThemeSettings.themes.light.backgrounds
+    : systemForm.globalThemeSettings.themes.dark.backgrounds
 })
 
 const previewThemeVars = computed(() => {
@@ -691,7 +664,6 @@ const handleBannerItemReorder = (payload: { sourceBannerKey: string, targetBanne
 const {
   homeSideMenuBaseStatus,
   homeSideMenuItemsStatus,
-  homeHeaderStatus,
   homeBannerStatus,
   normalizedMenuGroups,
   getMenuSectionLabel,

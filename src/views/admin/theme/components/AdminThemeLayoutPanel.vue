@@ -4,7 +4,6 @@
     :home-banner-preset-options="[...homeBannerPresetOptions]"
     :home-side-menu-base-status="homeSideMenuBaseStatus"
     :home-side-menu-items-status="homeSideMenuItemsStatus"
-    :home-header-status="homeHeaderStatus"
     :home-banner-status="homeBannerStatus"
     :on-submit="onSubmit"
     :scroll-to-layout-section="scrollToLayoutSection"
@@ -25,7 +24,7 @@
 import type { SystemConfigPayload, SystemHomeSideMenuItemConfig } from '@/api/system-config'
 import AdminSystemLayoutPanel from '@/views/admin/system/components/AdminSystemLayoutPanel.vue'
 
-type LayoutSectionKey = 'layout-side-menu' | 'layout-home-header' | 'layout-home-banner'
+type LayoutSectionKey = 'layout-side-menu' | 'layout-home-banner'
 
 type ExternalLayoutAction =
   | { type: 'edit-menu-item', menuKey: string, stamp: number }
@@ -39,7 +38,6 @@ defineProps<{
   homeBannerPresetOptions: ReadonlyArray<{ value: string, label: string }>
   homeSideMenuBaseStatus: string
   homeSideMenuItemsStatus: string
-  homeHeaderStatus: string
   homeBannerStatus: string
   onSubmit: () => void | Promise<void>
   scrollToLayoutSection: (sectionId: string) => void

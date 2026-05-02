@@ -201,6 +201,22 @@ const createDefaultSystemConfig = () => ({
       defaultMode: 'dark',
       supportSystemMode: true,
     },
+    themes: {
+      dark: {
+        backgrounds: {
+          page: '#0f0f12',
+          surface: '#15161a',
+          sideMenu: '#111218',
+        },
+      },
+      light: {
+        backgrounds: {
+          page: '#f8f9fa',
+          surface: '#ffffff',
+          sideMenu: '#ffffff',
+        },
+      },
+    },
     brandColors: {
       primary: '#6f35ff',
       primaryHover: '#5b28e6',
@@ -520,6 +536,12 @@ const normalizeSystemConfig = (input?: SystemConfigPayload | null) => {
   const conversationSettings = normalizeConversationSettings(input?.conversationSettings || loginSettings.conversationSettings)
   const globalThemeSettings = readPlainObject(input?.globalThemeSettings)
   const globalThemeModePolicy = readPlainObject(globalThemeSettings.modePolicy)
+  const globalThemeThemes = readPlainObject(globalThemeSettings.themes)
+  const globalThemeDark = readPlainObject(globalThemeThemes.dark)
+  const globalThemeLight = readPlainObject(globalThemeThemes.light)
+  const globalThemeDarkBackgrounds = readPlainObject(globalThemeDark.backgrounds)
+  const globalThemeLightBackgrounds = readPlainObject(globalThemeLight.backgrounds)
+  const globalThemeBackgrounds = readPlainObject(globalThemeSettings.backgrounds)
   const globalThemeBrandColors = readPlainObject(globalThemeSettings.brandColors)
   const globalThemeGradients = readPlainObject(globalThemeSettings.gradients)
   const globalThemeSurfaces = readPlainObject(globalThemeSettings.surfaces)
@@ -585,6 +607,40 @@ const normalizeSystemConfig = (input?: SystemConfigPayload | null) => {
           ? globalThemeModePolicy.defaultMode
           : 'dark',
         supportSystemMode: globalThemeModePolicy.supportSystemMode !== false,
+      },
+      themes: {
+        dark: {
+          backgrounds: {
+            page: normalizeHexColor(
+              globalThemeDarkBackgrounds.page || globalThemeBackgrounds.page,
+              defaults.globalThemeSettings.themes.dark.backgrounds.page,
+            ),
+            surface: normalizeHexColor(
+              globalThemeDarkBackgrounds.surface || globalThemeBackgrounds.surface,
+              defaults.globalThemeSettings.themes.dark.backgrounds.surface,
+            ),
+            sideMenu: normalizeHexColor(
+              globalThemeDarkBackgrounds.sideMenu || globalThemeBackgrounds.sideMenu,
+              defaults.globalThemeSettings.themes.dark.backgrounds.sideMenu,
+            ),
+          },
+        },
+        light: {
+          backgrounds: {
+            page: normalizeHexColor(
+              globalThemeLightBackgrounds.page,
+              defaults.globalThemeSettings.themes.light.backgrounds.page,
+            ),
+            surface: normalizeHexColor(
+              globalThemeLightBackgrounds.surface,
+              defaults.globalThemeSettings.themes.light.backgrounds.surface,
+            ),
+            sideMenu: normalizeHexColor(
+              globalThemeLightBackgrounds.sideMenu,
+              defaults.globalThemeSettings.themes.light.backgrounds.sideMenu,
+            ),
+          },
+        },
       },
       brandColors: {
         primary: normalizeHexColor(globalThemeBrandColors.primary, defaults.globalThemeSettings.brandColors.primary),

@@ -89,15 +89,6 @@ export function useAdminLayoutConfig(systemForm: SystemConfigPayload) {
     return `共 ${systemForm.homeSideMenuSettings.items.length} 项，当前显示 ${visibleHomeSideMenuCount.value} 项`
   })
 
-  const homeHeaderStatus = computed(() => {
-    const enabledItems = [
-      systemForm.homeLayoutSettings.header.showSiteDescription ? '站点说明' : '',
-      systemForm.homeLayoutSettings.header.showTaskIndicator ? '任务指示器' : '',
-      systemForm.homeLayoutSettings.header.showBanner ? 'Banner 区域' : '',
-    ].filter(Boolean)
-    return enabledItems.length ? `已开启：${enabledItems.join(' / ')}` : '当前三个头部模块均已关闭'
-  })
-
   const homeBannerStatus = computed(() => {
     const switchText = systemForm.homeLayoutSettings.banner.enabled ? '总开关开启' : '总开关关闭'
     return `${switchText} · ${visibleHomeBannerCount.value}/${systemForm.homeLayoutSettings.banner.items.length} 可见 · 首屏三层图 ${primaryBannerLayerConfiguredCount.value}/3`
@@ -430,7 +421,6 @@ export function useAdminLayoutConfig(systemForm: SystemConfigPayload) {
     layoutEnabledSectionsLabel,
     homeSideMenuBaseStatus,
     homeSideMenuItemsStatus,
-    homeHeaderStatus,
     homeBannerStatus,
     normalizedMenuGroups,
     ensureHomeSideMenuGroups,

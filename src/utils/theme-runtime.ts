@@ -30,6 +30,7 @@ const setCssVar = (name: string, value: string) => {
     return
   }
   document.documentElement.style.setProperty(name, value)
+  document.body?.style.setProperty(name, value)
 }
 
 const clearCssVar = (name: string) => {
@@ -37,10 +38,13 @@ const clearCssVar = (name: string) => {
     return
   }
   document.documentElement.style.removeProperty(name)
+  document.body?.style.removeProperty(name)
 }
 
 const applyBrandColors = (settings: SystemGlobalThemeSettingsConfig) => {
-  const backgrounds = settings.backgrounds
+  const themeStore = useThemePreferenceStore()
+  const currentTheme = themeStore.currentTheme.value === 'light' ? 'light' : 'dark'
+  const backgrounds = settings.themes[currentTheme].backgrounds
   const brandColors = settings.brandColors
   const gradients = settings.gradients
   const surfaces = settings.surfaces
@@ -86,6 +90,14 @@ export const applySystemThemeRuntime = (settings?: SystemConfigPayload | null) =
 
   const themeStore = useThemePreferenceStore()
   themeStore.syncThemePolicy(settings.globalThemeSettings)
+  applyBrandColors(settings.globalThemeSettings)
+}
+
+export const refreshSystemThemeRuntime = (settings?: SystemConfigPayload | null) => {
+  if (!isClient() || !settings) {
+    return
+  }
+
   applyBrandColors(settings.globalThemeSettings)
 }
 

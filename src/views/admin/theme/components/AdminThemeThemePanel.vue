@@ -75,91 +75,169 @@
       </div>
       <div class="admin-card__content admin-theme-section-card__content">
         <div class="admin-theme-subsection">
-          <div class="admin-theme-subsection__title">页面大背景</div>
-          <div class="admin-theme-subsection__desc">影响首页主内容区域的整体底色，是用户第一眼感受到的空间氛围。</div>
-          <div class="admin-theme-color-field">
-            <label class="admin-form__label">页面背景色</label>
-            <div class="admin-theme-color-inputs">
-              <input
-                v-model.trim="systemForm.globalThemeSettings.backgrounds.page"
-                class="admin-input"
-                :class="{ 'is-linked-field': activePreviewField === 'pageBackground' }"
-                type="text"
-                placeholder="#0f0f12"
-                @mouseenter="$emit('previewFieldChange', 'pageBackground')"
-                @mouseleave="$emit('previewFieldChange', null)"
-                @focus="$emit('previewFieldChange', 'pageBackground')"
-                @blur="$emit('previewFieldChange', null)"
-              >
-              <input
-                v-model="systemForm.globalThemeSettings.backgrounds.page"
-                class="admin-theme-color-picker"
-                type="color"
-                @mouseenter="$emit('previewFieldChange', 'pageBackground')"
-                @mouseleave="$emit('previewFieldChange', null)"
-                @focus="$emit('previewFieldChange', 'pageBackground')"
-                @blur="$emit('previewFieldChange', null)"
-              >
+          <div class="admin-theme-subsection__title">深色背景方案</div>
+          <div class="admin-theme-subsection__desc">用户处于深色主题时，首页页面、面板和左侧导航分别使用这套背景。</div>
+          <div class="admin-theme-color-grid">
+            <div class="admin-theme-color-field">
+              <label class="admin-form__label">深色页面背景</label>
+              <div class="admin-theme-color-inputs">
+                <input
+                  v-model.trim="systemForm.globalThemeSettings.themes.dark.backgrounds.page"
+                  class="admin-input"
+                  :class="{ 'is-linked-field': activePreviewField === 'pageBackground' }"
+                  type="text"
+                  placeholder="#0f0f12"
+                  @mouseenter="$emit('previewFieldChange', 'pageBackground')"
+                  @mouseleave="$emit('previewFieldChange', null)"
+                  @focus="$emit('previewFieldChange', 'pageBackground')"
+                  @blur="$emit('previewFieldChange', null)"
+                >
+                <input
+                  v-model="systemForm.globalThemeSettings.themes.dark.backgrounds.page"
+                  class="admin-theme-color-picker"
+                  type="color"
+                  @mouseenter="$emit('previewFieldChange', 'pageBackground')"
+                  @mouseleave="$emit('previewFieldChange', null)"
+                  @focus="$emit('previewFieldChange', 'pageBackground')"
+                  @blur="$emit('previewFieldChange', null)"
+                >
+              </div>
+            </div>
+
+            <div class="admin-theme-color-field">
+              <label class="admin-form__label">深色表层背景</label>
+              <div class="admin-theme-color-inputs">
+                <input
+                  v-model.trim="systemForm.globalThemeSettings.themes.dark.backgrounds.surface"
+                  class="admin-input"
+                  :class="{ 'is-linked-field': activePreviewField === 'surfaceBackground' }"
+                  type="text"
+                  placeholder="#15161a"
+                  @mouseenter="$emit('previewFieldChange', 'surfaceBackground')"
+                  @mouseleave="$emit('previewFieldChange', null)"
+                  @focus="$emit('previewFieldChange', 'surfaceBackground')"
+                  @blur="$emit('previewFieldChange', null)"
+                >
+                <input
+                  v-model="systemForm.globalThemeSettings.themes.dark.backgrounds.surface"
+                  class="admin-theme-color-picker"
+                  type="color"
+                  @mouseenter="$emit('previewFieldChange', 'surfaceBackground')"
+                  @mouseleave="$emit('previewFieldChange', null)"
+                  @focus="$emit('previewFieldChange', 'surfaceBackground')"
+                  @blur="$emit('previewFieldChange', null)"
+                >
+              </div>
+            </div>
+
+            <div class="admin-theme-color-field">
+              <label class="admin-form__label">深色侧栏背景</label>
+              <div class="admin-theme-color-inputs">
+                <input
+                  v-model.trim="systemForm.globalThemeSettings.themes.dark.backgrounds.sideMenu"
+                  class="admin-input"
+                  :class="{ 'is-linked-field': activePreviewField === 'sideMenuBackground' }"
+                  type="text"
+                  placeholder="#111218"
+                  @mouseenter="$emit('previewFieldChange', 'sideMenuBackground')"
+                  @mouseleave="$emit('previewFieldChange', null)"
+                  @focus="$emit('previewFieldChange', 'sideMenuBackground')"
+                  @blur="$emit('previewFieldChange', null)"
+                >
+                <input
+                  v-model="systemForm.globalThemeSettings.themes.dark.backgrounds.sideMenu"
+                  class="admin-theme-color-picker"
+                  type="color"
+                  @mouseenter="$emit('previewFieldChange', 'sideMenuBackground')"
+                  @mouseleave="$emit('previewFieldChange', null)"
+                  @focus="$emit('previewFieldChange', 'sideMenuBackground')"
+                  @blur="$emit('previewFieldChange', null)"
+                >
+              </div>
             </div>
           </div>
         </div>
 
         <div class="admin-theme-subsection">
-          <div class="admin-theme-subsection__title">卡片 / 输入面板背景</div>
-          <div class="admin-theme-subsection__desc">影响输入框、功能卡片、浮层面板这类承载内容的表层底色。</div>
-          <div class="admin-theme-color-field">
-            <label class="admin-form__label">表层背景色</label>
-            <div class="admin-theme-color-inputs">
-              <input
-                v-model.trim="systemForm.globalThemeSettings.backgrounds.surface"
-                class="admin-input"
-                :class="{ 'is-linked-field': activePreviewField === 'surfaceBackground' }"
-                type="text"
-                placeholder="#15161a"
-                @mouseenter="$emit('previewFieldChange', 'surfaceBackground')"
-                @mouseleave="$emit('previewFieldChange', null)"
-                @focus="$emit('previewFieldChange', 'surfaceBackground')"
-                @blur="$emit('previewFieldChange', null)"
-              >
-              <input
-                v-model="systemForm.globalThemeSettings.backgrounds.surface"
-                class="admin-theme-color-picker"
-                type="color"
-                @mouseenter="$emit('previewFieldChange', 'surfaceBackground')"
-                @mouseleave="$emit('previewFieldChange', null)"
-                @focus="$emit('previewFieldChange', 'surfaceBackground')"
-                @blur="$emit('previewFieldChange', null)"
-              >
+          <div class="admin-theme-subsection__title">浅色背景方案</div>
+          <div class="admin-theme-subsection__desc">用户切到浅色主题时，首页页面、面板和左侧导航会读取这里的背景配置。</div>
+          <div class="admin-theme-color-grid">
+            <div class="admin-theme-color-field">
+              <label class="admin-form__label">浅色页面背景</label>
+              <div class="admin-theme-color-inputs">
+                <input
+                  v-model.trim="systemForm.globalThemeSettings.themes.light.backgrounds.page"
+                  class="admin-input"
+                  :class="{ 'is-linked-field': activePreviewField === 'pageBackground' }"
+                  type="text"
+                  placeholder="#f8f9fa"
+                  @mouseenter="$emit('previewFieldChange', 'pageBackground')"
+                  @mouseleave="$emit('previewFieldChange', null)"
+                  @focus="$emit('previewFieldChange', 'pageBackground')"
+                  @blur="$emit('previewFieldChange', null)"
+                >
+                <input
+                  v-model="systemForm.globalThemeSettings.themes.light.backgrounds.page"
+                  class="admin-theme-color-picker"
+                  type="color"
+                  @mouseenter="$emit('previewFieldChange', 'pageBackground')"
+                  @mouseleave="$emit('previewFieldChange', null)"
+                  @focus="$emit('previewFieldChange', 'pageBackground')"
+                  @blur="$emit('previewFieldChange', null)"
+                >
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div class="admin-theme-subsection">
-          <div class="admin-theme-subsection__title">左侧导航背景</div>
-          <div class="admin-theme-subsection__desc">控制首页左侧菜单区域的独立底色，建议比页面背景略深一点，层次会更稳。</div>
-          <div class="admin-theme-color-field">
-            <label class="admin-form__label">侧栏背景色</label>
-            <div class="admin-theme-color-inputs">
-              <input
-                v-model.trim="systemForm.globalThemeSettings.backgrounds.sideMenu"
-                class="admin-input"
-                :class="{ 'is-linked-field': activePreviewField === 'sideMenuBackground' }"
-                type="text"
-                placeholder="#111218"
-                @mouseenter="$emit('previewFieldChange', 'sideMenuBackground')"
-                @mouseleave="$emit('previewFieldChange', null)"
-                @focus="$emit('previewFieldChange', 'sideMenuBackground')"
-                @blur="$emit('previewFieldChange', null)"
-              >
-              <input
-                v-model="systemForm.globalThemeSettings.backgrounds.sideMenu"
-                class="admin-theme-color-picker"
-                type="color"
-                @mouseenter="$emit('previewFieldChange', 'sideMenuBackground')"
-                @mouseleave="$emit('previewFieldChange', null)"
-                @focus="$emit('previewFieldChange', 'sideMenuBackground')"
-                @blur="$emit('previewFieldChange', null)"
-              >
+            <div class="admin-theme-color-field">
+              <label class="admin-form__label">浅色表层背景</label>
+              <div class="admin-theme-color-inputs">
+                <input
+                  v-model.trim="systemForm.globalThemeSettings.themes.light.backgrounds.surface"
+                  class="admin-input"
+                  :class="{ 'is-linked-field': activePreviewField === 'surfaceBackground' }"
+                  type="text"
+                  placeholder="#ffffff"
+                  @mouseenter="$emit('previewFieldChange', 'surfaceBackground')"
+                  @mouseleave="$emit('previewFieldChange', null)"
+                  @focus="$emit('previewFieldChange', 'surfaceBackground')"
+                  @blur="$emit('previewFieldChange', null)"
+                >
+                <input
+                  v-model="systemForm.globalThemeSettings.themes.light.backgrounds.surface"
+                  class="admin-theme-color-picker"
+                  type="color"
+                  @mouseenter="$emit('previewFieldChange', 'surfaceBackground')"
+                  @mouseleave="$emit('previewFieldChange', null)"
+                  @focus="$emit('previewFieldChange', 'surfaceBackground')"
+                  @blur="$emit('previewFieldChange', null)"
+                >
+              </div>
+            </div>
+
+            <div class="admin-theme-color-field">
+              <label class="admin-form__label">浅色侧栏背景</label>
+              <div class="admin-theme-color-inputs">
+                <input
+                  v-model.trim="systemForm.globalThemeSettings.themes.light.backgrounds.sideMenu"
+                  class="admin-input"
+                  :class="{ 'is-linked-field': activePreviewField === 'sideMenuBackground' }"
+                  type="text"
+                  placeholder="#ffffff"
+                  @mouseenter="$emit('previewFieldChange', 'sideMenuBackground')"
+                  @mouseleave="$emit('previewFieldChange', null)"
+                  @focus="$emit('previewFieldChange', 'sideMenuBackground')"
+                  @blur="$emit('previewFieldChange', null)"
+                >
+                <input
+                  v-model="systemForm.globalThemeSettings.themes.light.backgrounds.sideMenu"
+                  class="admin-theme-color-picker"
+                  type="color"
+                  @mouseenter="$emit('previewFieldChange', 'sideMenuBackground')"
+                  @mouseleave="$emit('previewFieldChange', null)"
+                  @focus="$emit('previewFieldChange', 'sideMenuBackground')"
+                  @blur="$emit('previewFieldChange', null)"
+                >
+              </div>
             </div>
           </div>
         </div>

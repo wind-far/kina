@@ -268,8 +268,53 @@
                     <input v-model.trim="form.entryDisplay.hero.subtitle" class="admin-input" type="text" placeholder="可留空">
                   </div>
                   <div class="admin-form__field admin-form__field--full">
+                    <label class="admin-form__label">首页创作工作台标题</label>
+                    <div class="admin-toggle-grid">
+                      <label class="admin-switch-row">
+                        <input v-model="form.entryDisplay.workbench.titleEnabled" type="checkbox">
+                        <span>显示首页工作台标题</span>
+                      </label>
+                      <label class="admin-switch-row">
+                        <input v-model="form.entryDisplay.workbench.showSiteName" type="checkbox">
+                        <span>标题中显示站点名称</span>
+                      </label>
+                      <label class="admin-switch-row">
+                        <input v-model="form.entryDisplay.workbench.showModeSelectorInTitle" type="checkbox">
+                        <span>标题中显示模式标签</span>
+                      </label>
+                      <label class="admin-switch-row">
+                        <input v-model="form.entryDisplay.workbench.generatorEnabled" type="checkbox">
+                        <span>显示创作面板</span>
+                      </label>
+                      <label class="admin-switch-row">
+                        <input v-model="form.entryDisplay.workbench.taskIndicatorEnabled" type="checkbox">
+                        <span>显示任务状态</span>
+                      </label>
+                      <label class="admin-switch-row">
+                        <input v-model="form.entryDisplay.workbench.bannerEnabled" type="checkbox">
+                        <span>显示 Banner 区域</span>
+                      </label>
+                      <label class="admin-switch-row">
+                        <input v-model="form.entryDisplay.workbench.showSubmitButton" type="checkbox">
+                        <span>显示提交按钮</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="admin-form__field">
+                    <label class="admin-form__label">标题前半句</label>
+                    <input v-model.trim="form.entryDisplay.workbench.prefixText" class="admin-input" type="text" placeholder="开启你的">
+                  </div>
+                  <div class="admin-form__field">
+                    <label class="admin-form__label">标题后半句</label>
+                    <input v-model.trim="form.entryDisplay.workbench.suffixText" class="admin-input" type="text" placeholder="即刻造梦！">
+                  </div>
+                  <div class="admin-form__field admin-form__field--full">
                     <label class="admin-form__label">输入框占位文案</label>
                     <input v-model.trim="form.entryDisplay.input.placeholder" class="admin-input" type="text" placeholder="说说今天想做点什么">
+                  </div>
+                  <div class="admin-form__field">
+                    <label class="admin-form__label">输入区最大宽度</label>
+                    <input v-model.number="form.entryDisplay.input.maxWidth" class="admin-input" type="number" min="320" max="1600">
                   </div>
                 </div>
               </div>
@@ -544,17 +589,32 @@
                   <h3>{{ form.entryDisplay.hero.title || '你好，想创作什么？' }}</h3>
                   <p v-if="form.entryDisplay.hero.subtitle">{{ form.entryDisplay.hero.subtitle }}</p>
                 </div>
-                <div class="conversation-preview__panel">
-                  <div class="conversation-preview__placeholder">{{ form.entryDisplay.input.placeholder || '说说今天想做点什么' }}</div>
-                  <div class="conversation-preview__toolbar">
-                    <span v-if="form.entryDisplay.mode.enabled" class="conversation-preview__chip">{{ previewModeLabel }}</span>
-                    <span v-if="form.entryDisplay.modelSelector.enabled" class="conversation-preview__chip">{{ previewModelLabel }}</span>
-                    <span v-if="form.entryDisplay.assistantSelector.enabled" class="conversation-preview__chip">{{ previewAssistantLabel }}</span>
-                    <span v-if="form.entryDisplay.actions.auto.visible" class="conversation-preview__chip">自动{{ form.entryDisplay.actions.auto.defaultEnabled ? ' · 开' : '' }}</span>
-                    <span v-if="form.entryDisplay.actions.inspiration.visible" class="conversation-preview__chip">灵感搜索{{ form.entryDisplay.actions.inspiration.defaultEnabled ? ' · 开' : '' }}</span>
-                    <span v-if="form.entryDisplay.actions.creativeDesign.visible" class="conversation-preview__chip">创意设计{{ form.entryDisplay.actions.creativeDesign.defaultEnabled ? ' · 开' : '' }}</span>
-                    <button class="conversation-preview__submit" type="button">↑</button>
+                <div
+                  class="conversation-preview__panel"
+                  :style="{ maxWidth: `${Math.max(320, Math.min(1600, Number(form.entryDisplay.input.maxWidth) || 960))}px` }"
+                >
+                  <div v-if="form.entryDisplay.workbench.titleEnabled" class="conversation-preview__workbench-title">
+                    <template v-if="form.entryDisplay.workbench.showSiteName">Canana · </template>
+                    {{ form.entryDisplay.workbench.prefixText || '开启你的' }}
+                    <span v-if="form.entryDisplay.workbench.showModeSelectorInTitle" class="conversation-preview__chip">{{ previewModeLabel }}</span>
+                    {{ form.entryDisplay.workbench.suffixText || '即刻造梦！' }}
                   </div>
+                  <template v-if="form.entryDisplay.workbench.generatorEnabled">
+                    <div class="conversation-preview__placeholder">{{ form.entryDisplay.input.placeholder || '说说今天想做点什么' }}</div>
+                    <div class="conversation-preview__toolbar">
+                      <span v-if="form.entryDisplay.mode.enabled" class="conversation-preview__chip">{{ previewModeLabel }}</span>
+                      <span v-if="form.entryDisplay.modelSelector.enabled" class="conversation-preview__chip">{{ previewModelLabel }}</span>
+                      <span v-if="form.entryDisplay.assistantSelector.enabled" class="conversation-preview__chip">{{ previewAssistantLabel }}</span>
+                      <span v-if="form.entryDisplay.actions.auto.visible" class="conversation-preview__chip">自动{{ form.entryDisplay.actions.auto.defaultEnabled ? ' · 开' : '' }}</span>
+                      <span v-if="form.entryDisplay.actions.inspiration.visible" class="conversation-preview__chip">灵感搜索{{ form.entryDisplay.actions.inspiration.defaultEnabled ? ' · 开' : '' }}</span>
+                      <span v-if="form.entryDisplay.actions.creativeDesign.visible" class="conversation-preview__chip">创意设计{{ form.entryDisplay.actions.creativeDesign.defaultEnabled ? ' · 开' : '' }}</span>
+                      <button v-if="form.entryDisplay.workbench.showSubmitButton" class="conversation-preview__submit" type="button">↑</button>
+                    </div>
+                  </template>
+                  <div v-if="form.entryDisplay.workbench.taskIndicatorEnabled" class="conversation-preview__toolbar">
+                    <span class="conversation-preview__chip">任务状态 · 展示中</span>
+                  </div>
+                  <div v-if="form.entryDisplay.workbench.bannerEnabled" class="conversation-preview__placeholder">Banner 区域 · 展示中</div>
                 </div>
               </div>
             </div>
@@ -802,6 +862,7 @@ const applyForm = (value?: ConversationSettingsConfig | null) => {
   Object.assign(form.basicRules, nextValue.basicRules)
   Object.assign(form.listDisplay, nextValue.listDisplay)
   Object.assign(form.entryDisplay.hero, nextValue.entryDisplay.hero)
+  Object.assign(form.entryDisplay.workbench, nextValue.entryDisplay.workbench)
   Object.assign(form.entryDisplay.input, nextValue.entryDisplay.input)
   Object.assign(form.entryDisplay.mode, {
     ...nextValue.entryDisplay.mode,
@@ -842,6 +903,9 @@ const buildPayload = (): AdminConversationSettingsBundle => ({
     entryDisplay: {
       hero: {
         ...form.entryDisplay.hero,
+      },
+      workbench: {
+        ...form.entryDisplay.workbench,
       },
       input: {
         ...form.entryDisplay.input,
@@ -1720,6 +1784,14 @@ onMounted(() => {
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 28px;
   background: #1f2127;
+}
+
+.conversation-preview__workbench-title {
+  margin-bottom: 18px;
+  color: #f5f7fa;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.6;
 }
 
 .conversation-preview__placeholder {

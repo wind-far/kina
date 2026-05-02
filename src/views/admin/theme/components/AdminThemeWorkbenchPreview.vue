@@ -30,11 +30,12 @@
                       <div>
                         <div class="scroll-content-DaYLnh scroll-content admin-theme-frontstage__scroll-content">
                           <div class="section-generator admin-theme-frontstage__section-generator">
-                            <HomeHeader
-                              :system-form-override="systemForm"
-                              :banner-items-override="previewBannerItems"
-                              :disable-navigation="true"
-                              :preview-readonly="true"
+                            <AdminThemeFrontHomeHeaderPreview
+                              :system-form="systemForm"
+                              :preview-banner-items="previewBannerItems"
+                              @block-action="$emit('contentBlockAction', $event)"
+                              @banner-item-action="$emit('bannerItemAction', $event)"
+                              @banner-item-reorder="$emit('bannerItemReorder', $event)"
                             />
                           </div>
                         </div>
@@ -54,7 +55,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import AdminThemeFrontSideMenuPreview from '@/views/admin/theme/components/AdminThemeFrontSideMenuPreview.vue'
-import HomeHeader from '@/components/home/components/HomeHeader.vue'
+import AdminThemeFrontHomeHeaderPreview, { type WorkbenchContentBlockKey } from '@/views/admin/theme/components/AdminThemeFrontHomeHeaderPreview.vue'
 import type { CSSProperties } from 'vue'
 import type {
   SystemConfigPayload,
@@ -91,11 +92,13 @@ const props = defineProps<{
 defineEmits<{
   menuAction: [payload: { action: WorkbenchMenuActionKey, menuKey: string }]
   menuReorder: [payload: { sourceMenuKey: string, targetMenuKey: string, position: 'before' | 'after' }]
+  contentBlockAction: [payload: { action: WorkbenchMenuActionKey, blockKey: WorkbenchContentBlockKey }]
+  bannerItemAction: [payload: { action: WorkbenchMenuActionKey, bannerKey: string }]
+  bannerItemReorder: [payload: { sourceBannerKey: string, targetBannerKey: string, position: 'before' | 'after' }]
 }>()
 
 const previewBannerItems = computed(() => {
   return [...(props.systemForm.homeLayoutSettings.banner.items || [])]
-    .filter(item => item.visible)
     .sort((left, right) => left.sortOrder - right.sortOrder)
 })
 </script>

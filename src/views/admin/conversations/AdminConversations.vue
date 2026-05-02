@@ -379,6 +379,7 @@ const applyConversationSettings = (value?: ConversationSettingsConfig | null) =>
   Object.assign(conversationSettings.basicRules, nextValue.basicRules)
   Object.assign(conversationSettings.listDisplay, nextValue.listDisplay)
   Object.assign(conversationSettings.entryDisplay.hero, nextValue.entryDisplay.hero)
+  Object.assign(conversationSettings.entryDisplay.workbench, nextValue.entryDisplay.workbench)
   Object.assign(conversationSettings.entryDisplay.input, nextValue.entryDisplay.input)
   Object.assign(conversationSettings.entryDisplay.mode, {
     ...nextValue.entryDisplay.mode,

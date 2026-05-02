@@ -137,6 +137,17 @@ const createDefaultSystemConfig = () => ({
         title: '你好，想创作什么？',
         subtitle: '输入一句需求，快速开始图片、视频或智能创作',
       },
+      workbench: {
+        titleEnabled: true,
+        generatorEnabled: true,
+        taskIndicatorEnabled: true,
+        bannerEnabled: true,
+        showSiteName: true,
+        prefixText: '开启你的',
+        suffixText: '即刻造梦！',
+        showModeSelectorInTitle: true,
+        showSubmitButton: true,
+      },
       input: {
         placeholder: '说说今天想做点什么',
         autoResize: true,
@@ -372,6 +383,7 @@ export const normalizeConversationSettings = (input?: SystemConversationSettings
   const listDisplay = readPlainObject(input?.listDisplay)
   const entryDisplay = readPlainObject(input?.entryDisplay)
   const hero = readPlainObject(entryDisplay.hero)
+  const workbench = readPlainObject(entryDisplay.workbench)
   const inputSettings = readPlainObject(entryDisplay.input)
   const mode = readPlainObject(entryDisplay.mode)
   const modelSelector = readPlainObject(entryDisplay.modelSelector)
@@ -411,6 +423,17 @@ export const normalizeConversationSettings = (input?: SystemConversationSettings
         enabled: hero.enabled !== false,
         title: String(hero.title || defaults.entryDisplay.hero.title).trim(),
         subtitle: String(hero.subtitle || '').trim(),
+      },
+      workbench: {
+        titleEnabled: workbench.titleEnabled !== false,
+        generatorEnabled: workbench.generatorEnabled !== false,
+        taskIndicatorEnabled: workbench.taskIndicatorEnabled !== false,
+        bannerEnabled: workbench.bannerEnabled !== false,
+        showSiteName: workbench.showSiteName !== false,
+        prefixText: String(workbench.prefixText || defaults.entryDisplay.workbench.prefixText).trim(),
+        suffixText: String(workbench.suffixText || defaults.entryDisplay.workbench.suffixText).trim(),
+        showModeSelectorInTitle: workbench.showModeSelectorInTitle !== false,
+        showSubmitButton: workbench.showSubmitButton !== false,
       },
       input: {
         placeholder: String(inputSettings.placeholder || defaults.entryDisplay.input.placeholder).trim(),

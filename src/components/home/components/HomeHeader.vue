@@ -1,11 +1,20 @@
 <template>
   <div class="home-header">
-    <div class="header-bto0dS">
-      {{ siteNamePrefix }}开启你的
-      <TypeSelector />
-      即刻造梦！
+    <div v-if="showWorkbenchTitle" class="header-bto0dS">
+      <template v-if="showSiteNameInTitle">{{ siteNamePrefix }}</template>
+      {{ workbenchPrefixText }}
+      <TypeSelector
+        v-if="showModeSelectorInTitle"
+        :current-label="currentModeLabel"
+        :options="modeOptions"
+      />
+      <span v-else-if="currentModeLabel" class="home-header-mode-label">{{ currentModeLabel }}</span>
+      {{ workbenchSuffixText }}
     </div>
-    <div :class="{ 'home-header-preview-mask': previewReadonly }">
+    <div
+      v-if="showWorkbenchGenerator"
+      :class="{ 'home-header-preview-mask': previewReadonly }"
+    >
       <!-- 首页配置：不可折叠、默认展开、弹窗强制向下弹出 -->
       <GenerateContentGenerator
         class="home-header-content-generator"
@@ -15,7 +24,12 @@
         @send="handleSend"
       />
     </div>
-    <div v-if="showSiteDescription && siteDescription" class="home-header-site-description-canana">{{ siteDescription }}</div>
+    <div
+      v-if="showWorkbenchGenerator && showSiteDescription && siteDescription"
+      class="home-header-site-description-canana"
+    >
+      {{ siteDescription }}
+    </div>
     <div v-if="showTaskIndicator" :class="{ 'home-header-preview-mask': previewReadonly }">
       <TaskIndicator />
     </div>
@@ -64,6 +78,14 @@ const resolvedHeaderSettings = computed(() => {
     : headerSettings.value
 })
 
+const resolvedEntryDisplay = computed(() => {
+  return resolvedSystemSettings.value.conversationSettings.entryDisplay
+})
+
+const resolvedWorkbenchSettings = computed(() => {
+  return resolvedEntryDisplay.value.workbench
+})
+
 const resolvedBannerSettings = computed(() => {
   return props.systemFormOverride
     ? props.systemFormOverride.homeLayoutSettings.banner
@@ -82,13 +104,33 @@ const siteNamePrefix = computed(() => {
   const siteName = String(resolvedSystemSettings.value.siteInfo.siteName || '').trim()
   return siteName ? `${siteName} · ` : ''
 })
+const showWorkbenchTitle = computed(() => resolvedWorkbenchSettings.value.titleEnabled !== false)
+const showWorkbenchGenerator = computed(() => resolvedWorkbenchSettings.value.generatorEnabled !== false)
+const showSiteNameInTitle = computed(() => resolvedWorkbenchSettings.value.showSiteName !== false && !!siteNamePrefix.value)
+const workbenchPrefixText = computed(() => String(resolvedWorkbenchSettings.value.prefixText || '').trim() || '开启你的')
+const workbenchSuffixText = computed(() => String(resolvedWorkbenchSettings.value.suffixText || '').trim() || '即刻造梦！')
+const showModeSelectorInTitle = computed(() => resolvedWorkbenchSettings.value.showModeSelectorInTitle !== false)
+const modeOptions = computed(() => {
+  return (resolvedEntryDisplay.value.mode.options || [])
+    .map(item => String(item.label || '').trim())
+    .filter(Boolean)
+})
 const siteDescription = computed(() => String(resolvedSystemSettings.value.siteInfo.siteDescription || '').trim())
 const showSiteDescription = computed(() => resolvedHeaderSettings.value.showSiteDescription !== false)
-const showTaskIndicator = computed(() => resolvedHeaderSettings.value.showTaskIndicator !== false)
+const showTaskIndicator = computed(() => {
+  return resolvedWorkbenchSettings.value.taskIndicatorEnabled !== false
+    && resolvedHeaderSettings.value.showTaskIndicator !== false
+})
 const showBanner = computed(() => {
-  return resolvedHeaderSettings.value.showBanner !== false
+  return resolvedWorkbenchSettings.value.bannerEnabled !== false
+    && resolvedHeaderSettings.value.showBanner !== false
     && resolvedBannerSettings.value.enabled !== false
     && resolvedBannerItems.value.some(item => item.visible !== false)
+})
+const currentModeLabel = computed(() => {
+  const defaultMode = String(resolvedEntryDisplay.value.mode.defaultMode || '').trim()
+  const options = resolvedEntryDisplay.value.mode.options || []
+  return options.find(item => item.value === defaultMode)?.label || options[0]?.label || 'Agent 模式'
 })
 
 const handleSend = (message: string, type: string, options?: Record<string, string>) => {
@@ -116,6 +158,12 @@ const handleSend = (message: string, type: string, options?: Record<string, stri
   font-size: 14px;
   line-height: 1.75;
   color: var(--text-secondary);
+}
+
+.home-header-mode-label {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 8px;
 }
 
 .home-header-preview-mask {

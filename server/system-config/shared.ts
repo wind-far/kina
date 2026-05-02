@@ -62,6 +62,18 @@ export interface SystemConversationEntryHeroPayload {
   subtitle?: string
 }
 
+export interface SystemConversationEntryWorkbenchPayload {
+  titleEnabled?: boolean
+  generatorEnabled?: boolean
+  taskIndicatorEnabled?: boolean
+  bannerEnabled?: boolean
+  showSiteName?: boolean
+  prefixText?: string
+  suffixText?: string
+  showModeSelectorInTitle?: boolean
+  showSubmitButton?: boolean
+}
+
 export interface SystemConversationEntryInputPayload {
   placeholder?: string
   autoResize?: boolean
@@ -101,6 +113,7 @@ export interface SystemConversationEntryActionsPayload {
 
 export interface SystemConversationEntryDisplayPayload {
   hero?: SystemConversationEntryHeroPayload
+  workbench?: SystemConversationEntryWorkbenchPayload
   input?: SystemConversationEntryInputPayload
   mode?: SystemConversationEntryModePayload
   modelSelector?: SystemConversationEntryModelSelectorPayload

@@ -38,9 +38,11 @@ interface ActionItem {
 const props = withDefaults(defineProps<{
   visible?: boolean
   sortArmed?: boolean
+  actionKeys?: WorkbenchMenuActionKey[]
 }>(), {
   visible: true,
   sortArmed: false,
+  actionKeys: () => ['edit', 'visible', 'delete', 'sort'],
 })
 
 const emit = defineEmits<{
@@ -48,12 +50,18 @@ const emit = defineEmits<{
   'sort-press': [event: PointerEvent]
 }>()
 
-const actions = computed<ActionItem[]>(() => [
-  { key: 'edit', label: '编辑' },
-  { key: 'visible', label: props.visible ? '隐藏' : '恢复显示', className: props.visible ? '' : 'is-hidden-state' },
-  { key: 'delete', label: '删除', className: 'is-danger' },
-  { key: 'sort', label: props.sortArmed ? '拖拽中，点击取消' : '拖拽排序', className: props.sortArmed ? 'is-drag is-drag-armed' : 'is-drag' },
-])
+const actions = computed<ActionItem[]>(() => {
+  const actionMap: Record<WorkbenchMenuActionKey, ActionItem> = {
+    edit: { key: 'edit', label: '编辑' },
+    visible: { key: 'visible', label: props.visible ? '隐藏' : '恢复显示', className: props.visible ? '' : 'is-hidden-state' },
+    delete: { key: 'delete', label: '删除', className: 'is-danger' },
+    sort: { key: 'sort', label: props.sortArmed ? '拖拽中，点击取消' : '拖拽排序', className: props.sortArmed ? 'is-drag is-drag-armed' : 'is-drag' },
+  }
+
+  return props.actionKeys
+    .map(key => actionMap[key])
+    .filter(Boolean)
+})
 
 const actionIconPathMap = computed<Record<WorkbenchMenuActionKey, string[]>>(() => ({
   edit: [
@@ -109,7 +117,7 @@ const handleMouseDown = (event: MouseEvent, action: WorkbenchMenuActionKey) => {
   padding: 6px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
-  background: rgba(24, 24, 28, 0.96);
+  background: rgb(12, 14, 20);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34);
   backdrop-filter: blur(16px);
 }

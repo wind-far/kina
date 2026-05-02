@@ -94,6 +94,7 @@ const readStoredCreationType = (): CreationType | null => {
 // 当前创作类型（有 initialCreationType 时与之一致，避免先闪默认 Agent）
 const conversationEntrySettings = computed(() => publicSystemSettings.value.conversationSettings.entryDisplay)
 const inputSettings = computed(() => conversationEntrySettings.value.input)
+const workbenchSettings = computed(() => conversationEntrySettings.value.workbench)
 const availableModeOptions = computed(() => {
   const options = Array.isArray(conversationEntrySettings.value?.mode?.options)
     ? conversationEntrySettings.value.mode.options
@@ -340,6 +341,26 @@ const promptControlHeight = computed(() => {
   return isCollapsed.value ? '42px' : '96px'
 })
 
+const contentGeneratorStyle = computed(() => {
+  const baseStyle = {
+    '--content-generator-collapse-transition-duration': '350ms',
+    '--content-generator-collapse-transition-timing-function': 'cubic-bezier(0.15,0.75,0.3,1)',
+  } as Record<string, string>
+
+  if (isSidebar.value) {
+    return baseStyle
+  }
+
+  const maxWidth = Number.isFinite(Number(inputSettings.value.maxWidth))
+    ? Math.max(320, Math.min(1600, Number(inputSettings.value.maxWidth)))
+    : 960
+
+  return {
+    ...baseStyle,
+    maxWidth: `${maxWidth}px`,
+  }
+})
+
 // 判断是否显示价格信息
 const showPrice = computed(() => {
   return !isCollapsed.value && (currentType.value === 'image' || currentType.value === 'video')
@@ -443,12 +464,12 @@ onUnmounted(() => {
   <div :class="[
          'dimension-layout-FUl4Nj',
          layoutClass,
-         {
+       {
            'collapsed-WjKggt': isCollapsed,
          },
          isReferenceHtmlLayout ? ['dimension-layout-IIVEBh', 'default-layout-eH8Zi1'] : []
        ]"
-       style="--content-generator-collapse-transition-duration:350ms;--content-generator-collapse-transition-timing-function:cubic-bezier(0.15,0.75,0.3,1)"
+       :style="contentGeneratorStyle"
        @click="handleClick">
     <div :class="['layout-KSckhZ', isReferenceHtmlLayout ? 'layout-E1r_xu' : '']">
       <div :class="['content-oZ2zsI', isReferenceHtmlLayout ? 'content-_OGr5P' : '']">
@@ -671,7 +692,10 @@ onUnmounted(() => {
         </div>
 
         <!-- 折叠状态下的提交按钮 -->
-        <div :class="[submitButtonContainerClass, { 'collapsed-WjKggt': isCollapsed, [hasReferencesClass]: hasReferences }]">
+        <div
+          v-if="workbenchSettings.showSubmitButton !== false"
+          :class="[submitButtonContainerClass, { 'collapsed-WjKggt': isCollapsed, [hasReferencesClass]: hasReferences }]"
+        >
           <!-- 根据创作类型显示价格信息（仅图片和视频类型显示） -->
           <div v-if="showPrice" class="commercial-button-content">
             <svg fill="none" height="1em" preserveAspectRatio="xMidYMid meet"

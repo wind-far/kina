@@ -54,6 +54,9 @@
               :apply-menu-reorder="handlePreviewMenuReorder"
               @menu-action="handlePreviewMenuAction"
               @menu-reorder="handlePreviewMenuReorder"
+              @content-block-action="handleWorkbenchContentAction"
+              @banner-item-action="handleBannerItemAction"
+              @banner-item-reorder="handleBannerItemReorder"
             />
 
             <AdminThemeConfigRail
@@ -119,15 +122,32 @@
       @close="closeDeleteMenuItemDialog"
       @confirm="confirmRemoveMenuItem"
     />
+
+    <AdminThemeWorkbenchContentDialog
+      :visible="workbenchContentDialogVisible"
+      :draft="editingWorkbenchContentDraft"
+      @close="closeWorkbenchContentDialog"
+      @submit="submitWorkbenchContentDialog"
+    />
+
+    <AdminThemeBannerItemDialog
+      :visible="bannerItemDialogVisible"
+      :draft="editingBannerItemDraft"
+      :preset-options="HOME_BANNER_PRESET_OPTIONS"
+      @close="closeBannerItemDialog"
+      @submit="submitBannerItemDialog"
+    />
   </AdminPageContainer>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
+import AdminThemeBannerItemDialog, { type ThemeBannerItemDialogDraft } from '@/views/admin/theme/components/AdminThemeBannerItemDialog.vue'
 import AdminThemeDeleteMenuItemDialog from '@/views/admin/theme/components/AdminThemeDeleteMenuItemDialog.vue'
 import AdminThemeLayoutPanel from '@/views/admin/theme/components/AdminThemeLayoutPanel.vue'
 import AdminThemeMenuItemDialog from '@/views/admin/theme/components/AdminThemeMenuItemDialog.vue'
+import AdminThemeWorkbenchContentDialog, { type WorkbenchContentDialogDraft } from '@/views/admin/theme/components/AdminThemeWorkbenchContentDialog.vue'
 import AdminThemeConfigRail from '@/views/admin/theme/components/AdminThemeConfigRail.vue'
 import AdminThemeThemePanel from '@/views/admin/theme/components/AdminThemeThemePanel.vue'
 import AdminThemeWorkbenchPreview from '@/views/admin/theme/components/AdminThemeWorkbenchPreview.vue'
@@ -146,6 +166,7 @@ import {
 } from '@/api/system-config'
 import { useSystemSettingsStore } from '@/stores/system-settings'
 import type { WorkbenchMenuActionKey } from '@/views/admin/theme/components/AdminThemeWorkbenchItemActions.vue'
+import type { WorkbenchContentBlockKey } from '@/views/admin/theme/components/AdminThemeFrontHomeHeaderPreview.vue'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -153,6 +174,10 @@ const previewMode = ref<'dark' | 'light'>('dark')
 const configPanelCollapsed = ref(false)
 const activeConfigTab = ref<'theme' | 'layout'>('theme')
 const activeLayoutSection = ref<'layout-side-menu' | 'layout-home-header' | 'layout-home-banner'>('layout-side-menu')
+const workbenchContentDialogVisible = ref(false)
+const editingWorkbenchContentDraft = ref<WorkbenchContentDialogDraft | null>(null)
+const bannerItemDialogVisible = ref(false)
+const editingBannerItemDraft = ref<ThemeBannerItemDialogDraft | null>(null)
 const externalLayoutAction = ref<
   | { type: 'edit-menu-item', menuKey: string, stamp: number }
   | { type: 'add-menu-item', stamp: number }
@@ -378,6 +403,229 @@ const handlePreviewMenuReorder = ({ sourceMenuKey, targetMenuKey, position }: {
   if (sourceItem.key === targetItem.key) return
   if (sourceItem.section !== targetItem.section || sourceItem.groupKey !== targetItem.groupKey) return
   reorderMenuItemWithinGroup(sourceItem.groupKey, sourceMenuKey, targetMenuKey, position)
+}
+
+const createWorkbenchContentDraft = (blockKey: WorkbenchContentBlockKey): WorkbenchContentDialogDraft => {
+  const workbench = systemForm.conversationSettings.entryDisplay.workbench
+  const input = systemForm.conversationSettings.entryDisplay.input
+  const header = systemForm.homeLayoutSettings.header
+  const draftMap: Record<WorkbenchContentBlockKey, string> = {
+    title: '标题块',
+    generator: '创作面板块',
+    'task-indicator': '任务状态块',
+    banner: 'Banner 块',
+  }
+
+  return {
+    blockKey,
+    label: draftMap[blockKey],
+    settings: {
+      enabled: blockKey === 'title'
+        ? workbench.titleEnabled !== false
+        : blockKey === 'generator'
+          ? workbench.generatorEnabled !== false
+          : blockKey === 'task-indicator'
+            ? workbench.taskIndicatorEnabled !== false
+            : workbench.bannerEnabled !== false,
+      showSiteName: workbench.showSiteName !== false,
+      prefixText: String(workbench.prefixText || ''),
+      suffixText: String(workbench.suffixText || ''),
+      showModeSelectorInTitle: workbench.showModeSelectorInTitle !== false,
+      showSubmitButton: workbench.showSubmitButton !== false,
+      showSiteDescription: header.showSiteDescription !== false,
+      placeholder: String(input.placeholder || ''),
+      maxWidth: Number(input.maxWidth || 960),
+    },
+  }
+}
+
+const openWorkbenchContentDialog = (blockKey: WorkbenchContentBlockKey) => {
+  editingWorkbenchContentDraft.value = createWorkbenchContentDraft(blockKey)
+  workbenchContentDialogVisible.value = true
+}
+
+const closeWorkbenchContentDialog = () => {
+  workbenchContentDialogVisible.value = false
+  editingWorkbenchContentDraft.value = null
+}
+
+const submitWorkbenchContentDialog = () => {
+  const draft = editingWorkbenchContentDraft.value
+  if (!draft) return
+
+  const workbench = systemForm.conversationSettings.entryDisplay.workbench
+  const header = systemForm.homeLayoutSettings.header
+
+  if (draft.blockKey === 'title') {
+    Object.assign(workbench, {
+      titleEnabled: draft.settings.enabled,
+      showSiteName: draft.settings.showSiteName,
+      prefixText: draft.settings.prefixText,
+      suffixText: draft.settings.suffixText,
+      showModeSelectorInTitle: draft.settings.showModeSelectorInTitle,
+    })
+  }
+
+  if (draft.blockKey === 'generator') {
+    Object.assign(workbench, {
+      generatorEnabled: draft.settings.enabled,
+      showSubmitButton: draft.settings.showSubmitButton,
+    })
+    Object.assign(systemForm.conversationSettings.entryDisplay.input, {
+      placeholder: draft.settings.placeholder,
+      maxWidth: Math.max(320, Math.min(1600, Number(draft.settings.maxWidth) || 960)),
+    })
+    header.showSiteDescription = draft.settings.showSiteDescription
+  }
+
+  if (draft.blockKey === 'task-indicator') {
+    workbench.taskIndicatorEnabled = draft.settings.enabled
+    header.showTaskIndicator = draft.settings.enabled
+  }
+
+  if (draft.blockKey === 'banner') {
+    workbench.bannerEnabled = draft.settings.enabled
+    header.showBanner = draft.settings.enabled
+  }
+
+  closeWorkbenchContentDialog()
+}
+
+const toggleWorkbenchContentVisibility = (blockKey: WorkbenchContentBlockKey) => {
+  const workbench = systemForm.conversationSettings.entryDisplay.workbench
+  const header = systemForm.homeLayoutSettings.header
+
+  if (blockKey === 'title') {
+    workbench.titleEnabled = !(workbench.titleEnabled !== false)
+    return
+  }
+
+  if (blockKey === 'generator') {
+    workbench.generatorEnabled = !(workbench.generatorEnabled !== false)
+    return
+  }
+
+  if (blockKey === 'task-indicator') {
+    const nextVisible = !(workbench.taskIndicatorEnabled !== false)
+    workbench.taskIndicatorEnabled = nextVisible
+    header.showTaskIndicator = nextVisible
+    return
+  }
+
+  const nextVisible = !(workbench.bannerEnabled !== false)
+  workbench.bannerEnabled = nextVisible
+  header.showBanner = nextVisible
+}
+
+const handleWorkbenchContentAction = ({ action, blockKey }: { action: WorkbenchMenuActionKey, blockKey: WorkbenchContentBlockKey }) => {
+  if (action === 'edit') {
+    openWorkbenchContentDialog(blockKey)
+    return
+  }
+
+  if (action === 'visible') {
+    toggleWorkbenchContentVisibility(blockKey)
+  }
+}
+
+const normalizeBannerSortOrder = () => {
+  systemForm.homeLayoutSettings.banner.items = systemForm.homeLayoutSettings.banner.items.map((item, index) => ({
+    ...item,
+    sortOrder: (index + 1) * 10,
+  }))
+}
+
+const createBannerItemDraft = (bannerKey: string): ThemeBannerItemDialogDraft | null => {
+  const items = systemForm.homeLayoutSettings.banner.items
+  const index = items.findIndex(item => item.key === bannerKey)
+  if (index < 0) {
+    return null
+  }
+
+  return {
+    ...items[index],
+    index,
+  }
+}
+
+const openBannerItemDialog = (bannerKey: string) => {
+  const draft = createBannerItemDraft(bannerKey)
+  if (!draft) return
+  editingBannerItemDraft.value = draft
+  bannerItemDialogVisible.value = true
+}
+
+const closeBannerItemDialog = () => {
+  bannerItemDialogVisible.value = false
+  editingBannerItemDraft.value = null
+}
+
+const submitBannerItemDialog = () => {
+  const draft = editingBannerItemDraft.value
+  if (!draft) return
+
+  const currentItem = systemForm.homeLayoutSettings.banner.items[draft.index]
+  if (!currentItem) {
+    closeBannerItemDialog()
+    return
+  }
+
+  systemForm.homeLayoutSettings.banner.items.splice(draft.index, 1, {
+    ...currentItem,
+    key: String(draft.key || currentItem.key).trim() || currentItem.key,
+    title: String(draft.title || '').trim(),
+    subtitle: String(draft.subtitle || '').trim(),
+    imageSource: draft.imageSource,
+    presetKey: draft.presetKey,
+    imageUrl: String(draft.imageUrl || '').trim(),
+    backgroundImageUrl: String(draft.backgroundImageUrl || '').trim(),
+    mainImageUrl: String(draft.mainImageUrl || '').trim(),
+    overlayImageUrl: String(draft.overlayImageUrl || '').trim(),
+    glowColor: String(draft.glowColor || '').trim() || '#2FE3FF',
+    actionType: draft.actionType,
+    actionValue: String(draft.actionValue || '').trim(),
+    visible: draft.visible !== false,
+  })
+
+  normalizeBannerSortOrder()
+  closeBannerItemDialog()
+}
+
+const toggleBannerItemVisible = (bannerKey: string) => {
+  const item = systemForm.homeLayoutSettings.banner.items.find(current => current.key === bannerKey)
+  if (!item) return
+  item.visible = item.visible === false
+}
+
+const reorderBannerItem = (payload: { sourceBannerKey: string, targetBannerKey: string, position: 'before' | 'after' }) => {
+  const items = [...systemForm.homeLayoutSettings.banner.items]
+  const sourceIndex = items.findIndex(item => item.key === payload.sourceBannerKey)
+  const targetIndex = items.findIndex(item => item.key === payload.targetBannerKey)
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+    return
+  }
+
+  const [currentItem] = items.splice(sourceIndex, 1)
+  const adjustedTargetIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex
+  const insertIndex = payload.position === 'after' ? adjustedTargetIndex + 1 : adjustedTargetIndex
+  items.splice(insertIndex, 0, currentItem)
+  systemForm.homeLayoutSettings.banner.items = items
+  normalizeBannerSortOrder()
+}
+
+const handleBannerItemAction = ({ action, bannerKey }: { action: WorkbenchMenuActionKey, bannerKey: string }) => {
+  if (action === 'edit') {
+    openBannerItemDialog(bannerKey)
+    return
+  }
+
+  if (action === 'visible') {
+    toggleBannerItemVisible(bannerKey)
+  }
+}
+
+const handleBannerItemReorder = (payload: { sourceBannerKey: string, targetBannerKey: string, position: 'before' | 'after' }) => {
+  reorderBannerItem(payload)
 }
 
 const {

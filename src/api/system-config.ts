@@ -62,6 +62,17 @@ export interface ConversationEntryDisplayConfig {
     title: string
     subtitle: string
   }
+  workbench: {
+    titleEnabled: boolean
+    generatorEnabled: boolean
+    taskIndicatorEnabled: boolean
+    bannerEnabled: boolean
+    showSiteName: boolean
+    prefixText: string
+    suffixText: string
+    showModeSelectorInTitle: boolean
+    showSubmitButton: boolean
+  }
   input: {
     placeholder: string
     autoResize: boolean
@@ -279,6 +290,17 @@ export const createDefaultConversationSettings = (): ConversationSettingsConfig 
       enabled: true,
       title: '你好，想创作什么？',
       subtitle: '输入一句需求，快速开始图片、视频或智能创作',
+    },
+    workbench: {
+      titleEnabled: true,
+      generatorEnabled: true,
+      taskIndicatorEnabled: true,
+      bannerEnabled: true,
+      showSiteName: true,
+      prefixText: '开启你的',
+      suffixText: '即刻造梦！',
+      showModeSelectorInTitle: true,
+      showSubmitButton: true,
     },
     input: {
       placeholder: '说说今天想做点什么',

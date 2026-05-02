@@ -1,7 +1,9 @@
 <template>
   <div v-if="hasBannerItems" class="home-header-banner-layout banner" :style="bannerGridStyle">
     <button
+      v-if="shouldRenderBannerSlot(0)"
       class="button-aJFqb0"
+      :class="{ 'is-hidden-preview': !isBannerItemVisible(0) }"
       type="button"
       :style="getButtonStyle(0, '#2FE3FF')"
       @click="handleBannerClick(0)"
@@ -96,7 +98,14 @@
         <span class="subtitle-VFbX8q">{{ getBannerItem(0, '无限画布', '灵感无界 · 自由创作').subtitle }}</span>
       </div>
     </button>
-    <button v-if="bannerItems[1]" class=button-RNHVcx type="button" :style="getButtonStyle(1, '#00B1CC')" @click="handleBannerClick(1)">
+    <button
+      v-if="shouldRenderBannerSlot(1)"
+      class="button-RNHVcx"
+      :class="{ 'is-hidden-preview': !isBannerItemVisible(1) }"
+      type="button"
+      :style="getButtonStyle(1, '#00B1CC')"
+      @click="handleBannerClick(1)"
+    >
       <div class=background-tgcll7></div>
       <div class=image-Ea1x6H>
         <div class=image-wrapper>
@@ -128,7 +137,14 @@
         </div>
       </div>
     </button>
-    <button v-if="bannerItems[2]" class=button-RNHVcx type="button" :style="getButtonStyle(2, '#2197FF')" @click="handleBannerClick(2)">
+    <button
+      v-if="shouldRenderBannerSlot(2)"
+      class="button-RNHVcx"
+      :class="{ 'is-hidden-preview': !isBannerItemVisible(2) }"
+      type="button"
+      :style="getButtonStyle(2, '#2197FF')"
+      @click="handleBannerClick(2)"
+    >
       <div class=background-tgcll7></div>
       <div class=image-Ea1x6H>
         <div class=image-wrapper>
@@ -160,7 +176,14 @@
         </div>
       </div>
     </button>
-    <button v-if="bannerItems[3]" class=button-RNHVcx type="button" :style="getButtonStyle(3, '#FFD057')" @click="handleBannerClick(3)">
+    <button
+      v-if="shouldRenderBannerSlot(3)"
+      class="button-RNHVcx"
+      :class="{ 'is-hidden-preview': !isBannerItemVisible(3) }"
+      type="button"
+      :style="getButtonStyle(3, '#FFD057')"
+      @click="handleBannerClick(3)"
+    >
       <div class=background-tgcll7></div>
       <div class=image-Ea1x6H>
         <div class=image-wrapper>
@@ -192,7 +215,14 @@
         </div>
       </div>
     </button>
-    <button v-if="bannerItems[4]" class=button-RNHVcx type="button" :style="getButtonStyle(4, '#FF8B17')" @click="handleBannerClick(4)">
+    <button
+      v-if="shouldRenderBannerSlot(4)"
+      class="button-RNHVcx"
+      :class="{ 'is-hidden-preview': !isBannerItemVisible(4) }"
+      type="button"
+      :style="getButtonStyle(4, '#FF8B17')"
+      @click="handleBannerClick(4)"
+    >
       <div class=background-tgcll7></div>
       <div class=image-Ea1x6H>
         <div class=image-wrapper>
@@ -237,44 +267,71 @@ import type { SystemHomeBannerItemConfig } from '@/api/system-config'
 const props = withDefaults(defineProps<{
   bannerItemsOverride?: SystemHomeBannerItemConfig[]
   disableNavigation?: boolean
+  previewShowHidden?: boolean
 }>(), {
   bannerItemsOverride: () => [],
   disableNavigation: false,
+  previewShowHidden: false,
 })
 
 // 首页横幅组件：第一步仅接入后台配置逻辑，保留旧版默认模板结构。
 const router = useRouter()
-const { bannerItems: storeBannerItems, bannerGridStyle: storeBannerGridStyle } = useHomeLayoutConfig()
+const { bannerSettings } = useHomeLayoutConfig()
 
 const bannerItems = computed(() => {
   if (props.bannerItemsOverride.length > 0) {
     return [...props.bannerItemsOverride]
-      .filter(item => item.visible)
       .sort((left, right) => left.sortOrder - right.sortOrder)
   }
 
-  return storeBannerItems.value
+  return [...(bannerSettings.value.items || [])]
+    .sort((left, right) => left.sortOrder - right.sortOrder)
 })
 
 const bannerGridStyle = computed(() => {
-  if (props.bannerItemsOverride.length === 0) {
-    return storeBannerGridStyle.value
+  const primaryBannerVisible = bannerItems.value[0]?.visible !== false
+  const secondaryBannerItems = bannerItems.value.slice(1)
+  const visibleSecondaryCount = secondaryBannerItems.filter(item => item.visible !== false).length
+
+  if (props.previewShowHidden) {
+    const itemCount = bannerItems.value.length
+    if (itemCount <= 1) {
+      return {
+        '--banner-grid': '1fr',
+      }
+    }
+
+    return {
+      '--banner-grid': `1.53fr repeat(${Math.max(0, itemCount - 1)}, 1fr)`,
+    }
   }
 
-  const itemCount = bannerItems.value.length
-  if (itemCount <= 1) {
+  if (primaryBannerVisible) {
+    if (visibleSecondaryCount === 0) {
+      return {
+        '--banner-grid': '1.53fr',
+      }
+    }
+
+    return {
+      '--banner-grid': `1.53fr repeat(${visibleSecondaryCount}, 1fr)`,
+    }
+  }
+
+  const secondarySlotCount = Math.max(1, secondaryBannerItems.length)
+  if (secondarySlotCount <= 1) {
     return {
       '--banner-grid': '1fr',
     }
   }
 
   return {
-    '--banner-grid': `1.53fr repeat(${Math.max(0, itemCount - 1)}, 1fr)`,
+    '--banner-grid': `repeat(${secondarySlotCount}, 1fr)`,
   }
 })
 
 const hasBannerItems = computed(() => {
-  return bannerItems.value.length > 0
+  return bannerItems.value.some((item, index) => shouldRenderBannerSlot(index) && !!item)
 })
 
 const primaryBannerItem = computed(() => {
@@ -315,6 +372,23 @@ const getBannerItem = (index: number, fallbackTitle: string, fallbackSubtitle: s
   }
 }
 
+const isBannerItemVisible = (index: number) => {
+  return bannerItems.value[index]?.visible !== false
+}
+
+const shouldRenderBannerSlot = (index: number) => {
+  const currentItem = bannerItems.value[index]
+  if (!currentItem) {
+    return false
+  }
+
+  if (props.previewShowHidden) {
+    return true
+  }
+
+  return currentItem.visible !== false
+}
+
 const getButtonStyle = (index: number, fallbackColor: string) => ({
   '--glow-color': getBannerItem(index, '', '').glowColor || fallbackColor,
 })
@@ -341,6 +415,12 @@ const handleBannerClick = (index: number) => {
 }
 </script>
 <style>
+.button-aJFqb0.is-hidden-preview,
+.button-RNHVcx.is-hidden-preview {
+  opacity: 0.45;
+  filter: saturate(0.7);
+}
+
 .button-aJFqb0 .third-image {
   transition: transform 0.3s ease;
   transform-origin: top left;

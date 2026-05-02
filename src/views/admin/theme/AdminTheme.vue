@@ -467,7 +467,6 @@ const createWorkbenchContentDraft = (blockKey: WorkbenchContentBlockKey): Workbe
       showSubmitButton: workbench.showSubmitButton !== false,
       showSiteDescription: header.showSiteDescription !== false,
       placeholder: String(input.placeholder || ''),
-      maxWidth: Number(input.maxWidth || 960),
     },
   }
 }
@@ -506,7 +505,6 @@ const submitWorkbenchContentDialog = () => {
     })
     Object.assign(systemForm.conversationSettings.entryDisplay.input, {
       placeholder: draft.settings.placeholder,
-      maxWidth: Math.max(320, Math.min(1600, Number(draft.settings.maxWidth) || 960)),
     })
     header.showSiteDescription = draft.settings.showSiteDescription
   }

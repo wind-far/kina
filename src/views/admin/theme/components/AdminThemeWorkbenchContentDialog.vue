@@ -58,10 +58,6 @@
               <label class="admin-form__label">输入框占位文案</label>
               <input v-model.trim="draft.settings.placeholder" class="admin-input" type="text" placeholder="说说今天想做点什么">
             </div>
-            <div class="admin-form__field">
-              <label class="admin-form__label">输入区最大宽度</label>
-              <input v-model.number="draft.settings.maxWidth" class="admin-input" type="number" min="320" max="1600">
-            </div>
           </template>
 
           <template v-else-if="draft.blockKey === 'task-indicator'">
@@ -106,7 +102,6 @@ export interface WorkbenchContentDialogDraft {
     showSubmitButton: boolean
     showSiteDescription: boolean
     placeholder: string
-    maxWidth: number
   }
 }
 

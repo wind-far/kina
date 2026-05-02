@@ -35,6 +35,7 @@ import {
   type AgentWorkspaceEvent,
 } from '@/shared/agent-workspace'
 import { normalizeGenerationErrorMessage } from '@/shared/generation-error'
+import { appendImageReferencesToRequestBody } from '@/shared/image-generation-request'
 import { AUTH_LOGIN_SUCCESS_EVENT, useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
 import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
@@ -69,6 +70,7 @@ interface GeneratingRecord {
   time: string
   model: string
   modelKey: string
+  referenceImages?: string[]
   ratio: string
   resolution: string
   duration: string
@@ -649,7 +651,7 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
       : resolveTaskStageLabel('queued', '任务已创建，等待服务端执行'))
     : undefined,
   progressPercent: record.type === 'image' ? (record.done ? 100 : 5) : 0,
-  error: record.error,
+  error: record.done || record.stopped ? record.error : '',
   agentTaskId: record.agentTaskId,
   agentRun: record.agentRun,
 })
@@ -661,7 +663,7 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   record.sessionId = saved.sessionId
   record.sessionTitle = saved.sessionTitle || record.sessionTitle || ''
   record.content = saved.content || record.content
-  record.error = saved.error
+  record.error = saved.done || saved.stopped ? saved.error : ''
   record.done = saved.done
   record.stopped = Boolean(saved.stopped)
   record.progressStage = saved.done
@@ -799,6 +801,7 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
   }
 
   if (event.type === 'connected' && event.message) {
+    targetRecord.error = ''
     targetRecord.progressStage = event.stage || targetRecord.progressStage || 'queued'
     targetRecord.progressMessage = resolveTaskStageLabel(event.stage, '造梦中')
     targetRecord.progressPercent = Math.max(
@@ -1009,7 +1012,7 @@ const syncSessionMetaFromRecord = (record: GeneratingRecord, saved: PersistedGen
 }
 
 // 处理发送事件
-const handleSend = async (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string }) => {
+const handleSend = async (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string, referenceImages?: string[] }) => {
   if (!authStore.isLoggedIn.value) {
     openLoginModal('generate-send-guard')
     return
@@ -1030,6 +1033,7 @@ const handleSend = async (message: string, type: CreationType, options?: { model
     time: formatGroupLabel(new Date()),
     model: options?.model || resolveModelLabel(options?.modelKey || '', type === 'image' ? 'IMAGE' : type === 'agent' ? 'CHAT' : 'VIDEO') || '',
     modelKey: options?.modelKey || '',
+    referenceImages: options?.referenceImages || [],
     ratio: options?.ratio || '',
     resolution: options?.resolution || '',
     duration: options?.duration || '',
@@ -1146,7 +1150,7 @@ const startImageGenerationTask = async (record: GeneratingRecord) => {
     const size = modelConfig?.sizes?.length
       ? (modelConfig.sizes.find((sizeItem: string) => sizeItem.includes(record.ratio.replace(':', 'x'))) || modelConfig.defaultParams?.size || '')
       : (record.ratio ? record.ratio.replace(':', 'x') : '')
-    const data: any = {
+    let data: any = {
       model: requestModelKey,
       prompt: record.prompt,
       n: 1,
@@ -1155,6 +1159,7 @@ const startImageGenerationTask = async (record: GeneratingRecord) => {
     if (size) {
       data.size = size
     }
+    data = appendImageReferencesToRequestBody(data, record.referenceImages)
 
     const saved = await createGenerationTask({
       sessionId: record.sessionId,
@@ -1367,7 +1372,7 @@ onUnmounted(() => {
                                   :stopped="Boolean(record.stopped)"
                                   :images="record.images"
                                   :conversation-entries="getRecordConversationEntries(record)"
-                                  :error="formatGenerationError(record.error, '图片生成失败')"
+                                  :error="record.error ? formatGenerationError(record.error, '图片生成失败') : ''"
                                   @preview="handlePreviewRecordImage(record, $event)"
                                   @stop="handleStopImageGeneration(record)"
                                 />

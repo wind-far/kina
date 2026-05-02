@@ -51,6 +51,18 @@ import HomeBanner from './HomeBanner.vue'
 import { useSystemSettingsStore } from '@/stores/system-settings'
 import { useHomeLayoutConfig } from '@/composables/useHomeLayoutConfig'
 import type { SystemConfigPayload, SystemHomeBannerItemConfig } from '@/api/system-config'
+import type { CreationType } from '@/components/generate/selectors'
+
+interface HomeHeaderSendOptions {
+  model?: string
+  skill?: string
+  ratio?: string
+  resolution?: string
+  modelKey?: string
+  duration?: string
+  feature?: string
+  referenceImages?: string[]
+}
 
 const props = withDefaults(defineProps<{
   systemFormOverride?: SystemConfigPayload | null
@@ -133,7 +145,7 @@ const currentModeLabel = computed(() => {
   return options.find(item => item.value === defaultMode)?.label || options[0]?.label || 'Agent 模式'
 })
 
-const handleSend = (message: string, type: string, options?: Record<string, string>) => {
+const handleSend = (message: string, type: CreationType, options?: HomeHeaderSendOptions) => {
   if (props.previewReadonly) {
     return
   }

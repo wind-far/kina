@@ -210,7 +210,7 @@ defineExpose({
   <div class="video-toolbar">
     <!-- 模型版本选择 -->
     <div ref="modelTriggerRef"
-         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', { 'compact': iconOnly }]"
+         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', 'select-NNOj5P', { 'compact': iconOnly }]"
          role="combobox"
          tabindex="0"
          :aria-expanded="isModelSelectOpen"
@@ -279,7 +279,7 @@ defineExpose({
     <!-- 功能选择 -->
     <div class="feature-select">
       <div ref="featureTriggerRef"
-           :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', { 'compact': iconOnly }]"
+           :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', 'select-NNOj5P', { 'compact': iconOnly }]"
            role="combobox"
            tabindex="0"
            :aria-expanded="isFeatureSelectOpen"
@@ -348,7 +348,7 @@ defineExpose({
 
     <!-- 尺寸选择 -->
     <button ref="sizeTriggerRef"
-            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', { 'lv-btn-icon-only': iconOnly }]"
+            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'toolbar-button-pEFNv9', { 'lv-btn-icon-only': iconOnly }]"
             type="button"
             :title="iconOnly ? getCurrentSizeConfig().value + ' ' + getCurrentSizeConfig().quality : undefined"
             @click.stop="toggleSizeSelect">
@@ -394,7 +394,7 @@ defineExpose({
 
     <!-- 时长选择 -->
     <div ref="durationTriggerRef"
-         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', { 'compact': iconOnly }]"
+         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', 'select-NNOj5P', { 'compact': iconOnly }]"
          role="combobox"
          tabindex="0"
          :aria-expanded="isDurationSelectOpen"

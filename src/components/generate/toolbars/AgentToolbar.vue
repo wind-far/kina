@@ -339,7 +339,7 @@ const toggleCreativeDesign = () => {
   <div class="agent-toolbar">
     <!-- 模型选择 -->
     <div v-if="showModelSelector" ref="modelTriggerRef"
-         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', { 'compact': iconOnly }]"
+         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', 'select-NNOj5P', { 'compact': iconOnly }]"
          role="combobox"
          tabindex="0"
          :aria-expanded="isModelSelectOpen"
@@ -408,7 +408,7 @@ const toggleCreativeDesign = () => {
     <!-- 技能选择器 -->
     <span v-if="showAssistantSelector" class="lv-badge skill-select-badge">
       <div ref="skillTriggerRef"
-           :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', 'skill-select', { 'compact': iconOnly, 'active-P7cL4x': isSkillSelectOpen }]"
+           :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', 'select-NNOj5P', 'skill-select', { 'compact': iconOnly, 'active-P7cL4x': isSkillSelectOpen }]"
            role="combobox"
            tabindex="0"
            :aria-expanded="isSkillSelectOpen"
@@ -480,7 +480,7 @@ const toggleCreativeDesign = () => {
 
     <!-- 自动按钮（打开生成偏好面板） -->
     <button v-if="showAutoAction" ref="preferenceTriggerRef"
-            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', { 'lv-btn-icon-only': iconOnly, 'active-Rs99sz active-mrQmUS': isPreferencePanelOpen }]"
+            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'toolbar-button-pEFNv9', { 'lv-btn-icon-only': iconOnly, 'active-Rs99sz active-mrQmUS': isPreferencePanelOpen }]"
             type="button"
             :title="iconOnly ? preferenceButtonText : undefined"
             @click="togglePreferencePanel">
@@ -501,7 +501,7 @@ const toggleCreativeDesign = () => {
     <PreferencePanel v-if="showAutoAction" v-model:visible="isPreferencePanelOpen" v-model:autoMode="autoMode" :trigger-ref="preferenceTriggerRef" :placement="placement" />
 
     <!-- 灵感搜索按钮 -->
-    <button v-if="showInspirationAction" :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'switch-button-GPRaGT', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': inspirationSearchEnabled }]"
+    <button v-if="showInspirationAction" :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'toolbar-button-pEFNv9', 'switch-button-GPRaGT', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': inspirationSearchEnabled }]"
             type="button"
             :title="iconOnly ? '灵感搜索' : undefined"
             @click="toggleInspirationSearch">
@@ -520,7 +520,7 @@ const toggleCreativeDesign = () => {
     </button>
 
     <!-- 创意设计按钮 -->
-    <button v-if="showCreativeDesignAction" :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'switch-button-GPRaGT', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': creativeDesignEnabled }]"
+    <button v-if="showCreativeDesignAction" :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'toolbar-button-pEFNv9', 'switch-button-GPRaGT', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': creativeDesignEnabled }]"
             type="button"
             :title="iconOnly ? '创意设计' : undefined"
             @click="toggleCreativeDesign">

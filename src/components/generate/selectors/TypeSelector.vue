@@ -118,7 +118,7 @@ const selectType = (type: CreationType) => {
   <div ref="triggerRef" class="type-select-wrapper" @click.stop="toggleDropdown">
     <div :aria-expanded="isOpen"
          aria-haspopup="listbox"
-         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'type-select', 'select-joF5y7', { 'compact': compact }]"
+         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'type-select', 'select-joF5y7', 'select-NNOj5P', { 'compact': compact }]"
          role="combobox"
          tabindex="0">
       <div class="lv-select-view">

@@ -23,7 +23,7 @@ const props = withDefaults(defineProps<Props>(), {
 <template>
   <div class="digital-human-toolbar">
     <!-- 设置按钮 -->
-    <button :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', { 'lv-btn-icon-only': iconOnly }]"
+    <button :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'toolbar-button-pEFNv9', { 'lv-btn-icon-only': iconOnly }]"
             type="button"
             :title="iconOnly ? '设置' : undefined">
       <svg width="1em" height="1em" viewBox="0 0 24 24"

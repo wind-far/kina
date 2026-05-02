@@ -42,6 +42,17 @@ interface Props {
   variant?: SurfaceVariant
 }
 
+interface GeneratorSendOptions {
+  model?: string
+  modelKey?: string
+  ratio?: string
+  resolution?: string
+  duration?: string
+  feature?: string
+  skill?: string
+  referenceImages?: string[]
+}
+
 const props = withDefaults(defineProps<Props>(), {
   layout: 'default',
   collapsible: true,
@@ -58,15 +69,7 @@ const props = withDefaults(defineProps<Props>(), {
 // 事件定义
 const emit = defineEmits<{
   // 发送消息事件
-  send: [message: string, type: CreationType, options?: {
-    model?: string
-    modelKey?: string
-    ratio?: string
-    resolution?: string
-    duration?: string
-    feature?: string
-    skill?: string
-  }]
+  send: [message: string, type: CreationType, options?: GeneratorSendOptions]
   // 面板宽度调整事件
   resize: [width: number]
   /** 展开状态变化（true=展开），供父级调整预览区留白等 */
@@ -75,6 +78,13 @@ const emit = defineEmits<{
 
 // 输入内容
 const inputValue = ref('')
+const imageReferenceImages = ref<string[]>([])
+const videoFirstFrameImage = ref('')
+const videoLastFrameImage = ref('')
+const imageReferenceInputRef = ref<HTMLInputElement | null>(null)
+const videoFirstFrameInputRef = ref<HTMLInputElement | null>(null)
+const videoLastFrameInputRef = ref<HTMLInputElement | null>(null)
+const IMAGE_REFERENCE_LIMIT = 9
 
 // 登录态与全局登录弹窗。
 const authStore = useAuthStore()
@@ -265,7 +275,8 @@ const handleSubmit = () => {
       model: toolbar.currentModelLabel,
       modelKey: toolbar.currentModelVersion,
       ratio: toolbar.currentSize,
-      resolution: sizeConfig.quality
+      resolution: sizeConfig.quality,
+      referenceImages: [...imageReferenceImages.value],
     })
   } else if (currentType.value === 'video' && videoToolbarRef.value) {
     const toolbar = videoToolbarRef.value
@@ -374,17 +385,17 @@ const priceText = computed(() => {
 
 // 外层容器布局类名
 const layoutClass = computed(() =>
-  isSidebar.value ? 'canvas-layout' : 'default-layout-bOIxyJ'
+  isSidebar.value ? 'canvas-layout' : 'default-layout-bOIxyJ default-layout-eH8Zi1 dimension-layout-IIVEBh'
 )
 
 // 提交按钮容器类名
 const submitButtonContainerClass = computed(() =>
-  isSidebar.value ? 'collapsed-submit-button-container-jhILhg' : 'collapsed-submit-button-container-Xdi8Y7'
+  isSidebar.value ? 'collapsed-submit-button-container-jhILhg' : 'collapsed-submit-button-container-Xdi8Y7 collapsed-submit-button-container-mpqEwH'
 )
 
 // 折叠状态提交按钮类名
 const collapsedSubmitButtonClass = computed(() =>
-  isSidebar.value ? 'collapsed-submit-button-RE6ufv' : 'collapsed-submit-button-o26OIS'
+  isSidebar.value ? 'collapsed-submit-button-RE6ufv' : 'collapsed-submit-button-o26OIS collapsed-submit-button-CfMOHV submit-button-z7zxBM'
 )
 
 // 是否有参考图（图片和视频模式有参考图上传）
@@ -396,6 +407,210 @@ const hasReferences = computed(() =>
 const hasReferencesClass = computed(() =>
   isSidebar.value ? 'has-references-LZsWsN' : 'has-references-rI7rW7'
 )
+
+const imageReferenceCount = computed(() => imageReferenceImages.value.length)
+const collapsedReferenceRecordText = computed(() => {
+  if (currentType.value === 'image' && imageReferenceImages.value.length) {
+    return `参考图片 ${imageReferenceImages.value.length} 张`
+  }
+
+  if (currentType.value === 'video') {
+    const parts: string[] = []
+    if (videoFirstFrameImage.value) {
+      parts.push('首帧')
+    }
+    if (videoLastFrameImage.value) {
+      parts.push('尾帧')
+    }
+    if (parts.length) {
+      return `参考画面 ${parts.join(' / ')}`
+    }
+  }
+
+  return ''
+})
+const imageReferenceGroupStyle = computed(() => {
+  const referenceCount = imageReferenceImages.value.length > 0
+    ? imageReferenceImages.value.length + 1
+    : 1
+
+  return {
+    '--reference-count': String(referenceCount),
+    '--reference-item-width': '48px',
+    '--reference-item-gap': '4px',
+    '--reference-group-content-horizontal-padding': '8px',
+    '--reference-group-content-horizontal-total-padding': '16px',
+    '--reference-group-collapsed-scale': '0.65625',
+    '--reference-group-collapsed-margin-compensation-factor': '-0.34375',
+    '--reference-item-rotation-compensation-width': '12px',
+  }
+})
+
+type ReferenceStackOffset = {
+  x: number
+  y: number
+}
+
+type ReferenceStackCardConfig = {
+  outerRotate: number
+  innerRotate: number
+  collapsedOffset: ReferenceStackOffset
+}
+
+type ReferenceStackLayoutConfig = {
+  cards: ReferenceStackCardConfig[]
+  uploadOuterRotate: number
+  uploadCollapsedOffset: ReferenceStackOffset
+}
+
+const imageReferenceStackLayoutMap: Record<number, ReferenceStackLayoutConfig> = {
+  1: {
+    cards: [
+      { outerRotate: 8, innerRotate: -8, collapsedOffset: { x: 0, y: 2 } },
+    ],
+    uploadOuterRotate: 22,
+    uploadCollapsedOffset: { x: 18, y: 35 },
+  },
+  2: {
+    cards: [
+      { outerRotate: 8, innerRotate: -8, collapsedOffset: { x: 0, y: 3 } },
+      { outerRotate: -4, innerRotate: 4, collapsedOffset: { x: 6, y: 1 } },
+    ],
+    uploadOuterRotate: 22,
+    uploadCollapsedOffset: { x: 21, y: 35 },
+  },
+  3: {
+    cards: [
+      { outerRotate: 8, innerRotate: -8, collapsedOffset: { x: -1, y: 5 } },
+      { outerRotate: -4, innerRotate: 4, collapsedOffset: { x: 7, y: 1 } },
+      { outerRotate: -12, innerRotate: 12, collapsedOffset: { x: 16, y: -3 } },
+    ],
+    uploadOuterRotate: 22,
+    uploadCollapsedOffset: { x: 25, y: 35 },
+  },
+  4: {
+    cards: [
+      { outerRotate: 8, innerRotate: -8, collapsedOffset: { x: -1, y: 5 } },
+      { outerRotate: -4, innerRotate: 4, collapsedOffset: { x: 7, y: 1 } },
+      { outerRotate: -12, innerRotate: 12, collapsedOffset: { x: 16, y: -3 } },
+      { outerRotate: -18, innerRotate: 18, collapsedOffset: { x: 22, y: -5 } },
+    ],
+    uploadOuterRotate: 22,
+    uploadCollapsedOffset: { x: 27, y: 35 },
+  },
+}
+
+const getImageReferenceLayoutKey = () => {
+  const count = imageReferenceImages.value.length
+  if (count <= 1) {
+    return 1
+  }
+  if (count >= 4) {
+    return 4
+  }
+  return count
+}
+
+const getImageReferenceLayoutConfig = (): ReferenceStackLayoutConfig =>
+  imageReferenceStackLayoutMap[getImageReferenceLayoutKey()]
+
+const getImageReferenceCardConfig = (index: number): ReferenceStackCardConfig => {
+  const layoutConfig = getImageReferenceLayoutConfig()
+  return layoutConfig.cards[index] ?? layoutConfig.cards[layoutConfig.cards.length - 1]
+}
+
+const getImageReferenceOuterRotate = (index: number) =>
+  `${getImageReferenceCardConfig(index).outerRotate}deg`
+
+const getImageReferenceCardRotate = (index: number) =>
+  `${getImageReferenceCardConfig(index).innerRotate}deg`
+
+const getImageReferenceUploadRotate = () =>
+  `${getImageReferenceLayoutConfig().uploadOuterRotate}deg`
+
+const getImageReferenceCollapsedOffset = (index: number) =>
+  getImageReferenceCardConfig(index).collapsedOffset
+
+const getImageReferenceUploadCollapsedOffset = () =>
+  getImageReferenceLayoutConfig().uploadCollapsedOffset
+
+const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader()
+  reader.onload = () => resolve(String(reader.result || ''))
+  reader.onerror = () => reject(new Error('读取参考图失败'))
+  reader.readAsDataURL(file)
+})
+
+const resolveSelectedImageDataList = async (event: Event) => {
+  const input = event.target as HTMLInputElement | null
+  const files = Array.from(input?.files || [])
+  if (!files.length) {
+    return [] as string[]
+  }
+
+  try {
+    return (await Promise.all(files.map(file => readFileAsDataUrl(file)))).filter(Boolean)
+  } finally {
+    if (input) {
+      input.value = ''
+    }
+  }
+}
+
+const handleImageReferenceChange = async (event: Event) => {
+  const imageDataList = await resolveSelectedImageDataList(event)
+  if (!imageDataList.length) {
+    return
+  }
+
+  imageReferenceImages.value = [...imageReferenceImages.value, ...imageDataList].slice(0, IMAGE_REFERENCE_LIMIT)
+}
+
+const removeImageReference = (index: number) => {
+  imageReferenceImages.value = imageReferenceImages.value.filter((_, currentIndex) => currentIndex !== index)
+}
+
+const handleVideoFirstFrameChange = async (event: Event) => {
+  const imageDataList = await resolveSelectedImageDataList(event)
+  videoFirstFrameImage.value = imageDataList[0] || ''
+}
+
+const handleVideoLastFrameChange = async (event: Event) => {
+  const imageDataList = await resolveSelectedImageDataList(event)
+  videoLastFrameImage.value = imageDataList[0] || ''
+}
+
+const clearVideoFirstFrame = () => {
+  videoFirstFrameImage.value = ''
+}
+
+const clearVideoLastFrame = () => {
+  videoLastFrameImage.value = ''
+}
+
+const clearCollapsedReferences = () => {
+  if (currentType.value === 'image') {
+    imageReferenceImages.value = []
+    return
+  }
+
+  if (currentType.value === 'video') {
+    videoFirstFrameImage.value = ''
+    videoLastFrameImage.value = ''
+  }
+}
+
+const openImageReferencePicker = () => {
+  imageReferenceInputRef.value?.click()
+}
+
+const openVideoFirstFramePicker = () => {
+  videoFirstFrameInputRef.value?.click()
+}
+
+const openVideoLastFramePicker = () => {
+  videoLastFrameInputRef.value?.click()
+}
 
 // ========== 调整大小手柄逻辑 ==========
 
@@ -446,17 +661,102 @@ onUnmounted(() => {
     <div class="layout-KSckhZ">
       <div class="content-oZ2zsI">
         <!-- 参考图上传区域 -->
-        <!-- 图片模式：单个参考图上传 -->
-        <div v-if="currentType === 'image'" :class="['references-vWIzeo', { 'collapsed-_VpN2b': isCollapsed && !isSidebar }]">
-          <div :class="['reference-group-_DAGw1', { 'collapsed-J9LsWu': isCollapsed && !isSidebar }]"
-               style="--reference-count:1;--reference-item-width:48px;--reference-item-gap:4px">
-            <div class="reference-group-background-f6pFpT"></div>
-            <div class="reference-group-hover-trigger-YTDCQf"></div>
-            <div class="reference-group-content-ztz9q2 expanded-hIAQK3">
+        <!-- 图片模式：上传前保持原单卡布局，上传后切多图编排 -->
+        <div v-if="currentType === 'image'" :class="['references-vWIzeo', 'references-Gf5d1P', { 'collapsed-_VpN2b collapsed-IXfvom': isCollapsed && !isSidebar }]">
+          <div :class="['reference-group-_DAGw1', 'reference-group-c2buvf', { 'collapsed-J9LsWu collapsed-GMNiSS': isCollapsed && !isSidebar, 'generator-reference-group--multi': imageReferenceImages.length > 0 }]"
+               :style="imageReferenceGroupStyle">
+            <div class="reference-group-background-f6pFpT reference-group-background-cr79bH"></div>
+            <div class="reference-group-hover-trigger-YTDCQf reference-group-hover-trigger-PWvSPa"></div>
+            <div
+              v-if="imageReferenceImages.length"
+              class="reference-group-content-ztz9q2 reference-group-content-QdAV7x expanded-hIAQK3 generator-reference-group-content generator-reference-group-content--multi"
+            >
+              <div
+                v-for="(imageUrl, imageIndex) in imageReferenceImages"
+                :key="`${imageIndex}-${imageUrl.slice(0, 24)}`"
+                class="reference-item-aI97LK reference-item-9l_dgA expanded-fVSy9S expanded-KysGyy generator-reference-item-card"
+                :data-index="imageIndex"
+                :style="{
+                  '--index-in-group': imageIndex,
+                  '--rotate': getImageReferenceOuterRotate(imageIndex),
+                  '--reference-collapsed-offset-x': `${getImageReferenceCollapsedOffset(imageIndex).x}px`,
+                  '--reference-collapsed-offset-y': `${getImageReferenceCollapsedOffset(imageIndex).y}px`,
+                  '--reference-hover-z-index': imageReferenceImages.length + 4,
+                  zIndex: imageIndex + 1,
+                }"
+              >
+                <div
+                  role="button"
+                  tabindex="0"
+                  aria-disabled="false"
+                  aria-roledescription="sortable"
+                  style="transition:none;opacity:1;width:100%;height:100%"
+                >
+                  <div
+                    class="reference-Vrle9Y generator-reference-card"
+                    :style="{ '--rotate': getImageReferenceCardRotate(imageIndex) }"
+                  >
+                    <img :src="imageUrl" alt="参考图" class="image-iZ3_fA reference-image-FbuFFj generator-reference-preview-image" crossorigin="anonymous" draggable="false">
+                    <div class="remove-button-container-vl4baz">
+                      <button type="button" class="remove-button-rcX2TE generator-reference-clear-btn" @click.stop="removeImageReference(imageIndex)">
+                        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M19.579 6.119a1.2 1.2 0 0 0-1.697-1.698L12 10.303 6.12 4.422a1.2 1.2 0 1 0-1.697 1.697L10.303 12l-5.881 5.882a1.2 1.2 0 0 0 1.697 1.697L12 13.698l5.882 5.882a1.2 1.2 0 1 0 1.697-1.697L13.697 12l5.882-5.882Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"></path>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                class="reference-item-aI97LK reference-item-9l_dgA expanded-fVSy9S expanded-KysGyy generator-reference-item-card generator-reference-item-card--upload"
+                :data-index="imageReferenceImages.length"
+                :style="{
+                  '--index-in-group': imageReferenceImages.length,
+                  '--rotate': getImageReferenceUploadRotate(),
+                  '--reference-collapsed-offset-x': `${getImageReferenceUploadCollapsedOffset().x}px`,
+                  '--reference-collapsed-offset-y': `${getImageReferenceUploadCollapsedOffset().y}px`,
+                  '--reference-hover-z-index': imageReferenceImages.length + 5,
+                  zIndex: imageReferenceImages.length + 1,
+                }"
+              >
+                <div style="transition:none;opacity:1;width:100%;height:100%">
+                  <div
+                    class="reference-upload-Yi4KkS mini-tVZaR4 generator-reference-upload-mini"
+                    :class="{ 'generator-reference-upload-mini--disabled disabled-wEh7Oq': imageReferenceCount >= IMAGE_REFERENCE_LIMIT }"
+                    :style="{ '--rotate': '0deg' }"
+                    @click.stop="imageReferenceCount < IMAGE_REFERENCE_LIMIT && openImageReferencePicker()"
+                  >
+                    <svg class="icon-cWdiC3 generator-reference-upload-mini__icon" fill="none" height="1em"
+                         preserveAspectRatio="xMidYMid meet"
+                         role="presentation"
+                         viewBox="0 0 24 24"
+                         width="1em"
+                         xmlns="http://www.w3.org/2000/svg">
+                      <g>
+                        <path clip-rule="evenodd"
+                              d="M10.8 20a1.2 1.2 0 0 0 2.4 0v-6.8H20a1.2 1.2 0 1 0 0-2.4h-6.8V4a1.2 1.2 0 0 0-2.4 0v6.8H4a1.2 1.2 0 0 0 0 2.4h6.8V20Z"
+                              data-follow-fill="currentColor"
+                              fill="currentColor"
+                              fill-rule="evenodd"></path>
+                      </g>
+                    </svg>
+                    <input accept="image/jpeg,.jpeg,image/jpg,.jpg,image/png,.png,image/webp,.webp,image/bmp,.bmp"
+                           class="file-input file-input-sQ_uuS sf-hidden"
+                           ref="imageReferenceInputRef"
+                           type="file"
+                           multiple
+                           @change="handleImageReferenceChange">
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div v-else class="reference-group-content-ztz9q2 expanded-hIAQK3">
               <div class="reference-item-aI97LK expanded-fVSy9S"
                    data-index="0"
                    style="--index-in-group:0;--rotate:8deg">
                 <div class="reference-upload-h7tmnr light-Bis76t"
+                     @click.stop="openImageReferencePicker"
                      style="--rotate:-8deg">
                   <svg class="icon-TrJRuq" fill="none" height="1em"
                        preserveAspectRatio="xMidYMid meet"
@@ -474,8 +774,10 @@ onUnmounted(() => {
                   </svg>
                   <input accept="image/jpeg,.jpeg,image/jpg,.jpg,image/png,.png,image/webp,.webp,image/bmp,.bmp"
                          class="file-input sf-hidden"
-                         multiple type="file"
-                         value="">
+                         ref="imageReferenceInputRef"
+                         type="file"
+                         multiple
+                         @change="handleImageReferenceChange">
                 </div>
               </div>
             </div>
@@ -494,8 +796,17 @@ onUnmounted(() => {
                    data-index="0"
                    style="--index-in-group:0;--rotate:8deg">
                 <div class="reference-upload-h7tmnr light-Bis76t"
+                     @click.stop="openVideoFirstFramePicker"
                      style="--rotate:-8deg">
-                  <svg class="icon-TrJRuq" fill="none" height="1em"
+                  <template v-if="videoFirstFrameImage">
+                    <img :src="videoFirstFrameImage" alt="首帧参考图" class="generator-reference-preview-image">
+                    <button type="button" class="generator-reference-clear-btn" @click.stop="clearVideoFirstFrame">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+                      </svg>
+                    </button>
+                  </template>
+                  <svg v-else class="icon-TrJRuq" fill="none" height="1em"
                        preserveAspectRatio="xMidYMid meet"
                        role="presentation"
                        viewBox="0 0 24 24"
@@ -512,8 +823,9 @@ onUnmounted(() => {
                   <div class="label-O_5YLx">首帧</div>
                   <input accept="image/jpeg,.jpeg,image/jpg,.jpg,image/png,.png,image/webp,.webp,image/bmp,.bmp"
                          class="file-input sf-hidden"
+                         ref="videoFirstFrameInputRef"
                          type="file"
-                         value="">
+                         @change="handleVideoFirstFrameChange">
                 </div>
               </div>
             </div>
@@ -546,8 +858,17 @@ onUnmounted(() => {
                    data-index="0"
                    style="--index-in-group:0;--rotate:-5deg">
                 <div class="reference-upload-h7tmnr light-Bis76t"
+                     @click.stop="openVideoLastFramePicker"
                      style="--rotate:5deg">
-                  <svg class="icon-TrJRuq" fill="none" height="1em"
+                  <template v-if="videoLastFrameImage">
+                    <img :src="videoLastFrameImage" alt="尾帧参考图" class="generator-reference-preview-image">
+                    <button type="button" class="generator-reference-clear-btn" @click.stop="clearVideoLastFrame">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+                      </svg>
+                    </button>
+                  </template>
+                  <svg v-else class="icon-TrJRuq" fill="none" height="1em"
                        preserveAspectRatio="xMidYMid meet"
                        role="presentation"
                        viewBox="0 0 24 24"
@@ -564,8 +885,9 @@ onUnmounted(() => {
                   <div class="label-O_5YLx">尾帧</div>
                   <input accept="image/jpeg,.jpeg,image/jpg,.jpg,image/png,.png,image/webp,.webp,image/bmp,.bmp"
                          class="file-input sf-hidden"
+                         ref="videoLastFrameInputRef"
                          type="file"
-                         value="">
+                         @change="handleVideoLastFrameChange">
                 </div>
               </div>
             </div>
@@ -573,9 +895,12 @@ onUnmounted(() => {
         </div>
 
         <!-- 主内容区域 -->
-        <div :class="['main-content-pao8ef', { 'main-content-MTw5sD': isCollapsed || isSidebar, 'collapsed-SD4UgZ': isCollapsed }]">
+        <div :class="['main-content-pao8ef', 'main-content-eTfdBT', { 'main-content-MTw5sD': isCollapsed || isSidebar, 'collapsed-SD4UgZ': isCollapsed }]">
           <!-- 折叠状态下的引用记录文本区域 -->
-          <div v-if="isCollapsed" class="reference-record-text-container collapsed-SgPm0K hidden-FI_sis">
+          <div
+            v-if="isCollapsed && collapsedReferenceRecordText"
+            class="reference-record-text-container collapsed-SgPm0K"
+          >
             <div class="reference-record-text">
               <div class="icon-TICgEz">
                 <svg width="1em" height="1em" viewBox="0 0 24 24"
@@ -589,9 +914,9 @@ onUnmounted(() => {
                 </svg>
               </div>
               <span class="divider-GjrSf1"></span>
-              <span class="content-lZaX5g"></span>
+              <span class="content-lZaX5g">{{ collapsedReferenceRecordText }}</span>
               <span class="divider-GjrSf1"></span>
-              <div class="icon-TICgEz icon-close">
+              <button type="button" class="icon-TICgEz icon-close" @click.stop="clearCollapsedReferences">
                 <svg width="1em" height="1em" viewBox="0 0 24 24"
                      preserveAspectRatio="xMidYMid meet" fill="none"
                      role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -602,14 +927,14 @@ onUnmounted(() => {
                           fill="currentColor"></path>
                   </g>
                 </svg>
-              </div>
+              </button>
             </div>
           </div>
 
           <!-- 提示词输入区域 -->
-          <div class="prompt-container"
+          <div :class="['prompt-container', 'prompt-editor-container-HRhsP7', { 'collapsed-L4sRxQ': isCollapsed && !isSidebar }]"
                :style="`--content-generator-prompt-control-height:${promptControlHeight};--content-generator-prompt-control-line-height:24px`">
-            <div class="prompt-editor-aDwTfA">
+            <div :class="['prompt-editor-aDwTfA', { 'collapsed-L4sRxQ': isCollapsed && !isSidebar }]">
               <textarea
                   v-model="inputValue"
                   :class="['lv-textarea', 'textarea-rfj34A', 'prompt-textarea', { 'collapsed-l8bAEB': isCollapsed, 'collapse-transition-start': isCollapsed }]"
@@ -618,7 +943,7 @@ onUnmounted(() => {
                   @input="handleInput"
                   @keydown="handleKeydown"></textarea>
             </div>
-            <div class="prompt-textarea-sizer">
+            <div class="prompt-textarea-sizer prompt-editor-sizer-S4F9P4">
               <input
                   v-model="inputValue"
                   :class="['lv-input', 'lv-input-size-default', 'input-JjM14b', 'prompt-input', { 'collapsed-l8bAEB': isCollapsed, 'collapse-transition-start': isCollapsed }]"
@@ -633,10 +958,10 @@ onUnmounted(() => {
         <!-- 折叠状态下的提交按钮 -->
         <div
           v-if="workbenchSettings.showSubmitButton !== false"
-          :class="[submitButtonContainerClass, { 'collapsed-WjKggt': isCollapsed, [hasReferencesClass]: hasReferences }]"
+          :class="[submitButtonContainerClass, { 'collapsed-WjKggt collapsed-HnZBhi': isCollapsed, [hasReferencesClass]: hasReferences }]"
         >
           <!-- 根据创作类型显示价格信息（仅图片和视频类型显示） -->
-          <div v-if="showPrice" class="commercial-button-content">
+          <div v-if="showPrice" class="commercial-button-content commercial-button-content-jVIddd">
             <svg fill="none" height="1em" preserveAspectRatio="xMidYMid meet"
                  role="presentation" viewBox="0 0 25 24"
                  width="1em" xmlns="http://www.w3.org/2000/svg">
@@ -688,9 +1013,9 @@ onUnmounted(() => {
       </div>
 
       <!-- 工具栏 -->
-      <div :class="['toolbar-tBNbB3', { 'collapsed-fUbQ9y': isCollapsed && !isSidebar }]">
-        <div class="container-yMr4oW toolbar-settings-YNMCja">
-          <div class="content-BF8rbZ toolbar-settings-content-uImXGN">
+      <div :class="['toolbar-tBNbB3', 'toolbar-k7Mdy_', { 'collapsed-fUbQ9y collapsed-jPdgrA': isCollapsed && !isSidebar }]">
+        <div class="container-yMr4oW container-vUEhlb toolbar-settings-YNMCja toolbar-settings-hsPiGw">
+          <div class="content-BF8rbZ content-Rvn0mS toolbar-settings-content-uImXGN toolbar-settings-content-AqQb52">
             <!-- 折叠状态：创作类型选择 + Agent 工具栏 -->
             <template v-if="isCollapsed && !isSidebar">
               <!-- 类型选择器 -->
@@ -786,9 +1111,9 @@ onUnmounted(() => {
         </div>
 
         <!-- 提交按钮区域 -->
-        <div class="toolbar-actions-DsJHmQ">
+        <div class="toolbar-actions-DsJHmQ toolbar-actions-pDJQS6">
           <!-- 根据创作类型显示价格信息（仅图片和视频类型显示） -->
-          <div v-if="showPrice" class="commercial-button-content">
+          <div v-if="showPrice" class="commercial-button-content commercial-button-content-jVIddd">
             <svg fill="none" height="1em" preserveAspectRatio="xMidYMid meet"
                  role="presentation" viewBox="0 0 25 24"
                  width="1em" xmlns="http://www.w3.org/2000/svg">
@@ -800,7 +1125,7 @@ onUnmounted(() => {
             {{ priceText }}
           </div>
           <div>
-            <button :class="['lv-btn', 'lv-btn-primary', 'lv-btn-size-default', 'lv-btn-shape-circle', 'lv-btn-icon-only', 'button-lc3WzE', 'submit-button-KJTUYS', isSidebar ? 'submit-button-qiVtq5' : 'submit-button-CpjScj', { 'collapsed-WjKggt': isCollapsed, 'expand-transition-start': !isCollapsed, 'lv-btn-disabled': isSubmitDisabled, 'home-submit-button': isHomeVariant }]"
+            <button :class="['lv-btn', 'lv-btn-primary', 'lv-btn-size-default', 'lv-btn-shape-circle', 'lv-btn-icon-only', 'button-lc3WzE', 'submit-button-KJTUYS', 'submit-button-z7zxBM', isSidebar ? 'submit-button-qiVtq5' : 'submit-button-CpjScj submit-button-wD1gIc', { 'collapsed-WjKggt': isCollapsed, 'expand-transition-start': !isCollapsed, 'lv-btn-disabled': isSubmitDisabled, 'home-submit-button': isHomeVariant }]"
                     :disabled="isSubmitDisabled"
                     type="button"
                     @click.stop="handleSubmit">
@@ -872,5 +1197,616 @@ onUnmounted(() => {
 .dimension-layout-FUl4Nj .home-submit-button > svg {
   width: 20px;
   height: 20px;
+}
+
+.dimension-layout-FUl4Nj.default-layout-eH8Zi1,
+.dimension-layout-FUl4Nj .default-layout-eH8Zi1 {
+  margin: 0 auto;
+  max-width: 924px;
+  min-width: 622px;
+  position: sticky;
+  width: 100%;
+}
+
+@media screen and (max-width: 1920px) {
+  .dimension-layout-FUl4Nj.default-layout-eH8Zi1:not(.collapsed-WjKggt),
+  .task-indicator-container-flqXza:not(.collapsed-WjKggt) {
+    max-width: 800px;
+  }
+}
+
+@media screen and (max-width: 1280px) {
+  .dimension-layout-FUl4Nj.default-layout-eH8Zi1:not(.collapsed-WjKggt),
+  .task-indicator-container-flqXza:not(.collapsed-WjKggt) {
+    max-width: 700px;
+  }
+}
+
+.dimension-layout-FUl4Nj .main-content-eTfdBT {
+  flex: 1 1;
+  margin-right: -8px;
+  position: relative;
+}
+
+.dimension-layout-FUl4Nj .prompt-editor-container-HRhsP7 {
+  overflow: hidden;
+  position: relative;
+}
+
+.dimension-layout-FUl4Nj .prompt-editor-aDwTfA.collapsed-L4sRxQ,
+.dimension-layout-FUl4Nj .prompt-editor-container-HRhsP7.collapsed-L4sRxQ {
+  transition: opacity var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function),
+    transform var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function);
+  will-change: opacity, transform;
+}
+
+.dimension-layout-FUl4Nj .prompt-editor-container-HRhsP7.collapsed-L4sRxQ {
+  opacity: 0.98;
+}
+
+.dimension-layout-FUl4Nj .prompt-editor-aDwTfA {
+  transition: opacity var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function),
+    transform var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function);
+  will-change: opacity, transform;
+}
+
+.dimension-layout-FUl4Nj .prompt-editor-aDwTfA.collapsed-L4sRxQ {
+  transform: translateY(1px);
+}
+
+.dimension-layout-FUl4Nj .collapsed-submit-button-container-mpqEwH {
+  bottom: 16px;
+  display: flex;
+  gap: 12px;
+  position: absolute;
+  right: 16px;
+  transition: transform var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function),
+    opacity var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function);
+  visibility: hidden;
+  will-change: transform, opacity;
+}
+
+.dimension-layout-FUl4Nj .collapsed-submit-button-container-mpqEwH.collapsed-HnZBhi {
+  visibility: visible;
+}
+
+.dimension-layout-FUl4Nj .collapsed-submit-button-container-mpqEwH.collapsed-HnZBhi.has-references-rI7rW7 {
+  transform: translateY(-4px);
+}
+
+.dimension-layout-FUl4Nj .submit-button-z7zxBM.collapsed-submit-button-CfMOHV.lv-btn-size-default.lv-btn-icon-only {
+  font-size: 20px;
+}
+
+.dimension-layout-FUl4Nj .collapsed-submit-button-container-mpqEwH.collapsed-HnZBhi .submit-button-z7zxBM.collapsed-submit-button-CfMOHV.lv-btn-size-default.lv-btn-icon-only {
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  height: 36px;
+  justify-content: space-between;
+  margin-top: 0;
+  max-width: 100%;
+  transition: margin-top var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function),
+    opacity var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function),
+    transform var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function);
+  width: 100%;
+  will-change: margin-top, opacity, transform;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_.collapsed-jPdgrA {
+  margin-top: -48px;
+  opacity: 0;
+  transform: translateY(60px);
+}
+
+.dimension-layout-FUl4Nj .container-vUEhlb.toolbar-settings-hsPiGw {
+  flex: 1 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.dimension-layout-FUl4Nj .container-vUEhlb.toolbar-settings-hsPiGw::before,
+.dimension-layout-FUl4Nj .container-vUEhlb.toolbar-settings-hsPiGw::after {
+  display: none;
+}
+
+.dimension-layout-FUl4Nj .content-Rvn0mS.toolbar-settings-content-AqQb52 {
+  display: flex;
+  gap: 4px;
+  min-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 0;
+  scrollbar-width: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.dimension-layout-FUl4Nj .content-Rvn0mS.toolbar-settings-content-AqQb52::-webkit-scrollbar {
+  display: none;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_.collapsed-jPdgrA .container-vUEhlb.toolbar-settings-hsPiGw::before,
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_.collapsed-jPdgrA .container-vUEhlb.toolbar-settings-hsPiGw::after {
+  opacity: 0;
+}
+
+.dimension-layout-FUl4Nj .toolbar-actions-pDJQS6 {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .select-NNOj5P {
+  font-family: var(--alphanumeric-font-family);
+  font-weight: 400;
+  width: auto;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .select-NNOj5P.lv-select .lv-select-suffix:has(svg) {
+  margin-left: 4px;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .select-NNOj5P.lv-select .lv-select-view {
+  background-color: transparent;
+  border: 1px solid var(--stroke-secondary);
+  border-radius: 8px;
+  box-shadow: none;
+  min-height: 32px;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .select-NNOj5P.lv-select:focus-visible .lv-select-view,
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .select-NNOj5P.lv-select:hover .lv-select-view {
+  background-color: var(--bg-block-secondary-hover);
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .select-NNOj5P.lv-select:active .lv-select-view {
+  background-color: var(--bg-block-secondary-pressed);
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .select-NNOj5P.lv-select-size-default.lv-select-single .lv-select-view {
+  font-size: 12px;
+  font-weight: 450;
+  padding: 0 14px;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .select-NNOj5P.lv-select-size-default.lv-select-single .lv-select-view:has(.lv-select-suffix svg) {
+  padding-right: 12px;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .select-NNOj5P.lv-select-size-default.lv-select-single .lv-select-view:has(.lv-select-view-value svg) {
+  padding-left: 12px;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .select-NNOj5P.lv-select-single .lv-select-view-selector {
+  overflow: visible;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .select-NNOj5P.lv-select-single .lv-select-view-value {
+  gap: 4px;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .select-NNOj5P.lv-select-single .lv-select-view-value::after {
+  display: none;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .select-NNOj5P .lv-select-arrow-icon {
+  align-items: center;
+  display: flex;
+  font-size: inherit;
+  justify-content: center;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .toolbar-button-pEFNv9.lv-btn.lv-btn-secondary {
+  font-weight: 450;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .toolbar-button-pEFNv9.lv-btn.lv-btn-secondary:not(.lv-btn-disabled) {
+  background: transparent;
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .toolbar-button-pEFNv9.lv-btn.lv-btn-secondary:not(.lv-btn-disabled):not(.lv-btn-loading):not(.lv-btn-loading-XPGaZg) {
+  border: 1px solid var(--stroke-secondary);
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .toolbar-button-pEFNv9.lv-btn.lv-btn-secondary:not(.lv-btn-disabled):not(.lv-btn-loading):not(.lv-btn-loading-XPGaZg):focus-visible,
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .toolbar-button-pEFNv9.lv-btn.lv-btn-secondary:not(.lv-btn-disabled):not(.lv-btn-loading):not(.lv-btn-loading-XPGaZg):hover {
+  background: var(--bg-block-secondary-hover);
+}
+
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_ .toolbar-button-pEFNv9.lv-btn.lv-btn-secondary:not(.lv-btn-disabled):not(.lv-btn-loading):not(.lv-btn-loading-XPGaZg):active {
+  background: var(--bg-block-secondary-pressed);
+}
+
+.dimension-layout-FUl4Nj .toolbar-button-FhFnQ_.lv-btn.lv-btn-secondary {
+  background: transparent;
+  border: 1px solid var(--stroke-secondary);
+  border-radius: 10px;
+  font-weight: 450;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.dimension-layout-FUl4Nj .toolbar-button-FhFnQ_.lv-btn.lv-btn-secondary:not(.lv-btn-disabled):hover {
+  background: var(--bg-block-secondary-hover);
+}
+
+.dimension-layout-FUl4Nj .toolbar-button-FhFnQ_.lv-btn.lv-btn-secondary:not(.lv-btn-disabled):active {
+  background: var(--bg-block-secondary-pressed);
+  transform: translateY(0.5px);
+}
+
+.dimension-layout-FUl4Nj .commercial-button-content-jVIddd {
+  align-items: center;
+  color: var(--component-secondary-text-button-default);
+  display: flex;
+  font-family: var(--alphanumeric-font-family);
+  font-size: 12px;
+  font-weight: 500;
+  gap: 4px;
+  justify-content: center;
+  transition: opacity var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function),
+    transform var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function);
+  will-change: opacity, transform;
+}
+
+.dimension-layout-FUl4Nj .generator-reference-preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.dimension-layout-FUl4Nj .references-Gf5d1P {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  height: 80px;
+  margin-bottom: 16px;
+  max-width: 100%;
+  position: relative;
+  transition: height var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function);
+  will-change: height;
+}
+
+.dimension-layout-FUl4Nj .references-vWIzeo.references-Gf5d1P.collapsed-_VpN2b,
+.dimension-layout-FUl4Nj .references-Gf5d1P.collapsed-IXfvom {
+  height: 42px;
+  margin-bottom: 0;
+  max-width: calc(100% - 60px);
+}
+
+.dimension-layout-FUl4Nj .main-content-eTfdBT.collapsed-SD4UgZ .commercial-button-content-jVIddd,
+.dimension-layout-FUl4Nj .toolbar-k7Mdy_.collapsed-jPdgrA .commercial-button-content-jVIddd {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.dimension-layout-FUl4Nj .reference-record-text-container.collapsed-SgPm0K {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.dimension-layout-FUl4Nj .reference-record-text {
+  align-items: center;
+  background: var(--bg-block-primary-default);
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: var(--text-placeholder);
+  display: flex;
+  height: 30px;
+  padding: 0 8px;
+  width: 100%;
+}
+
+.dimension-layout-FUl4Nj .reference-record-text .icon-TICgEz {
+  align-items: center;
+  color: var(--text-tertiary);
+  display: flex;
+  font-size: 16px;
+  height: 16px;
+  justify-content: center;
+  width: 16px;
+}
+
+.dimension-layout-FUl4Nj .reference-record-text .icon-close {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dimension-layout-FUl4Nj .reference-record-text .icon-close:hover {
+  background: var(--bg-block-primary-hover);
+  color: var(--text-primary);
+}
+
+.dimension-layout-FUl4Nj .reference-record-text .icon-close:active {
+  background: var(--bg-block-primary-pressed);
+}
+
+.dimension-layout-FUl4Nj .reference-record-text .divider-GjrSf1 {
+  background: var(--text-disabled);
+  border-radius: 0.5px;
+  height: 8px;
+  margin: 0 8px;
+  width: 1px;
+}
+
+.dimension-layout-FUl4Nj .reference-record-text .content-lZaX5g {
+  color: var(--text-secondary);
+  flex: 1 1;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dimension-layout-FUl4Nj .reference-group-content-ztz9q2.reference-group-content-QdAV7x.generator-reference-group-content--multi {
+  height: 64px;
+  margin: -12px 0;
+  overflow: visible;
+  padding: 22px var(--reference-group-content-horizontal-padding);
+  position: relative;
+  pointer-events: none;
+  width: var(--reference-item-width);
+}
+
+.dimension-layout-FUl4Nj .reference-group-c2buvf.generator-reference-group--multi {
+  position: relative;
+  z-index: 1;
+}
+
+.dimension-layout-FUl4Nj .reference-group-c2buvf:not(.tiled-afeZsr) {
+  transition: margin var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function),
+    transform var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function);
+  will-change: margin, transform;
+}
+
+.dimension-layout-FUl4Nj .reference-group-c2buvf.generator-reference-group--multi.collapsed-J9LsWu,
+.dimension-layout-FUl4Nj .reference-group-c2buvf.collapsed-GMNiSS {
+  margin: 0 calc((var(--reference-item-width) + var(--reference-group-content-horizontal-total-padding)) * var(--reference-group-collapsed-margin-compensation-factor) / 2);
+  transform: scale(var(--reference-group-collapsed-scale));
+  transform-origin: left center;
+  transition: margin var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function),
+    transform var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function);
+  will-change: margin, transform;
+}
+
+.dimension-layout-FUl4Nj .generator-reference-group--multi .reference-group-background-f6pFpT {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  width: 48px;
+  height: 64px;
+  opacity: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(37, 38, 46, 0.6) 82.41%, rgba(37, 38, 46, 0) 98.03%);
+  filter: blur(12px);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: width, height, opacity, transform;
+}
+
+.dimension-layout-FUl4Nj .generator-reference-group--multi .reference-group-hover-trigger-YTDCQf {
+  position: absolute;
+  top: -12px;
+  left: 0;
+  width: 64px;
+  height: 92px;
+}
+
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card {
+  transform: translate(var(--reference-collapsed-offset-x, 0px), var(--reference-collapsed-offset-y, 0px));
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity, transform;
+  pointer-events: auto;
+  transform-origin: left center;
+}
+
+.dimension-layout-FUl4Nj .generator-reference-group--multi:has(.generator-reference-item-card:not(.generator-reference-item-card--upload):hover) .reference-item-aI97LK.generator-reference-item-card,
+.dimension-layout-FUl4Nj .generator-reference-group--multi:has(.generator-reference-item-card:not(.generator-reference-item-card--upload):focus-within) .reference-item-aI97LK.generator-reference-item-card {
+  transform: translateX(calc((var(--reference-item-width) + var(--reference-item-gap)) * var(--index-in-group)));
+}
+
+.dimension-layout-FUl4Nj .generator-reference-group--multi:has(.generator-reference-item-card:not(.generator-reference-item-card--upload):hover) .reference-item-aI97LK.generator-reference-item-card[data-index="0"],
+.dimension-layout-FUl4Nj .generator-reference-group--multi:has(.generator-reference-item-card:not(.generator-reference-item-card--upload):focus-within) .reference-item-aI97LK.generator-reference-item-card[data-index="0"] {
+  z-index: 1;
+}
+
+.dimension-layout-FUl4Nj .generator-reference-group--multi:has(.generator-reference-item-card:not(.generator-reference-item-card--upload):hover) .reference-item-aI97LK.generator-reference-item-card[data-index="1"],
+.dimension-layout-FUl4Nj .generator-reference-group--multi:has(.generator-reference-item-card:not(.generator-reference-item-card--upload):focus-within) .reference-item-aI97LK.generator-reference-item-card[data-index="1"] {
+  z-index: 2;
+}
+
+.dimension-layout-FUl4Nj .reference-Vrle9Y.active-vsfmXd:not(:hover):not(:active) {
+  transform: translateY(-8px) scale(1.125) rotate(var(--rotate));
+}
+
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:not(.generator-reference-item-card--upload):hover,
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:not(.generator-reference-item-card--upload):focus-within {
+  transform: translateX(calc((var(--reference-item-width) + var(--reference-item-gap)) * var(--index-in-group))) translateY(-8px) scale(1.125);
+  z-index: var(--reference-hover-z-index, 8);
+}
+
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:not(.generator-reference-item-card--upload):active {
+  transform: translateX(calc((var(--reference-item-width) + var(--reference-item-gap)) * var(--index-in-group))) translateY(-8px) scale(0.98);
+  z-index: var(--reference-hover-z-index, 8);
+}
+
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card--upload {
+  z-index: 2;
+}
+
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card--upload:hover,
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card--upload:focus-within {
+  transform: translate(var(--reference-collapsed-offset-x, 0px), var(--reference-collapsed-offset-y, 0px)) !important;
+  z-index: var(--reference-hover-z-index, 9);
+}
+
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card--upload:active {
+  transform: translate(var(--reference-collapsed-offset-x, 0px), var(--reference-collapsed-offset-y, 0px)) !important;
+  z-index: var(--reference-hover-z-index, 9);
+}
+
+.dimension-layout-FUl4Nj .generator-reference-group--multi:has(.generator-reference-item-card:not(.generator-reference-item-card--upload):hover) .reference-group-background-f6pFpT,
+.dimension-layout-FUl4Nj .generator-reference-group--multi:has(.generator-reference-item-card:not(.generator-reference-item-card--upload):focus-within) .reference-group-background-f6pFpT {
+  opacity: 1;
+  transform: scaleX(calc(1 + var(--reference-count) * 0.28));
+  transform-origin: left center;
+}
+
+.dimension-layout-FUl4Nj .reference-Vrle9Y.generator-reference-card {
+  align-items: center;
+  box-sizing: border-box;
+  color: var(--text-placeholder);
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 2px;
+  border: 1.5px solid var(--onmedia-text-primary, var(--stroke-primary));
+  background: var(--bg-block-primary-default);
+  transform: rotate(var(--rotate));
+  transition: opacity 0.24s cubic-bezier(0.4, 0, 0.2, 1), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease, box-shadow 0.24s ease;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  will-change: opacity, transform;
+}
+
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:hover .reference-Vrle9Y.generator-reference-card,
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:focus-within .reference-Vrle9Y.generator-reference-card {
+  background: var(--bg-block-primary-hover);
+}
+
+.dimension-layout-FUl4Nj .reference-Vrle9Y.generator-reference-card::after {
+  content: "";
+  position: absolute;
+  top: -450%;
+  left: -50%;
+  width: 200%;
+  height: 1000%;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(90deg, rgba(204, 221, 255, 0), rgba(221, 234, 240, 0.04) 54.57%, rgba(221, 234, 240, 0));
+  background-repeat: no-repeat;
+  background-size: 50% 100%;
+  transform: rotate(22.5deg);
+  transform-origin: center;
+  transition: opacity 0.25s ease;
+}
+
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:hover .reference-Vrle9Y.generator-reference-card::after,
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:focus-within .reference-Vrle9Y.generator-reference-card::after {
+  opacity: 1;
+}
+
+.dimension-layout-FUl4Nj .reference-upload-Yi4KkS.generator-reference-upload-mini {
+  align-items: center;
+  background-color: var(--component-upload-button-default);
+  color: var(--text-primary);
+  border: 0.5px solid var(--stroke-tertiary);
+  display: flex;
+  height: 28px;
+  justify-content: center;
+  border-radius: 14px;
+  right: auto;
+  left: 50%;
+  bottom: auto;
+  top: 50%;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.2s ease;
+  transform: rotate(var(--rotate)) translate(50%, 50%) translate(-6px, -6px);
+  width: 28px;
+}
+
+.dimension-layout-FUl4Nj .reference-upload-Yi4KkS.active-N56cta:not(:hover):not(:active) {
+  transform: translateY(-8px) scale(1.125) rotate(var(--rotate));
+}
+
+.dimension-layout-FUl4Nj .reference-upload-Yi4KkS.generator-reference-upload-mini:hover {
+  background-color: var(--component-upload-button-hover);
+}
+
+.dimension-layout-FUl4Nj .reference-upload-Yi4KkS.generator-reference-upload-mini:active {
+  transform: rotate(var(--rotate)) translate(50%, 50%) translate(-6px, -6px) scale(0.9);
+}
+
+.dimension-layout-FUl4Nj .reference-upload-Yi4KkS.generator-reference-upload-mini--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dimension-layout-FUl4Nj .reference-upload-Yi4KkS.generator-reference-upload-mini--disabled:active {
+  transform: none;
+}
+
+.dimension-layout-FUl4Nj .icon-cWdiC3.generator-reference-upload-mini__icon {
+  transform: scale(0.75);
+}
+
+.dimension-layout-FUl4Nj .remove-button-container-vl4baz {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 22px;
+  height: 22px;
+  opacity: 0;
+  pointer-events: none;
+  transform: rotate(calc(var(--rotate) * -1));
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
+  z-index: 2;
+  will-change: transform, opacity;
+}
+
+.dimension-layout-FUl4Nj .remove-button-rcX2TE.generator-reference-clear-btn {
+  align-items: center;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--component-reference-remove-default, rgba(15, 23, 42, 0.78));
+  border: 0.5px solid var(--component-reference-remove-border, transparent);
+  color: var(--onmedia-text-primary, #fff);
+  cursor: pointer;
+  padding: 0;
+  transform: none;
+  transition: background-color 0.22s ease;
+}
+
+.dimension-layout-FUl4Nj .reference-Vrle9Y.generator-reference-card:hover .remove-button-container-vl4baz,
+.dimension-layout-FUl4Nj .reference-Vrle9Y.generator-reference-card:focus-within .remove-button-container-vl4baz,
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:active .remove-button-container-vl4baz {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.dimension-layout-FUl4Nj .reference-Vrle9Y.generator-reference-card:hover .remove-button-rcX2TE.generator-reference-clear-btn,
+.dimension-layout-FUl4Nj .reference-Vrle9Y.generator-reference-card:focus-within .remove-button-rcX2TE.generator-reference-clear-btn,
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:active .remove-button-rcX2TE.generator-reference-clear-btn {
+  transform: none;
+}
+
+.dimension-layout-FUl4Nj .remove-button-container-vl4baz:hover .remove-button-rcX2TE.generator-reference-clear-btn {
+  background: var(--component-reference-remove-hover, rgba(15, 23, 42, 0.92));
+}
+
+.dimension-layout-FUl4Nj .remove-button-container-vl4baz:active .remove-button-rcX2TE.generator-reference-clear-btn {
+  background: var(--component-reference-remove-pressed, rgba(15, 23, 42, 0.98));
 }
 </style>

@@ -9,6 +9,7 @@ import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes, edges }
 import { BANANA_SIZE_OPTIONS, SEEDREAM_SIZE_OPTIONS, SEEDREAM_4K_SIZE_OPTIONS, SEEDREAM_QUALITY_OPTIONS, getAllImageModels, loadPublicModelCatalog, getDefaultImageModelKey, getModelByName, resolveRequestModelKey } from '@/config/models'
 import { generateImage } from '../../api/image'
 import WfSelect from '@/components/common/WfSelect.vue'
+import { appendImageReferencesToRequestBody, collectOrderedImageReferences } from '@/shared/image-generation-request'
 
 const props = defineProps({ id: String, data: Object })
 const { updateNodeInternals } = useVueFlow()
@@ -88,11 +89,9 @@ const collectInputs = () => {
   }
 
   prompts.sort((a, b) => a.order - b.order)
-  refImages.sort((a, b) => a.order - b.order)
-
   return {
     prompt: prompts.map(p => p.content).join('\n'),
-    refImages: refImages.map(r => r.imageData)
+    refImages: collectOrderedImageReferences(refImages)
   }
 }
 
@@ -104,10 +103,10 @@ const handleGenerate = async () => {
   isGenerating.value = true
   let outputNodeId = null
   try {
-    const params = { model: resolveRequestModelKey(model.value, 'IMAGE'), prompt: prompt || '', n: 1 }
+    let params = { model: resolveRequestModelKey(model.value, 'IMAGE'), prompt: prompt || '', n: 1 }
     if (size.value && currentModel.value?.sizes?.length) params.size = size.value
     if (quality.value) params.quality = quality.value
-    if (refImages.length) params.image = refImages
+    params = appendImageReferencesToRequestBody(params, refImages)
 
     // 先创建带 loading 状态的输出节点
     const node = nodes.value.find(n => n.id === props.id)

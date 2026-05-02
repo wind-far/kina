@@ -517,6 +517,23 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       sortOrder: 30,
     },
     {
+      key: 'canvas',
+      title: '画布',
+      section: 'center',
+      groupKey: 'group-center-main',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'canvas',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
+      badgeText: '',
+      badgeTone: 'default',
+      actionType: 'route',
+      actionValue: '/canvas',
+      sortOrder: 40,
+    },
+    {
       key: 'workflow',
       title: '工作流',
       section: 'center',
@@ -531,7 +548,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       badgeTone: 'default',
       actionType: 'route',
       actionValue: '/workflow',
-      sortOrder: 40,
+      sortOrder: 50,
     },
     {
       key: 'account',
@@ -548,7 +565,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       badgeTone: 'default',
       actionType: 'route',
       actionValue: '/account',
-      sortOrder: 50,
+      sortOrder: 60,
     },
     {
       key: 'publish',
@@ -565,7 +582,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       badgeTone: 'default',
       actionType: 'route',
       actionValue: '/publish',
-      sortOrder: 60,
+      sortOrder: 70,
     },
     {
       key: 'marketing',
@@ -808,10 +825,44 @@ const normalizeGlobalThemeSettings = (value?: SystemGlobalThemeSettingsConfig | 
   }
 }
 
+const normalizeHomeSideMenuSettings = (value?: SystemHomeSideMenuSettingsConfig | null): SystemHomeSideMenuSettingsConfig => {
+  const defaults = createDefaultHomeSideMenuSettings()
+  const incomingGroups = Array.isArray(value?.groups) ? value!.groups : []
+  const incomingItems = Array.isArray(value?.items) ? value!.items : []
+
+  const normalizedGroups = defaults.groups.map(defaultGroup => {
+    const matchedGroup = incomingGroups.find(group => group.key === defaultGroup.key)
+    return {
+      ...defaultGroup,
+      ...(matchedGroup || {}),
+    }
+  })
+
+  const extraGroups = incomingGroups.filter(group => !normalizedGroups.some(defaultGroup => defaultGroup.key === group.key))
+
+  const normalizedItems = defaults.items.map(defaultItem => {
+    const matchedItem = incomingItems.find(item => item.key === defaultItem.key)
+    return {
+      ...defaultItem,
+      ...(matchedItem || {}),
+    }
+  })
+
+  const extraItems = incomingItems.filter(item => !normalizedItems.some(defaultItem => defaultItem.key === item.key))
+
+  return {
+    ...defaults,
+    ...(value || {}),
+    groups: [...normalizedGroups, ...extraGroups].sort((left, right) => left.sortOrder - right.sortOrder),
+    items: [...normalizedItems, ...extraItems].sort((left, right) => left.sortOrder - right.sortOrder),
+  }
+}
+
 const normalizeSystemConfigPayload = (payload: SystemConfigPayload): SystemConfigPayload => {
   return {
     ...payload,
     globalThemeSettings: normalizeGlobalThemeSettings(payload.globalThemeSettings),
+    homeSideMenuSettings: normalizeHomeSideMenuSettings(payload.homeSideMenuSettings),
   }
 }
 

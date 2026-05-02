@@ -36,6 +36,17 @@
     <g><path data-follow-fill="currentColor" d="M5.837 3.77A2 2 0 0 0 3.84 5.65l-.003.12v10.884a3 3 0 0 0 2.824 2.995l.176.005h10.326a3 3 0 0 0 2.995-2.824l.005-.176v-8.5a2 2 0 0 0-1.85-1.995l-.15-.005h-5.737a2 2 0 0 1-1.355-.528l-.086-.083-1.11-1.156A2 2 0 0 0 8.55 3.777l-.12-.007H5.837Zm0-1h2.594a4 4 0 0 1 2.884 1.228l1.111 1.156h5.737a4 4 0 0 1 3.995 3.8l.005.2v8.5a4 4 0 0 1-3.8 3.995l-.2.005H6.837a4 4 0 0 1-3.995-3.8l-.005-.2V5.77a3 3 0 0 1 3-3Zm1.163 7.23a1 1 0 0 0 0 2h10a1 1 0 1 0 0-2H7Z" fill="currentColor"></path></g>
   </svg>
 
+  <svg v-else-if="iconKey === 'canvas' && active" width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+    <g>
+      <path data-follow-fill="currentColor" d="M6 3a2 2 0 0 0-2 2v10.2a2.8 2.8 0 0 0 2.8 2.8H11v1.2a1.8 1.8 0 0 0 1.8 1.8H19a1 1 0 1 0 0-2h-5.8a.2.2 0 0 1-.2-.2V18h4.2a2.8 2.8 0 0 0 2.8-2.8V5a2 2 0 0 0-2-2H6Zm6.25 4.25a1 1 0 0 1 1 1v1.5h1.5a1 1 0 1 1 0 2h-1.5v1.5a1 1 0 1 1-2 0v-1.5h-1.5a1 1 0 1 1 0-2h1.5v-1.5a1 1 0 0 1 1-1Zm5.25 9.25a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5Z" fill="currentColor"></path>
+    </g>
+  </svg>
+  <svg v-else-if="iconKey === 'canvas'" width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+    <g>
+      <path data-follow-fill="currentColor" d="M6 4h12v11.2a1.2 1.2 0 0 1-1.2 1.2H12v2.8c0 .11.09.2.2.2H18a1 1 0 1 1 0 2h-5.8a2.2 2.2 0 0 1-2.2-2.2v-2.8H6.8A2.8 2.8 0 0 1 4 15.2V5a1 1 0 0 1 1-1Zm0-2a3 3 0 0 0-3 3v10.2a4.8 4.8 0 0 0 4.8 4.8H8v.2a4.2 4.2 0 0 0 4.2 4.2H18a3 3 0 1 0 0-6h-.451a4.8 4.8 0 0 0 2.451-4.2V5a3 3 0 0 0-3-3H6Zm6.25 5.25a1 1 0 0 1 1 1v1.5h1.5a1 1 0 1 1 0 2h-1.5v1.5a1 1 0 1 1-2 0v-1.5h-1.5a1 1 0 1 1 0-2h1.5v-1.5a1 1 0 0 1 1-1Zm5.25 8.25a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5Z" fill="currentColor"></path>
+    </g>
+  </svg>
+
   <svg v-else-if="iconKey === 'workflow' && active" width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
     <g><path data-follow-fill="currentColor" d="M4 5a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H9v2h6v-2h-.5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2H18a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-.5v2.5a1.5 1.5 0 0 1-1.5 1.5H9v2h.5a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h.5V14H9v-2H6.5A1.5 1.5 0 0 1 5 10.5V10h-.5A2 2 0 0 1 2.5 8V5Z" fill="currentColor"></path></g>
   </svg>

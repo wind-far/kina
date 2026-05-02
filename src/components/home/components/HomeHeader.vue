@@ -153,6 +153,11 @@ const handleSend = (message: string, type: string, options?: Record<string, stri
 </script>
 
 <style scoped>
+.home-header-content-generator {
+  width: min(1195px, calc(100vw - 32px));
+  margin: 0 auto;
+}
+
 .home-header-site-description-canana {
   margin-top: 12px;
   font-size: 14px;

@@ -82,6 +82,7 @@ const resolveMenuItemId = (key: string) => {
     home: 'Home',
     generate: 'AIGeneratedRecord',
     asset: 'Asset',
+    canvas: 'Canvas',
     workflow: 'Workflow',
     account: 'AccountManagement',
     publish: 'PublishCenter',

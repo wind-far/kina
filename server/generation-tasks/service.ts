@@ -61,6 +61,104 @@ const logGenerationTaskError = (stage: string, error: unknown, detail: Record<st
   }))
 }
 
+const BURST_RATE_RETRY_DELAYS = [1200, 2600, 5200]
+
+const sleepWithAbortSignal = async (signal: AbortSignal, durationMs: number) => {
+  if (durationMs <= 0) {
+    return
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', handleAbort)
+      resolve()
+    }, durationMs)
+
+    const handleAbort = () => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', handleAbort)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+
+    signal.addEventListener('abort', handleAbort, { once: true })
+  })
+}
+
+const parseRetryAfterMs = (response: Response) => {
+  const retryAfterValue = String(response.headers.get('retry-after') || '').trim()
+  if (!retryAfterValue) {
+    return 0
+  }
+
+  const seconds = Number(retryAfterValue)
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return seconds * 1000
+  }
+
+  const retryAt = Date.parse(retryAfterValue)
+  if (Number.isFinite(retryAt)) {
+    return Math.max(retryAt - Date.now(), 0)
+  }
+
+  return 0
+}
+
+const isBurstRateLimitedResponse = (status: number, responseText: string) => {
+  if (status === 429) {
+    return true
+  }
+
+  const normalizedText = String(responseText || '').trim()
+  if (!normalizedText) {
+    return false
+  }
+
+  return /limit_burst_rate/i.test(normalizedText)
+    || /Request rate increased too quickly/i.test(normalizedText)
+}
+
+const fetchWithBurstRateRetry = async (input: {
+  url: string
+  init: RequestInit
+  signal: AbortSignal
+  stage: string
+  detail: Record<string, unknown>
+}) => {
+  for (let attemptIndex = 0; attemptIndex <= BURST_RATE_RETRY_DELAYS.length; attemptIndex += 1) {
+    const response = await fetch(input.url, {
+      ...input.init,
+      signal: input.signal,
+    })
+
+    if (response.ok) {
+      return response
+    }
+
+    const responseText = await response.clone().text().catch(() => '')
+    const isBurstRateLimited = isBurstRateLimitedResponse(response.status, responseText)
+    if (!isBurstRateLimited || attemptIndex >= BURST_RATE_RETRY_DELAYS.length) {
+      return response
+    }
+
+    const retryAfterMs = parseRetryAfterMs(response)
+    const baseDelayMs = BURST_RATE_RETRY_DELAYS[attemptIndex]
+    const jitterMs = Math.floor(Math.random() * 400)
+    const waitDurationMs = Math.max(retryAfterMs, baseDelayMs + jitterMs)
+
+    logGenerationTask(`${input.stage}:burst_rate_retry`, {
+      ...input.detail,
+      status: response.status,
+      attempt: attemptIndex + 1,
+      waitDurationMs,
+      errorPreview: responseText.slice(0, 240),
+    })
+
+    await sleepWithAbortSignal(input.signal, waitDurationMs)
+  }
+
+  throw new Error('上游请求重试流程异常结束')
+}
+
 // 向当前任务的所有 SSE 订阅者广播最新状态。
 const emitTaskStreamEvent = (recordId: string, event: GenerationTaskStreamEvent) => {
   const subscribers = taskStreamSubscribers.get(recordId)
@@ -389,11 +487,20 @@ const requestImageGeneration = async (input: {
   delete (requestBody as Record<string, unknown>).providerId
 
   const upstreamUrl = `${upstream.baseUrl.replace(/\/+$/, '')}/${upstream.endpoint.replace(/^\/+/, '')}`
-  const response = await fetch(upstreamUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(requestBody),
+  const response = await fetchWithBurstRateRetry({
+    url: upstreamUrl,
     signal: input.signal,
+    stage: 'image_generation',
+    detail: {
+      providerId: input.providerId,
+      modelKey: input.modelKey,
+      endpointType: 'image',
+    },
+    init: {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+    },
   })
 
   if (!response.ok) {
@@ -789,16 +896,26 @@ const requestAgentWorkspaceModelPlan = async (input: {
   ]
 
   const upstreamUrl = `${upstream.baseUrl.replace(/\/+$/, '')}/${upstream.endpoint.replace(/^\/+/, '')}`
-  const response = await fetch(upstreamUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: input.modelKey,
-      stream: false,
-      messages,
-      temperature: 0.6,
-    }),
+  const response = await fetchWithBurstRateRetry({
+    url: upstreamUrl,
     signal: input.signal,
+    stage: 'agent_workspace_planner',
+    detail: {
+      providerId: input.providerId,
+      modelKey: input.modelKey,
+      endpointType: 'chat',
+      skill: input.skill,
+    },
+    init: {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: input.modelKey,
+        stream: false,
+        messages,
+        temperature: 0.6,
+      }),
+    },
   })
 
   if (!response.ok) {
@@ -909,11 +1026,22 @@ const executeAgentChatTask = async (task: RunningGenerationTask, payload: Genera
     message: '已开始请求上游对话模型',
   })
 
-  const response = await fetch(upstreamUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(requestBody),
+  const response = await fetchWithBurstRateRetry({
+    url: upstreamUrl,
     signal: task.abortController.signal,
+    stage: 'agent_chat',
+    detail: {
+      recordId: task.recordId,
+      userId: task.userId,
+      providerId,
+      modelKey,
+      endpointType: 'chat',
+    },
+    init: {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+    },
   })
 
   if (!response.ok) {

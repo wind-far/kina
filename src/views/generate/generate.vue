@@ -1342,7 +1342,7 @@ onUnmounted(() => {
                                 <GenerateAgentRecord
                                   v-if="record.type === 'agent' && record.agentRun"
                                   :run="record.agentRun"
-                                  :error-text="formatGenerationError(record.error, '任务执行失败')"
+                                  :error-text="record.error ? formatGenerationError(record.error, '任务执行失败') : ''"
                                   @stop="handleStopAgentExecution(record)"
                                 />
                                 <AgentLoadingRecord
@@ -1350,7 +1350,7 @@ onUnmounted(() => {
                                   :prompt="record.prompt"
                                   :content="record.content"
                                   :done="record.done"
-                                  :error="formatGenerationError(record.error, '对话生成失败')"
+                                  :error="record.error ? formatGenerationError(record.error, '对话生成失败') : ''"
                                 />
                                 <ImageLoadingRecord
                                   v-else

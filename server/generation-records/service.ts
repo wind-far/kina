@@ -251,6 +251,43 @@ const materializeOutputAsset = async (
   }
 }
 
+// 将参考图统一物化为稳定的本地上传地址，避免在记录列表里直接依赖超长 data URL。
+const normalizeReferenceImages = async (referenceImages: string[] | null | undefined) => {
+  const items = Array.isArray(referenceImages) ? referenceImages : []
+  const normalizedItems = items
+    .map(item => String(item || '').trim())
+    .filter(Boolean)
+
+  const nextUrls: string[] = []
+
+  for (const [index, rawUrl] of normalizedItems.entries()) {
+    if (isLocalManagedAssetUrl(rawUrl)) {
+      nextUrls.push(rawUrl)
+      continue
+    }
+
+    if (!isDataUrl(rawUrl) && !isRemoteHttpUrl(rawUrl)) {
+      nextUrls.push(rawUrl)
+      continue
+    }
+
+    const sourceAsset = isDataUrl(rawUrl)
+      ? parseDataUrl(rawUrl)
+      : await downloadRemoteAsset(rawUrl)
+
+    const savedAsset = await saveUploadedBuffer({
+      buffer: sourceAsset.buffer,
+      mimeType: sourceAsset.mimeType,
+      filename: `generation-reference-${index + 1}`,
+      category: 'generated/reference',
+    })
+
+    nextUrls.push(savedAsset.publicUrl)
+  }
+
+  return nextUrls
+}
+
 // 统一归一化输出列表，并将需要托管的资源写入自己的存储系统。
 const normalizeOutputs = async (payload: GenerationRecordPayload) => {
   const outputs = collectOutputs(payload)
@@ -478,6 +515,14 @@ const buildRecordInclude = () => ({
   },
 })
 
+// 从记录元信息中恢复参考图列表，供前端刷新后继续渲染消息头。
+const resolveReferenceImagesFromMeta = (metaJson: unknown) => {
+  const list = Array.isArray((metaJson as any)?.referenceImages) ? (metaJson as any).referenceImages : []
+  return list
+    .map((item: unknown) => String(item || '').trim())
+    .filter(Boolean)
+}
+
 // 将数据库记录序列化为前端可直接消费的结构
 const serializeGenerationRecord = (record: any) => ({
   id: record.id,
@@ -494,6 +539,7 @@ const serializeGenerationRecord = (record: any) => ({
   duration: record.durationLabel || '',
   feature: record.feature || '',
   skill: record.skill || 'general',
+  referenceImages: resolveReferenceImagesFromMeta(record.metaJson),
   done: ['COMPLETED', 'FAILED', 'STOPPED'].includes(record.status),
   stopped: record.status === 'STOPPED',
   agentTaskId: record.agentTaskId || undefined,
@@ -606,14 +652,17 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
   })
 
   let outputs: GenerationOutputPayload[] = []
+  let normalizedReferenceImages: string[] = []
   try {
     outputs = await normalizeOutputs(payload)
+    normalizedReferenceImages = await normalizeReferenceImages(payload.referenceImages)
   } catch (error) {
-    logGenerationRecordError('create_generation_record:normalize_outputs', error, {
+    logGenerationRecordError('create_generation_record:normalize_assets', error, {
       currentUserId,
       type: payload.type,
       imageCount: Array.isArray(payload.images) ? payload.images.length : 0,
       outputCount: Array.isArray(payload.outputs) ? payload.outputs.length : 0,
+      referenceImageCount: Array.isArray(payload.referenceImages) ? payload.referenceImages.length : 0,
     })
     throw error
   }
@@ -640,6 +689,9 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
           feature: String(payload.feature || '').trim() || null,
           skill: String(payload.skill || '').trim() || 'general',
           agentTaskId: String(payload.agentTaskId || '').trim() || null,
+          metaJson: {
+            referenceImages: normalizedReferenceImages,
+          },
           startedAt: new Date(),
           finishedAt: payload.done ? new Date() : null,
         },
@@ -820,15 +872,18 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
   })
 
   let outputs: GenerationOutputPayload[] = []
+  let normalizedReferenceImages: string[] = []
   try {
     outputs = await normalizeOutputs(payload)
+    normalizedReferenceImages = await normalizeReferenceImages(payload.referenceImages)
   } catch (error) {
-    logGenerationRecordError('update_generation_record:normalize_outputs', error, {
+    logGenerationRecordError('update_generation_record:normalize_assets', error, {
       currentUserId,
       generationRecordId: id,
       type: payload.type,
       imageCount: Array.isArray(payload.images) ? payload.images.length : 0,
       outputCount: Array.isArray(payload.outputs) ? payload.outputs.length : 0,
+      referenceImageCount: Array.isArray(payload.referenceImages) ? payload.referenceImages.length : 0,
     })
     throw error
   }
@@ -867,6 +922,9 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
           feature: String(payload.feature || '').trim() || null,
           skill: String(payload.skill || '').trim() || 'general',
           agentTaskId: String(payload.agentTaskId || '').trim() || null,
+          metaJson: {
+            referenceImages: normalizedReferenceImages,
+          },
           finishedAt: payload.done ? new Date() : null,
         },
       })

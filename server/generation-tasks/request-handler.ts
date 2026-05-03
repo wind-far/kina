@@ -23,6 +23,7 @@ export const handleGenerationTasksRequest = async (req: any, res: any) => {
       : taskPath
 
   let currentUser: { id?: string | null } | null = null
+  let payloadSummary: Record<string, unknown> | null = null
 
   try {
     if (!isPrismaConfigured()) {
@@ -37,6 +38,12 @@ export const handleGenerationTasksRequest = async (req: any, res: any) => {
 
     if (req.method === 'POST' && requestUrl === GENERATION_TASKS_BASE_PATH) {
       const payload = await readGenerationTaskBody(req)
+      payloadSummary = {
+        sessionId: payload?.sessionId || null,
+        type: payload?.type || null,
+        referenceImageCount: Array.isArray(payload?.referenceImages) ? payload.referenceImages.length : 0,
+        hasRequestBody: Boolean(payload?.requestBody),
+      }
       const data = await startGenerationTask(payload, currentUser.id)
       sendJson(res, 200, { data })
       return
@@ -65,6 +72,7 @@ export const handleGenerationTasksRequest = async (req: any, res: any) => {
       requestUrl,
       taskId: taskId || null,
       currentUserId: currentUser?.id || null,
+      payloadSummary,
       errorMessage: error?.message || '处理生成任务失败',
       errorStack: error?.stack || null,
     })

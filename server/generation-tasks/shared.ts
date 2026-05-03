@@ -12,6 +12,7 @@ export interface GenerationTaskStartPayload {
   duration?: string
   feature?: string
   skill?: string
+  referenceImages?: string[]
   requestBody?: Record<string, unknown> | null
 }
 

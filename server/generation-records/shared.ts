@@ -25,6 +25,7 @@ export interface GenerationRecordPayload {
   duration?: string
   feature?: string
   skill?: string
+  referenceImages?: string[]
   done?: boolean
   stopped?: boolean
   agentTaskId?: string

@@ -361,6 +361,7 @@ const buildInitialRecordPayload = (payload: GenerationTaskStartPayload): Generat
   duration: String(payload.duration || '').trim(),
   feature: String(payload.feature || '').trim(),
   skill: String(payload.skill || '').trim() || 'general',
+  referenceImages: Array.isArray(payload.referenceImages) ? [...payload.referenceImages] : [],
   done: false,
   stopped: false,
   images: [],

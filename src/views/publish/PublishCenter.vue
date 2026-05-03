@@ -3,8 +3,8 @@
     <div id="csr-root">
       <div class="global-dreamina-container">
         <div id="dreamina" class="root_bf55f">
-          <div class="top-down-layer-ilr3Ve">
-            <div class="container-moSF_y" style="--side-menu-width:76px">
+          <div class="top-down-layer">
+            <div class="container-moSF_y" :style="sideMenuStyleVars">
               <!-- 侧边菜单 -->
               <SideMenu/>
 
@@ -559,6 +559,7 @@
 import SideMenu from '@/components/home/components/SideMenu.vue'
 import NetworkStatus from '@/components/NetworkStatus.vue'
 import FailedTasksDrawer from '@/components/FailedTasksDrawer.vue'
+import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
 
 import {ref, reactive, computed, onMounted} from 'vue'
 import {materialApi} from '@/api/material'
@@ -567,6 +568,8 @@ import {useAccountStore} from '@/stores/account'
 import {useAppStore} from '@/stores/app'
 import {ErrorHandler} from '@/utils/errorHandler'
 import {ElMessage} from 'element-plus'
+
+const { sideMenuStyleVars } = useHomeSideMenuConfig()
 
 const accountStore = useAccountStore()
 const appStore = useAppStore()

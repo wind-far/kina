@@ -197,10 +197,10 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
 
 <template>
   <div class="agent-X3m2wp">
-    <div class="chat-container-R89Jq6">
+    <div class="chat-container">
       <!-- 头部 -->
-      <div class="chat-header-irtdzC">
-        <div class="trigger-container-vbLYgU" tabindex="0">
+      <div class="chat-header">
+        <div class="trigger-container" tabindex="0">
           <div class="lv-typography title-vBcivv">{{ title || '未命名对话' }}</div>
           <div class="arrow-icon-uG49Bu">
             <svg width="14" height="14" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -212,8 +212,8 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
         </div>
         <div class="actions-bl5UWA">
           <!-- 筛选按钮 -->
-          <div class="filter-button-IXmviq">
-            <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="filter-icon-lD9OcS">
+          <div class="filter-button">
+            <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="filter-icon">
               <g>
                 <path data-follow-fill="currentColor" d="M4.927 2.86a2 2 0 0 0-2 2v1.672a3 3 0 0 0 .879 2.121l2.828 2.829a1 1 0 0 1 .293.707v4.605a2 2 0 0 0 .971 1.715l3.757 2.254a1.5 1.5 0 0 0 2.272-1.286V12.19a1 1 0 0 1 .293-.707l2.828-2.829a3 3 0 0 0 .88-2.121V4.86a2 2 0 0 0-2-2h-11Zm0 2h11v1.672a1 1 0 0 1-.293.707l-2.828 2.828a3 3 0 0 0-.879 2.122v6.405l-3-1.8v-4.605a3 3 0 0 0-.879-2.122L5.22 7.24a1 1 0 0 1-.293-.707V4.86Zm11 8.14a1 1 0 0 1 1-1h5a1 1 0 1 1 0 2h-5a1 1 0 0 1-1-1Zm0 4a1 1 0 0 1 1-1h3a1 1 0 1 1 0 2h-3a1 1 0 0 1-1-1Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
               </g>
@@ -239,7 +239,7 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
       </div>
 
       <!-- 隐藏的文件上传输入框 -->
-      <input type="file" multiple accept="image/*" class="hidden-file-input-sjqNJu" ref="fileInputRef" @change="handleFileChange">
+      <input type="file" multiple accept="image/*" class="hidden-file-input" ref="fileInputRef" @change="handleFileChange">
 
       <!-- 空状态 - 使用可复用组件 -->
       <SidebarEmptyState
@@ -248,37 +248,37 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
       />
 
       <!-- 消息列表 -->
-      <div v-else class="chat-messages-list-KjR9xE" ref="messagesContainer">
+      <div v-else class="chat-messages-list" ref="messagesContainer">
         <template v-for="msg in messages" :key="msg.id">
           <!-- 用户消息（右对齐） -->
-          <div v-if="msg.type === 'user'" class="message-row-FjP2xZ user-MkS7tH">
-            <div class="user-bubble-Wp3kLl">{{ msg.content }}</div>
+          <div v-if="msg.type === 'user'" class="message-row user-MkS7tH">
+            <div class="user-bubble">{{ msg.content }}</div>
           </div>
 
           <!-- AI 图片回复 -->
-          <div v-else-if="msg.type === 'ai-images'" class="message-row-FjP2xZ ai-RnT4wK">
-            <div class="ai-block-RtY5vW">
+          <div v-else-if="msg.type === 'ai-images'" class="message-row ai">
+            <div class="ai-block">
               <!-- 摘要标题 -->
-              <div class="summary-header-Hj8kPl" @click="toggleCollapse(msg)">
+              <div class="summary-header" @click="toggleCollapse(msg)">
                 <span>{{ msg.summary }}</span>
                 <svg :class="{ 'rotated-Kj9mNl': msg.collapsed }" width="14" height="14" viewBox="0 0 24 24" fill="none">
                   <path d="M21.01 7.982A1.2 1.2 0 0 1 21 9.679l-8.156 8.06a1.2 1.2 0 0 1-1.688 0L3 9.68a1.2 1.2 0 0 1 1.687-1.707L12 15.199l7.313-7.227a1.2 1.2 0 0 1 1.697.01Z" fill="currentColor"/>
                 </svg>
               </div>
               <!-- 图片网格 -->
-              <div class="images-row-Wp4kMn" v-show="!msg.collapsed">
-                <div v-for="(img, idx) in msg.images" :key="idx" class="image-cell-Rk9pLq" @click="openPreview(img)">
+              <div class="images-row" v-show="!msg.collapsed">
+                <div v-for="(img, idx) in msg.images" :key="idx" class="image-cell" @click="openPreview(img)">
                   <img :src="img" />
-                  <div v-if="idx === msg.images.length - 1 && msg.totalCount > msg.images.length" class="more-badge-Tj8kNp">
+                  <div v-if="idx === msg.images.length - 1 && msg.totalCount > msg.images.length" class="more-badge">
                     {{ msg.totalCount - msg.images.length }}+
                   </div>
                 </div>
               </div>
               <!-- AI 提示 -->
-              <div class="ai-notice-Kp3mRl">以上内容由 AI 生成</div>
+              <div class="ai-notice">以上内容由 AI 生成</div>
               <!-- 操作按钮 -->
-              <div class="action-row-Hn7kLp">
-                <div class="action-left-Rn9kMp">
+              <div class="action-row">
+                <div class="action-left">
                   <button class="action-btn-Wp3kLl">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="m8.56 5.73 3.95-2.78a.5.5 0 0 1 .79.41v2.23h2.72v2H9.19a1 1 0 0 1-.63-.23c-.52-.36-.61-1.2 0-1.63Z" fill="currentColor"/></svg>
                     <span>重新生成</span>
@@ -287,11 +287,11 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M7.06 10.15c-.2 0-.39.03-.58.06.06-.21.13-.42.23-.61.1-.28.26-.52.42-.76.13-.26.37-.44.54-.66.18-.22.43-.36.62-.54.19-.19.44-.28.64-.42.21-.12.39-.25.58-.31l.48-.2a.54.54 0 0 0 .31-.62l-.19-.76a.56.56 0 0 0-.67-.4l-.62.15c-.24.05-.5.17-.79.28-.29.13-.62.21-.92.42-.31.2-.67.36-.98.62-.3.27-.67.5-.94.85-.3.32-.59.66-.82 1.04-.26.37-.44.77-.63 1.17-.17.4-.31.8-.42 1.2a10.83 10.83 0 0 0-.34 2.19c-.03.64-.01 1.18.02 1.57.01.18.04.36.06.48l.02.15.02-.01a4.04 4.04 0 1 0 3.95-4.88Zm9.87 0c-.2 0-.39.03-.58.06.06-.21.12-.42.23-.61.1-.28.26-.52.42-.76.13-.26.37-.44.54-.66.18-.22.43-.36.62-.54.19-.19.44-.28.64-.42.21-.12.39-.25.58-.31l.48-.2a.54.54 0 0 0 .31-.62l-.19-.76a.56.56 0 0 0-.67-.4l-.62.15c-.24.04-.5.17-.79.28-.28.13-.61.21-.92.42-.31.2-.66.36-.98.62-.3.27-.67.5-.94.85-.3.32-.59.66-.82 1.04-.26.37-.44.77-.63 1.17-.17.4-.31.8-.42 1.2a10.83 10.83 0 0 0-.34 2.19c-.03.64-.01 1.18.02 1.57.01.18.04.36.06.48l.02.15.02-.01a4.04 4.04 0 1 0 3.95-4.88Z" fill="currentColor"/></svg>
                   </button>
                 </div>
-                <div class="action-right-Tp4kNl">
-                  <button class="feedback-btn-Rn7kLp">
+                <div class="action-right">
+                  <button class="feedback-btn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M11.1 0a3.7 3.7 0 0 1 3.7 3.7v2.6h4.4a2.8 2.8 0 0 1 2.79 3.22l-1.24 8.1A2.8 2.8 0 0 1 17.96 20H5.1a3.08 3.08 0 0 1-3.09-2.67A1 1 0 0 1 2 17.2v-6.3c.21-1.48 1.48-2.78 3.1-2.9h1.8L10.19.59A1 1 0 0 1 11.1 0Z" fill="currentColor"/></svg>
                   </button>
-                  <button class="feedback-btn-Rn7kLp">
+                  <button class="feedback-btn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18.89 4a3.08 3.08 0 0 1 3.1 2.67c0 .04 0 .09 0 .13v6.3c0 .04 0 .09 0 .13-.2 1.48-1.47 2.78-3.09 2.77h-1.8l-3.29 7.4a1 1 0 0 1-.91.6 3.7 3.7 0 0 1-3.7-3.7v-2.6h-4.4a2.8 2.8 0 0 1-2.8-3.22L3.24 6.38A2.8 2.8 0 0 1 6.03 4h12.86Z" fill="currentColor"/></svg>
                   </button>
                 </div>
@@ -300,25 +300,25 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
           </div>
 
           <!-- 用户消息（带参考图） -->
-          <div v-else-if="msg.type === 'user-with-ref'" class="message-row-FjP2xZ user-ref-Kp9mNl">
-            <div class="ref-avatar-Wp3kLl">
+          <div v-else-if="msg.type === 'user-with-ref'" class="message-row user-ref">
+            <div class="ref-avatar">
               <img :src="msg.avatar" />
             </div>
-            <div class="ref-content-Rn8kMp">
-              <div class="ref-text-Tj7kNl">{{ msg.content }}</div>
-              <div class="ref-meta-Kp4mLp">{{ msg.meta }}</div>
+            <div class="ref-content">
+              <div class="ref-text">{{ msg.content }}</div>
+              <div class="ref-meta">{{ msg.meta }}</div>
             </div>
           </div>
 
           <!-- 生成的图片组 -->
-          <div v-else-if="msg.type === 'generated-images'" class="message-row-FjP2xZ">
-            <div class="generated-grid-Wp5kMn">
-              <div v-for="(img, idx) in msg.images" :key="idx" class="gen-image-cell-Rk8pLq" @click="openPreview(img)">
+          <div v-else-if="msg.type === 'generated-images'" class="message-row">
+            <div class="generated-grid">
+              <div v-for="(img, idx) in msg.images" :key="idx" class="gen-image-cell" @click="openPreview(img)">
                 <img :src="img" />
               </div>
             </div>
             <!-- 操作按钮 -->
-            <div class="gen-actions-Tp3kNl">
+            <div class="gen-actions">
               <button class="action-btn-Wp3kLl">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3.76 8a2.5 2.5 0 0 1 2.5-2.5h10.77a2.5 2.5 0 0 1 2.5 2.5v1.78a3.25 3.25 0 0 1 2-.08V8a4.5 4.5 0 0 0-4.5-4.5H6.26a4.5 4.5 0 0 0-4.5 4.5v7.93a4.5 4.5 0 0 0 4.5 4.5h5.84a2.44 2.44 0 0 1-.05-.57v-1.43H6.26a2.5 2.5 0 0 1-2.5-2.5V8Zm17.67 3.96a1 1 0 0 0-1.41 0l-5.77 5.7a.25.25 0 0 0-.07.18v2.37c0 .14.11.25.25.25h2.35a.25.25 0 0 0 .18-.08l5.71-5.79a1 1 0 0 0 0-1.41l-1.22-1.22Z" fill="currentColor"/></svg>
                 <span>重新编辑</span>
@@ -334,7 +334,7 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
 
       <!-- 底部内容生成器 -->
       <ContentGenerator
-        class="dimension-layout-FUl4Nj canvas-layout-blZ0JP content-generator-XxJXPs"
+        class="dimension-layout-FUl4Nj canvas-layout content-generator-XxJXPs"
         style="--content-generator-collapse-transition-duration:350ms;--content-generator-collapse-transition-timing-function:cubic-bezier(0.15,0.75,0.3,1)"
         layout="sidebar"
         :collapsible="false"

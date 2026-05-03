@@ -6,9 +6,10 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes, edges } from '../../composables/useWorkflowCanvas'
-import { IMAGE_MODELS, BANANA_SIZE_OPTIONS, SEEDREAM_SIZE_OPTIONS, SEEDREAM_4K_SIZE_OPTIONS, SEEDREAM_QUALITY_OPTIONS, getAllImageModels } from '@/config/models'
+import { BANANA_SIZE_OPTIONS, SEEDREAM_SIZE_OPTIONS, SEEDREAM_4K_SIZE_OPTIONS, SEEDREAM_QUALITY_OPTIONS, getAllImageModels, loadPublicModelCatalog, getDefaultImageModelKey, getModelByName, resolveRequestModelKey } from '@/config/models'
 import { generateImage } from '../../api/image'
 import WfSelect from '@/components/common/WfSelect.vue'
+import { collectOrderedImageReferences } from '@/shared/image-generation-request'
 
 const props = defineProps({ id: String, data: Object })
 const { updateNodeInternals } = useVueFlow()
@@ -17,7 +18,7 @@ const showActions = ref(false)
 const isGenerating = ref(false)
 
 // 本地状态
-const model = ref(props.data?.model || 'nano-banana-pro')
+const model = ref(props.data?.model || getDefaultImageModelKey())
 const size = ref(props.data?.size || '1x1')
 const quality = ref(props.data?.quality || 'standard')
 
@@ -25,7 +26,7 @@ const quality = ref(props.data?.quality || 'standard')
 const modelOptions = computed(() => getAllImageModels().map(m => ({ label: m.label, value: m.key })))
 
 // 当前模型配置
-const currentModel = computed(() => IMAGE_MODELS.find(m => m.key === model.value))
+const currentModel = computed(() => getModelByName(model.value))
 
 // 尺寸选项（根据模型和画质动态变化）
 const sizeOptions = computed(() => {
@@ -88,11 +89,9 @@ const collectInputs = () => {
   }
 
   prompts.sort((a, b) => a.order - b.order)
-  refImages.sort((a, b) => a.order - b.order)
-
   return {
     prompt: prompts.map(p => p.content).join('\n'),
-    refImages: refImages.map(r => r.imageData)
+    refImages: collectOrderedImageReferences(refImages)
   }
 }
 
@@ -104,7 +103,7 @@ const handleGenerate = async () => {
   isGenerating.value = true
   let outputNodeId = null
   try {
-    const params = { model: model.value, prompt: prompt || '', n: 1 }
+    let params = { model: resolveRequestModelKey(model.value, 'IMAGE'), prompt: prompt || '', n: 1 }
     if (size.value && currentModel.value?.sizes?.length) params.size = size.value
     if (quality.value) params.quality = quality.value
     if (refImages.length) params.image = refImages

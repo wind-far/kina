@@ -14,7 +14,6 @@ import {
   undo, redo, canUndo, canRedo, manualSaveHistory, initSampleData, initHistory
 } from './composables/useWorkflowCanvas'
 import { WORKFLOW_TEMPLATES } from './config/workflows'
-import SettingsDialog from '@/components/common/ApiSettingsDialog.vue'
 import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import { useWorkflowOrchestrator } from './composables/useWorkflowOrchestrator'
 import { buildAgentWorkflowStrategy } from '@/config/agentSkills'
@@ -58,7 +57,6 @@ const { analyzeIntent, executeWorkflow, isAnalyzing, isExecuting } = useWorkflow
 // UI 状态
 const showNodeMenu = ref(false)
 const showTemplatePanel = ref(false)
-const showSettings = ref(false)
 
 // 添加工作流模板
 const handleAddWorkflow = (workflow) => {
@@ -233,14 +231,6 @@ onUnmounted(() => {
             </button>
             <span style="font-size: 13px; color: var(--text-primary); padding: 0 8px;">工作流</span>
           </div>
-          <div class="workflow-header-right">
-            <button class="wf-btn wf-btn-sm" @click="showSettings = !showSettings" title="API 设置">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z" stroke="currentColor" stroke-width="2"/>
-                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
-              </svg>
-            </button>
-          </div>
         </header>
 
         <!-- 左侧工具栏 -->
@@ -378,7 +368,6 @@ onUnmounted(() => {
         />
 
         <!-- 设置弹窗 -->
-        <SettingsDialog v-model:visible="showSettings" />
       </div>
     </div>
   </div>

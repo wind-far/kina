@@ -1,6 +1,6 @@
 /* 侧边栏空状态样式 - 来自原 HTML */
 
-.sidebar-empty-state-z3TqNc {
+.sidebar-empty-state {
     align-items: center;
     display: flex;
     height: 100%;
@@ -8,11 +8,11 @@
     width: 100%;
 }
 
-.sidebar-empty-state-z3TqNc.empty-mJrwvw {
+.sidebar-empty-state.empty {
     padding-bottom: 120px;
 }
 
-.hidden-file-input-sjqNJu {
+.hidden-file-input {
     height: 1px;
     opacity: 0;
     overflow: hidden;
@@ -84,7 +84,7 @@
     padding: 12px 60px;
 }
 
-.action-bar-image-muVmnQ {
+.action-bar-image {
     gap: 12px;
     width: 376px;
 }
@@ -156,7 +156,7 @@
     height: 36px;
 }
 
-.upload-button-ujoKPL.upload-button-ujoKPL {
+.upload-button.upload-button {
     align-items: center;
     background: transparent;
     border: none;
@@ -172,24 +172,24 @@
     transition: all .2s ease;
 }
 
-.upload-button-ujoKPL.upload-button-ujoKPL svg {
+.upload-button.upload-button svg {
     flex-shrink: 0;
     margin-right: -1px;
 }
 
-.upload-button-ujoKPL.upload-button-ujoKPL:active,
-.upload-button-ujoKPL.upload-button-ujoKPL:hover {
+.upload-button.upload-button:active,
+.upload-button.upload-button:hover {
     background: transparent;
 }
 
-.upload-button-ujoKPL.upload-button-ujoKPL:focus,
-.upload-button-ujoKPL.upload-button-ujoKPL:focus-visible {
+.upload-button.upload-button:focus,
+.upload-button.upload-button:focus-visible {
     background: transparent;
     outline: 2px solid var(--stroke-focus);
     outline-offset: 1px;
 }
 
-.upload-button-ujoKPL.upload-button-ujoKPL:after {
+.upload-button.upload-button:after {
     display: none;
 }
 

@@ -163,7 +163,7 @@ onUnmounted(() => {
            zIndex: 10001
          }">
       <!-- 标题 -->
-      <div v-if="title" class="title-RK9CLE dropdown-title-V9bKQe secondary-IGs0cX">{{ title }}</div>
+      <div v-if="title" class="title-RK9CLE dropdown-title secondary-IGs0cX">{{ title }}</div>
       <!-- 内容插槽 -->
       <slot></slot>
     </div>

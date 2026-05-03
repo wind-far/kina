@@ -7,8 +7,8 @@
           <!-- 用户消息 -->
           <div class="user-message-IyG6vx">
             <div class="context-menu-trigger-QXaWD5">
-              <div class="user-message-content-Qs9l2b">
-                <div class="user-message-text-Fb_kWq">
+              <div class="user-message-content">
+                <div class="user-message-text">
                   <span class="prompt-value-container-KCtKOf"><span>{{ prompt }}</span></span>
                 </div>
               </div>

@@ -1,12 +1,24 @@
 /**
  * Agent 模式配置
+ * 模型列表来自后台目录，当前用户选择仅保存在本地。
  */
-import { DEFAULT_CHAT_MODEL } from '@/config/models'
+
+import { getDefaultChatModelKey } from '@/config/models'
+
+const AGENT_MODEL_STORAGE_KEY = 'canana:agent:model'
 
 export const getAgentModel = (): string => {
-  return localStorage.getItem('agent-chat-model') || DEFAULT_CHAT_MODEL
+  if (typeof window === 'undefined') {
+    return getDefaultChatModelKey()
+  }
+
+  return window.localStorage.getItem(AGENT_MODEL_STORAGE_KEY) || getDefaultChatModelKey()
 }
 
 export const setAgentModel = (model: string) => {
-  localStorage.setItem('agent-chat-model', model)
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(AGENT_MODEL_STORAGE_KEY, model)
 }

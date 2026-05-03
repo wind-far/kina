@@ -3,7 +3,7 @@
  * 管理节点、边和画布状态
  */
 import { ref } from 'vue'
-import { IMAGE_MODELS, VIDEO_MODELS, DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL, DEFAULT_CHAT_MODEL } from '@/config/models'
+import { getDefaultChatModelKey, getDefaultImageModelKey, getDefaultVideoModelKey, getModelByName } from '@/config/models'
 
 // 节点 ID 计数器
 let nodeId = 0
@@ -54,22 +54,22 @@ const getDefaultNodeData = (type: string) => {
     case 'text':
       return { content: '', label: '文本输入' }
     case 'imageConfig': {
-      const model = IMAGE_MODELS.find(m => m.key === DEFAULT_IMAGE_MODEL) || IMAGE_MODELS[0]
+      const model = getModelByName(getDefaultImageModelKey())
       return {
         prompt: '',
-        model: DEFAULT_IMAGE_MODEL,
+        model: getDefaultImageModelKey(),
         size: model?.defaultParams?.size || '1x1',
         quality: model?.defaultParams?.quality || 'standard',
         label: '文生图'
       }
     }
     case 'videoConfig': {
-      const model = VIDEO_MODELS.find(m => m.key === DEFAULT_VIDEO_MODEL) || VIDEO_MODELS[0]
+      const model = getModelByName(getDefaultVideoModelKey())
       return {
         prompt: '',
         ratio: model?.defaultParams?.ratio || '16:9',
         duration: model?.defaultParams?.duration || 5,
-        model: DEFAULT_VIDEO_MODEL,
+        model: getDefaultVideoModelKey(),
         label: '图生视频'
       }
     }
@@ -80,7 +80,7 @@ const getDefaultNodeData = (type: string) => {
     case 'llmConfig':
       return {
         systemPrompt: '',
-        model: DEFAULT_CHAT_MODEL,
+        model: getDefaultChatModelKey(),
         outputFormat: 'text',
         outputContent: '',
         label: 'LLM文本生成'

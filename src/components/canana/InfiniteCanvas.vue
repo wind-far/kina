@@ -643,7 +643,7 @@ function getDisplayIndex(img) {
             }"
             @mousedown.stop="handleImageDragStart($event, img)"
           >
-            <img :src="img.src" crossorigin="anonymous" loading="lazy" draggable="false" />
+            <img :src="img.src"  loading="lazy" draggable="false" />
             <div class="ai-tag">AI生成</div>
           </div>
         </div>
@@ -652,7 +652,7 @@ function getDisplayIndex(img) {
     
     <!-- 拖拽中的图片 -->
     <div v-if="canvasState.isDragging.value && draggingImage" class="dragging-image" :style="draggingImageStyle">
-      <img :src="draggingImage.src" crossorigin="anonymous" draggable="false" />
+      <img :src="draggingImage.src"  draggable="false" />
       <div class="corner-handle top-left"></div>
       <div class="corner-handle top-right"></div>
       <div class="corner-handle bottom-left"></div>

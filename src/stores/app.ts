@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { useThemePreferenceStore, type ThemeMode } from './theme-preference'
 
 /**
  * 素材原始数据类型（API 返回的数组格式）
@@ -47,7 +48,8 @@ export function useAppStore() {
 
   function setTheme(newTheme: string) {
     theme.value = newTheme
-    document.documentElement.setAttribute('data-theme', newTheme)
+    const themeStore = useThemePreferenceStore()
+    themeStore.setThemeMode(newTheme as ThemeMode)
   }
 
   return {

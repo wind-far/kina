@@ -3,14 +3,17 @@
 // 包含自动（生成偏好）、灵感搜索、创意设计三个功能按钮
 // 支持弹出方向设置和纯图标模式
 
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import PreferencePanel from '../common/PreferencePanel.vue'
 import SelectPopup from '../common/SelectPopup.vue'
-import { getAllChatModels } from '@/config/models'
+import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
+import { listEnabledAgentSkills, loadPublicSkillCatalog } from '@/config/agentSkills'
 import { getAgentModel, setAgentModel } from '@/api/agent'
 
 // 弹出方向类型
 type Placement = 'top' | 'bottom' | 'auto'
+
+const AGENT_TOOLBAR_STORAGE_KEY = 'canana:generator:agent-toolbar'
 
 // Props 定义
 interface Props {
@@ -18,11 +21,47 @@ interface Props {
   placement?: Placement
   // 是否只显示图标（侧边栏模式）
   iconOnly?: boolean
+  // 是否显示模型选择器
+  showModelSelector?: boolean
+  // 是否显示助手选择器
+  showAssistantSelector?: boolean
+  // 默认模型
+  defaultModelKey?: string
+  // 允许模型白名单
+  allowedModelKeys?: string[]
+  // 默认助手
+  defaultAssistantKey?: string
+  // 允许助手白名单
+  allowedAssistantKeys?: string[]
+  // 自动按钮是否显示
+  showAutoAction?: boolean
+  // 自动按钮默认开关
+  autoActionEnabled?: boolean
+  // 灵感搜索是否显示
+  showInspirationAction?: boolean
+  // 灵感搜索默认开关
+  inspirationActionEnabled?: boolean
+  // 创意设计是否显示
+  showCreativeDesignAction?: boolean
+  // 创意设计默认开关
+  creativeDesignActionEnabled?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   placement: 'auto',
-  iconOnly: false
+  iconOnly: false,
+  showModelSelector: true,
+  showAssistantSelector: true,
+  defaultModelKey: '',
+  allowedModelKeys: () => [],
+  defaultAssistantKey: 'general',
+  allowedAssistantKeys: () => [],
+  showAutoAction: true,
+  autoActionEnabled: true,
+  showInspirationAction: true,
+  inspirationActionEnabled: false,
+  showCreativeDesignAction: true,
+  creativeDesignActionEnabled: false,
 })
 
 // 定义事件
@@ -39,38 +78,61 @@ interface AgentSkillOption {
 }
 
 // 功能开关状态
-const inspirationSearchEnabled = ref(true)
-const creativeDesignEnabled = ref(true)
+const autoMode = ref(props.autoActionEnabled !== false)
+const inspirationSearchEnabled = ref(props.inspirationActionEnabled)
+const creativeDesignEnabled = ref(props.creativeDesignActionEnabled)
 
 // 技能选择
-const skillOptions: AgentSkillOption[] = [
-  { value: 'general', label: '通用助手', description: '适合日常问答、创意发想和通用生成任务' },
-  { value: 'story-short', label: '剧情短片', description: '帮你自动生成故事大纲、分镜脚本并产出短片' },
-  { value: 'marketing-video', label: '营销视频', description: '一句话帮你生成营销推广视频' },
-  { value: 'ecommerce-pack', label: '电商套图', description: '生成风格统一的商品全套视觉素材，适用于各大电商平台' },
-  { value: 'poster-design', label: '海报设计', description: '生成更有创意的海报内容，擅长营销场景和节日热点' },
-  { value: 'brand-design', label: '品牌设计', description: '根据公司名称、业务与客群，生成品牌 Logo 与视觉方案' }
-]
-const currentSkill = ref('general')
+const skillOptions = ref<AgentSkillOption[]>(listEnabledAgentSkills())
+const readStoredAgentToolbarState = () => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    return JSON.parse(window.localStorage.getItem(AGENT_TOOLBAR_STORAGE_KEY) || 'null')
+  } catch {
+    return null
+  }
+}
+
+const storedAgentToolbarState = readStoredAgentToolbarState()
+const currentSkill = ref(typeof storedAgentToolbarState?.skill === 'string' ? storedAgentToolbarState.skill : props.defaultAssistantKey)
 const isSkillSelectOpen = ref(false)
 const skillTriggerRef = ref<HTMLElement | null>(null)
 
 const currentSkillLabel = computed(() => {
-  const skill = skillOptions.find(option => option.value === currentSkill.value)
+  const skill = skillOptions.value.find(option => option.value === currentSkill.value)
   return skill?.label || '使用技能'
 })
 
 const visibleSkillOptions = computed(() => {
+  const allowedSkillKeys = Array.isArray(props.allowedAssistantKeys) && props.allowedAssistantKeys.length
+    ? props.allowedAssistantKeys.map(item => String(item || '').trim()).filter(Boolean)
+    : []
+  const nextOptions = allowedSkillKeys.length
+    ? skillOptions.value.filter(option => allowedSkillKeys.includes(option.value))
+    : skillOptions.value
+
   if (currentSkill.value === 'general') {
-    return skillOptions.filter(option => option.value !== 'general')
+    return nextOptions.filter(option => option.value !== 'general')
   }
-  return skillOptions
+  return nextOptions
 })
 
 // 模型选择
-const chatModels = computed(() =>
-  getAllChatModels().map((m: any) => ({ value: m.key, label: m.label }))
-)
+const chatModels = computed(() => {
+  const allowedModelKeys = Array.isArray(props.allowedModelKeys) && props.allowedModelKeys.length
+    ? props.allowedModelKeys.map(item => String(item || '').trim()).filter(Boolean)
+    : []
+
+  const allModels = getAllChatModels().map((m: any) => ({ value: m.key, label: m.label }))
+  const nextModels = allowedModelKeys.length
+    ? allModels.filter(item => allowedModelKeys.includes(item.value))
+    : allModels
+
+  return nextModels.length ? nextModels : allModels
+})
 const currentModel = ref(getAgentModel())
 const isModelSelectOpen = ref(false)
 const modelTriggerRef = ref<HTMLElement | null>(null)
@@ -79,6 +141,96 @@ const currentModelLabel = computed(() => {
   const m = chatModels.value.find(v => v.value === currentModel.value)
   return m?.label || currentModel.value
 })
+
+watch(
+  chatModels,
+  (options) => {
+    const values = options.map(item => item.value)
+    if (!values.length) return
+    if (!values.includes(currentModel.value)) {
+      currentModel.value = props.defaultModelKey || getAgentModel() || getDefaultChatModelKey() || values[0]
+    }
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  void loadPublicModelCatalog()
+  void loadPublicSkillCatalog().then((skills) => {
+    skillOptions.value = listEnabledAgentSkills()
+    const allowedSkillKeys = Array.isArray(props.allowedAssistantKeys) && props.allowedAssistantKeys.length
+      ? props.allowedAssistantKeys.map(item => String(item || '').trim()).filter(Boolean)
+      : []
+    const filteredSkills = allowedSkillKeys.length
+      ? skills.filter(item => allowedSkillKeys.includes(item.skillKey))
+      : skills
+    if (!filteredSkills.some(item => item.skillKey === currentSkill.value)) {
+      currentSkill.value = props.defaultAssistantKey || filteredSkills[0]?.skillKey || 'general'
+    }
+  })
+})
+
+watch(
+  () => props.defaultModelKey,
+  (value) => {
+    const normalizedValue = String(value || '').trim()
+    if (!normalizedValue) {
+      return
+    }
+
+    if (chatModels.value.some(item => item.value === normalizedValue)) {
+      currentModel.value = normalizedValue
+      setAgentModel(normalizedValue)
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.defaultAssistantKey,
+  (value) => {
+    const normalizedValue = String(value || '').trim()
+    if (!normalizedValue) {
+      return
+    }
+
+    currentSkill.value = normalizedValue
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.autoActionEnabled,
+  (value) => {
+    autoMode.value = value !== false
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.inspirationActionEnabled,
+  (value) => {
+    inspirationSearchEnabled.value = value === true
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.creativeDesignActionEnabled,
+  (value) => {
+    creativeDesignEnabled.value = value === true
+  },
+  { immediate: true },
+)
+
+watch(
+  currentSkill,
+  (skill) => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(AGENT_TOOLBAR_STORAGE_KEY, JSON.stringify({ skill }))
+  },
+  { immediate: true },
+)
 
 // 统一关闭 Agent 工具栏内部所有浮层
 const closeAllPopups = () => {
@@ -136,9 +288,6 @@ const selectSkill = (key: string) => {
 const isPreferencePanelOpen = ref(false)
 const preferenceTriggerRef = ref<HTMLElement | null>(null)
 
-// 自动模式状态
-const autoMode = ref(true)
-
 // 按钮文字（根据 autoMode 显示不同文字）
 const preferenceButtonText = computed(() => autoMode.value ? '自动' : '自定义')
 
@@ -189,8 +338,8 @@ const toggleCreativeDesign = () => {
 <template>
   <div class="agent-toolbar">
     <!-- 模型选择 -->
-    <div ref="modelTriggerRef"
-         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select-h345g7', 'select-joF5y7', { 'compact-OC0Z0c': iconOnly }]"
+    <div v-if="showModelSelector" ref="modelTriggerRef"
+         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', 'select-NNOj5P', { 'compact': iconOnly }]"
          role="combobox"
          tabindex="0"
          :aria-expanded="isModelSelectOpen"
@@ -230,17 +379,17 @@ const toggleCreativeDesign = () => {
     </div>
 
     <!-- 模型选择弹窗 -->
-    <SelectPopup v-model:visible="isModelSelectOpen" :trigger-ref="modelTriggerRef" :placement="placement" title="对话模型">
+    <SelectPopup v-if="showModelSelector" v-model:visible="isModelSelectOpen" :trigger-ref="modelTriggerRef" :placement="placement" title="对话模型">
       <ul class="lv-select-popup-inner">
         <li v-for="m in chatModels"
             :key="m.value"
             :class="['lv-select-option', { 'lv-select-option-wrapper-selected': currentModel === m.value }]"
             @click.stop="selectModel(m.value)">
-          <div class="select-option-label-Ct6NRy">
-            <div class="select-option-label-content-tmGvFs">
+          <div class="select-option-label">
+            <div class="select-option-label-content">
               <span>{{ m.label }}</span>
             </div>
-            <span v-if="currentModel === m.value" class="select-option-check-icon-uOxlr2">
+            <span v-if="currentModel === m.value" class="select-option-check-icon">
               <svg width="1em" height="1em" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none"
                    role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -257,9 +406,9 @@ const toggleCreativeDesign = () => {
     </SelectPopup>
 
     <!-- 技能选择器 -->
-    <span class="lv-badge skill-select-badge-nf8J3A">
+    <span v-if="showAssistantSelector" class="lv-badge skill-select-badge">
       <div ref="skillTriggerRef"
-           :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select-h345g7', 'select-joF5y7', 'skill-select-k92QxV', { 'compact-OC0Z0c': iconOnly, 'active-P7cL4x': isSkillSelectOpen }]"
+           :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', 'select-NNOj5P', 'skill-select', { 'compact': iconOnly, 'active-P7cL4x': isSkillSelectOpen }]"
            role="combobox"
            tabindex="0"
            :aria-expanded="isSkillSelectOpen"
@@ -299,16 +448,16 @@ const toggleCreativeDesign = () => {
     </span>
 
     <!-- 技能选择弹窗 -->
-    <SelectPopup v-model:visible="isSkillSelectOpen" :trigger-ref="skillTriggerRef" :placement="placement" popup-class="skill-select-popup-shell-dark-X2p9Qa" title="">
-      <div class="skill-select-shell-P9dLm4">
-        <div class="skill-select-title-T5mQ2s">选择技能</div>
-        <ul class="lv-select-popup-inner skill-select-popup-J8Tukj">
+    <SelectPopup v-if="showAssistantSelector" v-model:visible="isSkillSelectOpen" :trigger-ref="skillTriggerRef" :placement="placement" popup-class="skill-select-popup-shell-dark" title="">
+      <div class="skill-select-shell">
+        <div class="skill-select-title">选择技能</div>
+        <ul class="lv-select-popup-inner skill-select-popup">
         <li v-for="skill in visibleSkillOptions"
             :key="skill.value"
-            :class="['lv-select-option', 'skill-option-vV8DvA', { 'skill-option-selected-U7rKf2': currentSkill === skill.value }]"
+            :class="['lv-select-option', 'skill-option', { 'skill-option-selected': currentSkill === skill.value }]"
             @click.stop="selectSkill(skill.value)">
-          <div class="select-option-label-Ct6NRy skill-option-label-Q4mT8x">
-            <span class="skill-option-icon-L7pW3e" aria-hidden="true">
+          <div class="select-option-label skill-option-label">
+            <span class="skill-option-icon" aria-hidden="true">
               <svg width="14" height="14" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none"
                    role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -319,9 +468,9 @@ const toggleCreativeDesign = () => {
                 </g>
               </svg>
             </span>
-            <div class="select-option-label-content-tmGvFs skill-option-content-EZ4xS5">
-              <span class="skill-option-title-r6mY8X">{{ skill.label }}</span>
-              <span class="skill-option-description-t34hRc" :title="skill.description">{{ skill.description }}</span>
+            <div class="select-option-label-content skill-option-content">
+              <span class="skill-option-title">{{ skill.label }}</span>
+              <span class="skill-option-description" :title="skill.description">{{ skill.description }}</span>
             </div>
           </div>
         </li>
@@ -330,8 +479,8 @@ const toggleCreativeDesign = () => {
     </SelectPopup>
 
     <!-- 自动按钮（打开生成偏好面板） -->
-    <button ref="preferenceTriggerRef"
-            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', { 'lv-btn-icon-only': iconOnly, 'active-Rs99sz active-mrQmUS': isPreferencePanelOpen }]"
+    <button v-if="showAutoAction" ref="preferenceTriggerRef"
+            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'toolbar-button-pEFNv9', { 'lv-btn-icon-only': iconOnly, 'active-Rs99sz active-mrQmUS': isPreferencePanelOpen }]"
             type="button"
             :title="iconOnly ? preferenceButtonText : undefined"
             @click="togglePreferencePanel">
@@ -349,10 +498,10 @@ const toggleCreativeDesign = () => {
     </button>
 
     <!-- 生成偏好面板 -->
-    <PreferencePanel v-model:visible="isPreferencePanelOpen" v-model:autoMode="autoMode" :trigger-ref="preferenceTriggerRef" :placement="placement" />
+    <PreferencePanel v-if="showAutoAction" v-model:visible="isPreferencePanelOpen" v-model:autoMode="autoMode" :trigger-ref="preferenceTriggerRef" :placement="placement" />
 
     <!-- 灵感搜索按钮 -->
-    <button :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'switch-button-GPRaGT', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': inspirationSearchEnabled }]"
+    <button v-if="showInspirationAction" :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'toolbar-button-pEFNv9', 'switch-button-GPRaGT', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': inspirationSearchEnabled }]"
             type="button"
             :title="iconOnly ? '灵感搜索' : undefined"
             @click="toggleInspirationSearch">
@@ -371,7 +520,7 @@ const toggleCreativeDesign = () => {
     </button>
 
     <!-- 创意设计按钮 -->
-    <button :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'switch-button-GPRaGT', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': creativeDesignEnabled }]"
+    <button v-if="showCreativeDesignAction" :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'toolbar-button-pEFNv9', 'switch-button-GPRaGT', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': creativeDesignEnabled }]"
             type="button"
             :title="iconOnly ? '创意设计' : undefined"
             @click="toggleCreativeDesign">
@@ -407,40 +556,40 @@ const toggleCreativeDesign = () => {
 }
 
 /* 技能弹窗内容 */
-.skill-select-badge-nf8J3A {
+.skill-select-badge {
   display: inline-flex;
 }
 
-.skill-select-k92QxV.lv-select.lv-select-single .lv-select-view {
+.skill-select.lv-select.lv-select-single .lv-select-view {
   min-width: 118px;
   padding-left: 12px;
   padding-right: 10px;
 }
 
-.skill-select-k92QxV .lv-select-view-value {
+.skill-select .lv-select-view-value {
   gap: 6px;
   color: var(--text-primary);
 }
 
-.skill-select-k92QxV .lv-select-view-value > svg {
+.skill-select .lv-select-view-value > svg {
   flex: 0 0 auto;
 }
 
-.skill-select-k92QxV .lv-select-arrow-icon {
+.skill-select .lv-select-arrow-icon {
   color: var(--text-placeholder);
 }
 
-.skill-select-k92QxV.active-P7cL4x .lv-select-view,
-.skill-select-k92QxV:focus-visible .lv-select-view,
-.skill-select-k92QxV:hover .lv-select-view {
+.skill-select.active-P7cL4x .lv-select-view,
+.skill-select:focus-visible .lv-select-view,
+.skill-select:hover .lv-select-view {
   background: var(--bg-block-primary-hover);
 }
 
-.skill-select-k92QxV.active-P7cL4x .lv-select-arrow-icon svg {
+.skill-select.active-P7cL4x .lv-select-arrow-icon svg {
   transform: rotate(180deg);
 }
 
-.skill-select-popup-shell-dark-X2p9Qa {
+.skill-select-popup-shell-dark {
   border-radius: 18px;
   border-color: var(--stroke-tertiary);
   background: var(--bg-dropdown-menu);
@@ -448,26 +597,26 @@ const toggleCreativeDesign = () => {
   padding: 0;
 }
 
-.skill-select-popup-J8Tukj {
+.skill-select-popup {
   min-width: 400px;
   max-height: 320px;
   padding: 0;
   overflow-y: auto;
 }
 
-.skill-select-shell-P9dLm4 {
+.skill-select-shell {
   width: 400px;
   padding: 12px 10px 10px;
 }
 
-.skill-select-title-T5mQ2s {
+.skill-select-title {
   padding: 2px 8px 10px;
   color: var(--text-placeholder);
   font-size: 12px;
   line-height: 18px;
 }
 
-.skill-option-vV8DvA {
+.skill-option {
   margin: 0;
   min-height: 36px;
   padding: 0;
@@ -475,25 +624,25 @@ const toggleCreativeDesign = () => {
   background: transparent;
 }
 
-.skill-option-vV8DvA + .skill-option-vV8DvA {
+.skill-option + .skill-option {
   margin-top: 1px;
 }
 
-.skill-option-vV8DvA:hover {
+.skill-option:hover {
   background: var(--bg-block-primary-hover);
 }
 
-.skill-option-selected-U7rKf2 {
+.skill-option-selected {
   background: transparent;
 }
 
-.skill-option-label-Q4mT8x {
+.skill-option-label {
   width: 100%;
   gap: 8px;
   padding: 7px 10px;
 }
 
-.skill-option-icon-L7pW3e {
+.skill-option-icon {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
@@ -503,7 +652,7 @@ const toggleCreativeDesign = () => {
   color: var(--text-primary);
 }
 
-.skill-option-content-EZ4xS5 {
+.skill-option-content {
   display: flex;
   flex: 1;
   align-items: center;
@@ -511,7 +660,7 @@ const toggleCreativeDesign = () => {
   min-width: 0;
 }
 
-.skill-option-title-r6mY8X {
+.skill-option-title {
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 500;
@@ -520,7 +669,7 @@ const toggleCreativeDesign = () => {
   white-space: nowrap;
 }
 
-.skill-option-description-t34hRc {
+.skill-option-description {
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 16px;

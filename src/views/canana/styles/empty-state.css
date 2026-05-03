@@ -1,5 +1,5 @@
 /* 空状态样式 - 复用HTML布局 */
-.empty-state-HN97p1 {
+.empty-state {
   color: var(--text-secondary);
   left: 50%;
   position: fixed;
@@ -48,7 +48,7 @@
   padding: 12px 60px;
 }
 
-.action-bar-resource-xR3AL2 {
+.action-bar-resource {
   gap: 12px;
 }
 
@@ -130,7 +130,7 @@
   text-align: left;
 }
 
-.action-button-wrapper-njMSG3 {
+.action-button-wrapper {
   align-items: center;
   display: flex;
   justify-content: center;

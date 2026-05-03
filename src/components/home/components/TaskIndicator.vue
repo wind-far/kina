@@ -18,9 +18,9 @@
           </g>
         </svg>
       </button>
-      <div class="card-cMUBrX">
-        <div class="card-background-tErOcE">
-          <div class="card-gradient-kUKcJ8">
+      <div class="card">
+        <div class="card-background">
+          <div class="card-gradient">
             <div class="card-content-GKrKfc">
               <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                 <g>

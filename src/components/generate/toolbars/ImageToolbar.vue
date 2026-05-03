@@ -3,12 +3,14 @@
 // 包含模型版本选择、尺寸选择、文字工具按钮
 // 支持弹出方向设置
 
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import SelectPopup from '../common/SelectPopup.vue'
-import { getAllImageModels, DEFAULT_IMAGE_MODEL } from '@/config/models'
+import { getAllImageModels, getDefaultImageModelKey, loadPublicModelCatalog } from '@/config/models'
 
 // 弹出方向类型
 type Placement = 'top' | 'bottom' | 'auto'
+
+const IMAGE_TOOLBAR_STORAGE_KEY = 'canana:generator:image-toolbar'
 
 // Props 定义
 interface Props {
@@ -37,11 +39,31 @@ const sizeOptions = [
   { value: '9:16', label: '9:16', quality: '高清 2K' }
 ]
 
+const readStoredImageToolbarState = () => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    return JSON.parse(window.localStorage.getItem(IMAGE_TOOLBAR_STORAGE_KEY) || 'null')
+  } catch {
+    return null
+  }
+}
+
+const storedToolbarState = readStoredImageToolbarState()
+const validImageModelValues = modelVersions.value.map(item => item.value)
+const validImageSizeValues = sizeOptions.map(item => item.value)
+
 // 当前选中的模型版本
-const currentModelVersion = ref(DEFAULT_IMAGE_MODEL)
+const currentModelVersion = ref(
+  validImageModelValues.includes(storedToolbarState?.model) ? storedToolbarState.model : getDefaultImageModelKey(),
+)
 
 // 当前选中的尺寸
-const currentSize = ref('1:1')
+const currentSize = ref(
+  validImageSizeValues.includes(storedToolbarState?.size) ? storedToolbarState.size : '1:1',
+)
 
 // 弹窗状态
 const isModelSelectOpen = ref(false)
@@ -88,6 +110,31 @@ const currentSizeConfig = () => {
   return sizeOptions.find(s => s.value === currentSize.value) || sizeOptions[0]
 }
 
+watch(
+  modelVersions,
+  (options) => {
+    const values = options.map(item => item.value)
+    if (!values.length) return
+    if (!values.includes(currentModelVersion.value)) {
+      currentModelVersion.value = getDefaultImageModelKey() || values[0]
+    }
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  void loadPublicModelCatalog()
+})
+
+watch(
+  [currentModelVersion, currentSize],
+  ([model, size]) => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(IMAGE_TOOLBAR_STORAGE_KEY, JSON.stringify({ model, size }))
+  },
+  { immediate: true },
+)
+
 defineExpose({
   currentModelVersion,
   currentModelLabel,
@@ -100,7 +147,7 @@ defineExpose({
   <div class="image-toolbar">
     <!-- 模型版本选择 -->
     <div ref="modelTriggerRef"
-         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select-h345g7', 'select-joF5y7', { 'compact-OC0Z0c': iconOnly }]"
+         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', 'select-NNOj5P', { 'compact': iconOnly }]"
          role="combobox"
          tabindex="0"
          :aria-expanded="isModelSelectOpen"
@@ -146,11 +193,11 @@ defineExpose({
             :key="version.value"
             :class="['lv-select-option', { 'lv-select-option-wrapper-selected': currentModelVersion === version.value }]"
             @click.stop="selectModelVersion(version.value)">
-          <div class="select-option-label-Ct6NRy">
-            <div class="select-option-label-content-tmGvFs">
+          <div class="select-option-label">
+            <div class="select-option-label-content">
               <span>{{ version.label }}</span>
             </div>
-            <span v-if="currentModelVersion === version.value" class="select-option-check-icon-uOxlr2">
+            <span v-if="currentModelVersion === version.value" class="select-option-check-icon">
               <svg width="1em" height="1em" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none"
                    role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -168,7 +215,7 @@ defineExpose({
 
     <!-- 尺寸选择按钮 -->
     <button ref="sizeTriggerRef"
-            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', { 'lv-btn-icon-only': iconOnly }]"
+            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'toolbar-button-pEFNv9', { 'lv-btn-icon-only': iconOnly }]"
             type="button"
             :title="iconOnly ? currentSizeConfig().value + ' ' + currentSizeConfig().quality : undefined"
             @click.stop="toggleSizeSelect">
@@ -192,12 +239,12 @@ defineExpose({
             :key="size.value"
             :class="['lv-select-option', { 'lv-select-option-wrapper-selected': currentSize === size.value }]"
             @click.stop="selectSize(size.value)">
-          <div class="select-option-label-Ct6NRy">
-            <div class="select-option-label-content-tmGvFs">
+          <div class="select-option-label">
+            <div class="select-option-label-content">
               <span>{{ size.label }}</span>
               <span class="commercial-content-PR23Ed">{{ size.quality }}</span>
             </div>
-            <span v-if="currentSize === size.value" class="select-option-check-icon-uOxlr2">
+            <span v-if="currentSize === size.value" class="select-option-check-icon">
               <svg width="1em" height="1em" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none"
                    role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -214,7 +261,7 @@ defineExpose({
     </SelectPopup>
 
     <!-- 文字工具按钮 -->
-    <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square lv-btn-icon-only button-lc3WzE toolbar-button-FhFnQ_"
+    <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square lv-btn-icon-only button-lc3WzE toolbar-button-FhFnQ_ toolbar-button-pEFNv9"
             type="button">
       <svg fill="none" height="1em" preserveAspectRatio="xMidYMid meet"
            role="presentation" viewBox="0 0 24 24"

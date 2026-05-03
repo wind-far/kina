@@ -4,6 +4,7 @@
  */
 
 import { AI_GATEWAY_REQUEST_PATH, createGatewayPayload } from './ai-gateway'
+import { handleUnauthorizedResponse } from './response'
 
 /**
  * 流式对话补全
@@ -11,10 +12,12 @@ import { AI_GATEWAY_REQUEST_PATH, createGatewayPayload } from './ai-gateway'
 export async function* streamChatCompletions(data: Record<string, unknown>, signal?: AbortSignal) {
   const response = await fetch(AI_GATEWAY_REQUEST_PATH, {
     method: 'POST',
+    // 对话同样通过会话 Cookie 识别当前用户，避免网关误判未登录。
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(createGatewayPayload('chat', {
+    body: JSON.stringify(await createGatewayPayload('chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -25,6 +28,7 @@ export async function* streamChatCompletions(data: Record<string, unknown>, sign
   })
 
   if (!response.ok) {
+    handleUnauthorizedResponse(response.status, 'chat-stream')
     const error = await response.json().catch(() => ({}))
     throw new Error(error?.error?.message || error?.message || '请求失败')
   }

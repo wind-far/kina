@@ -4,36 +4,36 @@
  */
 
 import {
-  getApiKey,
-  getBaseUrl,
-  getEndpoint,
-  setApiKey,
-  setBaseUrl,
-  setEndpoint,
   type AiEndpointType,
+  resolveEndpointModelCategory,
 } from './provider-config'
 import {
   AI_GATEWAY_REQUEST_PATH,
   createGatewayPayload,
   normalizeGatewayMethod,
 } from './ai-gateway'
-
-export {
-  getApiKey,
-  getBaseUrl,
-  getEndpoint,
-  setApiKey,
-  setBaseUrl,
-  setEndpoint,
-}
+import { loadPublicModelCatalog, resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
+import { buildApiUrl } from './http'
+import { handleUnauthorizedResponse } from './response'
+import { MARKETING_POINTS_UPDATED_EVENT } from '@/stores/marketing-center'
 
 interface RequestOptions {
   url: string
   method?: string
   data?: unknown
   headers?: Record<string, string>
+  providerId?: string
+  modelKey?: string
+  signal?: AbortSignal
 }
 const isFormData = (value: unknown): value is FormData => typeof FormData !== 'undefined' && value instanceof FormData
+
+
+const notifyMarketingPointsUpdated = (response: Response) => {
+  if (typeof window === 'undefined') return
+  if (response.headers.get('x-marketing-points-updated') !== '1') return
+  window.dispatchEvent(new CustomEvent(MARKETING_POINTS_UPDATED_EVENT))
+}
 
 /**
  * 通用 JSON/表单请求，统一走同源 AI 网关。
@@ -43,19 +43,41 @@ export const request = async (
   type: AiEndpointType = 'video',
 ) => {
   if (isFormData(options.data)) {
-    const payload = createGatewayPayload(type, options)
-    const response = await fetch(AI_GATEWAY_REQUEST_PATH, {
+    await loadPublicModelCatalog()
+    const formData = new FormData()
+    options.data.forEach((value, key) => {
+      formData.append(key, value)
+    })
+    const originalModel = String(formData.get('model') || '').trim()
+    const modelCategory = resolveEndpointModelCategory(type)
+    const providerId = String(options.providerId || '').trim()
+      || resolveRequestProviderId(originalModel, modelCategory)
+    const modelKey = String(options.modelKey || '').trim()
+      || resolveRequestModelKey(originalModel, modelCategory)
+    if (!providerId) {
+      throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
+    }
+    if (modelKey) {
+      formData.set('model', modelKey)
+    }
+    const response = await fetch(buildApiUrl(AI_GATEWAY_REQUEST_PATH), {
       method: 'POST',
+      // AI 网关依赖会话 Cookie 判断登录态，这里必须显式携带凭证。
+      credentials: 'include',
+      signal: options.signal,
       headers: {
-        'x-upstream-base-url': payload.upstream.baseUrl,
-        'x-upstream-endpoint': payload.upstream.endpoint,
+        'x-upstream-provider-id': providerId,
+        'x-upstream-endpoint-type': type,
+        ...(modelKey ? { 'x-upstream-model-key': modelKey } : {}),
         'x-upstream-method': normalizeGatewayMethod(options.method),
-        ...(payload.upstream.apiKey ? { 'x-upstream-api-key': payload.upstream.apiKey } : {}),
       },
-      body: options.data,
+      body: formData,
     })
 
+    notifyMarketingPointsUpdated(response)
+
     if (!response.ok) {
+      handleUnauthorizedResponse(response.status, 'gateway-form-request')
       const err = await response.json().catch(() => ({}))
       const msg = err?.error?.message || err?.message || `请求失败 (${response.status})`
       throw new Error(msg)
@@ -64,15 +86,21 @@ export const request = async (
     return response.json()
   }
 
-  const response = await fetch(AI_GATEWAY_REQUEST_PATH, {
+  const response = await fetch(buildApiUrl(AI_GATEWAY_REQUEST_PATH), {
     method: 'POST',
+    // AI 网关依赖会话 Cookie 判断登录态，这里必须显式携带凭证。
+    credentials: 'include',
+    signal: options.signal,
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(createGatewayPayload(type, options)),
+    body: JSON.stringify(await createGatewayPayload(type, options)),
   })
 
+  notifyMarketingPointsUpdated(response)
+
   if (!response.ok) {
+    handleUnauthorizedResponse(response.status, 'gateway-json-request')
     const err = await response.json().catch(() => ({}))
     const msg = err?.error?.message || err?.message || `请求失败 (${response.status})`
     throw new Error(msg)

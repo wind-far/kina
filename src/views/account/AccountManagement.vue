@@ -3,218 +3,236 @@
     <div id="csr-root">
       <div class="global-dreamina-container">
         <div id="dreamina" class="root_bf55f">
-          <div class="top-down-layer-ilr3Ve">
-            <div class="container-moSF_y" style="--side-menu-width:76px">
-              <!-- 侧边菜单 -->
-              <SideMenu/>
+          <div class="top-down-layer">
+            <div class="container-moSF_y" :style="sideMenuStyleVars">
+              <SideMenu />
 
-              <!-- 主内容区 -->
-              <div class="content-wrapper-cF1zaN">
-                <div class="main-container-nXfW_A">
-                  <div class="content-TZbgMr">
-                    <div class="scroll-container-Jsws2j">
-                      <div class="scroll-content-DaYLnh">
-                        <div class="account-management">
-                          <!-- 顶部操作栏 -->
-                          <div class="page-header">
-                            <div class="search-box">
-                              <input
-                                  v-model="searchKeyword"
-                                  type="text"
-                                  placeholder="搜索账号名称..."
-                                  class="search-input"
-                              />
-                            </div>
-                            <div class="header-actions">
-                              <button class="btn-secondary" @click="refreshAccounts" :disabled="isRefreshing">
-                                <svg class="btn-icon" :class="{ spinning: isRefreshing }" viewBox="0 0 24 24"
-                                     fill="none" stroke="currentColor" stroke-width="2">
-                                  <polyline points="23 4 23 10 17 10"/>
-                                  <polyline points="1 20 1 14 7 14"/>
-                                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                                </svg>
-                                刷新
-                              </button>
-                              <button class="btn-primary" @click="showAddDialog">
-                                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                     stroke-width="2">
-                                  <line x1="12" y1="5" x2="12" y2="19"/>
-                                  <line x1="5" y1="12" x2="19" y2="12"/>
-                                </svg>
-                                添加账号
-                              </button>
-                            </div>
-                          </div>
+              <div class="content-wrapper-OzVFU5">
+                <div id="dreamina-ui-configuration-content-wrapper" class="main-container-TrGK7G">
+                  <div class="content-V2NaRy">
+                    <div class="container-xPaqsy">
+                      <div class="container-VHHcGs">
+                        <div class="back-button-Na1aul sf-hidden">
+                          <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                            <g>
+                              <path data-follow-fill="currentColor" d="M4.533 12.844a1.2 1.2 0 0 1 0-1.687l7.655-7.747a1.2 1.2 0 0 1 1.708 1.687l-6.822 6.904 6.822 6.903a1.2 1.2 0 1 1-1.708 1.686l-7.655-7.746Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
+                            </g>
+                          </svg>
+                        </div>
 
-                          <!-- 平台标签 -->
-                          <div class="platform-tabs">
-                            <button
-                                v-for="tab in platformTabs"
-                                :key="tab.key"
-                                class="tab-btn"
-                                :class="{ active: activeTab === tab.key }"
-                                @click="activeTab = tab.key"
+                        <div class="profile-info">
+                          <div class="avatar-wrapper">
+                            <img
+                              :src="resolvedProfileAvatar"
+                              class="dreamina-component-avatar avatar-qnfikn account-profile-avatar"
+                              :alt="displayUserName"
                             >
-                              {{ tab.label }}
-                              <span class="tab-count">{{ getTabCount(tab.key) }}</span>
-                            </button>
                           </div>
 
-                          <!-- 账号列表 -->
-                          <div class="account-list">
-                            <div v-if="filteredAccounts.length === 0" class="empty-state">
-                              <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                   stroke-width="2">
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                                <circle cx="12" cy="7" r="4"/>
+                          <div class="user-container">
+                            <div class="user-name-ZcwgIM">{{ displayUserName }}</div>
+                          </div>
+                        </div>
+
+                        <div class="statics">
+                          <div class="line-x9qriG">
+                            <div class="item-mNzHRl clickable-KAXO1W">
+                              <span class="count-_olHcJ">{{ followerCount }}</span>
+                              <span class="desc-j1T6yQ">粉丝</span>
+                            </div>
+                            <div class="item-mNzHRl clickable-KAXO1W">
+                              <span class="count-_olHcJ">{{ followingCount }}</span>
+                              <span class="desc-j1T6yQ">关注</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="actions-vUPE88 is-myself">
+                          <button class="share-btn" type="button" @click="handleShareProfile">
+                            <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                              <g>
+                                <path data-follow-fill="currentColor" d="M11.78 4.534a.942.942 0 0 1 1.572-.7l7.852 7.067a.895.895 0 0 1 0 1.33l-7.852 7.067a.942.942 0 0 1-1.572-.7v-3.173a9.328 9.328 0 0 0-7.384 3.115c-.519.581-1.555.27-1.562-.586v-.097c0-5.286 3.879-9.666 8.946-10.449V4.534Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
+                              </g>
+                            </svg>
+                            <div class="share-btn-text">分享主页</div>
+                          </button>
+
+                          <button
+                            class="share-btn account-logout-btn"
+                            type="button"
+                            :disabled="isLoggingOut"
+                            @click="handleLogout"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                              <g>
+                                <path data-follow-fill="currentColor" d="M10 4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4h-5a1 1 0 1 1 0-2h5a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-5a1 1 0 0 1-1-1Zm1.707 3.293a1 1 0 0 1 0 1.414L9.414 11H16a1 1 0 1 1 0 2H9.414l2.293 2.293a1 1 0 1 1-1.414 1.414l-4-4a1 1 0 0 1 0-1.414l4-4a1 1 0 0 1 1.414 0Z" fill="currentColor"></path>
+                              </g>
+                            </svg>
+                            <div class="share-btn-text">{{ isLoggingOut ? '退出中...' : '退出登录' }}</div>
+                          </button>
+                        </div>
+
+                        <div class="profile-description">
+                          <div class="description-wrapper">
+                            <span>{{ profileDescription }}</span>
+                            <span style="margin-left:8px"></span>
+                            <div class="edit-button hide-ODTLCX">
+                              <svg width="14" height="14" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                                <g>
+                                  <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M9.024 20.055a1 1 0 0 0 .465-.263L19.906 9.375a3.735 3.735 0 1 0-5.282-5.281L4.207 14.51a1 1 0 0 0-.263.464l-1.289 5.157a1 1 0 0 0 1.213 1.212l5.156-1.289Zm7.014-14.547L5.818 15.73 5 19l3.27-.818 10.222-10.22a1.733 1.733 0 0 0-.563-2.83 1.735 1.735 0 0 0-1.89.376Zm3.878 15.242a1.083 1.083 0 0 0 0-2.167h-5.342a.17.17 0 0 0-.124.055l-1.623 1.758a.211.211 0 0 0 .155.354h6.934Z" fill="currentColor"></path>
+                                </g>
                               </svg>
-                              <p class="empty-text">暂无账号数据</p>
-                              <button class="btn-primary" @click="showAddDialog">添加第一个账号</button>
-                            </div>
-
-                            <div v-else class="account-grid">
-                              <div
-                                  v-for="account in filteredAccounts"
-                                  :key="account.id"
-                                  class="account-card"
-                              >
-                                <div class="card-header">
-                                  <div class="account-avatar">
-                                    {{ account.name.charAt(0) }}
-                                  </div>
-                                  <div class="account-info">
-                                    <h3 class="account-name">{{ account.name }}</h3>
-                                    <span class="account-platform" :class="`platform-${account.type}`">
-                {{ account.platform }}
-              </span>
-                                  </div>
-                                  <div class="account-status">
-              <span
-                  class="status-badge"
-                  :class="getStatusClass(account.status)"
-                  @click="handleStatusClick(account)"
-              >
-                {{ account.status }}
-              </span>
-                                  </div>
-                                </div>
-
-                                <div class="card-actions">
-                                  <button class="action-btn" @click="handleEdit(account)">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                                    </svg>
-                                    编辑
-                                  </button>
-                                  <button class="action-btn" @click="handleDownloadCookie(account)">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                      <polyline points="7 10 12 15 17 10"/>
-                                      <line x1="12" y1="15" x2="12" y2="3"/>
-                                    </svg>
-                                    下载
-                                  </button>
-                                  <button class="action-btn" @click="handleUploadCookie(account)">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                      <polyline points="17 8 12 3 7 8"/>
-                                      <line x1="12" y1="3" x2="12" y2="15"/>
-                                    </svg>
-                                    上传
-                                  </button>
-                                  <button class="action-btn danger" @click="handleDelete(account)">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                      <polyline points="3 6 5 6 21 6"/>
-                                      <path
-                                          d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                    </svg>
-                                    删除
-                                  </button>
-                                </div>
-                              </div>
                             </div>
                           </div>
+                        </div>
+                      </div>
 
-                          <!-- 添加/编辑账号对话框 -->
-                          <div v-if="dialogVisible" class="modal-overlay" @click.self="closeDialog">
-                            <div class="modal-content">
-                              <div class="modal-header">
-                                <h2>{{ dialogType === 'add' ? '添加账号' : '编辑账号' }}</h2>
-                                <button class="close-btn" @click="closeDialog">
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="18" y1="6" x2="6" y2="18"/>
-                                    <line x1="6" y1="6" x2="18" y2="18"/>
-                                  </svg>
-                                </button>
-                              </div>
+                      <div class="scroll-container-AhepyD">
+                        <div>
+                          <div class="right-container-VcENyg">
+                            <div class="scroll-container-AhepyD scroll-container-B4jFKc">
+                              <div>
+                                <div class="scroll-content-Hn6N56">
+                                  <div class="tab-group">
+                                    <div class="left-tabs">
+                                      <div class="tab-wrapper-aoGILw">
+                                        <button
+                                          class="item-vuuM4N"
+                                          :class="{ 'active-n4SQx9': primaryTab === 'published' }"
+                                          type="button"
+                                          @click="primaryTab = 'published'"
+                                        >
+                                          <div>已发布</div>
+                                        </button>
+                                        <button
+                                          class="item-vuuM4N account-tab-locked"
+                                          type="button"
+                                          @click="handleLockedTab"
+                                        >
+                                          <div>赞过</div>
+                                          <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-dNLP6Z">
+                                            <g>
+                                              <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M12 2a6 6 0 0 0-6 6v1.29A4.001 4.001 0 0 0 3.5 13v5a4 4 0 0 0 4 4h9a4 4 0 0 0 4-4v-5A4.001 4.001 0 0 0 18 9.29V8a6 6 0 0 0-6-6Zm4 6v1H8V8a4 4 0 1 1 8 0Zm-8.5 3a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-5a2 2 0 0 0-2-2h-9Zm4.5 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" fill="currentColor"></path>
+                                            </g>
+                                          </svg>
+                                        </button>
+                                      </div>
 
-                              <div class="modal-body">
-                                <div v-if="!sseConnecting" class="form-group">
-                                  <label class="form-label">平台</label>
-                                  <select
-                                      v-model="accountForm.platform"
-                                      class="form-select"
-                                      :disabled="dialogType === 'edit'"
-                                  >
-                                    <option value="">请选择平台</option>
-                                    <option value="快手">快手</option>
-                                    <option value="抖音">抖音</option>
-                                    <option value="视频号">视频号</option>
-                                    <option value="小红书">小红书</option>
-                                  </select>
+                                      <div class="tab-divider"></div>
+
+                                      <div class="tab-wrapper-eJkl7m">
+                                        <button
+                                          class="item-oLZMRc"
+                                          :class="{ 'active-PqJ0p3': secondaryTab === 'inspiration' }"
+                                          type="button"
+                                          @click="secondaryTab = 'inspiration'"
+                                        >
+                                          <div>灵感</div>
+                                        </button>
+                                        <button
+                                          class="item-oLZMRc"
+                                          :class="{ 'active-PqJ0p3': secondaryTab === 'short-video' }"
+                                          type="button"
+                                          @click="secondaryTab = 'short-video'"
+                                        >
+                                          <div>AI短片</div>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div class="feed-list" style="display:block">
+                                    <div
+                                      v-if="visibleGalleryItems.length"
+                                      ref="masonryContainerRef"
+                                      class="masonry-layout-UFZlSA masonry-layout account-masonry-layout"
+                                      :style="masonryViewportStyle"
+                                    >
+                                      <div
+                                        class="masonry-layout-scroll-content-_Gm3oO account-masonry-grid"
+                                        :style="masonryViewportStyle"
+                                      >
+                                        <div
+                                          v-for="(item, index) in visibleGalleryItems"
+                                          :key="item.id"
+                                          class="masonry-layout-item-Uj6_im masonry-layout-item account-masonry-item"
+                                          :style="getMasonryItemStyle(index)"
+                                        >
+                                          <div class="feed-item-WyLpPh feed-item-image-kx3bnF cover-container-d6w2vX" @click="openWorkDetail(item.id)">
+                                            <div class="content-B9Vipz">
+                                              <div class="container-bbbsvQ account-feed-card-shell">
+                                                <img
+
+                                                  loading="lazy"
+                                                  class="cover-Qo4B2U"
+                                                  :src="item.imageSrc"
+                                                  :alt="item.id"
+                                                  @load="onFeedImageLoad($event, index)"
+                                                  @error="onFeedImageError(index)"
+                                                >
+                                              </div>
+
+                                              <div class="top-overlay">
+                                                <div>
+                                                  <div v-if="item.badgeText" class="badge-inhDJv">{{ item.badgeText }}</div>
+                                                </div>
+                                              </div>
+
+                                              <div class="overlay-WWIpyU">
+                                                <div class="head-wYUoMC">
+                                                  <div class="author-g6lhbl">
+                                                    <div class="dreamina-component-avatar-container avatar-LRSR55">
+                                                      <img :src="item.authorAvatarSrc" class="dreamina-component-avatar" :alt="item.authorName">
+                                                    </div>
+                                                    <span class="username">{{ item.authorName }}</span>
+                                                  </div>
+                                                </div>
+
+                                                <div class="tail">
+                                                  <div class="operation">
+                                                    <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-yH97ZW">
+                                                      <g>
+                                                        <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M4.92 3.537a4 4 0 0 0-2.83 4.899l2.585 9.645a4 4 0 0 0 4.899 2.829l2.737-.733a3.403 3.403 0 0 1-.874-1.837l-2.381.638a2 2 0 0 1-2.45-1.414L4.023 7.918a2 2 0 0 1 1.414-2.45l3.288-.88a2 2 0 0 1 2.45 1.414l2.318 8.654.553-.246a.683.683 0 0 0 .345-.368l.214-.516a3.56 3.56 0 0 1 .445-.784l-1.944-7.257a4 4 0 0 0-4.899-2.829l-3.287.881ZM21.6 9.766l-.885 3.303a3.332 3.332 0 0 0-1.687-1.433l.64-2.388a1.5 1.5 0 0 0-1.061-1.837l-2.437-.653a1.492 1.492 0 0 0-.659-.026l-.473-1.765c-.01-.039-.022-.077-.034-.115l-.016-.055a3.485 3.485 0 0 1 1.7.03l2.436.652A3.5 3.5 0 0 1 21.6 9.766Zm-3.433 11.127.208-.477a3.68 3.68 0 0 1 1.871-1.899l.64-.285a.447.447 0 0 0 0-.812l-.604-.269a3.682 3.682 0 0 1-1.898-1.961l-.214-.516a.427.427 0 0 0-.794 0l-.213.516a3.681 3.681 0 0 1-1.898 1.961l-.605.27a.447.447 0 0 0 0 .811l.64.285a3.68 3.68 0 0 1 1.872 1.899l.207.477a.427.427 0 0 0 .788 0Z" fill="currentColor"></path>
+                                                      </g>
+                                                    </svg>
+                                                  </div>
+                                                  <div class="operation">
+                                                    <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-yH97ZW">
+                                                      <g>
+                                                        <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M16.326 4.72H7.674A2.954 2.954 0 0 0 4.72 7.674v8.652c0 .054.001.108.004.162l3.509-3.508a2.954 2.954 0 0 1 4.03-.138l6.262 5.457c.47-.523.755-1.215.755-1.973V7.674a2.954 2.954 0 0 0-2.954-2.954Zm2.798 15.658a4.919 4.919 0 0 0 2.126-4.052V7.674a4.924 4.924 0 0 0-4.924-4.924H7.674A4.924 4.924 0 0 0 2.75 7.674v8.652a4.924 4.924 0 0 0 4.924 4.924h8.652a4.901 4.901 0 0 0 2.798-.872Zm-2.489-1.114-5.666-4.937a.985.985 0 0 0-1.344.046l-4.041 4.04a2.945 2.945 0 0 0 2.09.867h8.652c.104 0 .208-.005.31-.016ZM14.078 8.401a1.532 1.532 0 1 1 3.064 0 1.532 1.532 0 0 1-3.064 0Z" fill="currentColor"></path>
+                                                      </g>
+                                                    </svg>
+                                                  </div>
+                                                  <div>
+                                                    <div class="favorite-RlC8dW">
+                                                      <div class="lottie-icon-container icon-QlNaEG">
+                                                        <div class="lottie-icon-content">
+                                                          <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-QlNaEG">
+                                                            <g>
+                                                              <path data-follow-fill="currentColor" d="M8.538 3.513a6.077 6.077 0 0 0-6.085 6.07c0 2.819 1.639 5.278 3.37 7.025 1.75 1.764 3.914 3.13 5.588 3.685a1.87 1.87 0 0 0 1.174 0c1.675-.556 3.84-1.92 5.588-3.685 1.732-1.747 3.37-4.206 3.37-7.025a6.077 6.077 0 0 0-6.084-6.07c-1.381 0-2.572.717-3.46 1.432-.889-.715-2.08-1.432-3.461-1.432Zm0 2a4.077 4.077 0 0 0-4.085 4.07c0 2.05 1.215 4.028 2.79 5.617 1.557 1.57 3.436 2.73 4.755 3.18 1.32-.45 3.2-1.61 4.755-3.18 1.575-1.59 2.79-3.568 2.79-5.617 0-2.24-1.82-4.07-4.084-4.07-.929 0-1.877.652-2.78 1.49a1 1 0 0 1-1.36 0c-.904-.838-1.853-1.49-2.781-1.49Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
+                                                            </g>
+                                                          </svg>
+                                                        </div>
+                                                      </div>
+                                                      <span class="account-feed-favorite-count">{{ item.favoriteCount }}</span>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div v-else class="account-empty-state">
+                                      <div class="account-empty-title">{{ emptyTitle }}</div>
+                                      <div class="account-empty-description">{{ emptyDescription }}</div>
+                                    </div>
+
+                                    <div class="feed-list-no-more">没有更多了</div>
+                                  </div>
                                 </div>
-
-                                <div v-if="!sseConnecting" class="form-group">
-                                  <label class="form-label">账号名称</label>
-                                  <input
-                                      v-model="accountForm.name"
-                                      type="text"
-                                      class="form-input"
-                                      placeholder="请输入账号名称"
-                                  />
-                                </div>
-
-                                <!-- 二维码显示区域 -->
-                                <div v-if="sseConnecting" class="qrcode-container">
-                                  <div v-if="qrCodeData && !loginStatus" class="qrcode-wrapper">
-                                    <p class="qrcode-tip">请使用{{ accountForm.platform }}APP扫描二维码登录</p>
-                                    <img :src="qrCodeData" alt="登录二维码" class="qrcode-image"/>
-                                  </div>
-                                  <div v-else-if="!qrCodeData && !loginStatus" class="loading-wrapper">
-                                    <div class="loading-spinner"></div>
-                                    <span>正在请求登录...</span>
-                                  </div>
-                                  <div v-else-if="loginStatus === '200'" class="success-wrapper">
-                                    <svg class="status-icon success" viewBox="0 0 24 24" fill="none"
-                                         stroke="currentColor" stroke-width="2">
-                                      <polyline points="20 6 9 17 4 12"/>
-                                    </svg>
-                                    <span>登录成功</span>
-                                  </div>
-                                  <div v-else-if="loginStatus === '500'" class="error-wrapper">
-                                    <svg class="status-icon error" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                         stroke-width="2">
-                                      <circle cx="12" cy="12" r="10"/>
-                                      <line x1="15" y1="9" x2="9" y2="15"/>
-                                      <line x1="9" y1="9" x2="15" y2="15"/>
-                                    </svg>
-                                    <span>登录失败，请重试</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div class="modal-footer">
-                                <button class="btn-secondary" @click="closeDialog" :disabled="sseConnecting">
-                                  取消
-                                </button>
-                                <button
-                                    class="btn-primary"
-                                    @click="submitForm"
-                                    :disabled="sseConnecting"
-                                >
-                                  {{ sseConnecting ? '登录中...' : '确认' }}
-                                </button>
                               </div>
                             </div>
                           </div>
@@ -229,1002 +247,507 @@
         </div>
       </div>
     </div>
+
+    <HomeDetailModalFrom
+      v-model="workDetailOpen"
+      :image-src="workDetailImageSrc"
+      :owner-id="currentWorkDetailItem?.ownerId || ''"
+      :prompt-text="workDetailPromptText"
+      :author-name="workDetailAuthorName"
+      :author-avatar-src="workDetailAuthorAvatarSrc"
+      :like-count="workDetailLikeCount"
+      :create-date="workDetailCreateDate"
+      :ai-generated-text="workDetailAiGeneratedText"
+      :prompt-tip-label="workDetailPromptTipLabel"
+      :model-label="workDetailModelLabel"
+      :aspect-ratio-label="workDetailAspectRatioLabel"
+      :gallery-length="workDetailGallery.length"
+      @gallery-nav="handleGalleryNav"
+      @favorite="handleWorkDetailFavorite"
+      @delete="handleWorkDetailDelete"
+      @report="handleWorkDetailReport"
+    />
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import SideMenu from '@/components/home/components/SideMenu.vue'
+import HomeDetailModalFrom from '@/components/home/components/HomeDetailModalFrom.vue'
+import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
+import { applyAssetAction, listAssetItems, type PersistedAssetItem } from '@/api/asset-items'
+import { buildAssetUrl } from '@/api/http'
+import {
+  buildPlainMasonryLayoutsFromSizes,
+  computePlainMasonryMetrics,
+  plainMasonryScrollHeight,
+  type MasonryRect,
+} from '@/components/home/discoverMasonryLayout'
+import { AUTH_LOGIN_SUCCESS_EVENT, useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
 
-import {ref, computed, onMounted} from 'vue'
-import {accountApi} from '@/api/account'
-import {useAccountStore} from '@/stores/account'
-import {useAppStore} from '@/stores/app'
+const { sideMenuStyleVars } = useHomeSideMenuConfig()
 
-const accountStore = useAccountStore()
-const appStore = useAppStore()
-
-const searchKeyword = ref('')
-const activeTab = ref('all')
-const isRefreshing = ref(false)
-const dialogVisible = ref(false)
-const dialogType = ref('add')
-const sseConnecting = ref(false)
-const qrCodeData = ref('')
-const loginStatus = ref('')
-let eventSource = null
-
-const accountForm = ref({
-  id: null,
-  name: '',
-  platform: '',
-  status: '正常'
-})
-
-const platformTabs = [
-  {key: 'all', label: '全部'},
-  {key: '快手', label: '快手'},
-  {key: '抖音', label: '抖音'},
-  {key: '视频号', label: '视频号'},
-  {key: '小红书', label: '小红书'}
-]
-
-// 过滤后的账号列表
-const filteredAccounts = computed(() => {
-  let accountsList = [...accountStore.accounts.value]
-
-  // 按平台过滤
-  if (activeTab.value !== 'all') {
-    accountsList = accountsList.filter(acc => acc.platform === activeTab.value)
-  }
-
-  // 按关键词搜索
-  if (searchKeyword.value) {
-    accountsList = accountsList.filter(acc =>
-        acc.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
-    )
-  }
-
-  return accountsList
-})
-
-// 获取标签数量
-const getTabCount = (key) => {
-  if (key === 'all') return accountStore.accounts.value.length
-  return accountStore.accounts.value.filter(acc => acc.platform === key).length
+interface AccountFeedItem {
+  id: string
+  ownerId: string
+  imageSrc: string
+  promptText: string
+  authorName: string
+  authorAvatarSrc: string
+  favoriteCount: number
+  modelLabel: string
+  aspectRatioLabel: string
+  createDate: string
+  aiGeneratedText: string
+  promptTipLabel: string
+  badgeText: string
+  assetType: 'image' | 'video'
+  publishStatus: string
+  visibility: string
+  reviewStatus: string
 }
 
-// 获取状态样式类
-const getStatusClass = (status) => {
+// 默认头像占位图，避免无头像用户在个人中心中显示为空白。
+const EMPTY_AVATAR_DATA_URI = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' rx='100' fill='%23E5E7EB'/%3E%3Ccircle cx='100' cy='76' r='30' fill='%239CA3AF'/%3E%3Cpath d='M52 154c8-24 28-38 48-38s40 14 48 38' fill='%239CA3AF'/%3E%3C/svg%3E"
+
+// 读取当前认证状态。
+const authStore = useAuthStore()
+const router = useRouter()
+
+// 登录成功后的页面数据刷新监听器。
+let authLoginSuccessListener: (() => void) | null = null
+
+// 顶部一级标签。
+const primaryTab = ref<'published' | 'liked'>('published')
+
+// 顶部二级标签。
+const secondaryTab = ref<'inspiration' | 'short-video'>('inspiration')
+
+// 个人中心作品列表。
+const accountFeedItems = ref<AccountFeedItem[]>([])
+
+// 是否正在退出登录。
+const isLoggingOut = ref(false)
+
+// 详情弹层状态。
+const workDetailOpen = ref(false)
+
+// 当前详情画廊。
+const workDetailGallery = ref<AccountFeedItem[]>([])
+
+// 当前详情下标。
+const workDetailGalleryIndex = ref(0)
+
+// 作品区瀑布流根节点。
+const masonryContainerRef = ref<HTMLElement | null>(null)
+
+// 当前轨道宽度。
+const masonryTrackWidth = ref(0)
+
+// 图片自然尺寸列表，保证布局和 HTML 一样依赖运行时计算结果。
+const feedNaturalSizes = ref<Array<{ w: number; h: number } | null>>([])
+
+// 瀑布流监听器。
+let masonryResizeObserver: ResizeObserver | null = null
+
+// 头像优先使用真实登录用户头像。
+const resolvedProfileAvatar = computed(() => {
+  return authStore.currentUser.value?.avatarUrl || EMPTY_AVATAR_DATA_URI
+})
+
+// 展示昵称优先级：昵称、手机号、邮箱。
+const displayUserName = computed(() => {
+  const currentUser = authStore.currentUser.value
+  return currentUser?.name || currentUser?.maskedPhone || currentUser?.maskedEmail || '登录用户'
+})
+
+// 个人简介先用登录标识兜底，避免空白。
+const profileDescription = computed(() => {
+  const currentUser = authStore.currentUser.value
+  return currentUser?.email || currentUser?.phone || '添加个人简介'
+})
+
+// 当前项目还没有关系链，这里先保持参考页默认值。
+const followerCount = computed(() => 0)
+
+// 当前项目还没有关系链，这里先保持参考页默认值。
+const followingCount = computed(() => 0)
+
+// 当前列表根据二级标签过滤。
+const visibleGalleryItems = computed(() => {
+  if (primaryTab.value !== 'published') return []
+  return accountFeedItems.value
+})
+
+// 图片列表变化时，重置自然尺寸缓存。
+watch(
+  () => visibleGalleryItems.value.map(item => item.imageSrc),
+  (urls) => {
+    feedNaturalSizes.value = urls.map(() => null)
+  },
+  { immediate: true },
+)
+
+// 作品区内容层行内样式，收敛到和参考页一致的绝对定位布局。
+const masonryViewportStyle = computed(() => {
   return {
-    'status-normal': status === '正常',
-    'status-error': status === '异常',
-    'status-pending': status === '验证中',
-    'clickable': status === '异常'
+    height: `${masonryHeight.value}px`,
+    maxHeight: `${masonryHeight.value}px`,
+  }
+})
+
+// 空态标题文案。
+const emptyTitle = computed(() => {
+  return secondaryTab.value === 'short-video' ? '暂无 AI 短片' : '暂无已发布作品'
+})
+
+// 空态补充文案。
+const emptyDescription = computed(() => {
+  return secondaryTab.value === 'short-video'
+    ? '完成视频生成后，会按参考页布局展示在这里。'
+    : '完成图片生成并发布后，会按参考页布局展示在这里。'
+})
+
+// 当前详情项。
+const currentWorkDetailItem = computed(() => {
+  return workDetailGallery.value[workDetailGalleryIndex.value] || null
+})
+
+// 详情弹层主图。
+const workDetailImageSrc = computed(() => currentWorkDetailItem.value?.imageSrc || '')
+
+// 详情弹层提示词。
+const workDetailPromptText = computed(() => currentWorkDetailItem.value?.promptText || '')
+
+// 详情弹层作者名称。
+const workDetailAuthorName = computed(() => currentWorkDetailItem.value?.authorName || '创作者')
+
+// 详情弹层作者头像。
+const workDetailAuthorAvatarSrc = computed(() => currentWorkDetailItem.value?.authorAvatarSrc || '')
+
+// 详情弹层点赞数。
+const workDetailLikeCount = computed(() => currentWorkDetailItem.value?.favoriteCount || 0)
+
+// 详情弹层创建时间。
+const workDetailCreateDate = computed(() => currentWorkDetailItem.value?.createDate || '2026-04-26')
+
+// 详情弹层 AI 文案。
+const workDetailAiGeneratedText = computed(() => currentWorkDetailItem.value?.aiGeneratedText || '内容由 AI 生成')
+
+// 详情弹层提示标题。
+const workDetailPromptTipLabel = computed(() => currentWorkDetailItem.value?.promptTipLabel || '图片提示词')
+
+// 详情弹层模型文案。
+const workDetailModelLabel = computed(() => currentWorkDetailItem.value?.modelLabel || '图片 4.1')
+
+// 详情弹层比例文案。
+const workDetailAspectRatioLabel = computed(() => currentWorkDetailItem.value?.aspectRatioLabel || '1:1')
+
+// 统一格式化日期分组显示。
+const formatDateLabel = (value: string) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '2026-04-26'
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+// 把资源接口结果转换成个人中心卡片结构。
+const mapAssetToFeedItem = (item: PersistedAssetItem): AccountFeedItem => {
+  return {
+    id: item.id,
+    ownerId: item.owner?.id || '',
+    imageSrc: buildAssetUrl(item.previewUrl || item.coverUrl || item.fileUrl),
+    promptText: item.promptText || '',
+    authorName: authStore.currentUser.value?.name || item.owner?.name || '创作者',
+    authorAvatarSrc: buildAssetUrl(authStore.currentUser.value?.avatarUrl || item.owner?.avatarSrc || EMPTY_AVATAR_DATA_URI),
+    favoriteCount: Number(item.favoriteCount || 0),
+    modelLabel: item.modelLabel || '图片 4.1',
+    aspectRatioLabel: item.aspectRatio || '1:1',
+    createDate: formatDateLabel(item.createdAt),
+    aiGeneratedText: '内容由 AI 生成',
+    promptTipLabel: '图片提示词',
+    badgeText: item.reviewStatus !== 'approved' ? '审核中' : '',
+    assetType: item.assetType,
+    publishStatus: item.publishStatus || 'draft',
+    visibility: item.visibility || 'private',
+    reviewStatus: item.reviewStatus || 'pending',
   }
 }
 
-// 处理状态点击
-const handleStatusClick = (account) => {
-  if (account.status === '异常') {
-    handleReLogin(account)
-  }
-}
-
-// 快速获取账号列表
-const fetchAccountsQuick = async () => {
-  try {
-    const res = await accountApi.getAccounts()
-    if (res.code === 200 && res.data) {
-      const accountsWithPendingStatus = res.data.map(account => {
-        const updatedAccount = [...account]
-        updatedAccount[4] = '验证中'
-        return updatedAccount
-      })
-      accountStore.setAccounts(accountsWithPendingStatus)
-    }
-  } catch (error) {
-    console.error('获取账号失败:', error)
-  }
-}
-
-// 刷新账号（带验证）
-const refreshAccounts = async () => {
-  if (isRefreshing.value) return
-
-  isRefreshing.value = true
-  try {
-    const res = await accountApi.getValidAccounts()
-    if (res.code === 200 && res.data) {
-      accountStore.setAccounts(res.data)
-      showToast('账号刷新成功', 'success')
-    }
-  } catch (error) {
-    console.error('刷新账号失败:', error)
-    showToast('刷新账号失败', 'error')
-  } finally {
-    isRefreshing.value = false
-  }
-}
-
-// 显示添加对话框
-const showAddDialog = () => {
-  dialogType.value = 'add'
-  accountForm.value = {
-    id: null,
-    name: '',
-    platform: '',
-    status: '正常'
-  }
-  sseConnecting.value = false
-  qrCodeData.value = ''
-  loginStatus.value = ''
-  dialogVisible.value = true
-}
-
-// 编辑账号
-const handleEdit = (account) => {
-  dialogType.value = 'edit'
-  accountForm.value = {
-    id: account.id,
-    name: account.name,
-    platform: account.platform,
-    status: account.status
-  }
-  dialogVisible.value = true
-}
-
-// 重新登录
-const handleReLogin = (account) => {
-  dialogType.value = 'edit'
-  accountForm.value = {
-    id: account.id,
-    name: account.name,
-    platform: account.platform,
-    status: account.status
-  }
-  dialogVisible.value = true
-
-  setTimeout(() => {
-    connectSSE(account.platform, account.name)
-  }, 300)
-}
-
-// 删除账号
-const handleDelete = async (account) => {
-  if (!confirm(`确定要删除账号 ${account.name} 吗？`)) return
-
-  try {
-    const res = await accountApi.deleteAccount(account.id)
-    if (res.code === 200) {
-      accountStore.deleteAccount(account.id)
-      showToast('删除成功', 'success')
-    }
-  } catch (error) {
-    console.error('删除失败:', error)
-    showToast('删除失败', 'error')
-  }
-}
-
-// 下载 Cookie
-const handleDownloadCookie = (account) => {
-  const url = accountApi.downloadCookie(account.filePath)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${account.name}_cookie.json`
-  link.click()
-}
-
-// 上传 Cookie
-const handleUploadCookie = (account) => {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = '.json'
-
-  input.onchange = async (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('id', account.id)
-    formData.append('platform', account.platform)
-
-    try {
-      const res = await accountApi.uploadCookie(formData)
-      if (res.code === 200) {
-        showToast('Cookie上传成功', 'success')
-        refreshAccounts()
-      } else {
-        showToast(res.msg || 'Cookie上传失败', 'error')
-      }
-    } catch (error) {
-      console.error('上传失败:', error)
-      showToast('Cookie上传失败', 'error')
-    }
-  }
-
-  input.click()
-}
-
-// 关闭对话框
-const closeDialog = () => {
-  if (sseConnecting.value) return
-  closeSSEConnection()
-  dialogVisible.value = false
-}
-
-// 提交表单
-const submitForm = () => {
-  if (!accountForm.value.platform || !accountForm.value.name) {
-    showToast('请填写完整信息', 'error')
+// 记录图片真实尺寸，保持瀑布流高度和 HTML 一致由运行时驱动。
+const onFeedImageLoad = (event: Event, index: number) => {
+  const target = event.target as HTMLImageElement | null
+  if (!target?.naturalWidth || !target?.naturalHeight) {
     return
   }
 
-  if (dialogType.value === 'add' || (dialogType.value === 'edit' && accountForm.value.status === '异常')) {
-    connectSSE(accountForm.value.platform, accountForm.value.name)
-  } else {
-    // 编辑账号信息
-    updateAccountInfo()
+  const nextSizes = [...feedNaturalSizes.value]
+  nextSizes[index] = {
+    w: target.naturalWidth,
+    h: target.naturalHeight,
   }
+  feedNaturalSizes.value = nextSizes
 }
 
-// 更新账号信息
-const updateAccountInfo = async () => {
+// 图片加载失败时按方图占位，避免整个布局断掉。
+const onFeedImageError = (index: number) => {
+  if (feedNaturalSizes.value[index]) {
+    return
+  }
+
+  const nextSizes = [...feedNaturalSizes.value]
+  nextSizes[index] = { w: 1, h: 1 }
+  feedNaturalSizes.value = nextSizes
+}
+
+// 加载个人中心资源列表。
+const loadAccountFeedItems = async () => {
   try {
-    const res = await accountApi.updateAccount({
-      id: accountForm.value.id,
-      type: accountStore.PLATFORM_TYPE_MAP[accountForm.value.platform],
-      userName: accountForm.value.name
+    const assets = await listAssetItems({
+      scope: 'mine',
+      assetType: secondaryTab.value === 'short-video' ? 'video' : 'image',
+      take: 60,
+      publishState: primaryTab.value === 'published' ? 'published' : 'all',
     })
 
-    if (res.code === 200) {
-      showToast('更新成功', 'success')
-      dialogVisible.value = false
-      refreshAccounts()
+    if (assets.length) {
+      accountFeedItems.value = assets.map(mapAssetToFeedItem)
+      return
     }
+
+    accountFeedItems.value = []
   } catch (error) {
-    console.error('更新失败:', error)
-    showToast('更新失败', 'error')
+    console.warn('读取个人中心资源失败。', error)
+    accountFeedItems.value = []
   }
 }
 
-// 建立 SSE 连接
-const connectSSE = (platform, name) => {
-  closeSSEConnection()
+// 点击锁定标签时给出轻提示，和参考页的禁用感一致。
+const handleLockedTab = () => {
+  ElMessage.info('赞过内容暂未开放')
+}
 
-  sseConnecting.value = true
-  qrCodeData.value = ''
-  loginStatus.value = ''
+// 分享主页先复制当前地址。
+const handleShareProfile = async () => {
+  try {
+    await navigator.clipboard.writeText(window.location.href)
+    ElMessage.success('主页链接已复制')
+  } catch (error) {
+    console.warn('复制主页链接失败', error)
+    ElMessage.info('当前浏览器暂不支持自动复制')
+  }
+}
 
-  const platformTypeMap = {
-    '小红书': '1',
-    '视频号': '2',
-    '抖音': '3',
-    '快手': '4'
+// 退出当前登录用户，并回到首页显示登录入口。
+const handleLogout = async () => {
+  if (isLoggingOut.value) {
+    return
   }
 
-  const type = platformTypeMap[platform]
-  const url = accountApi.loginAccount(type, name)
+  isLoggingOut.value = true
 
-  eventSource = new EventSource(url)
+  try {
+    await authStore.logout()
+    ElMessage.success('已退出登录')
+    await router.replace({
+      path: '/',
+      query: {
+        login: '1',
+      },
+    })
+  } catch (error) {
+    console.warn('退出登录失败', error)
+  } finally {
+    isLoggingOut.value = false
+  }
+}
 
-  eventSource.onmessage = (event) => {
-    const data = event.data
+// 打开作品详情弹层。
+const openWorkDetail = (id: string) => {
+  const currentIndex = visibleGalleryItems.value.findIndex(item => item.id === id)
+  if (currentIndex < 0) return
 
-    if (!qrCodeData.value && data.length > 100) {
-      qrCodeData.value = data.startsWith('data:image') ? data : `data:image/png;base64,${data}`
-    } else if (data === '200' || data === '500') {
-      loginStatus.value = data
+  workDetailGallery.value = visibleGalleryItems.value
+  workDetailGalleryIndex.value = currentIndex
+  workDetailOpen.value = true
 
-      if (data === '200') {
-        setTimeout(() => {
-          closeSSEConnection()
-          setTimeout(() => {
-            dialogVisible.value = false
-            sseConnecting.value = false
-            showToast('登录成功', 'success')
-            refreshAccounts()
-          }, 1000)
-        }, 1000)
-      } else {
-        closeSSEConnection()
-        setTimeout(() => {
-          sseConnecting.value = false
-          qrCodeData.value = ''
-          loginStatus.value = ''
-        }, 2000)
-      }
+  void applyAssetAction('view', [id]).catch((error) => {
+    console.warn('记录个人中心作品浏览失败', error)
+  })
+}
+
+// 详情弹层切换上一张下一张。
+const handleGalleryNav = (delta: number) => {
+  const total = workDetailGallery.value.length
+  if (total <= 1) return
+
+  workDetailGalleryIndex.value = (workDetailGalleryIndex.value + delta + total) % total
+}
+
+// 详情弹层点赞动作。
+const handleWorkDetailFavorite = async () => {
+  const currentItem = currentWorkDetailItem.value
+  if (!currentItem) return
+
+  currentItem.favoriteCount += 1
+
+  try {
+    await applyAssetAction('favorite', [currentItem.id])
+  } catch (error) {
+    currentItem.favoriteCount -= 1
+    console.warn('个人中心点赞失败', error)
+  }
+}
+
+const removeCurrentWorkDetailItem = () => {
+  const currentItem = currentWorkDetailItem.value
+  if (!currentItem) return ''
+
+  accountFeedItems.value = accountFeedItems.value.filter(item => item.id !== currentItem.id)
+  workDetailGallery.value = workDetailGallery.value.filter(item => item.id !== currentItem.id)
+
+  if (!workDetailGallery.value.length) {
+    workDetailOpen.value = false
+    workDetailGalleryIndex.value = 0
+  } else if (workDetailGalleryIndex.value >= workDetailGallery.value.length) {
+    workDetailGalleryIndex.value = workDetailGallery.value.length - 1
+  }
+
+  return currentItem.id
+}
+
+const handleWorkDetailDelete = async () => {
+  const currentItem = currentWorkDetailItem.value
+  if (!currentItem) return
+
+  try {
+    await ElMessageBox.confirm('确定删除这条作品吗？删除后将无法恢复。', '删除确认', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+
+  await applyAssetAction('delete', [currentItem.id])
+  removeCurrentWorkDetailItem()
+  ElMessage.success('作品已删除')
+}
+
+const handleWorkDetailReport = () => {
+  ElMessage.success('举报已提交，我们会尽快处理')
+}
+
+// 按轨道宽度计算列数与列宽。
+const masonryMetrics = computed(() => computePlainMasonryMetrics({
+  trackWidth: masonryTrackWidth.value,
+  minColumnWidth: 220,
+  maxColumnWidth: 252,
+  maxColumns: 7,
+  columnGap: 16,
+}))
+
+// 生成与 HTML 一致的绝对定位瀑布流布局。
+const masonryLayouts = computed<MasonryRect[]>(() => (
+  buildPlainMasonryLayoutsFromSizes(feedNaturalSizes.value, masonryMetrics.value)
+))
+
+// 作品区滚动高度。
+const masonryHeight = computed(() => plainMasonryScrollHeight(masonryLayouts.value))
+
+// 读取单个卡片定位样式。
+const getMasonryItemStyle = (index: number) => {
+  const current = masonryLayouts.value[index]
+  return {
+    left: `${current?.left || 0}px`,
+    top: `${current?.top || 0}px`,
+    width: `${current?.width || 0}px`,
+    height: `${current?.height || 0}px`,
+  }
+}
+
+// 页面初始化时优先读取真实资源。
+onMounted(async () => {
+  masonryResizeObserver = new ResizeObserver(() => {
+    const host = masonryContainerRef.value
+    if (!host) {
+      masonryTrackWidth.value = 0
+      return
     }
+
+    masonryTrackWidth.value = Math.floor(host.getBoundingClientRect().width)
+  })
+
+  await nextTick()
+  if (masonryContainerRef.value) {
+    masonryTrackWidth.value = Math.floor(masonryContainerRef.value.getBoundingClientRect().width)
+    masonryResizeObserver.observe(masonryContainerRef.value)
   }
 
-  eventSource.onerror = () => {
-    showToast('连接失败，请重试', 'error')
-    closeSSEConnection()
-    sseConnecting.value = false
+  await loadAccountFeedItems()
+
+  authLoginSuccessListener = () => {
+    void loadAccountFeedItems()
   }
-}
+  window.addEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
+})
 
-// 关闭 SSE 连接
-const closeSSEConnection = () => {
-  if (eventSource) {
-    eventSource.close()
-    eventSource = null
+// 只有在登录态初始化完成且确认未登录后，才回首页显示登录入口。
+watch(
+  [
+    () => authStore.isLoggedIn.value,
+    () => authStore.sessionInitialized.value,
+    () => authStore.sessionLoading.value,
+  ],
+  ([isLoggedIn, sessionInitialized, sessionLoading]) => {
+    if (isLoggedIn || !sessionInitialized || sessionLoading) {
+      return
+    }
+
+    void router.replace({
+      path: '/',
+      query: {
+        login: '1',
+      },
+    })
+  },
+)
+
+// 切换到不同内容类型时，重新拉取对应资源。
+watch(secondaryTab, async () => {
+  await loadAccountFeedItems()
+})
+
+// 切换一级标签时，重新拉取对应发布态资源。
+watch(primaryTab, async () => {
+  await loadAccountFeedItems()
+})
+
+// 瀑布流根节点切换时，重新绑定尺寸监听。
+watch(masonryContainerRef, async (element, previousElement) => {
+  if (previousElement && masonryResizeObserver) {
+    masonryResizeObserver.unobserve(previousElement)
   }
-}
 
-// 简单的 Toast 提示
-const showToast = (message, type = 'info') => {
-  const toast = document.createElement('div')
-  toast.className = `toast toast-${type}`
-  toast.textContent = message
-  document.body.appendChild(toast)
+  await nextTick()
 
-  setTimeout(() => {
-    toast.classList.add('show')
-  }, 10)
+  if (element && masonryResizeObserver) {
+    masonryTrackWidth.value = Math.floor(element.getBoundingClientRect().width)
+    masonryResizeObserver.observe(element)
+  }
+})
 
-  setTimeout(() => {
-    toast.classList.remove('show')
-    setTimeout(() => {
-      document.body.removeChild(toast)
-    }, 300)
-  }, 3000)
-}
-
-onMounted(() => {
-  // 只在首次加载或需要时才验证账号
-  // 如果 store 中已有账号数据，直接使用
-  if (accountStore.accounts.value.length === 0) {
-    fetchAccountsQuick()
-    setTimeout(() => {
-      refreshAccounts()
-    }, 100)
-  } else {
-    // 已有数据，只做快速获取
-    fetchAccountsQuick()
+// 组件卸载时释放观察器。
+onBeforeUnmount(() => {
+  masonryResizeObserver?.disconnect()
+  masonryResizeObserver = null
+  if (authLoginSuccessListener) {
+    window.removeEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
+    authLoginSuccessListener = null
   }
 })
 </script>
 
-<style scoped>
-.account-management {
-  padding: 32px;
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-/* 页面头部 */
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 32px;
-  gap: 16px;
-}
-
-.search-box {
-  flex: 1;
-  max-width: 400px;
-}
-
-.search-input {
-  width: 100%;
-  height: 36px;
-  padding: 0 12px;
-  background: var(--bg-block-primary-default);
-  border: 1px solid var(--stroke-primary);
-  border-radius: var(--lv-border-radius-large);
-  color: var(--text-primary);
-  font-size: 14px;
-  font-family: var(--font-family);
-  transition: all 0.1s linear;
-  caret-color: var(--brand-main-default);
-}
-
-.search-input:hover {
-  background: var(--bg-block-primary-hover);
-  border-color: var(--stroke-secondary);
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: var(--brand-main-default);
-  background: var(--bg-block-primary-hover);
-  box-shadow: 0 0 0 2px var(--brand-main-block-default);
-}
-
-.search-input::placeholder {
-  color: var(--text-placeholder);
-}
-
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-/* 按钮样式 */
-.btn-primary,
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 16px;
-  border: none;
-  border-radius: var(--lv-border-radius-large);
-  font-size: 14px;
-  font-weight: 600;
-  font-family: var(--font-family);
-  cursor: pointer;
-  transition: all 0.1s linear;
-  white-space: nowrap;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-.btn-primary {
-  background: var(--component-primary-button-bg-default);
-  color: var(--component-primary-button-text-default);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--component-primary-button-bg-hover);
-}
-
-.btn-primary:active:not(:disabled) {
-  background: var(--component-primary-button-bg-pressed);
-  transition: none;
-}
-
-.btn-primary:disabled {
-  background: var(--component-primary-button-bg-disabled);
-  color: var(--component-primary-button-text-disabled);
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: var(--component-secondary-button-bg-default);
-  color: var(--component-secondary-button-text-default);
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: var(--component-secondary-button-bg-hover);
-}
-
-.btn-secondary:active:not(:disabled) {
-  background: var(--component-secondary-button-bg-pressed);
-  transition: none;
-}
-
-.btn-secondary:disabled {
-  background: var(--component-secondary-button-bg-disabled);
-  color: var(--component-secondary-button-text-disabled);
-  cursor: not-allowed;
-}
-
-.btn-icon {
-  width: 16px;
-  height: 16px;
-}
-
-.spinning {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* 平台标签 */
-.platform-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--stroke-primary);
-}
-
-.tab-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: transparent;
-  border: none;
-  border-radius: var(--lv-border-radius-medium);
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 500;
-  font-family: var(--font-family);
-  cursor: pointer;
-  transition: all 0.1s linear;
-  white-space: nowrap;
-}
-
-.tab-btn:hover {
-  background: var(--bg-block-primary-hover);
-  color: var(--text-primary);
-}
-
-.tab-btn:active {
-  background: var(--bg-block-primary-pressed);
-  transition: none;
-}
-
-.tab-btn.active {
-  background: var(--brand-main-block-default);
-  color: var(--brand-main-default);
-  font-weight: 600;
-}
-
-.tab-count {
-  padding: 2px 6px;
-  background: var(--bg-block-secondary-default);
-  border-radius: 10px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.tab-btn.active .tab-count {
-  background: var(--brand-main-default);
-  color: var(--inverse-text-primary);
-}
-
-/* 空状态 */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 20px;
-  text-align: center;
-}
-
-.empty-icon {
-  width: 64px;
-  height: 64px;
-  color: var(--text-tertiary);
-  margin-bottom: 16px;
-}
-
-.empty-text {
-  color: var(--text-secondary);
-  font-size: 16px;
-  margin-bottom: 24px;
-}
-
-/* 账号网格 */
-.account-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
-}
-
-/* 账号卡片 */
-.account-card {
-  background: var(--bg-block-primary-default);
-  border: 1px solid var(--stroke-primary);
-  border-radius: var(--lv-border-radius-large);
-  padding: 16px;
-  transition: all 0.1s linear;
-}
-
-.account-card:hover {
-  background: var(--bg-block-primary-hover);
-  border-color: var(--stroke-secondary);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-generator-float-block);
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.account-avatar {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--brand-main-block-default);
-  color: var(--brand-main-default);
-  border-radius: var(--lv-border-radius-circle);
-  font-size: 20px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.account-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.account-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 4px 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.account-platform {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.platform-1 {
-  background: rgba(255, 36, 66, 0.2);
-  color: #ff2442;
-}
-
-.platform-2 {
-  background: rgba(7, 193, 96, 0.2);
-  color: #07c160;
-}
-
-.platform-3 {
-  background: rgba(0, 0, 0, 0.2);
-  color: #fff;
-}
-
-.platform-4 {
-  background: rgba(255, 102, 0, 0.2);
-  color: #ff6600;
-}
-
-.account-status {
-  flex-shrink: 0;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 10px;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.1s linear;
-}
-
-.status-normal {
-  background: var(--brand-main-block-default);
-  color: var(--brand-main-default);
-}
-
-.status-error {
-  background: rgba(255, 51, 85, 0.15);
-  color: var(--functional-error);
-}
-
-.status-pending {
-  background: var(--bg-block-secondary-default);
-  color: var(--text-secondary);
-}
-
-.status-badge.clickable {
-  cursor: pointer;
-}
-
-.status-badge.clickable:hover {
-  opacity: 0.85;
-  transform: scale(1.05);
-}
-
-.status-badge.clickable:active {
-  transform: scale(0.98);
-  transition: none;
-}
-
-.card-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.action-btn {
-  flex: 1;
-  min-width: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 6px 10px;
-  background: var(--bg-block-secondary-default);
-  border: none;
-  border-radius: var(--lv-border-radius-medium);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  font-family: var(--font-family);
-  cursor: pointer;
-  transition: all 0.1s linear;
-}
-
-.action-btn:hover {
-  background: var(--bg-block-secondary-hover);
-  color: var(--text-primary);
-}
-
-.action-btn:active {
-  background: var(--bg-block-secondary-pressed);
-  transition: none;
-}
-
-.action-btn.danger:hover {
-  background: rgba(255, 51, 85, 0.15);
-  color: var(--functional-error);
-}
-
-.action-btn.danger:active {
-  background: rgba(255, 51, 85, 0.25);
-}
-
-.action-btn svg {
-  width: 14px;
-  height: 14px;
-}
-
-/* 模态框 */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--bg-mask-60);
-  backdrop-filter: blur(var(--canvas-float-backdrop-blur));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  animation: fadeIn 0.15s ease;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.modal-content {
-  width: 90%;
-  max-width: 600px;
-  max-height: 80vh;
-  background: var(--bg-float);
-  border: 1px solid var(--stroke-primary);
-  border-radius: var(--lv-border-radius-large);
-  box-shadow: var(--shadow-dropdown-menu);
-  display: flex;
-  flex-direction: column;
-  animation: slideUp 0.2s cubic-bezier(0.34, 0.69, 0.1, 1);
-}
-
-.modal-small {
-  max-width: 400px;
-}
-
-.modal-large {
-  max-width: 800px;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(16px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--stroke-primary);
-}
-
-.modal-header h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.close-btn {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: var(--lv-border-radius-medium);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.1s linear;
-}
-
-.close-btn:hover {
-  background: var(--bg-block-primary-hover);
-  color: var(--text-primary);
-}
-
-.close-btn:active {
-  background: var(--bg-block-primary-pressed);
-  transition: none;
-}
-
-.close-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-.modal-body {
-  padding: 24px;
-}
-
-.form-group {
-  margin-bottom: 20px;
-}
-
-.form-group:last-child {
-  margin-bottom: 0;
-}
-
-.form-label {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.form-input,
-.form-select {
-  width: 100%;
-  height: 40px;
-  padding: 0 12px;
-  background: var(--bg-block-primary-default);
-  border: 1px solid var(--stroke-primary);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-size: 14px;
-  font-family: var(--font-family);
-  transition: all 0.2s ease;
-}
-
-.form-input:focus,
-.form-select:focus {
-  outline: none;
-  border-color: var(--brand-main-default);
-  background: var(--bg-block-primary-hover);
-}
-
-.form-input:disabled,
-.form-select:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* 二维码容器 */
-.qrcode-container {
-  min-height: 300px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.qrcode-wrapper,
-.loading-wrapper,
-.success-wrapper,
-.error-wrapper {
-  text-align: center;
-}
-
-.qrcode-tip {
-  color: var(--text-secondary);
-  font-size: 14px;
-  margin-bottom: 16px;
-}
-
-.qrcode-image {
-  max-width: 240px;
-  border-radius: 8px;
-}
-
-.loading-wrapper {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-secondary);
-}
-
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--bg-block-primary-hover);
-  border-top-color: var(--brand-main-default);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.success-wrapper,
-.error-wrapper {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.status-icon {
-  width: 48px;
-  height: 48px;
-}
-
-.status-icon.success {
-  color: var(--functional-success);
-}
-
-.status-icon.error {
-  color: var(--functional-error);
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--stroke-primary);
-}
-
-/* Toast 提示 */
-.toast {
-  position: fixed;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%) translateY(-60px);
-  padding: 10px 20px;
-  background: var(--component-toast);
-  border: 1px solid var(--stroke-primary);
-  border-radius: var(--lv-border-radius-large);
-  color: var(--text-primary);
-  font-size: 14px;
-  box-shadow: var(--shadow-dropdown-menu);
-  z-index: 2000;
-  opacity: 0;
-  transition: all 0.2s cubic-bezier(0.34, 0.69, 0.1, 1);
-}
-
-.toast.show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
-.toast-success {
-  border-color: var(--functional-success);
-}
-
-.toast-error {
-  border-color: var(--functional-error);
-}
-</style>
+<style src="./account-center.css"></style>

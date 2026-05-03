@@ -3,12 +3,14 @@
 // 包含模型版本选择、功能选择、尺寸选择、时长选择
 // 支持弹出方向设置
 
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import SelectPopup from '../common/SelectPopup.vue'
-import { getAllVideoModels, DEFAULT_VIDEO_MODEL } from '@/config/models'
+import { getAllVideoModels, getDefaultVideoModelKey, loadPublicModelCatalog } from '@/config/models'
 
 // 弹出方向类型
 type Placement = 'top' | 'bottom' | 'auto'
+
+const VIDEO_TOOLBAR_STORAGE_KEY = 'canana:generator:video-toolbar'
 
 // Props 定义
 interface Props {
@@ -48,11 +50,53 @@ const durationOptions = [
   { value: '10s', label: '10s' }
 ]
 
+const readStoredVideoToolbarState = () => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    return JSON.parse(window.localStorage.getItem(VIDEO_TOOLBAR_STORAGE_KEY) || 'null')
+  } catch {
+    return null
+  }
+}
+
+const storedVideoToolbarState = readStoredVideoToolbarState()
+const validVideoModelValues = modelVersions.value.map(item => item.value)
+const validVideoFeatureValues = featureOptions.map(item => item.value)
+const validVideoSizeValues = sizeOptions.map(item => item.value)
+const validVideoDurationValues = durationOptions.map(item => item.value)
+
 // 当前选中状态
-const currentModelVersion = ref(DEFAULT_VIDEO_MODEL)
-const currentFeature = ref('first-last-frame')
-const currentSize = ref('16:9')
-const currentDuration = ref('5s')
+const currentModelVersion = ref(
+  validVideoModelValues.includes(storedVideoToolbarState?.model) ? storedVideoToolbarState.model : getDefaultVideoModelKey(),
+)
+const currentFeature = ref(
+  validVideoFeatureValues.includes(storedVideoToolbarState?.feature) ? storedVideoToolbarState.feature : 'first-last-frame',
+)
+const currentSize = ref(
+  validVideoSizeValues.includes(storedVideoToolbarState?.size) ? storedVideoToolbarState.size : '16:9',
+)
+const currentDuration = ref(
+  validVideoDurationValues.includes(storedVideoToolbarState?.duration) ? storedVideoToolbarState.duration : '5s',
+)
+
+watch(
+  modelVersions,
+  (options) => {
+    const values = options.map(item => item.value)
+    if (!values.length) return
+    if (!values.includes(currentModelVersion.value)) {
+      currentModelVersion.value = getDefaultVideoModelKey() || values[0]
+    }
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  void loadPublicModelCatalog()
+})
 
 // 弹窗状态
 const isModelSelectOpen = ref(false)
@@ -132,12 +176,21 @@ const selectDuration = (duration: string) => {
 
 // 获取当前配置
 const getCurrentModelLabel = () => {
-  return modelVersions.value.find((m: any) => m.value === currentModelVersion.value)?.label || '视频 3.0 Fast'
+  return modelVersions.value.find((m: any) => m.value === currentModelVersion.value)?.label || currentModelVersion.value || ''
 }
 
 const getCurrentFeatureLabel = () => {
   return featureOptions.find(f => f.value === currentFeature.value)?.label || '首尾帧'
 }
+
+watch(
+  [currentModelVersion, currentFeature, currentSize, currentDuration],
+  ([model, feature, size, duration]) => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(VIDEO_TOOLBAR_STORAGE_KEY, JSON.stringify({ model, feature, size, duration }))
+  },
+  { immediate: true },
+)
 
 const getCurrentSizeConfig = () => {
   return sizeOptions.find(s => s.value === currentSize.value) || sizeOptions[0]
@@ -157,7 +210,7 @@ defineExpose({
   <div class="video-toolbar">
     <!-- 模型版本选择 -->
     <div ref="modelTriggerRef"
-         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select-h345g7', 'select-joF5y7', { 'compact-OC0Z0c': iconOnly }]"
+         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', 'select-NNOj5P', { 'compact': iconOnly }]"
          role="combobox"
          tabindex="0"
          :aria-expanded="isModelSelectOpen"
@@ -203,11 +256,11 @@ defineExpose({
             :key="version.value"
             :class="['lv-select-option', { 'lv-select-option-wrapper-selected': currentModelVersion === version.value }]"
             @click.stop="selectModelVersion(version.value)">
-          <div class="select-option-label-Ct6NRy">
-            <div class="select-option-label-content-tmGvFs">
+          <div class="select-option-label">
+            <div class="select-option-label-content">
               <span>{{ version.label }}</span>
             </div>
-            <span v-if="currentModelVersion === version.value" class="select-option-check-icon-uOxlr2">
+            <span v-if="currentModelVersion === version.value" class="select-option-check-icon">
               <svg width="1em" height="1em" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none"
                    role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -224,9 +277,9 @@ defineExpose({
     </SelectPopup>
 
     <!-- 功能选择 -->
-    <div class="feature-select-VcsuXi">
+    <div class="feature-select">
       <div ref="featureTriggerRef"
-           :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select-h345g7', 'select-joF5y7', { 'compact-OC0Z0c': iconOnly }]"
+           :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', 'select-NNOj5P', { 'compact': iconOnly }]"
            role="combobox"
            tabindex="0"
            :aria-expanded="isFeatureSelectOpen"
@@ -273,11 +326,11 @@ defineExpose({
             :key="feature.value"
             :class="['lv-select-option', { 'lv-select-option-wrapper-selected': currentFeature === feature.value }]"
             @click.stop="selectFeature(feature.value)">
-          <div class="select-option-label-Ct6NRy">
-            <div class="select-option-label-content-tmGvFs">
+          <div class="select-option-label">
+            <div class="select-option-label-content">
               <span>{{ feature.label }}</span>
             </div>
-            <span v-if="currentFeature === feature.value" class="select-option-check-icon-uOxlr2">
+            <span v-if="currentFeature === feature.value" class="select-option-check-icon">
               <svg width="1em" height="1em" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none"
                    role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -295,7 +348,7 @@ defineExpose({
 
     <!-- 尺寸选择 -->
     <button ref="sizeTriggerRef"
-            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', { 'lv-btn-icon-only': iconOnly }]"
+            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'toolbar-button-pEFNv9', { 'lv-btn-icon-only': iconOnly }]"
             type="button"
             :title="iconOnly ? getCurrentSizeConfig().value + ' ' + getCurrentSizeConfig().quality : undefined"
             @click.stop="toggleSizeSelect">
@@ -318,12 +371,12 @@ defineExpose({
             :key="size.value"
             :class="['lv-select-option', { 'lv-select-option-wrapper-selected': currentSize === size.value }]"
             @click.stop="selectSize(size.value)">
-          <div class="select-option-label-Ct6NRy">
-            <div class="select-option-label-content-tmGvFs">
+          <div class="select-option-label">
+            <div class="select-option-label-content">
               <span>{{ size.label }}</span>
               <span class="commercial-content-QAReHq">{{ size.quality }}</span>
             </div>
-            <span v-if="currentSize === size.value" class="select-option-check-icon-uOxlr2">
+            <span v-if="currentSize === size.value" class="select-option-check-icon">
               <svg width="1em" height="1em" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none"
                    role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -341,7 +394,7 @@ defineExpose({
 
     <!-- 时长选择 -->
     <div ref="durationTriggerRef"
-         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select-h345g7', 'select-joF5y7', { 'compact-OC0Z0c': iconOnly }]"
+         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'select-joF5y7', 'select-NNOj5P', { 'compact': iconOnly }]"
          role="combobox"
          tabindex="0"
          :aria-expanded="isDurationSelectOpen"
@@ -388,11 +441,11 @@ defineExpose({
             :key="duration.value"
             :class="['lv-select-option', { 'lv-select-option-wrapper-selected': currentDuration === duration.value }]"
             @click.stop="selectDuration(duration.value)">
-          <div class="select-option-label-Ct6NRy">
-            <div class="select-option-label-content-tmGvFs">
+          <div class="select-option-label">
+            <div class="select-option-label-content">
               <span>{{ duration.label }}</span>
             </div>
-            <span v-if="currentDuration === duration.value" class="select-option-check-icon-uOxlr2">
+            <span v-if="currentDuration === duration.value" class="select-option-check-icon">
               <svg width="1em" height="1em" viewBox="0 0 24 24"
                    preserveAspectRatio="xMidYMid meet" fill="none"
                    role="presentation" xmlns="http://www.w3.org/2000/svg">

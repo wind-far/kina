@@ -5,7 +5,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes, edges } from '../../composables/useWorkflowCanvas'
-import { VIDEO_MODELS, VIDEO_RATIO_LIST, getAllVideoModels } from '@/config/models'
+import { VIDEO_RATIO_LIST, getAllVideoModels, getDefaultVideoModelKey, getModelByName, loadPublicModelCatalog, resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 import { createVideoTask, pollVideoTask } from '../../api/video'
 import WfSelect from '@/components/common/WfSelect.vue'
 
@@ -16,11 +16,11 @@ const showActions = ref(false)
 const isGenerating = ref(false)
 const progress = ref(0)
 
-const model = ref(props.data?.model || 'veo3.1')
+const model = ref(props.data?.model || getDefaultVideoModelKey())
 const ratio = ref(props.data?.ratio || '16x9')
 const duration = ref(props.data?.duration || 5)
 
-const currentModel = computed(() => VIDEO_MODELS.find(m => m.key === model.value))
+const currentModel = computed(() => getModelByName(model.value))
 const modelOptions = computed(() => getAllVideoModels().map(m => ({ label: m.label, value: m.key })))
 const ratioOptions = computed(() => (currentModel.value?.ratios || []).map(r => {
   const item = VIDEO_RATIO_LIST.find(v => v.key === r)
@@ -68,7 +68,7 @@ const handleGenerate = async () => {
 
   try {
     const formData = new FormData()
-    formData.append('model', model.value)
+    formData.append('model', resolveRequestModelKey(model.value, 'VIDEO'))
     if (prompt) formData.append('prompt', prompt)
     formData.append('ratio', ratio.value)
     formData.append('duration', String(duration.value))
@@ -94,9 +94,10 @@ const handleGenerate = async () => {
 
     const task = await createVideoTask(formData)
     const taskId = task?.id || task?.task_id
+    const providerId = resolveRequestProviderId(model.value, 'VIDEO')
 
-    if (taskId) {
-      const result = await pollVideoTask(taskId)
+    if (taskId && providerId) {
+      const result = await pollVideoTask(taskId, providerId)
       const videoUrl = result?.data?.[0]?.url || result?.url
 
       if (videoUrl) {
@@ -106,6 +107,9 @@ const handleGenerate = async () => {
         updateNode(outputNodeId, { label: '生成失败', loading: false, error: '未返回视频' })
         updateNode(props.id, { error: '未返回视频' })
       }
+    } else if (taskId) {
+      updateNode(outputNodeId, { label: '生成失败', loading: false, error: '未匹配到视频厂商配置' })
+      updateNode(props.id, { error: '未匹配到视频厂商配置' })
     } else {
       updateNode(outputNodeId, { label: '生成失败', loading: false, error: '任务创建失败' })
       updateNode(props.id, { error: '任务创建失败' })

@@ -75,16 +75,16 @@ const handleTabChange = (tabKey: string) => {
 </script>
 
 <template>
-  <div class="empty-state-HN97p1">
+  <div class="empty-state">
     <main class="main-content-G8f_tC">
-      <div class="toolbar-zDoGgL top-toolbar-V6aN6e"></div>
+      <div class="toolbar-zDoGgL top-toolbar"></div>
       <div class="canvas-container-ciI9cJ">
-        <div class="empty-state-HN97p1">
+        <div class="empty-state">
           <div class="container-ptvUr6">
             <div class="main-title-wrapper-pwESrQ">
               <h2 class="main-title-PgsCa7">这次创作想从哪里开始？</h2>
             </div>
-            <div class="action-bar-Fa2xZO action-bar-resource-xR3AL2">
+            <div class="action-bar-Fa2xZO action-bar-resource">
               <div class="section-_nkEz9">
                 <div class="section-icon-ki8oMA attach-file-HZXGRe">
                   <img
@@ -96,7 +96,7 @@ const handleTabChange = (tabKey: string) => {
                 <div class="section-content-XFt2i_">
                   <div class="section-title-XvPWPK">使用已有素材开启创作</div>
                   <div class="actions-wRpyif">
-                    <div class="action-button-wrapper-njMSG3">
+                    <div class="action-button-wrapper">
                       <button
                         class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square btn-KlsyFs"
                         type="button"
@@ -111,7 +111,7 @@ const handleTabChange = (tabKey: string) => {
                       </button>
                     </div>
                     <div class="divider-U00Vac"></div>
-                    <div class="action-button-wrapper-njMSG3">
+                    <div class="action-button-wrapper">
                       <button
                         class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square btn-IJ7nrL"
                         type="button"

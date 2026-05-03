@@ -6,7 +6,7 @@
     >
       <div
           v-if="modelValue"
-          class="home-work-detail-modal-host lv-modal-wrapper lv-modal-wrapper-align-center work-detail-modal-wrapper-3L0Dzs"
+          class="home-work-detail-modal-host lv-modal-wrapper lv-modal-wrapper-align-center work-detail-modal-wrapper"
           style="display: block"
       >
         <div
@@ -36,12 +36,12 @@
                                                               }"
                     >
                       <div class="preview-area-QscVpt home-work-detail-preview-stage">
-                        <div class="context-menu-trigger-container-w5xaCZ">
-                          <div class="image-left-content-myH1iF">
-                            <div class="image-player-KCJSe1">
-                              <div class="image-player-container-V9ZRXE">
-                                <div class="image-player-content-Ml9sbe">
-                                  <div class="container-bbbsvQ image-player-image-_Tib2c home-work-detail-image-frame">
+                        <div class="context-menu-trigger-container">
+                          <div class="image-left-content">
+                            <div class="image-player">
+                              <div class="image-player-container">
+                                <div class="image-player-content">
+                                  <div class="container-bbbsvQ image-player-image home-work-detail-image-frame">
                                     <div
                                         v-show="!detailImageReady"
                                         class="home-work-detail-img-skeleton"
@@ -54,7 +54,7 @@
                                           draggable="false"
                                           fetchpriority="high"
                                           loading="eager"
-                                          class="image-eTuIBd noAnimation-RP9btL home-work-detail-main-img"
+                                          class="image-eTuIBd noAnimation home-work-detail-main-img"
                                           :src="imageSrc"
                                           @load="onDetailImageLoad"
                                           @error="onDetailImageError">
@@ -69,7 +69,7 @@
                       <!-- 底部嵌入生成器：v-show 仅控制是否已点「使用提示词」；收起用组件内 collapse，不隐藏整条 -->
                       <div
                           v-show="contentGeneratorVisible"
-                          class="work-detail-content-generator-oprkFz content-generator-z1rciw home-work-detail-embedded-generator"
+                          class="work-detail-content-generator content-generator-z1rciw home-work-detail-embedded-generator"
                           @click.stop
                       >
                         <!-- 透传 ContentGenerator 的 send 载荷（message、类型、可选配置） -->
@@ -87,8 +87,8 @@
                       </div>
                     </div>
                   </div>
-                  <div class="operation-area-EihPQ7 middle-content-xyawTY">
-                    <div class="switch-area-AKmr_H">
+                  <div class="operation-area-EihPQ7 middle-content">
+                    <div class="switch-area">
                       <button class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square operation-icon-w5Y4Pg"
                               type="button"
                               aria-label="上一张"
@@ -141,7 +141,7 @@
                     </button>
                     <button
                         v-show="contentGeneratorVisible"
-                        class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square operation-icon-w5Y4Pg collapse-button-L4UIFa"
+                        class="lv-btn lv-btn-text lv-btn-size-default lv-btn-shape-square operation-icon-w5Y4Pg collapse-button"
                         type="button"
                         :aria-expanded="contentGeneratorExpanded"
                         aria-label="展开或收起底部创作栏"
@@ -159,22 +159,22 @@
                       </svg>
                     </button>
                   </div>
-                  <div class="detail-area-mylLyv">
+                  <div class="detail-area">
                     <div class="main-container-MeJEJY">
                       <div class="content-wrapper-yGrcJJ">
-                        <div class="user-profile-container-YpAS0A">
-                          <div class="left-container-vYu9RS">
-                            <div class="user-section-O05SIg">
-                              <div class="user-avatar-gP6jYP"><img
+                        <div class="user-profile-container">
+                          <div class="left-container">
+                            <div class="user-section">
+                              <div class="user-avatar"><img
                                   :src="resolvedAuthorAvatarSrc"
-                                  class="avatar-image-Xos7qj"
-                                  crossorigin="anonymous"
+                                  class="avatar-image"
+
                                   :alt="authorName"
                                   :style="authorAvatarSrc ? undefined : fallbackAvatarStyle">
                               </div>
                               <div class="user-name-UPyK2X">{{ authorName }}</div>
                             </div>
-                            <div class="operation-follow-MhTx3J">
+                            <div class="operation-follow">
                               <svg width="1em" height="1em"
                                    viewBox="0 0 24 24"
                                    preserveAspectRatio="xMidYMid meet"
@@ -192,7 +192,14 @@
                           </div>
                           <div class="right-container-Oz90lW">
                             <div>
-                              <div class="favorite-RlC8dW favorite-t8jQY4">
+                              <div
+                                  class="favorite-RlC8dW favorite-t8jQY4"
+                                  role="button"
+                                  tabindex="0"
+                                  @click.stop="emit('favorite')"
+                                  @keydown.enter.prevent="emit('favorite')"
+                                  @keydown.space.prevent="emit('favorite')"
+                              >
                                 <div class="lottie-icon-container icon-QlNaEG">
                                   <div class="lottie-icon-content">
                                     <svg width="1em" height="1em"
@@ -215,13 +222,22 @@
                                 <span class="count-GysjBc">{{ likeCount }}</span>
                               </div>
                             </div>
-                            <div class="operation-wrapper-Hc6lfr">
+                            <div
+                                ref="operationTriggerRef"
+                                class="operation-wrapper"
+                                role="button"
+                                tabindex="0"
+                                aria-label="更多操作"
+                                @click.stop="toggleOperationMenu"
+                                @keydown.enter.prevent="toggleOperationMenu"
+                                @keydown.space.prevent="toggleOperationMenu"
+                            >
                               <svg width="1em" height="1em"
                                    viewBox="0 0 24 24"
                                    preserveAspectRatio="xMidYMid meet"
                                    fill="none" role="presentation"
                                    xmlns="http://www.w3.org/2000/svg"
-                                   class="more-options-icon-p31JuD">
+                                   class="more-options-icon">
                                 <g>
                                   <path data-follow-fill="currentColor"
                                         d="M7 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm7 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm5 2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
@@ -230,12 +246,39 @@
                                         fill="currentColor"></path>
                                 </g>
                               </svg>
+                              <div
+                                  v-if="operationMenuVisible"
+                                  ref="operationMenuRef"
+                                  class="home-work-detail-operation-menu"
+                              >
+                                <button
+                                    v-if="isAuthor"
+                                    type="button"
+                                    class="home-work-detail-operation-menu-item operation-menu-content-item"
+                                    @click.stop="handleDelete"
+                                >
+                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M9 3.75A.75.75 0 0 1 9.75 3h4.5a.75.75 0 0 1 .75.75V5h3.25a.75.75 0 0 1 0 1.5h-.81l-.78 10.18A2.25 2.25 0 0 1 14.42 18.75H9.58a2.25 2.25 0 0 1-2.24-2.07L6.56 6.5h-.81a.75.75 0 0 1 0-1.5H9V3.75Zm1.5 1.25V4.5h3V5h-3Zm-1.65 1.5.73 9.95a.75.75 0 0 0 .75.69h4.34a.75.75 0 0 0 .75-.69l.73-9.95H8.85Zm2.4 2.25c.41 0 .75.34.75.75v4.5a.75.75 0 0 1-1.5 0v-4.5c0-.41.34-.75.75-.75Zm3 0c.41 0 .75.34.75.75v4.5a.75.75 0 0 1-1.5 0v-4.5c0-.41.34-.75.75-.75Z" fill="currentColor"/>
+                                  </svg>
+                                  <span>删除</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="home-work-detail-operation-menu-item operation-menu-content-item"
+                                    @click.stop="handleReport"
+                                >
+                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 2.75a9.25 9.25 0 1 0 9.25 9.25A9.26 9.26 0 0 0 12 2.75Zm0 17a7.75 7.75 0 1 1 7.75-7.75A7.76 7.76 0 0 1 12 19.75Zm-.75-11.5a.75.75 0 0 1 1.5 0v4.5a.75.75 0 0 1-1.5 0v-4.5Zm.75 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" fill="currentColor"/>
+                                  </svg>
+                                  <span>举报</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
-                        <div class="work-info-section-kNeD31">
-                          <div class="meta-info-wrapper-xhHsPv">
-                            <div class="create-time-wrapper-fqUhx0">
+                        <div class="work-info-section">
+                          <div class="meta-info-wrapper">
+                            <div class="create-time-wrapper">
                               {{ createDate }}
                             </div>
                             <div class="ai-generated-text-IHOsIL">{{ aiGeneratedText }}</div>
@@ -279,7 +322,7 @@
                             fill="currentColor"></path></g></svg></span></span>
                         </div>
                       </div>
-                      <div class="action-buttons-wrapper-ibCKz2">
+                      <div class="action-buttons-wrapper">
                         <div tabindex="0" class="operation-button-ZGVDtf">
                           <svg width="1em" height="1em" viewBox="0 0 24 24"
                                preserveAspectRatio="xMidYMid meet"
@@ -294,7 +337,7 @@
                                     fill="currentColor"></path>
                             </g>
                           </svg>
-                          <p class="operation-text-sYthqa">{{ makeSameLabel }}</p></div>
+                          <p class="operation-text">{{ makeSameLabel }}</p></div>
                         <div tabindex="0" class="operation-button-ZGVDtf">
                           <svg width="1em" height="1em" viewBox="0 0 24 24"
                                preserveAspectRatio="xMidYMid meet"
@@ -307,7 +350,7 @@
                                     fill="currentColor"></path>
                             </g>
                           </svg>
-                          <p class="operation-text-sYthqa">{{ useAsReferenceLabel }}</p>
+                          <p class="operation-text">{{ useAsReferenceLabel }}</p>
                         </div>
                       </div>
                     </div>
@@ -341,6 +384,7 @@
 <script setup>
 import ContentGenerator from '@components/generate/ContentGenerator.vue'
 import { computed, nextTick, onBeforeUnmount, ref, unref, watch } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 
 const BODY_SCROLL_LOCK = 'home-work-detail-modal-scroll-lock'
 
@@ -359,6 +403,7 @@ const props = defineProps({
   imageSrc: { type: String, default: '' },
   /** 当前画廊条目数；大于 1 时可点左侧上下箭头切换 */
   galleryLength: { type: Number, default: 0 },
+  ownerId: { type: String, default: '' },
   authorName: { type: String, default: '创作者' },
   authorAvatarSrc: { type: String, default: '' },
   likeCount: { type: [String, Number], default: 999 },
@@ -377,15 +422,18 @@ const props = defineProps({
   usePromptLabel: { type: String, default: '使用提示词' },
 })
 
-const emit = defineEmits(['update:modelValue', 'close', 'gallery-nav', 'content-send'])
+const emit = defineEmits(['update:modelValue', 'close', 'gallery-nav', 'content-send', 'favorite', 'delete', 'report'])
 
 const dialogRef = ref(/** @type {HTMLElement | null} */ (null))
 const contentGeneratorRef = ref(/** @type {InstanceType<typeof ContentGenerator> | null} */ (null))
+const operationTriggerRef = ref(/** @type {HTMLElement | null} */ (null))
+const operationMenuRef = ref(/** @type {HTMLElement | null} */ (null))
 /** 点击「使用提示词」后为 true，关闭弹层前保持：底部条始终在（折叠态），不用 v-show 在点空白时关掉整条 */
 const contentGeneratorVisible = ref(false)
+const operationMenuVisible = ref(false)
 /** 递增以强制 ContentGenerator 将当前提示词写入输入框 */
 const contentGeneratorSyncNonce = ref(0)
-/** 与 ContentGenerator 展开态联动，用于预览区底部留白（即梦式叠层） */
+/** 与 ContentGenerator 展开态联动，用于预览区底部留白 */
 const contentGeneratorExpanded = ref(true)
 const detailImageReady = ref(true)
 
@@ -395,6 +443,8 @@ const generatorPromptForSync = computed(() =>
 )
 
 const resolvedAuthorAvatarSrc = computed(() => props.authorAvatarSrc || EMPTY_AVATAR_DATA_URI)
+const authStore = useAuthStore()
+const isAuthor = computed(() => Boolean(props.ownerId) && authStore.currentUser.value?.id === props.ownerId)
 
 const contentGeneratorPromptSyncKey = computed(
     () => `${props.imageSrc}\0${contentGeneratorSyncNonce.value}`,
@@ -418,6 +468,10 @@ function onDocumentKeydown(/** @type {KeyboardEvent} */ e) {
   if (!props.modelValue) return
   if (e.key === 'Escape') {
     e.preventDefault()
+    if (operationMenuVisible.value) {
+      operationMenuVisible.value = false
+      return
+    }
     if (contentGeneratorVisible.value) {
       const inst = contentGeneratorRef.value
       if (inst && !unref(inst.isCollapsed)) {
@@ -459,6 +513,20 @@ function toggleEmbeddedContentGenerator() {
   contentGeneratorRef.value?.toggle()
 }
 
+function toggleOperationMenu() {
+  operationMenuVisible.value = !operationMenuVisible.value
+}
+
+function handleDelete() {
+  operationMenuVisible.value = false
+  emit('delete')
+}
+
+function handleReport() {
+  operationMenuVisible.value = false
+  emit('report')
+}
+
 /** 使用提示词：刷新同步 key、确保底部栏展示并展开 */
 function openContentGeneratorFromPrompt() {
   contentGeneratorSyncNonce.value += 1
@@ -481,6 +549,14 @@ function handleDocumentClickForGenerator(/** @type {MouseEvent} */ e) {
   contentGeneratorRef.value?.collapse()
 }
 
+function handleDocumentClickForOperationMenu(/** @type {MouseEvent} */ e) {
+  if (!operationMenuVisible.value || !props.modelValue) return
+  const target = e.target
+  if (!(target instanceof Node)) return
+  if (operationTriggerRef.value?.contains(target) || operationMenuRef.value?.contains(target)) return
+  operationMenuVisible.value = false
+}
+
 function onDetailImageLoad() {
   detailImageReady.value = true
 }
@@ -490,6 +566,7 @@ function onDetailImageError() {
 }
 
 function close() {
+  operationMenuVisible.value = false
   emit('update:modelValue', false)
   emit('close')
 }
@@ -497,6 +574,7 @@ function close() {
 function teardownModalChrome() {
   document.removeEventListener('keydown', onDocumentKeydown, true)
   document.removeEventListener('click', handleDocumentClickForGenerator, true)
+  document.removeEventListener('click', handleDocumentClickForOperationMenu, true)
   document.body.classList.remove(BODY_SCROLL_LOCK)
   document.documentElement.classList.remove(BODY_SCROLL_LOCK)
   if (focusBeforeOpen instanceof HTMLElement) {
@@ -522,8 +600,10 @@ watch(
     (open) => {
       document.removeEventListener('keydown', onDocumentKeydown, true)
       document.removeEventListener('click', handleDocumentClickForGenerator, true)
+      document.removeEventListener('click', handleDocumentClickForOperationMenu, true)
       if (open) {
         contentGeneratorVisible.value = false
+        operationMenuVisible.value = false
         detailImageReady.value = !props.imageSrc
         focusBeforeOpen = document.activeElement
         document.body.classList.add(BODY_SCROLL_LOCK)
@@ -535,6 +615,7 @@ watch(
         })
       } else {
         contentGeneratorVisible.value = false
+        operationMenuVisible.value = false
         teardownModalChrome()
       }
     },
@@ -548,6 +629,16 @@ watch(
       document.removeEventListener('click', handleDocumentClickForGenerator, true)
       if (open && vis) {
         document.addEventListener('click', handleDocumentClickForGenerator, true)
+      }
+    },
+)
+
+watch(
+    () => [props.modelValue, operationMenuVisible.value],
+    ([open, visible]) => {
+      document.removeEventListener('click', handleDocumentClickForOperationMenu, true)
+      if (open && visible) {
+        document.addEventListener('click', handleDocumentClickForOperationMenu, true)
       }
     },
 )
@@ -613,6 +704,43 @@ body.home-work-detail-modal-scroll-lock {
   transform: scale(0.94);
 }
 
+.home-work-detail-operation-menu {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 8;
+  min-width: 180px;
+  padding: 10px;
+  border: 1px solid var(--stroke-secondary, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  background: var(--bg-dropdown-menu, #1b1d22);
+  box-shadow: var(--shadow-dropdown-menu, 0 16px 48px rgba(0, 0, 0, 0.32));
+}
+
+.home-work-detail-modal-host .operation-wrapper {
+  position: relative;
+}
+
+.home-work-detail-operation-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary, #f5fbff);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: left;
+}
+
+.home-work-detail-operation-menu-item svg {
+  flex: 0 0 auto;
+}
+
 .home-work-detail-modal-enter-to .lv-modal,
 .home-work-detail-modal-leave-from .lv-modal {
   opacity: 1;
@@ -641,11 +769,11 @@ body.home-work-detail-modal-scroll-lock {
   max-width: none;
 }
 
-.home-work-detail-modal-host.work-detail-modal-wrapper-3L0Dzs .lv-modal-content {
+.home-work-detail-modal-host.work-detail-modal-wrapper .lv-modal-content {
   padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
-.home-work-detail-modal-host .collapse-button-L4UIFa {
+.home-work-detail-modal-host .collapse-button {
   visibility: visible !important;
 }
 
@@ -785,20 +913,20 @@ body.home-work-detail-modal-scroll-lock {
   }
 }
 
-.home-work-detail-modal-host .context-menu-trigger-container-w5xaCZ,
-.home-work-detail-modal-host .image-left-content-myH1iF {
+.home-work-detail-modal-host .context-menu-trigger-container,
+.home-work-detail-modal-host .image-left-content {
   min-height: 0;
   max-height: 100%;
 }
 
-.home-work-detail-modal-host .image-player-KCJSe1,
-.home-work-detail-modal-host .image-player-container-V9ZRXE,
-.home-work-detail-modal-host .image-player-content-Ml9sbe {
+.home-work-detail-modal-host .image-player,
+.home-work-detail-modal-host .image-player-container,
+.home-work-detail-modal-host .image-player-content {
   min-height: 0;
   max-height: 100%;
 }
 
-.home-work-detail-modal-host .image-player-image-_Tib2c {
+.home-work-detail-modal-host .image-player-image {
   display: flex;
   align-items: center;
   justify-content: center;

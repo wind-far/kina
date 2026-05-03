@@ -4,9 +4,7 @@
 
 import { ref, computed } from 'vue'
 import SelectPopup from '../common/SelectPopup.vue'
-
-// 创作类型枚举
-export type CreationType = 'agent' | 'image' | 'video' | 'digital-human' | 'motion'
+import type { CreationType } from './TypeSelector.types'
 
 // 弹出方向类型
 type Placement = 'top' | 'bottom' | 'auto'
@@ -20,6 +18,11 @@ const creationTypes = [
   { value: 'motion' as CreationType, label: '动作模仿', icon: 'motion' }
 ]
 
+interface TypeOption {
+  value: CreationType
+  label: string
+}
+
 // Props 定义
 interface Props {
   modelValue: CreationType
@@ -27,11 +30,14 @@ interface Props {
   placement?: Placement
   // 是否紧凑模式（只显示图标，用于侧边栏）
   compact?: boolean
+  // 允许显示的创作类型列表
+  options?: TypeOption[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
   placement: 'auto',
-  compact: false
+  compact: false,
+  options: undefined,
 })
 
 // Emits 定义
@@ -61,9 +67,31 @@ defineExpose({
 // 触发器元素引用
 const triggerRef = ref<HTMLElement | null>(null)
 
+const visibleCreationTypes = computed(() => {
+  const sourceOptions = Array.isArray(props.options) && props.options.length
+    ? props.options
+    : creationTypes.map(item => ({
+        value: item.value,
+        label: item.label,
+      }))
+
+  const optionMap = new Map(
+    sourceOptions.map(item => [item.value, String(item.label || '').trim()]),
+  )
+
+  const nextTypes = creationTypes
+    .filter(item => optionMap.has(item.value))
+    .map(item => ({
+      ...item,
+      label: optionMap.get(item.value) || item.label,
+    }))
+
+  return nextTypes.length ? nextTypes : creationTypes
+})
+
 // 获取当前类型配置
 const currentTypeConfig = computed(() =>
-  creationTypes.find(t => t.value === props.modelValue) || creationTypes[0]
+  visibleCreationTypes.value.find(t => t.value === props.modelValue) || visibleCreationTypes.value[0]
 )
 
 // 切换下拉框
@@ -90,7 +118,7 @@ const selectType = (type: CreationType) => {
   <div ref="triggerRef" class="type-select-wrapper" @click.stop="toggleDropdown">
     <div :aria-expanded="isOpen"
          aria-haspopup="listbox"
-         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select-h345g7', 'type-select-BRd1AA', 'select-joF5y7', { 'compact-OC0Z0c': compact }]"
+         :class="['lv-select', 'lv-select-single', 'lv-select-size-default', 'toolbar-select', 'type-select', 'select-joF5y7', 'select-NNOj5P', { 'compact': compact }]"
          role="combobox"
          tabindex="0">
       <div class="lv-select-view">
@@ -177,12 +205,12 @@ const selectType = (type: CreationType) => {
   <!-- 下拉弹窗 -->
   <SelectPopup v-model:visible="isOpen" :trigger-ref="triggerRef" :placement="placement" title="创作类型">
     <ul class="lv-select-popup-inner">
-      <li v-for="type in creationTypes"
+      <li v-for="type in visibleCreationTypes"
           :key="type.value"
           :class="['lv-select-option', { 'lv-select-option-wrapper-selected': modelValue === type.value }]"
           @click.stop="selectType(type.value)">
-        <div class="select-option-label-Ct6NRy">
-          <div class="select-option-label-content-tmGvFs">
+        <div class="select-option-label">
+          <div class="select-option-label-content">
             <span class="select-option-icon-LQHnJG">
               <!-- Agent 模式图标 -->
               <svg v-if="type.value === 'agent'" width="1em" height="1em" viewBox="0 0 24 24"
@@ -238,7 +266,7 @@ const selectType = (type: CreationType) => {
             </span>
             <span>{{ type.label }}</span>
           </div>
-          <span v-if="modelValue === type.value" class="select-option-check-icon-uOxlr2">
+          <span v-if="modelValue === type.value" class="select-option-check-icon">
             <svg width="1em" height="1em" viewBox="0 0 24 24"
                  preserveAspectRatio="xMidYMid meet" fill="none"
                  role="presentation" xmlns="http://www.w3.org/2000/svg">

@@ -26,11 +26,11 @@
         <div class="lv-tabs-header-extra">
           <div class="container-o9SXsC">
             <div class="container-nEcHp3">
-              <div class="back-btn-container-HARZxe">
-                <div class="back-btn-V0aQz5">
+              <div class="back-btn-container">
+                <div class="back-btn">
                   <svg width="16" height="16" viewBox="0 0 24 24"
                        preserveAspectRatio="xMidYMid meet" fill="none" role="presentation"
-                       xmlns="http://www.w3.org/2000/svg" class="back-icon-FgnnZF">
+                       xmlns="http://www.w3.org/2000/svg" class="back-icon">
                     <g>
                       <path data-follow-fill="currentColor"
                             d="M4.533 12.844a1.2 1.2 0 0 1 0-1.687l7.655-7.747a1.2 1.2 0 0 1 1.708 1.687l-6.822 6.904 6.822 6.903a1.2 1.2 0 1 1-1.708 1.686l-7.655-7.746Z"
@@ -39,8 +39,8 @@
                   </svg>
                 </div>
               </div>
-              <div class="search-container-p7CpmJ">
-                <div class="lv-input-group-wrapper lv-input-group-wrapper-default lv-input-search lv-input-search-button input-group-loJOoJ mini-collapse-rBuoPM">
+              <div class="search-container">
+                <div class="lv-input-group-wrapper lv-input-group-wrapper-default lv-input-search lv-input-search-button input-group-loJOoJ mini-collapse">
                   <span class="lv-input-group">
                     <span class="lv-input-inner-wrapper lv-input-inner-wrapper-has-prefix lv-input-inner-wrapper-default lv-input-clear-wrapper">
                       <span class="lv-input-group-prefix">

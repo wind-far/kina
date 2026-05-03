@@ -1,0 +1,29 @@
+services:
+  # 应用服务，同时承载前端与后端。
+  app:
+    image: couei/canana-vue:latest
+    container_name: canana-vue-app
+    restart: unless-stopped
+    env_file:
+      # 默认读取根目录 .env，也可通过 APP_ENV_FILE 覆盖。
+      - ${APP_ENV_FILE:-./.env}
+    ports:
+      # 对外暴露统一应用端口。
+      - "${APP_PORT:-5409}:${APP_PORT:-5409}"
+    volumes:
+      # 持久化上传文件。
+      - uploads_data:/app/uploads
+#    extra_hosts:
+#      # 兼容 Linux 环境下通过 host.docker.internal 访问宿主机 MySQL。
+#      - "host.docker.internal:host-gateway"
+    healthcheck:
+      # 通过统一健康检查接口判断容器是否可用。
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:' + (process.env.SERVER_PORT || 5409) + '/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+# 定义持久化卷。
+volumes:
+  uploads_data:

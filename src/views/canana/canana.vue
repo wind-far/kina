@@ -75,10 +75,10 @@ const handlePromptSend = (message, type) => {
 </script>
 
 <template>
-  <div class="image-editor-container-QrfPhz">
-    <div class="workbench-A4zK0t" :class="{ 'right-panel-open-JXfTGq': rightPanelOpen }" :style="{ '--right-panel-width': '440px' }">
-      <div class="workbench-main-content-ykueXe">
-        <div class="workbench-content-m9A7DE">
+  <div class="image-editor-container">
+    <div class="workbench" :class="{ 'right-panel-open': rightPanelOpen }" :style="{ '--right-panel-width': '440px' }">
+      <div class="workbench-main-content">
+        <div class="workbench-content">
           <!-- 顶部栏 -->
           <Header
               :title="projectTitle"
@@ -89,7 +89,7 @@ const handlePromptSend = (message, type) => {
           <!-- 主内容区 -->
           <main class="main-content-G8f_tC">
             <!-- 顶部工具栏 - 选中图片时显示 -->
-            <div class="toolbar-zDoGgL top-toolbar-V6aN6e" :class="{ visible: selectedImage }">
+            <div class="toolbar-zDoGgL top-toolbar" :class="{ visible: selectedImage }">
               <div class="top-toolbar-content" v-if="selectedImage">
                 <button class="top-tool-btn">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2Zm-1 15v-4H7l5-7v4h4l-5 7Z" fill="currentColor"/></svg>
@@ -169,7 +169,7 @@ const handlePromptSend = (message, type) => {
       </div>
 
       <!-- 调整大小手柄 - 仅在右侧面板打开时可见 -->
-      <div v-show="rightPanelOpen" class="resize-handle-AIPywp"></div>
+      <div v-show="rightPanelOpen" class="resize-handle"></div>
 
       <!-- 右侧面板 -->
       <aside class="right-panel-gZhdnT">

@@ -652,7 +652,7 @@ img {
     opacity: 1;
 } 
 
-.canvasCard-yoo.favorited-BcgkeY .fa-9r8, .canvasCard-yoo:hover .fa-9r8 { 
+.canvasCard-yoo.favorited .fa-9r8, .canvasCard-yoo:hover .fa-9r8 { 
     opacity: 1;
 } 
 
@@ -777,7 +777,7 @@ img {
     background-color: var(--bg-block-primary-hover);
 } 
 
-.btn-v6i .back-icon-FgnnZF  { 
+.btn-v6i .back-icon  { 
     color: var(--text-primary);
 } 
 
@@ -801,12 +801,12 @@ img {
     background-color: var(--bg-block-secondary-hover,rgba(204,221,255,.08));
 } 
 
-.capcut-icon-rb64XH { 
+.capcut-icon { 
     height: 16px; 
     width: 16px;
 } 
 
-.edit-in-capcut-54s .capcut-icon-rb64XH  { 
+.edit-in-capcut-54s .capcut-icon  { 
     margin-left: 4px;
 } 
 
@@ -1315,7 +1315,7 @@ button {
   gap: 6px;
 }
 
-.actionIcon-hCHJjW {
+.actionIcon {
   height: 16px;
   width: 16px;
 }

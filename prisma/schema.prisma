@@ -1,0 +1,1219 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+/// 第一版用户表。
+/// 作为登录、资源、生成、配置等模块的统一用户实体。
+model AppUser {
+  id                 String                 @id @default(cuid()) @db.VarChar(36)
+  name               String?                @db.VarChar(100)
+  avatarUrl          String?                @map("avatar_url") @db.Text
+  email              String?                @unique(map: "uk_app_users_email") @db.VarChar(191)
+  phone              String?                @unique(map: "uk_app_users_phone") @db.VarChar(32)
+  role               UserRole               @default(USER)
+  status             UserStatus             @default(ANONYMOUS)
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+  verificationCodes  AuthVerificationCode[]
+  authIdentities     AppUserAuthIdentity[]
+  sessions           AppSession[]
+  authMethodConfigs  AuthMethodConfig[]
+  providerConfigs    AiProviderConfig[]
+  storageConfigs     ObjectStorageConfig[]
+  generationSessions GenerationSession[]
+  generationRecords  GenerationRecord[]
+  agentRuns          AgentRun[]
+  assets             AssetItem[]
+  assetFavorites     AssetFavorite[]
+  membershipOrders   MembershipOrder[]
+  subscriptions      UserSubscription[]
+  rechargeOrders     RechargeOrder[]
+  pointAccountLogs   PointAccountLog[]
+  rewardClaimRecords RewardClaimRecord[]
+  checkinRecords     UserCheckinRecord[]
+  usedCardCodes      CardCode[]             @relation("CardCodeUsedByUser")
+  cardRedeemRecords  CardRedeemRecord[]
+
+  @@map("app_users")
+}
+
+/// 通用验证码记录表。
+/// 手机、邮箱以及后续其他验证通道都复用该表。
+model AuthVerificationCode {
+  id          String              @id @default(cuid()) @db.VarChar(36)
+  userId      String?             @map("user_id") @db.VarChar(36)
+  methodType  AuthMethodType      @map("method_type")
+  channel     VerificationChannel
+  scene       String              @default("login") @db.VarChar(50)
+  target      String              @db.VarChar(191)
+  code        String              @db.VarChar(16)
+  expiresAt   DateTime            @map("expires_at")
+  usedAt      DateTime?           @map("used_at")
+  requesterIp String?             @map("requester_ip") @db.VarChar(100)
+  userAgent   String?             @map("user_agent") @db.VarChar(500)
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  user        AppUser?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([methodType, target, scene, createdAt], map: "idx_auth_verification_codes_method_target_scene_created_at")
+  @@index([expiresAt], map: "idx_auth_verification_codes_expires_at")
+  @@map("auth_verification_codes")
+}
+
+/// 登录方式配置表。
+/// 用于后台动态启用、禁用、排序和扩展不同登录方式。
+model AuthMethodConfig {
+  id             String                @id @default(cuid()) @db.VarChar(36)
+  userId         String?               @map("user_id") @db.VarChar(36)
+  methodType     AuthMethodType        @unique(map: "uk_auth_method_configs_method_type") @map("method_type")
+  category       AuthMethodCategory
+  displayName    String                @map("display_name") @db.VarChar(100)
+  description    String?               @db.VarChar(255)
+  iconType       String?               @map("icon_type") @db.VarChar(50)
+  iconUrl        String?               @map("icon_url") @db.Text
+  isEnabled      Boolean               @default(true) @map("is_enabled")
+  isVisible      Boolean               @default(true) @map("is_visible")
+  sortOrder      Int                   @default(0) @map("sort_order")
+  allowAutoFill  Boolean               @default(true) @map("allow_auto_fill")
+  allowSignUp    Boolean               @default(true) @map("allow_sign_up")
+  configJson     Json?                 @map("config_json")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  user           AppUser?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userIdentities AppUserAuthIdentity[]
+
+  @@index([isEnabled, isVisible, sortOrder], map: "idx_auth_method_configs_enabled_visible_sort")
+  @@map("auth_method_configs")
+}
+
+/// 用户登录身份绑定表。
+/// 邮箱、手机号、第三方平台身份都通过该表与用户主表关联。
+model AppUserAuthIdentity {
+  id               String           @id @default(cuid()) @db.VarChar(36)
+  userId           String           @map("user_id") @db.VarChar(36)
+  methodType       AuthMethodType   @map("method_type")
+  providerUserId   String?          @map("provider_user_id") @db.VarChar(191)
+  providerUnionId  String?          @map("provider_union_id") @db.VarChar(191)
+  identifier       String           @db.VarChar(191)
+  isVerified       Boolean          @default(true) @map("is_verified")
+  verifiedAt       DateTime?        @map("verified_at")
+  metaJson         Json?            @map("meta_json")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  user             AppUser          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  authMethodConfig AuthMethodConfig @relation(fields: [methodType], references: [methodType], onDelete: Cascade)
+
+  @@unique([methodType, identifier], map: "uk_app_user_auth_identities_method_identifier")
+  @@unique([methodType, providerUserId], map: "uk_app_user_auth_identities_method_provider_user_id")
+  @@index([userId, methodType], map: "idx_app_user_auth_identities_user_method")
+  @@map("app_user_auth_identities")
+}
+
+/// 用户会话表。
+/// 使用 HttpOnly Cookie + 服务端会话记录实现登录态，
+/// 便于后续资产、发布、配置等接口统一识别当前用户。
+model AppSession {
+  id                 String         @id @default(cuid()) @db.VarChar(36)
+  userId             String         @map("user_id") @db.VarChar(36)
+  tokenHash          String         @unique(map: "uk_app_sessions_token_hash") @map("token_hash") @db.VarChar(128)
+  authMethodType     AuthMethodType @map("auth_method_type")
+  identifierSnapshot String?        @map("identifier_snapshot") @db.VarChar(191)
+  ipAddress          String?        @map("ip_address") @db.VarChar(100)
+  userAgent          String?        @map("user_agent") @db.VarChar(500)
+  expiresAt          DateTime       @map("expires_at")
+  revokedAt          DateTime?      @map("revoked_at")
+  lastActiveAt       DateTime?      @map("last_active_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  user               AppUser        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt], map: "idx_app_sessions_user_expires_at")
+  @@index([expiresAt], map: "idx_app_sessions_expires_at")
+  @@map("app_sessions")
+}
+
+/// 用户自定义厂商配置。
+/// 用于替代当前 localStorage 中的 baseUrl / apiKey / endpoint / 默认模型配置。
+model AiProviderConfig {
+  id                String                  @id @default(cuid()) @db.VarChar(36)
+  userId            String?                 @map("user_id") @db.VarChar(36)
+  scene             String                  @default("generate") @db.VarChar(50)
+  name              String                  @db.VarChar(100)
+  providerType      ProviderType            @default(OPENAI_COMPATIBLE) @map("provider_type")
+  baseUrl           String                  @map("base_url") @db.Text
+  apiKeyEncrypted   String?                 @map("api_key_encrypted") @db.LongText
+  apiKeyHint        String?                 @map("api_key_hint") @db.VarChar(64)
+  chatEndpoint      String                  @default("/chat/completions") @map("chat_endpoint") @db.VarChar(255)
+  imageEndpoint     String                  @default("/images/generations") @map("image_endpoint") @db.VarChar(255)
+  videoEndpoint     String                  @default("/videos") @map("video_endpoint") @db.VarChar(255)
+  defaultChatModel  String?                 @map("default_chat_model") @db.VarChar(191)
+  defaultImageModel String?                 @map("default_image_model") @db.VarChar(191)
+  defaultVideoModel String?                 @map("default_video_model") @db.VarChar(191)
+  isDefault         Boolean                 @default(false) @map("is_default")
+  isEnabled         Boolean                 @default(true) @map("is_enabled")
+  extraJson         Json?                   @map("extra_json")
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+  user              AppUser?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customModels      AiProviderCustomModel[]
+  generationRecords GenerationRecord[]
+
+  @@index([userId, scene], map: "idx_ai_provider_configs_user_scene")
+  @@index([userId, isDefault], map: "idx_ai_provider_configs_user_default")
+  @@map("ai_provider_configs")
+}
+
+/// 用户新增的自定义模型。
+/// 当前前端分为 image / video / chat 三类，这里拆成独立表方便管理与过滤。
+model AiProviderCustomModel {
+  id                String           @id @default(cuid()) @db.VarChar(36)
+  providerConfigId  String           @map("provider_config_id") @db.VarChar(36)
+  category          ModelCategory
+  label             String           @db.VarChar(100)
+  modelKey          String           @map("model_key") @db.VarChar(191)
+  capabilityJson    Json?            @map("capability_json")
+  defaultParamsJson Json?            @map("default_params_json")
+  sortOrder         Int              @default(0) @map("sort_order")
+  isEnabled         Boolean          @default(true) @map("is_enabled")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  providerConfig    AiProviderConfig @relation(fields: [providerConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([providerConfigId, category, modelKey], map: "uk_ai_provider_custom_models_config_category_key")
+  @@index([providerConfigId, category, sortOrder], map: "idx_ai_provider_custom_models_config_category_sort")
+  @@map("ai_provider_custom_models")
+}
+
+/// 正式 AI 厂商实体。
+/// 对齐 BuildingAI 的 provider / model 双实体思路，后续后台与运行时都基于这里派生。
+model AiProvider {
+  id                 String    @id @default(cuid()) @db.VarChar(36)
+  code               String    @unique(map: "uk_ai_providers_code") @db.VarChar(50)
+  name               String    @db.VarChar(100)
+  description        String?   @db.VarChar(255)
+  iconUrl            String?   @map("icon_url") @db.Text
+  baseUrl            String    @map("base_url") @db.Text
+  apiKeyEncrypted    String?   @map("api_key_encrypted") @db.LongText
+  apiKeyHint         String?   @map("api_key_hint") @db.VarChar(64)
+  chatEndpoint       String    @default("/chat/completions") @map("chat_endpoint") @db.VarChar(255)
+  imageEndpoint      String    @default("/images/generations") @map("image_endpoint") @db.VarChar(255)
+  imageEditEndpoint  String    @default("/images/edits") @map("image_edit_endpoint") @db.VarChar(255)
+  videoEndpoint      String    @default("/videos") @map("video_endpoint") @db.VarChar(255)
+  defaultChatModel   String?   @map("default_chat_model") @db.VarChar(191)
+  supportedTypesJson Json?     @map("supported_types_json")
+  isEnabled          Boolean   @default(true) @map("is_enabled")
+  isBuiltIn          Boolean   @default(false) @map("is_built_in")
+  sortOrder          Int       @default(0) @map("sort_order")
+  extraJson          Json?     @map("extra_json")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  models             AiModel[]
+  skills             AiSkill[]
+
+  @@index([isEnabled, sortOrder], map: "idx_ai_providers_enabled_sort")
+  @@map("ai_providers")
+}
+
+/// 正式 AI 模型实体。
+/// 与厂商拆表后，模型具备独立的启停、排序、能力和默认参数配置。
+model AiModel {
+  id                String        @id @default(cuid()) @db.VarChar(36)
+  providerId        String        @map("provider_id") @db.VarChar(36)
+  category          ModelCategory
+  name              String        @db.VarChar(100)
+  modelKey          String        @map("model_key") @db.VarChar(191)
+  description       String?       @db.VarChar(255)
+  capabilityJson    Json?         @map("capability_json")
+  defaultParamsJson Json?         @map("default_params_json")
+  sortOrder         Int           @default(0) @map("sort_order")
+  isEnabled         Boolean       @default(true) @map("is_enabled")
+  isBuiltIn         Boolean       @default(false) @map("is_built_in")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  provider          AiProvider    @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, category, modelKey], map: "uk_ai_models_provider_category_key")
+  @@index([providerId, category, sortOrder], map: "idx_ai_models_provider_category_sort")
+  @@index([isEnabled, category], map: "idx_ai_models_enabled_category")
+  @@map("ai_models")
+}
+
+/// 技能配置主表。
+/// 用于统一管理前台技能、工作台模式、执行模式和规划器行为。
+model AiSkill {
+  id                   String                      @id @default(cuid()) @db.VarChar(36)
+  providerId           String?                     @map("provider_id") @db.VarChar(36)
+  skillKey             String                      @unique(map: "uk_ai_skills_skill_key") @map("skill_key") @db.VarChar(100)
+  label                String                      @db.VarChar(100)
+  description          String?                     @db.VarChar(255)
+  iconType             String?                     @map("icon_type") @db.VarChar(50)
+  category             String?                     @db.VarChar(50)
+  uiMode               AiSkillUiMode               @default(WORKSPACE) @map("ui_mode")
+  executionMode        AiSkillExecutionMode        @default(PLANNER_THEN_GENERATE) @map("execution_mode")
+  workflowType         String?                     @map("workflow_type") @db.VarChar(50)
+  plannerModelCategory AiSkillPlannerModelCategory @default(CHAT) @map("planner_model_category")
+  expectedImageCount   Int                         @default(4) @map("expected_image_count")
+  isEnabled            Boolean                     @default(true) @map("is_enabled")
+  isBuiltIn            Boolean                     @default(false) @map("is_built_in")
+  sortOrder            Int                         @default(0) @map("sort_order")
+  configJson           Json?                       @map("config_json")
+  createdAt            DateTime                    @default(now()) @map("created_at")
+  updatedAt            DateTime                    @updatedAt @map("updated_at")
+  provider             AiProvider?                 @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  prompts              AiSkillPromptTemplate[]
+  dependencies         AiSkillDependency[]         @relation("AiSkillDependencies")
+  dependedBy           AiSkillDependency[]         @relation("AiSkillDependents")
+  workflowTemplates    AiSkillWorkflowTemplate[]
+  planTemplates        AiSkillPlanTemplate[]
+  stageTemplates       AiSkillStageTemplate[]
+
+  @@index([providerId], map: "idx_ai_skills_provider_id")
+  @@index([isEnabled, sortOrder], map: "idx_ai_skills_enabled_sort")
+  @@map("ai_skills")
+}
+
+/// 技能依赖关系表。
+/// 用于定义主技能运行前必须先加载的依赖技能链。
+model AiSkillDependency {
+  id                String   @id @default(cuid()) @db.VarChar(36)
+  skillId           String   @map("skill_id") @db.VarChar(36)
+  dependencySkillId String   @map("dependency_skill_id") @db.VarChar(36)
+  sortOrder         Int      @default(0) @map("sort_order")
+  createdAt         DateTime @default(now()) @map("created_at")
+  skill             AiSkill  @relation("AiSkillDependencies", fields: [skillId], references: [id], onDelete: Cascade)
+  dependencySkill   AiSkill  @relation("AiSkillDependents", fields: [dependencySkillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, dependencySkillId], map: "uk_ai_skill_dependencies_skill_dependency")
+  @@index([skillId, sortOrder], map: "idx_ai_skill_dependencies_skill_sort")
+  @@map("ai_skill_dependencies")
+}
+
+/// 技能提示词模板表。
+/// 区分通用对话提示词与规划器提示词，便于后台独立配置。
+model AiSkillPromptTemplate {
+  id                 String             @id @default(cuid()) @db.VarChar(36)
+  skillId            String             @map("skill_id") @db.VarChar(36)
+  scene              AiSkillPromptScene
+  systemPrompt       String             @map("system_prompt") @db.LongText
+  userPromptTemplate String             @map("user_prompt_template") @db.LongText
+  isEnabled          Boolean            @default(true) @map("is_enabled")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  skill              AiSkill            @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, scene], map: "uk_ai_skill_prompt_templates_skill_scene")
+  @@map("ai_skill_prompt_templates")
+}
+
+/// 技能工作流模板表。
+/// 用于保存默认工作流标签、类型和工作流参数模板。
+model AiSkillWorkflowTemplate {
+  id                         String   @id @default(cuid()) @db.VarChar(36)
+  skillId                    String   @map("skill_id") @db.VarChar(36)
+  workflowLabel              String   @map("workflow_label") @db.VarChar(100)
+  workflowType               String   @map("workflow_type") @db.VarChar(50)
+  expectedImageCount         Int      @default(4) @map("expected_image_count")
+  workflowParamsTemplateJson Json?    @map("workflow_params_template_json")
+  isEnabled                  Boolean  @default(true) @map("is_enabled")
+  createdAt                  DateTime @default(now()) @map("created_at")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
+  skill                      AiSkill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@index([skillId], map: "idx_ai_skill_workflow_templates_skill")
+  @@map("ai_skill_workflow_templates")
+}
+
+/// 技能计划项模板表。
+/// 每一个计划项同时提供展示标题和对应的提示词模板。
+model AiSkillPlanTemplate {
+  id             String   @id @default(cuid()) @db.VarChar(36)
+  skillId        String   @map("skill_id") @db.VarChar(36)
+  itemKey        String   @map("item_key") @db.VarChar(100)
+  titleTemplate  String   @map("title_template") @db.VarChar(255)
+  promptTemplate String   @map("prompt_template") @db.LongText
+  sortOrder      Int      @default(0) @map("sort_order")
+  isEnabled      Boolean  @default(true) @map("is_enabled")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  skill          AiSkill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, itemKey], map: "uk_ai_skill_plan_templates_skill_item_key")
+  @@index([skillId, sortOrder], map: "idx_ai_skill_plan_templates_skill_sort")
+  @@map("ai_skill_plan_templates")
+}
+
+/// 技能阶段文案模板表。
+/// 用于后台配置不同阶段的标题、标签和指示器说明文案。
+model AiSkillStageTemplate {
+  id                           String   @id @default(cuid()) @db.VarChar(36)
+  skillId                      String   @map("skill_id") @db.VarChar(36)
+  stageKey                     String   @map("stage_key") @db.VarChar(100)
+  stageLabel                   String   @map("stage_label") @db.VarChar(100)
+  indicatorTitle               String?  @map("indicator_title") @db.VarChar(100)
+  indicatorDescriptionTemplate String?  @map("indicator_description_template") @db.LongText
+  sortOrder                    Int      @default(0) @map("sort_order")
+  isEnabled                    Boolean  @default(true) @map("is_enabled")
+  createdAt                    DateTime @default(now()) @map("created_at")
+  updatedAt                    DateTime @updatedAt @map("updated_at")
+  skill                        AiSkill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, stageKey], map: "uk_ai_skill_stage_templates_skill_stage_key")
+  @@index([skillId, sortOrder], map: "idx_ai_skill_stage_templates_skill_sort")
+  @@map("ai_skill_stage_templates")
+}
+
+/// 对象存储配置表。
+/// 用于保存 S3 兼容存储的接入参数，支持后端统一切换上传目标。
+model ObjectStorageConfig {
+  id                 String              @id @default(cuid()) @db.VarChar(36)
+  userId             String?             @map("user_id") @db.VarChar(36)
+  scene              String              @default("global") @db.VarChar(50)
+  name               String              @db.VarChar(100)
+  code               String              @db.VarChar(30)
+  providerType       StorageProviderType @default(S3_COMPATIBLE) @map("provider_type")
+  accessKeyEncrypted String              @map("access_key_encrypted") @db.LongText
+  secretKeyEncrypted String              @map("secret_key_encrypted") @db.LongText
+  endpoint           String              @db.Text
+  region             String?             @db.VarChar(100)
+  bucket             String              @db.VarChar(255)
+  domain             String?             @db.Text
+  sortOrder          Int                 @default(999) @map("sort_order")
+  description        String?             @db.VarChar(200)
+  isEnabled          Boolean             @default(true) @map("is_enabled")
+  isDefault          Boolean             @default(false) @map("is_default")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  user               AppUser?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([scene, code], map: "uk_object_storage_configs_scene_code")
+  @@index([userId, scene], map: "idx_object_storage_configs_user_scene")
+  @@index([scene, isDefault], map: "idx_object_storage_configs_scene_default")
+  @@index([scene, isEnabled, sortOrder], map: "idx_object_storage_configs_scene_enabled_sort")
+  @@map("object_storage_configs")
+}
+
+/// 生成会话表。
+/// 用于承载左侧会话列表、重命名、删除和当前会话切换等正式会话能力。
+model GenerationSession {
+  id           String             @id @default(cuid()) @db.VarChar(36)
+  userId       String             @map("user_id") @db.VarChar(36)
+  title        String             @db.VarChar(120)
+  isDefault    Boolean            @default(false) @map("is_default")
+  sortOrder    Int                @default(0) @map("sort_order")
+  lastRecordAt DateTime?          @map("last_record_at")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+  user         AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  records      GenerationRecord[]
+
+  @@index([userId, isDefault, updatedAt], map: "idx_generation_sessions_user_default_updated_at")
+  @@index([userId, lastRecordAt], map: "idx_generation_sessions_user_last_record_at")
+  @@map("generation_sessions")
+}
+
+/// 统一生成记录表。
+/// 覆盖 generate 页面里当前所有记录字段，并为后续服务端持久化留出扩展空间。
+model GenerationRecord {
+  id               String             @id @default(cuid()) @db.VarChar(36)
+  userId           String             @map("user_id") @db.VarChar(36)
+  sessionId        String             @map("session_id") @db.VarChar(36)
+  providerConfigId String?            @map("provider_config_id") @db.VarChar(36)
+  clientRecordId   Int?               @map("client_record_id")
+  type             GenerationType
+  status           GenerationStatus   @default(PENDING)
+  prompt           String             @db.LongText
+  content          String?            @db.LongText
+  errorMessage     String?            @map("error_message") @db.LongText
+  modelLabel       String?            @map("model_label") @db.VarChar(100)
+  modelKey         String?            @map("model_key") @db.VarChar(191)
+  ratio            String?            @db.VarChar(32)
+  resolution       String?            @db.VarChar(64)
+  durationLabel    String?            @map("duration_label") @db.VarChar(64)
+  feature          String?            @db.VarChar(100)
+  skill            String?            @db.VarChar(100)
+  agentTaskId      String?            @map("agent_task_id") @db.VarChar(191)
+  metaJson         Json?              @map("meta_json")
+  startedAt        DateTime?          @map("started_at")
+  finishedAt       DateTime?          @map("finished_at")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  user             AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session          GenerationSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  providerConfig   AiProviderConfig?  @relation(fields: [providerConfigId], references: [id], onDelete: SetNull)
+  outputs          GenerationOutput[]
+  assets           AssetItem[]
+  agentRun         AgentRun?
+
+  @@index([userId, createdAt], map: "idx_generation_records_user_created_at")
+  @@index([sessionId, createdAt], map: "idx_generation_records_session_created_at")
+  @@index([type, status, createdAt], map: "idx_generation_records_type_status_created_at")
+  @@index([providerConfigId, createdAt], map: "idx_generation_records_provider_created_at")
+  @@map("generation_records")
+}
+
+/// 统一输出结果表。
+/// 图片、视频、文本结果都走这张表，不再依赖前端临时数组。
+model GenerationOutput {
+  id                 String           @id @default(cuid()) @db.VarChar(36)
+  generationRecordId String           @map("generation_record_id") @db.VarChar(36)
+  outputType         OutputType       @map("output_type")
+  url                String?          @db.LongText
+  textContent        String?          @map("text_content") @db.LongText
+  mimeType           String?          @map("mime_type") @db.VarChar(100)
+  width              Int?
+  height             Int?
+  durationSeconds    Int?             @map("duration_seconds")
+  fileSizeBytes      BigInt?          @map("file_size_bytes")
+  sortOrder          Int              @default(0) @map("sort_order")
+  metaJson           Json?            @map("meta_json")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  generationRecord   GenerationRecord @relation(fields: [generationRecordId], references: [id], onDelete: Cascade)
+  assets             AssetItem[]
+
+  @@index([generationRecordId, sortOrder], map: "idx_generation_outputs_record_sort")
+  @@index([outputType, createdAt], map: "idx_generation_outputs_type_created_at")
+  @@map("generation_outputs")
+}
+
+/// 资源层主表。
+/// 首页瀑布流与资产页都应查询该表，而不是直接查询 generation_outputs。
+model AssetItem {
+  id                 String             @id @default(cuid()) @db.VarChar(36)
+  userId             String             @map("user_id") @db.VarChar(36)
+  generationRecordId String?            @map("generation_record_id") @db.VarChar(36)
+  generationOutputId String?            @map("generation_output_id") @db.VarChar(36)
+  assetType          AssetType          @map("asset_type")
+  title              String?            @db.VarChar(255)
+  description        String?            @db.LongText
+  coverUrl           String?            @map("cover_url") @db.LongText
+  fileUrl            String             @map("file_url") @db.LongText
+  thumbnailUrl       String?            @map("thumbnail_url") @db.LongText
+  width              Int?
+  height             Int?
+  durationSeconds    Int?               @map("duration_seconds")
+  fileSizeBytes      BigInt?            @map("file_size_bytes")
+  promptText         String?            @map("prompt_text") @db.LongText
+  modelLabel         String?            @map("model_label") @db.VarChar(100)
+  aspectRatio        String?            @map("aspect_ratio") @db.VarChar(32)
+  visibility         AssetVisibility    @default(PRIVATE)
+  publishStatus      AssetPublishStatus @default(DRAFT) @map("publish_status")
+  reviewStatus       AssetReviewStatus  @default(APPROVED) @map("review_status")
+  favoriteCount      Int                @default(0) @map("favorite_count")
+  viewCount          Int                @default(0) @map("view_count")
+  downloadCount      Int                @default(0) @map("download_count")
+  source             AssetSource        @default(GENERATED)
+  sourceMetaJson     Json?              @map("source_meta_json")
+  isDeleted          Boolean            @default(false) @map("is_deleted")
+  publishedAt        DateTime?          @map("published_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  user               AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generationRecord   GenerationRecord?  @relation(fields: [generationRecordId], references: [id], onDelete: SetNull)
+  generationOutput   GenerationOutput?  @relation(fields: [generationOutputId], references: [id], onDelete: SetNull)
+  favorites          AssetFavorite[]
+
+  @@index([userId, assetType, createdAt], map: "idx_asset_items_user_type_created_at")
+  @@index([assetType, visibility, publishStatus, reviewStatus, createdAt], map: "idx_asset_items_public_feed")
+  @@index([generationRecordId], map: "idx_asset_items_generation_record_id")
+  @@index([generationOutputId], map: "idx_asset_items_generation_output_id")
+  @@map("asset_items")
+}
+
+/// 资源收藏关系表。
+/// 用于支持首页收藏、个人收藏和收藏数量统计。
+model AssetFavorite {
+  id        String    @id @default(cuid()) @db.VarChar(36)
+  assetId   String    @map("asset_id") @db.VarChar(36)
+  userId    String    @map("user_id") @db.VarChar(36)
+  createdAt DateTime  @default(now()) @map("created_at")
+  asset     AssetItem @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user      AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, userId], map: "uk_asset_favorites_asset_user")
+  @@index([userId, createdAt], map: "idx_asset_favorites_user_created_at")
+  @@map("asset_favorites")
+}
+
+/// Agent 运行主表。
+/// 一次 agent 执行对应一条记录，承接当前前端的 AgentRunState。
+model AgentRun {
+  id                   String                @id @default(cuid()) @db.VarChar(36)
+  generationRecordId   String                @unique(map: "uk_agent_runs_generation_record_id") @map("generation_record_id") @db.VarChar(36)
+  userId               String                @map("user_id") @db.VarChar(36)
+  query                String                @db.LongText
+  skill                String?               @db.VarChar(100)
+  status               AgentRunStatus        @default(IDLE)
+  agentName            String?               @map("agent_name") @db.VarChar(100)
+  agentAvatarUrl       String?               @map("agent_avatar_url") @db.Text
+  indicatorStatus      AgentIndicatorStatus? @default(IDLE) @map("indicator_status")
+  indicatorTitle       String?               @map("indicator_title") @db.VarChar(100)
+  indicatorDescription String?               @map("indicator_description") @db.LongText
+  resultTitle          String?               @map("result_title") @db.VarChar(255)
+  resultSummary        String?               @map("result_summary") @db.LongText
+  expectedImageCount   Int?                  @default(0) @map("expected_image_count")
+  outputVisible        Boolean               @default(false) @map("output_visible")
+  errorMessage         String?               @map("error_message") @db.LongText
+  stopReason           String?               @map("stop_reason") @db.LongText
+  startedAt            DateTime?             @map("started_at")
+  finishedAt           DateTime?             @map("finished_at")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+  generationRecord     GenerationRecord      @relation(fields: [generationRecordId], references: [id], onDelete: Cascade)
+  user                 AppUser               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  steps                AgentRunStep[]
+  processSections      AgentProcessSection[]
+
+  @@index([userId, createdAt], map: "idx_agent_runs_user_created_at")
+  @@index([status, createdAt], map: "idx_agent_runs_status_created_at")
+  @@map("agent_runs")
+}
+
+/// Agent 顶部阶段步骤表。
+/// 对应当前 UI 中的 steps 列表，便于顺序展示和状态追踪。
+model AgentRunStep {
+  id          String          @id @default(cuid()) @db.VarChar(36)
+  agentRunId  String          @map("agent_run_id") @db.VarChar(36)
+  stepKey     String          @map("step_key") @db.VarChar(100)
+  title       String          @db.VarChar(100)
+  status      AgentStepStatus @default(PENDING)
+  description String?         @db.LongText
+  sortOrder   Int             @default(0) @map("sort_order")
+  startedAt   DateTime?       @map("started_at")
+  completedAt DateTime?       @map("completed_at")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  agentRun    AgentRun        @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  @@unique([agentRunId, stepKey], map: "uk_agent_run_steps_run_step_key")
+  @@index([agentRunId, sortOrder], map: "idx_agent_run_steps_run_sort")
+  @@map("agent_run_steps")
+}
+
+/// Agent 过程分组表。
+/// 对应当前 processSections，先保留 paragraphs / taskItems 的 JSON 结构，
+/// 既能快速落地，也方便后续按需继续拆分事件表。
+model AgentProcessSection {
+  id             String                  @id @default(cuid()) @db.VarChar(36)
+  agentRunId     String                  @map("agent_run_id") @db.VarChar(36)
+  sectionKey     String                  @map("section_key") @db.VarChar(100)
+  kind           AgentProcessSectionKind
+  label          String                  @db.VarChar(100)
+  paragraphsJson Json?                   @map("paragraphs_json")
+  taskItemsJson  Json?                   @map("task_items_json")
+  sortOrder      Int                     @default(0) @map("sort_order")
+  isCollapsed    Boolean                 @default(false) @map("is_collapsed")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+  agentRun       AgentRun                @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  @@unique([agentRunId, sectionKey], map: "uk_agent_process_sections_run_section_key")
+  @@index([agentRunId, sortOrder], map: "idx_agent_process_sections_run_sort")
+  @@map("agent_process_sections")
+}
+
+/// 会员等级表。
+/// 定义会员层级、每月赠送积分与权益展示。
+model MembershipLevel {
+  id                 String             @id @default(cuid()) @db.VarChar(36)
+  name               String             @db.VarChar(64)
+  level              Int
+  description        String?            @db.VarChar(255)
+  iconUrl            String?            @map("icon_url") @db.Text
+  monthlyBonusPoints Int                @default(0) @map("monthly_bonus_points")
+  storageCapacity    BigInt             @default(0) @map("storage_capacity")
+  benefitsJson       Json?              @map("benefits_json")
+  isEnabled          Boolean            @default(true) @map("is_enabled")
+  sortOrder          Int                @default(0) @map("sort_order")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  plans              MembershipPlan[]
+  subscriptions      UserSubscription[]
+  orders             MembershipOrder[]
+  cardBatches        CardBatch[]
+  cardCodes          CardCode[]
+  redeemRecords      CardRedeemRecord[]
+
+  @@unique([level], map: "uk_membership_levels_level")
+  @@index([isEnabled, sortOrder], map: "idx_membership_levels_enabled_sort")
+  @@map("membership_levels")
+}
+
+/// 会员订阅计划表。
+/// 每条计划绑定一个会员等级，用于定义时长和售价。
+model MembershipPlan {
+  id            String                 @id @default(cuid()) @db.VarChar(36)
+  levelId       String                 @map("level_id") @db.VarChar(36)
+  name          String                 @db.VarChar(64)
+  label         String?                @db.VarChar(64)
+  description   String?                @db.VarChar(255)
+  durationType  MembershipDurationType @map("duration_type")
+  durationValue Int                    @default(1) @map("duration_value")
+  durationUnit  String                 @default("month") @map("duration_unit") @db.VarChar(20)
+  salesPrice    Decimal                @map("sales_price") @db.Decimal(10, 2)
+  originalPrice Decimal?               @map("original_price") @db.Decimal(10, 2)
+  bonusPoints   Int                    @default(0) @map("bonus_points")
+  benefitsJson  Json?                  @map("benefits_json")
+  isEnabled     Boolean                @default(true) @map("is_enabled")
+  sortOrder     Int                    @default(0) @map("sort_order")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+  level         MembershipLevel        @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  orders        MembershipOrder[]
+
+  @@index([levelId, isEnabled, sortOrder], map: "idx_membership_plans_level_enabled_sort")
+  @@map("membership_plans")
+}
+
+/// 用户订阅聚合表。
+/// 记录用户当前持有的会员等级和有效期。
+model UserSubscription {
+  id        String             @id @default(cuid()) @db.VarChar(36)
+  userId    String             @map("user_id") @db.VarChar(36)
+  levelId   String             @map("level_id") @db.VarChar(36)
+  orderId   String?            @map("order_id") @db.VarChar(36)
+  status    SubscriptionStatus @default(ACTIVE)
+  startTime DateTime           @map("start_time")
+  endTime   DateTime           @map("end_time")
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+  user      AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  level     MembershipLevel    @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  order     MembershipOrder?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  pointLogs PointAccountLog[]
+
+  @@unique([userId, levelId], map: "uk_user_subscriptions_user_level")
+  @@index([userId, status, endTime], map: "idx_user_subscriptions_user_status_end_time")
+  @@map("user_subscriptions")
+}
+
+/// 会员订单表。
+/// 用于记录会员购买、续费、赠送与退款等交易过程。
+model MembershipOrder {
+  id            String                @id @default(cuid()) @db.VarChar(36)
+  userId        String                @map("user_id") @db.VarChar(36)
+  levelId       String                @map("level_id") @db.VarChar(36)
+  planId        String?               @map("plan_id") @db.VarChar(36)
+  orderNo       String                @unique(map: "uk_membership_orders_order_no") @map("order_no") @db.VarChar(64)
+  sourceType    MembershipOrderSource @default(DIRECT_PURCHASE) @map("source_type")
+  status        MembershipOrderStatus @default(PENDING)
+  totalAmount   Decimal               @map("total_amount") @db.Decimal(10, 2)
+  paidAmount    Decimal               @default(0) @map("paid_amount") @db.Decimal(10, 2)
+  bonusPoints   Int                   @default(0) @map("bonus_points")
+  startTime     DateTime?             @map("start_time")
+  endTime       DateTime?             @map("end_time")
+  paidAt        DateTime?             @map("paid_at")
+  canceledAt    DateTime?             @map("canceled_at")
+  refundedAt    DateTime?             @map("refunded_at")
+  metaJson      Json?                 @map("meta_json")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+  user          AppUser               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  level         MembershipLevel       @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  plan          MembershipPlan?       @relation(fields: [planId], references: [id], onDelete: SetNull)
+  subscriptions UserSubscription[]
+
+  @@index([userId, status, createdAt], map: "idx_membership_orders_user_status_created_at")
+  @@index([planId], map: "idx_membership_orders_plan_id")
+  @@map("membership_orders")
+}
+
+/// 积分充值套餐表。
+/// 用于配置前台可售卖的充值档位和赠送策略。
+model RechargePackage {
+  id            String          @id @default(cuid()) @db.VarChar(36)
+  name          String          @db.VarChar(64)
+  label         String?         @db.VarChar(64)
+  description   String?         @db.VarChar(255)
+  points        Int
+  bonusPoints   Int             @default(0) @map("bonus_points")
+  price         Decimal         @db.Decimal(10, 2)
+  originalPrice Decimal?        @map("original_price") @db.Decimal(10, 2)
+  badgeText     String?         @map("badge_text") @db.VarChar(64)
+  isEnabled     Boolean         @default(true) @map("is_enabled")
+  sortOrder     Int             @default(0) @map("sort_order")
+  metaJson      Json?           @map("meta_json")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  orders        RechargeOrder[]
+
+  @@index([isEnabled, sortOrder], map: "idx_recharge_packages_enabled_sort")
+  @@map("recharge_packages")
+}
+
+/// 充值订单表。
+/// 记录用户充值支付与退款状态，同时保存套餐快照。
+model RechargeOrder {
+  id                  String            @id @default(cuid()) @db.VarChar(36)
+  userId              String            @map("user_id") @db.VarChar(36)
+  rechargePackageId   String?           @map("recharge_package_id") @db.VarChar(36)
+  orderNo             String            @unique(map: "uk_recharge_orders_order_no") @map("order_no") @db.VarChar(64)
+  payChannel          PayChannelType    @map("pay_channel")
+  payStatus           PaymentStatus     @default(PENDING) @map("pay_status")
+  refundStatus        RefundStatus      @default(NONE) @map("refund_status")
+  points              Int
+  bonusPoints         Int               @default(0) @map("bonus_points")
+  totalAmount         Decimal           @map("total_amount") @db.Decimal(10, 2)
+  paidAmount          Decimal           @default(0) @map("paid_amount") @db.Decimal(10, 2)
+  packageSnapshotJson Json?             @map("package_snapshot_json")
+  paidAt              DateTime?         @map("paid_at")
+  refundedAt          DateTime?         @map("refunded_at")
+  metaJson            Json?             @map("meta_json")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  user                AppUser           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rechargePackage     RechargePackage?  @relation(fields: [rechargePackageId], references: [id], onDelete: SetNull)
+  pointLogs           PointAccountLog[]
+
+  @@index([userId, payStatus, createdAt], map: "idx_recharge_orders_user_pay_status_created_at")
+  @@index([rechargePackageId], map: "idx_recharge_orders_package_id")
+  @@map("recharge_orders")
+}
+
+/// 卡密批次表。
+/// 一次批量生成的卡密集合，可绑定积分奖励或会员奖励。
+model CardBatch {
+  id            String             @id @default(cuid()) @db.VarChar(36)
+  name          String             @db.VarChar(64)
+  batchNo       String             @unique(map: "uk_card_batches_batch_no") @map("batch_no") @db.VarChar(64)
+  description   String?            @db.VarChar(255)
+  rewardType    CardRewardType     @map("reward_type")
+  rewardPoints  Int                @default(0) @map("reward_points")
+  rewardLevelId String?            @map("reward_level_id") @db.VarChar(36)
+  rewardDays    Int?               @map("reward_days")
+  totalCount    Int                @default(0) @map("total_count")
+  usedCount     Int                @default(0) @map("used_count")
+  expiresAt     DateTime?          @map("expires_at")
+  isEnabled     Boolean            @default(true) @map("is_enabled")
+  metaJson      Json?              @map("meta_json")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  rewardLevel   MembershipLevel?   @relation(fields: [rewardLevelId], references: [id], onDelete: SetNull)
+  cardCodes     CardCode[]
+  redeemRecords CardRedeemRecord[]
+
+  @@index([rewardType, isEnabled, createdAt], map: "idx_card_batches_reward_type_enabled_created_at")
+  @@map("card_batches")
+}
+
+/// 卡密表。
+/// 单张卡密记录，跟踪状态、使用人和奖励快照。
+model CardCode {
+  id                 String             @id @default(cuid()) @db.VarChar(36)
+  batchId            String             @map("batch_id") @db.VarChar(36)
+  code               String             @unique(map: "uk_card_codes_code") @db.VarChar(32)
+  status             CardCodeStatus     @default(UNUSED)
+  usedByUserId       String?            @map("used_by_user_id") @db.VarChar(36)
+  rewardLevelId      String?            @map("reward_level_id") @db.VarChar(36)
+  rewardSnapshotJson Json?              @map("reward_snapshot_json")
+  expiresAt          DateTime?          @map("expires_at")
+  usedAt             DateTime?          @map("used_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  batch              CardBatch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  usedByUser         AppUser?           @relation("CardCodeUsedByUser", fields: [usedByUserId], references: [id], onDelete: SetNull)
+  rewardLevel        MembershipLevel?   @relation(fields: [rewardLevelId], references: [id], onDelete: SetNull)
+  redeemRecords      CardRedeemRecord[]
+
+  @@index([batchId, status], map: "idx_card_codes_batch_status")
+  @@index([usedByUserId], map: "idx_card_codes_used_by_user_id")
+  @@map("card_codes")
+}
+
+/// 卡密兑换记录表。
+/// 记录卡密被谁兑换、兑换到了什么奖励。
+model CardRedeemRecord {
+  id            String           @id @default(cuid()) @db.VarChar(36)
+  cardCodeId    String           @map("card_code_id") @db.VarChar(36)
+  batchId       String           @map("batch_id") @db.VarChar(36)
+  userId        String           @map("user_id") @db.VarChar(36)
+  rewardType    CardRewardType   @map("reward_type")
+  rewardPoints  Int              @default(0) @map("reward_points")
+  rewardLevelId String?          @map("reward_level_id") @db.VarChar(36)
+  rewardDays    Int?             @map("reward_days")
+  remark        String?          @db.VarChar(255)
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  cardCode      CardCode         @relation(fields: [cardCodeId], references: [id], onDelete: Cascade)
+  batch         CardBatch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  user          AppUser          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rewardLevel   MembershipLevel? @relation(fields: [rewardLevelId], references: [id], onDelete: SetNull)
+
+  @@unique([cardCodeId], map: "uk_card_redeem_records_card_code_id")
+  @@index([userId, createdAt], map: "idx_card_redeem_records_user_created_at")
+  @@map("card_redeem_records")
+}
+
+/// 积分账户流水表。
+/// 统一记录充值、奖励、兑换、消费、退款等积分变动。
+model PointAccountLog {
+  id              String            @id @default(cuid()) @db.VarChar(36)
+  userId          String            @map("user_id") @db.VarChar(36)
+  subscriptionId  String?           @map("subscription_id") @db.VarChar(36)
+  rechargeOrderId String?           @map("recharge_order_id") @db.VarChar(36)
+  accountNo       String            @unique(map: "uk_point_account_logs_account_no") @map("account_no") @db.VarChar(64)
+  changeType      PointChangeType   @map("change_type")
+  action          PointActionType   @map("action")
+  changeAmount    Int               @map("change_amount")
+  balanceAfter    Int               @map("balance_after")
+  availableAmount Int               @default(0) @map("available_amount")
+  sourceType      PointSourceType   @map("source_type")
+  sourceId        String?           @map("source_id") @db.VarChar(64)
+  associationNo   String?           @map("association_no") @db.VarChar(64)
+  remark          String?           @db.VarChar(255)
+  expireAt        DateTime?         @map("expire_at")
+  metaJson        Json?             @map("meta_json")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  user            AppUser           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription    UserSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  rechargeOrder   RechargeOrder?    @relation(fields: [rechargeOrderId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt], map: "idx_point_account_logs_user_created_at")
+  @@index([sourceType, sourceId], map: "idx_point_account_logs_source_type_source_id")
+  @@map("point_account_logs")
+}
+
+/// 奖励规则表。
+/// 支持登录奖励、注册奖励、签到奖励等统一配置。
+model RewardRule {
+  id            String              @id @default(cuid()) @db.VarChar(36)
+  code          String              @unique(map: "uk_reward_rules_code") @db.VarChar(50)
+  triggerType   RewardTriggerType   @map("trigger_type")
+  name          String              @db.VarChar(64)
+  description   String?             @db.VarChar(255)
+  rewardPoints  Int                 @default(0) @map("reward_points")
+  cycleType     RewardCycleType     @default(ONCE) @map("cycle_type")
+  limitPerCycle Int                 @default(1) @map("limit_per_cycle")
+  isEnabled     Boolean             @default(true) @map("is_enabled")
+  conditionJson Json?               @map("condition_json")
+  sortOrder     Int                 @default(0) @map("sort_order")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+  claimRecords  RewardClaimRecord[]
+
+  @@index([triggerType, isEnabled, sortOrder], map: "idx_reward_rules_trigger_enabled_sort")
+  @@map("reward_rules")
+}
+
+/// 奖励领取记录表。
+/// 用于实现登录、注册、签到奖励的幂等与去重。
+model RewardClaimRecord {
+  id             String              @id @default(cuid()) @db.VarChar(36)
+  userId         String              @map("user_id") @db.VarChar(36)
+  ruleId         String              @map("rule_id") @db.VarChar(36)
+  triggerType    RewardTriggerType   @map("trigger_type")
+  cycleKey       String              @map("cycle_key") @db.VarChar(32)
+  rewardPoints   Int                 @default(0) @map("reward_points")
+  claimStatus    RewardClaimStatus   @default(SUCCESS) @map("claim_status")
+  sourceId       String?             @map("source_id") @db.VarChar(64)
+  metaJson       Json?               @map("meta_json")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  user           AppUser             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rule           RewardRule          @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  checkinRecords UserCheckinRecord[]
+
+  @@unique([userId, ruleId, cycleKey], map: "uk_reward_claim_records_user_rule_cycle")
+  @@index([userId, triggerType, createdAt], map: "idx_reward_claim_records_user_trigger_created_at")
+  @@map("reward_claim_records")
+}
+
+/// 用户签到记录表。
+/// 用于存储每日签到结果和连续签到天数。
+model UserCheckinRecord {
+  id              String             @id @default(cuid()) @db.VarChar(36)
+  userId          String             @map("user_id") @db.VarChar(36)
+  rewardClaimId   String?            @map("reward_claim_id") @db.VarChar(36)
+  checkinDate     String             @map("checkin_date") @db.VarChar(10)
+  consecutiveDays Int                @default(1) @map("consecutive_days")
+  rewardPoints    Int                @default(0) @map("reward_points")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  user            AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rewardClaim     RewardClaimRecord? @relation(fields: [rewardClaimId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, checkinDate], map: "uk_user_checkin_records_user_date")
+  @@index([userId, createdAt], map: "idx_user_checkin_records_user_created_at")
+  @@map("user_checkin_records")
+}
+
+/// 系统设置表。
+/// 使用配置编码区分不同系统配置项，每行存储一个配置块。
+model SystemSetting {
+  id         String   @id @default(cuid()) @db.VarChar(36)
+  code       String   @unique(map: "uk_system_settings_code") @db.VarChar(100)
+  name       String   @db.VarChar(100)
+  configJson Json?    @map("config_json")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+enum UserStatus {
+  ANONYMOUS
+  ACTIVE
+  DISABLED
+}
+
+enum AuthMethodType {
+  PHONE_CODE
+  EMAIL_CODE
+  WECHAT_OAUTH
+  GITHUB_OAUTH
+  GOOGLE_OAUTH
+  CUSTOM_OAUTH
+}
+
+enum AuthMethodCategory {
+  CODE
+  OAUTH
+}
+
+enum VerificationChannel {
+  PHONE
+  EMAIL
+}
+
+enum ProviderType {
+  OPENAI_COMPATIBLE
+  CUSTOM
+}
+
+/// 对象存储供应商类型。
+enum StorageProviderType {
+  S3_COMPATIBLE
+}
+
+enum ModelCategory {
+  CHAT
+  IMAGE
+  VIDEO
+}
+
+/// 技能前端交互模式。
+enum AiSkillUiMode {
+  PLAIN_CHAT
+  WORKSPACE
+}
+
+/// 技能执行模式。
+enum AiSkillExecutionMode {
+  CHAT_ONLY
+  PLANNER_THEN_GENERATE
+  PLANNER_THEN_STORYBOARD
+  DIRECT_GENERATE
+}
+
+/// 技能规划器优先使用的模型分类。
+enum AiSkillPlannerModelCategory {
+  CHAT
+  IMAGE
+  VIDEO
+}
+
+/// 技能提示词模板使用场景。
+enum AiSkillPromptScene {
+  CHAT
+  PLANNER
+}
+
+enum GenerationType {
+  AGENT
+  IMAGE
+  VIDEO
+  DIGITAL_HUMAN
+  MOTION
+}
+
+enum GenerationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  STOPPED
+}
+
+enum OutputType {
+  IMAGE
+  VIDEO
+  TEXT
+  FILE
+}
+
+enum AssetType {
+  IMAGE
+  VIDEO
+}
+
+enum AssetVisibility {
+  PRIVATE
+  PUBLIC
+  UNLISTED
+}
+
+enum AssetPublishStatus {
+  DRAFT
+  PUBLISHED
+  HIDDEN
+}
+
+enum AssetReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AssetSource {
+  GENERATED
+  UPLOADED
+  IMPORTED
+}
+
+enum AgentRunStatus {
+  IDLE
+  THINKING
+  RUNNING
+  COMPLETED
+  ERROR
+  STOPPED
+}
+
+enum AgentIndicatorStatus {
+  IDLE
+  THINKING
+  RUNNING
+  COMPLETED
+  ERROR
+  STOPPED
+}
+
+enum AgentStepStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  ERROR
+}
+
+enum AgentProcessSectionKind {
+  SKILL
+  REASONING
+}
+
+enum MembershipDurationType {
+  MONTH
+  QUARTER
+  HALF_YEAR
+  YEAR
+  FOREVER
+  CUSTOM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELED
+}
+
+enum MembershipOrderSource {
+  DIRECT_PURCHASE
+  CARD_REDEEM
+  SYSTEM_GRANT
+  ADMIN_ADJUST
+}
+
+enum MembershipOrderStatus {
+  PENDING
+  PAID
+  CANCELED
+  REFUNDED
+  CLOSED
+}
+
+enum PayChannelType {
+  ALIPAY
+  WECHAT
+  MANUAL
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELED
+}
+
+enum RefundStatus {
+  NONE
+  PROCESSING
+  REFUNDED
+  FAILED
+}
+
+enum CardRewardType {
+  POINTS
+  MEMBERSHIP
+}
+
+enum CardCodeStatus {
+  UNUSED
+  USED
+  EXPIRED
+  DISABLED
+}
+
+enum PointChangeType {
+  RECHARGE
+  REWARD
+  CARD_REDEEM
+  MEMBERSHIP_BONUS
+  CONSUME
+  REFUND
+  EXPIRE
+  ADJUST
+}
+
+enum PointActionType {
+  INCREASE
+  DECREASE
+}
+
+enum PointSourceType {
+  RECHARGE_ORDER
+  MEMBERSHIP_ORDER
+  REWARD_RULE
+  CHECKIN
+  CARD_REDEEM
+  GENERATION_CONSUME
+  ADMIN_ADJUST
+}
+
+enum RewardTriggerType {
+  LOGIN_DAILY
+  REGISTER_ONCE
+  CHECKIN_DAILY
+}
+
+enum RewardCycleType {
+  ONCE
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum RewardClaimStatus {
+  SUCCESS
+  FAILED
+  REVOKED
+}

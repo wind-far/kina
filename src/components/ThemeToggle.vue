@@ -1,5 +1,10 @@
 <template>
-  <button class="theme-toggle" :title="isDark ? '切换到浅色模式' : '切换到深色模式'" @click="toggle">
+  <button
+    v-if="showToggle"
+    class="theme-toggle"
+    :title="isDark ? '切换到浅色模式' : '切换到深色模式'"
+    @click="toggle"
+  >
     <svg v-if="isDark" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="5" />
       <line x1="12" y1="1" x2="12" y2="3" />
@@ -18,37 +23,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed } from 'vue'
+import { useThemePreferenceStore } from '@/stores/theme-preference'
 
-const STORAGE_KEY = 'app-theme'
-const isDark = ref(false)
-
-function applyTheme(theme) {
-  document.body.setAttribute('lv-theme', theme)
-  document.body.setAttribute('lv-theme-version', '2.0')
-  isDark.value = theme === 'dark'
-  localStorage.setItem(STORAGE_KEY, theme)
-}
+const themeStore = useThemePreferenceStore()
+const isDark = computed(() => themeStore.currentTheme.value === 'dark')
+const showToggle = computed(() => themeStore.allowUserToggle.value)
 
 function toggle() {
-  applyTheme(isDark.value ? 'light' : 'dark')
+  themeStore.setThemeMode(isDark.value ? 'light' : 'dark')
 }
-
-function getSystemTheme() {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
-onMounted(() => {
-  const saved = localStorage.getItem(STORAGE_KEY)
-  applyTheme(saved || getSystemTheme())
-
-  // 监听系统主题变化，仅在用户未手动设置时跟随
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    if (!localStorage.getItem(STORAGE_KEY)) {
-      applyTheme(e.matches ? 'dark' : 'light')
-    }
-  })
-})
 </script>
 
 <style scoped>

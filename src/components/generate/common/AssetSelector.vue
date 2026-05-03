@@ -3,22 +3,7 @@
 // 支持选择图片和视频资产
 
 import { ref, computed, watch, nextTick } from 'vue'
-
-// 资产类型
-export type AssetType = 'image' | 'video'
-
-// 资产项接口
-export interface AssetItem {
-  id: string
-  url: string
-  thumbnailUrl?: string
-  type: AssetType
-  name?: string
-  width?: number
-  height?: number
-  duration?: number // 仅视频有
-  createdAt?: string
-}
+import type { AssetItem, AssetType } from './AssetSelector.types'
 
 // Tab 配置接口
 interface TabConfig {
@@ -208,11 +193,11 @@ defineExpose({
 <template>
   <!-- 弹窗遮罩层 -->
   <Teleport to="body">
-    <div v-if="visible" class="lv-modal-wrapper lv-modal-wrapper-align-center modal-wrap-sbjvkE" @click.self="handleClose">
+    <div v-if="visible" class="lv-modal-wrapper lv-modal-wrapper-align-center modal-wrap" @click.self="handleClose">
       <!-- 弹窗主体 -->
       <div role="dialog"
            aria-modal="true"
-           class="lv-modal modal-M9n5Ob zoomModal-appear-done zoomModal-enter-done">
+           class="lv-modal modal zoomModal-appear-done zoomModal-enter-done">
         <div data-focus-lock-disabled="false" tabindex="-1">
           <!-- 弹窗头部 -->
           <div class="lv-modal-header">
@@ -241,7 +226,7 @@ defineExpose({
           <div class="lv-modal-content">
             <div class="content-container-G9JqEq">
               <!-- Tab 切换 -->
-              <div class="lv-tabs lv-tabs-horizontal lv-tabs-line lv-tabs-top lv-tabs-size-default tabs-container-IBpk72">
+              <div class="lv-tabs lv-tabs-horizontal lv-tabs-line lv-tabs-top lv-tabs-size-default tabs-container">
                 <div class="lv-tabs-header-nav lv-tabs-header-nav-horizontal lv-tabs-header-nav-top lv-tabs-header-size-default lv-tabs-header-nav-line">
                   <div class="lv-tabs-header-scroll">
                     <div class="lv-tabs-header-wrapper">
@@ -267,7 +252,7 @@ defineExpose({
               </div>
 
               <!-- 资产列表容器 -->
-              <div class="asset-list-container-XpxgBw" style="position: relative;">
+              <div class="asset-list-container" style="position: relative;">
                 <!-- 加载状态 -->
                 <div v-if="loading" class="loading-container">
                   <div class="lv-spin lv-spin-loading">
@@ -280,8 +265,8 @@ defineExpose({
                 </div>
 
                 <!-- 空状态 -->
-                <div v-else-if="assets.length === 0" class="empty-page-Hr0fvP">
-                  <img :src="emptyImage" :alt="emptyText" crossorigin="anonymous" class="image-THKG1x">
+                <div v-else-if="assets.length === 0" class="empty-page">
+                  <img :src="emptyImage" :alt="emptyText"  class="image-THKG1x">
                   <div class="description-EXt9nY">{{ emptyText }}</div>
                 </div>
 
@@ -289,7 +274,7 @@ defineExpose({
                 <div v-else class="asset-grid-wrapper">
                   <div v-for="(row, rowIndex) in assetRows"
                        :key="rowIndex"
-                       class="asset-item-tJ77e7"
+                       class="asset-item"
                        :style="{ height: '168px', left: '0px', position: 'absolute', top: `${rowIndex * 168}px`, width: '100%' }">
                     <div v-for="asset in row"
                          :key="asset.id"
@@ -310,7 +295,7 @@ defineExpose({
                       </div>
                       <!-- 图片 -->
                       <div class="container-bG3PQ9">
-                        <img crossorigin="anonymous"
+                        <img
                              draggable="false"
                              loading="eager"
                              class="img-bhyNEQ"
@@ -329,8 +314,8 @@ defineExpose({
 
             <!-- 底部操作栏 -->
             <div class="footer-xbo3jg">
-              <span class="tips-YHTzva">{{ selectionTips }}</span>
-              <button :class="['lv-btn', 'lv-btn-primary', 'lv-btn-size-default', 'lv-btn-shape-square', 'confirm-btn-C53dBF', { 'lv-btn-disabled': isConfirmDisabled }]"
+              <span class="tips">{{ selectionTips }}</span>
+              <button :class="['lv-btn', 'lv-btn-primary', 'lv-btn-size-default', 'lv-btn-shape-square', 'confirm-btn', { 'lv-btn-disabled': isConfirmDisabled }]"
                       type="button"
                       :disabled="isConfirmDisabled"
                       @click="handleConfirm">
@@ -348,7 +333,7 @@ defineExpose({
 /* 资产选择器样式 */
 
 /* 弹窗遮罩层 */
-.modal-wrap-sbjvkE {
+.modal-wrap {
     align-items: center;
     background-color: rgba(0, 0, 0, 0.6);
     display: flex;
@@ -361,12 +346,12 @@ defineExpose({
     z-index: 1000
 }
 
-.modal-wrap-sbjvkE .lv-modal .lv-modal-content,
-.modal-wrap-sbjvkE .lv-modal .lv-modal-header {
+.modal-wrap .lv-modal .lv-modal-content,
+.modal-wrap .lv-modal .lv-modal-header {
     padding: 0
 }
 
-.modal-wrap-sbjvkE .modal-M9n5Ob {
+.modal-wrap .modal {
     background-color: var(--bg-page-primary);
     border-radius: 16px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
@@ -375,21 +360,21 @@ defineExpose({
     width: 896px
 }
 
-.modal-wrap-sbjvkE .modal-M9n5Ob .header-V2_qmF {
+.modal-wrap .modal .header-V2_qmF {
     align-items: center;
     display: flex;
     justify-content: space-between;
     padding: 23px 32px
 }
 
-.modal-wrap-sbjvkE .modal-M9n5Ob .header-V2_qmF .title-aXluuW {
+.modal-wrap .modal .header-V2_qmF .title-aXluuW {
     color: var(--text-primary);
     font-size: 16px;
     font-weight: 500;
     line-height: 24px
 }
 
-.modal-wrap-sbjvkE .modal-M9n5Ob .header-V2_qmF .close-icon-k1w3OL {
+.modal-wrap .modal .header-V2_qmF .close-icon-k1w3OL {
     color: var(--text-secondary);
     cursor: pointer;
     height: 20px;
@@ -397,15 +382,15 @@ defineExpose({
     width: 20px
 }
 
-.modal-wrap-sbjvkE .modal-M9n5Ob .header-V2_qmF .close-icon-k1w3OL:hover {
+.modal-wrap .modal .header-V2_qmF .close-icon-k1w3OL:hover {
     color: var(--text-primary)
 }
 
-.modal-wrap-sbjvkE .modal-M9n5Ob .content-container-G9JqEq {
+.modal-wrap .modal .content-container-G9JqEq {
     padding: 0 32px
 }
 
-.modal-wrap-sbjvkE .modal-M9n5Ob .asset-list-container-XpxgBw {
+.modal-wrap .modal .asset-list-container {
     height: 440px;
     overflow-y: auto
 }
@@ -418,18 +403,18 @@ defineExpose({
     padding: 24px 32px
 }
 
-.footer-xbo3jg .tips-YHTzva {
+.footer-xbo3jg .tips {
     color: var(--text-secondary);
     font-size: 14px;
     line-height: 22px
 }
 
-.footer-xbo3jg .confirm-btn-C53dBF {
+.footer-xbo3jg .confirm-btn {
     min-width: 80px
 }
 
 /* 资产行布局 */
-.asset-item-tJ77e7 {
+.asset-item {
     display: flex;
     gap: 8px
 }
@@ -628,12 +613,12 @@ defineExpose({
     z-index: -1
 }
 
-.tabs-container-IBpk72 {
+.tabs-container {
     margin-bottom: 16px
 }
 
 /* 空状态样式 */
-.empty-page-Hr0fvP {
+.empty-page {
     align-items: center;
     display: flex;
     flex-direction: column;
@@ -642,13 +627,13 @@ defineExpose({
     padding: 40px 0
 }
 
-.empty-page-Hr0fvP .image-THKG1x {
+.empty-page .image-THKG1x {
     height: 120px;
     margin-bottom: 16px;
     width: 120px
 }
 
-.empty-page-Hr0fvP .description-EXt9nY {
+.empty-page .description-EXt9nY {
     color: var(--text-placeholder);
     font-size: 14px;
     line-height: 22px

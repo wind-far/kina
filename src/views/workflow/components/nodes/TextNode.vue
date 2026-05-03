@@ -2,12 +2,11 @@
 /**
  * 文本节点组件
  */
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes } from '../../composables/useWorkflowCanvas'
 import { streamChatCompletions } from '../../api/chat'
-import { getApiKey } from '../../api/request'
-import { getAllChatModels } from '@/config/models'
+import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
 import WfSelect from '@/components/common/WfSelect.vue'
 
 const props = defineProps({ id: String, data: Object })
@@ -16,9 +15,26 @@ const { updateNodeInternals } = useVueFlow()
 const content = ref(props.data?.content || '')
 const showActions = ref(false)
 const isPolishing = ref(false)
-const polishModel = ref(props.data?.polishModel || 'gemini-3-flash-preview')
+const polishModel = ref(props.data?.polishModel || getDefaultChatModelKey())
 
 const chatModelOptions = computed(() => getAllChatModels().map(m => ({ label: m.label, value: m.key })))
+
+watch(
+  chatModelOptions,
+  (options) => {
+    const values = options.map(item => item.value)
+    if (!values.length) return
+    if (!values.includes(polishModel.value)) {
+      polishModel.value = getDefaultChatModelKey() || values[0]
+      updateNode(props.id, { polishModel: polishModel.value })
+    }
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  void loadPublicModelCatalog()
+})
 
 watch(() => props.data?.content, (v) => { if (v !== undefined) content.value = v })
 watch(() => props.data?.polishModel, (v) => { if (v !== undefined) polishModel.value = v })
@@ -37,7 +53,7 @@ const handleDuplicate = () => {
 // AI 润色提示词
 const handlePolish = async () => {
   const input = content.value.trim()
-  if (!input || !getApiKey()) return
+  if (!input) return
   isPolishing.value = true
   const original = content.value
   try {

@@ -1,7 +1,7 @@
 {
   "name": "canvasmind",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "AI-powered infinite canvas for image generation and creative collaboration",
   "type": "module",
   "scripts": {
@@ -22,6 +22,8 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "build:client": "vue-tsc --noEmit && vite build",
     "build:service": "node scripts/build-server-service.mjs",
+    "class-suffix:scan": "python3 scripts/class_suffix_cleanup.py --write-report",
+    "class-suffix:apply": "python3 scripts/class_suffix_cleanup.py --apply --all --write-report",
     "docker:build": "docker build -t canana-vue:latest .",
     "postinstall": "prisma generate"
   },

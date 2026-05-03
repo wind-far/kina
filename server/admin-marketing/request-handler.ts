@@ -1,6 +1,7 @@
 import { sendJson } from '../ai-gateway/shared'
 import { requireAdminSessionUser } from '../auth/session'
 import { isPrismaConfigured } from '../db/prisma'
+import { invalidateMarketingCenterOverviewCache } from '../marketing-center/service'
 import {
   ADMIN_MARKETING_CARD_BATCHES_PATH,
   ADMIN_MARKETING_MEMBERSHIP_LEVELS_PATH,
@@ -114,7 +115,9 @@ export const handleAdminMarketingRequest = async (req: any, res: any) => {
       }
       if (req.method === 'POST') {
         const payload = await readMarketingBody<MarketingMembershipLevelPayload>(req)
-        sendJson(res, 200, { data: await saveMembershipLevel(payload), message: '会员等级已保存' })
+        const data = await saveMembershipLevel(payload)
+        await invalidateMarketingCenterOverviewCache()
+        sendJson(res, 200, { data, message: '会员等级已保存' })
         return
       }
     }
@@ -127,11 +130,14 @@ export const handleAdminMarketingRequest = async (req: any, res: any) => {
       }
       if (req.method === 'PUT') {
         const payload = await readMarketingBody<MarketingMembershipLevelPayload>(req)
-        sendJson(res, 200, { data: await saveMembershipLevel(payload, id), message: '会员等级已更新' })
+        const data = await saveMembershipLevel(payload, id)
+        await invalidateMarketingCenterOverviewCache()
+        sendJson(res, 200, { data, message: '会员等级已更新' })
         return
       }
       if (req.method === 'DELETE') {
         await deleteMembershipLevel(id)
+        await invalidateMarketingCenterOverviewCache()
         sendJson(res, 200, { data: true, message: '会员等级已删除' })
         return
       }
@@ -144,7 +150,9 @@ export const handleAdminMarketingRequest = async (req: any, res: any) => {
       }
       if (req.method === 'POST') {
         const payload = await readMarketingBody<MarketingMembershipPlanPayload>(req)
-        sendJson(res, 200, { data: await saveMembershipPlan(payload), message: '会员计划已保存' })
+        const data = await saveMembershipPlan(payload)
+        await invalidateMarketingCenterOverviewCache()
+        sendJson(res, 200, { data, message: '会员计划已保存' })
         return
       }
     }
@@ -157,11 +165,14 @@ export const handleAdminMarketingRequest = async (req: any, res: any) => {
       }
       if (req.method === 'PUT') {
         const payload = await readMarketingBody<MarketingMembershipPlanPayload>(req)
-        sendJson(res, 200, { data: await saveMembershipPlan(payload, id), message: '会员计划已更新' })
+        const data = await saveMembershipPlan(payload, id)
+        await invalidateMarketingCenterOverviewCache()
+        sendJson(res, 200, { data, message: '会员计划已更新' })
         return
       }
       if (req.method === 'DELETE') {
         await deleteMembershipPlan(id)
+        await invalidateMarketingCenterOverviewCache()
         sendJson(res, 200, { data: true, message: '会员计划已删除' })
         return
       }
@@ -174,7 +185,9 @@ export const handleAdminMarketingRequest = async (req: any, res: any) => {
       }
       if (req.method === 'POST') {
         const payload = await readMarketingBody<MarketingRechargePackagePayload>(req)
-        sendJson(res, 200, { data: await saveRechargePackage(payload), message: '充值套餐已保存' })
+        const data = await saveRechargePackage(payload)
+        await invalidateMarketingCenterOverviewCache()
+        sendJson(res, 200, { data, message: '充值套餐已保存' })
         return
       }
     }
@@ -187,11 +200,14 @@ export const handleAdminMarketingRequest = async (req: any, res: any) => {
       }
       if (req.method === 'PUT') {
         const payload = await readMarketingBody<MarketingRechargePackagePayload>(req)
-        sendJson(res, 200, { data: await saveRechargePackage(payload, id), message: '充值套餐已更新' })
+        const data = await saveRechargePackage(payload, id)
+        await invalidateMarketingCenterOverviewCache()
+        sendJson(res, 200, { data, message: '充值套餐已更新' })
         return
       }
       if (req.method === 'DELETE') {
         await deleteRechargePackage(id)
+        await invalidateMarketingCenterOverviewCache()
         sendJson(res, 200, { data: true, message: '充值套餐已删除' })
         return
       }
@@ -204,7 +220,9 @@ export const handleAdminMarketingRequest = async (req: any, res: any) => {
       }
       if (req.method === 'POST') {
         const payload = await readMarketingBody<MarketingRewardRulePayload>(req)
-        sendJson(res, 200, { data: await saveRewardRule(payload), message: '奖励规则已保存' })
+        const data = await saveRewardRule(payload)
+        await invalidateMarketingCenterOverviewCache()
+        sendJson(res, 200, { data, message: '奖励规则已保存' })
         return
       }
     }
@@ -217,11 +235,14 @@ export const handleAdminMarketingRequest = async (req: any, res: any) => {
       }
       if (req.method === 'PUT') {
         const payload = await readMarketingBody<MarketingRewardRulePayload>(req)
-        sendJson(res, 200, { data: await saveRewardRule(payload, id), message: '奖励规则已更新' })
+        const data = await saveRewardRule(payload, id)
+        await invalidateMarketingCenterOverviewCache()
+        sendJson(res, 200, { data, message: '奖励规则已更新' })
         return
       }
       if (req.method === 'DELETE') {
         await deleteRewardRule(id)
+        await invalidateMarketingCenterOverviewCache()
         sendJson(res, 200, { data: true, message: '奖励规则已删除' })
         return
       }

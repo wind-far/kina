@@ -1,6 +1,7 @@
 import { sendJson, readJsonBody } from '../ai-gateway/shared'
 import { isPrismaConfigured } from '../db/prisma'
 import { requireAdminSessionUser } from '../auth/session'
+import { invalidateAdminDashboardOverviewCache } from '../admin-dashboard/service'
 import { REDIS_CONFIG, consumeFixedWindowRateLimit, getRedisRuntimeSettings } from '../redis'
 import {
   createAdminProvider,
@@ -131,6 +132,7 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       const payload = await readJsonBody(req)
       const data = await createAdminProvider(payload as any)
       await invalidatePublicModelCatalogCache()
+      await invalidateAdminDashboardOverviewCache()
       sendJson(res, 200, { data, message: '厂商已创建' })
       return
     }
@@ -145,6 +147,7 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       const data = await updateAdminProvider(providerDetailMatch.providerId, payload as any)
       await invalidatePublicModelCatalogCache()
       await invalidateProviderDiscoverModelsCache(providerDetailMatch.providerId)
+      await invalidateAdminDashboardOverviewCache()
       sendJson(res, 200, { data, message: '厂商已更新' })
       return
     }
@@ -158,6 +161,7 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       const data = await deleteAdminProvider(providerDetailMatch.providerId)
       await invalidatePublicModelCatalogCache()
       await invalidateProviderDiscoverModelsCache(providerDetailMatch.providerId)
+      await invalidateAdminDashboardOverviewCache()
       sendJson(res, 200, { data, message: '厂商已删除' })
       return
     }
@@ -209,6 +213,7 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       const data = await createProviderModel(providerModelsMatch.providerId, payload as any)
       await invalidatePublicModelCatalogCache()
       await invalidateProviderDiscoverModelsCache(providerModelsMatch.providerId)
+      await invalidateAdminDashboardOverviewCache()
       sendJson(res, 200, { data, message: '模型已创建' })
       return
     }
@@ -223,6 +228,7 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       const data = await batchUpsertProviderModels(providerModelBatchUpsertMatch.providerId, payload as any)
       await invalidatePublicModelCatalogCache()
       await invalidateProviderDiscoverModelsCache(providerModelBatchUpsertMatch.providerId)
+      await invalidateAdminDashboardOverviewCache()
       sendJson(res, 200, { data, message: '模型已批量导入' })
       return
     }
@@ -237,6 +243,7 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       const data = await updateProviderModel(providerModelDetailMatch.providerId, providerModelDetailMatch.modelId, payload as any)
       await invalidatePublicModelCatalogCache()
       await invalidateProviderDiscoverModelsCache(providerModelDetailMatch.providerId)
+      await invalidateAdminDashboardOverviewCache()
       sendJson(res, 200, { data, message: '模型已更新' })
       return
     }
@@ -250,6 +257,7 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       const data = await deleteProviderModel(providerModelDetailMatch.providerId, providerModelDetailMatch.modelId)
       await invalidatePublicModelCatalogCache()
       await invalidateProviderDiscoverModelsCache(providerModelDetailMatch.providerId)
+      await invalidateAdminDashboardOverviewCache()
       sendJson(res, 200, { data, message: '模型已删除' })
       return
     }

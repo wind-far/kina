@@ -123,6 +123,7 @@ export const handleSystemConfigRequest = async (req: any, res: any) => {
     if (req.method === 'PUT') {
       const payload = await readSystemConfigBody(req)
       const data = await saveAdminSystemConfig(payload)
+      clearRedisRuntimeSettingsCache()
       sendJson(res, 200, { data, message: '系统设置已保存' })
       return
     }

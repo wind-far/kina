@@ -1,5 +1,12 @@
+import { invalidateRedisCachePatterns, invalidateRedisCaches } from '../redis/cache-manager'
+import { getOrSetJsonCache } from '../redis/json-cache'
+import { redisKeys } from '../redis/keys'
 import { prisma } from '../db/prisma'
 import { getDefaultProviderOverview } from '../provider-config/service'
+
+const ADMIN_DASHBOARD_OVERVIEW_SCOPE = 'admin-dashboard-overview'
+const ADMIN_DASHBOARD_OVERVIEW_CACHE_PATTERN = redisKeys.cache(ADMIN_DASHBOARD_OVERVIEW_SCOPE, '*')
+const buildAdminDashboardOverviewCacheKey = (currentUserId: string) => redisKeys.cache(ADMIN_DASHBOARD_OVERVIEW_SCOPE, currentUserId)
 
 const startOfDay = (date: Date) => {
   const value = new Date(date)
@@ -41,136 +48,153 @@ const buildDailyTrend = async (input: {
 
 // 查询当前登录用户可见的后台仪表盘概览数据。
 export const getAdminDashboardOverview = async (currentUserId: string) => {
-  const todayStart = startOfDay(new Date())
-  const todayEnd = endOfDay(new Date())
+  const normalizedUserId = String(currentUserId || '').trim()
+  return getOrSetJsonCache({
+    key: buildAdminDashboardOverviewCacheKey(normalizedUserId),
+    ttlSeconds: 60,
+    factory: async () => {
+      const todayStart = startOfDay(new Date())
+      const todayEnd = endOfDay(new Date())
 
-  const [
-    totalAssets,
-    publishedAssets,
-    draftAssets,
-    totalGenerationRecords,
-    completedGenerationRecords,
-    failedGenerationRecords,
-    todayGenerationRecords,
-    enabledStorageConfig,
-    totalStorageConfigs,
-    providerOverview,
-  ] = await Promise.all([
-    prisma.assetItem.count({
-      where: {
-        userId: currentUserId,
-        isDeleted: false,
-      },
-    }),
-    prisma.assetItem.count({
-      where: {
-        userId: currentUserId,
-        isDeleted: false,
-        publishStatus: 'PUBLISHED',
-      },
-    }),
-    prisma.assetItem.count({
-      where: {
-        userId: currentUserId,
-        isDeleted: false,
-        publishStatus: 'DRAFT',
-      },
-    }),
-    prisma.generationRecord.count({
-      where: {
-        userId: currentUserId,
-      },
-    }),
-    prisma.generationRecord.count({
-      where: {
-        userId: currentUserId,
-        status: 'COMPLETED',
-      },
-    }),
-    prisma.generationRecord.count({
-      where: {
-        userId: currentUserId,
-        status: 'FAILED',
-      },
-    }),
-    prisma.generationRecord.count({
-      where: {
-        userId: currentUserId,
-        createdAt: {
-          gte: todayStart,
-          lte: todayEnd,
-        },
-      },
-    }),
-    prisma.objectStorageConfig.findFirst({
-      where: {
-        userId: null,
-        scene: 'global',
-        isEnabled: true,
-      },
-      orderBy: [
-        { isDefault: 'desc' },
-        { sortOrder: 'asc' },
-        { createdAt: 'asc' },
-      ],
-    }),
-    prisma.objectStorageConfig.count({
-      where: {
-        userId: null,
-        scene: 'global',
-      },
-    }),
-    getDefaultProviderOverview(),
-  ])
-
-  const [generationTrend, assetTrend] = await Promise.all([
-    buildDailyTrend({
-      days: 7,
-      count: ({ start, end }) => prisma.generationRecord.count({
-        where: {
-          userId: currentUserId,
-          createdAt: {
-            gte: start,
-            lte: end,
+      const [
+        totalAssets,
+        publishedAssets,
+        draftAssets,
+        totalGenerationRecords,
+        completedGenerationRecords,
+        failedGenerationRecords,
+        todayGenerationRecords,
+        enabledStorageConfig,
+        totalStorageConfigs,
+        providerOverview,
+      ] = await Promise.all([
+        prisma.assetItem.count({
+          where: {
+            userId: normalizedUserId,
+            isDeleted: false,
           },
-        },
-      }),
-    }),
-    buildDailyTrend({
-      days: 7,
-      count: ({ start, end }) => prisma.assetItem.count({
-        where: {
-          userId: currentUserId,
-          isDeleted: false,
-          createdAt: {
-            gte: start,
-            lte: end,
+        }),
+        prisma.assetItem.count({
+          where: {
+            userId: normalizedUserId,
+            isDeleted: false,
+            publishStatus: 'PUBLISHED',
           },
-        },
-      }),
-    }),
-  ])
+        }),
+        prisma.assetItem.count({
+          where: {
+            userId: normalizedUserId,
+            isDeleted: false,
+            publishStatus: 'DRAFT',
+          },
+        }),
+        prisma.generationRecord.count({
+          where: {
+            userId: normalizedUserId,
+          },
+        }),
+        prisma.generationRecord.count({
+          where: {
+            userId: normalizedUserId,
+            status: 'COMPLETED',
+          },
+        }),
+        prisma.generationRecord.count({
+          where: {
+            userId: normalizedUserId,
+            status: 'FAILED',
+          },
+        }),
+        prisma.generationRecord.count({
+          where: {
+            userId: normalizedUserId,
+            createdAt: {
+              gte: todayStart,
+              lte: todayEnd,
+            },
+          },
+        }),
+        prisma.objectStorageConfig.findFirst({
+          where: {
+            userId: null,
+            scene: 'global',
+            isEnabled: true,
+          },
+          orderBy: [
+            { isDefault: 'desc' },
+            { sortOrder: 'asc' },
+            { createdAt: 'asc' },
+          ],
+        }),
+        prisma.objectStorageConfig.count({
+          where: {
+            userId: null,
+            scene: 'global',
+          },
+        }),
+        getDefaultProviderOverview(),
+      ])
 
-  return {
-    asset: {
-      total: totalAssets,
-      published: publishedAssets,
-      draft: draftAssets,
-      trend: assetTrend,
+      const [generationTrend, assetTrend] = await Promise.all([
+        buildDailyTrend({
+          days: 7,
+          count: ({ start, end }) => prisma.generationRecord.count({
+            where: {
+              userId: normalizedUserId,
+              createdAt: {
+                gte: start,
+                lte: end,
+              },
+            },
+          }),
+        }),
+        buildDailyTrend({
+          days: 7,
+          count: ({ start, end }) => prisma.assetItem.count({
+            where: {
+              userId: normalizedUserId,
+              isDeleted: false,
+              createdAt: {
+                gte: start,
+                lte: end,
+              },
+            },
+          }),
+        }),
+      ])
+
+      return {
+        asset: {
+          total: totalAssets,
+          published: publishedAssets,
+          draft: draftAssets,
+          trend: assetTrend,
+        },
+        generation: {
+          total: totalGenerationRecords,
+          completed: completedGenerationRecords,
+          failed: failedGenerationRecords,
+          today: todayGenerationRecords,
+          trend: generationTrend,
+        },
+        runtime: {
+          enabledStorageName: enabledStorageConfig?.name || '',
+          enabledStorageCode: enabledStorageConfig?.code || '',
+          totalStorageConfigs,
+          providerBaseUrl: providerOverview?.baseUrl || '',
+          providerName: providerOverview?.name || '默认生成厂商',
+        },
+      }
     },
-    generation: {
-      total: totalGenerationRecords,
-      completed: completedGenerationRecords,
-      failed: failedGenerationRecords,
-      today: todayGenerationRecords,
-      trend: generationTrend,
-    },
-    runtime: {
-      enabledStorageName: enabledStorageConfig?.name || '',
-      enabledStorageCode: enabledStorageConfig?.code || '',
-      totalStorageConfigs,
-      providerBaseUrl: providerOverview?.baseUrl || '',
-      providerName: providerOverview?.name || '默认生成厂商',
-    },
+  })
+}
+
+export const invalidateAdminDashboardOverviewCache = async (currentUserId?: string | null) => {
+  const normalizedUserId = String(currentUserId || '').trim()
+  if (normalizedUserId) {
+    await invalidateRedisCaches([buildAdminDashboardOverviewCacheKey(normalizedUserId)])
+    return
   }
+
+  await invalidateRedisCachePatterns([ADMIN_DASHBOARD_OVERVIEW_CACHE_PATTERN])
 }

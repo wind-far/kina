@@ -1,6 +1,9 @@
 import crypto from 'node:crypto'
 import prisma from '../db/prisma'
 import { REDIS_CONFIG } from '../redis/config'
+import { invalidateRedisCaches } from '../redis/cache-manager'
+import { getOrSetJsonCache } from '../redis/json-cache'
+import { redisKeys } from '../redis/keys'
 import type {
   SystemConfigPayload,
   SystemConversationModeOptionPayload,
@@ -31,6 +34,10 @@ const SYSTEM_CONFIG_NAMES = {
   [SYSTEM_CONFIG_CODES.homeLayoutSettings]: '首页布局配置',
   [SYSTEM_CONFIG_CODES.redisRuntimeSettings]: 'Redis 运行参数',
 } as const
+
+const ADMIN_SYSTEM_CONFIG_CACHE_KEY = redisKeys.cache('system-config', 'admin')
+const PUBLIC_SYSTEM_CONFIG_CACHE_KEY = redisKeys.cache('system-config', 'public')
+const REDIS_RUNTIME_SETTINGS_CACHE_KEY = redisKeys.cache('system-config', 'redis-runtime-settings')
 
 const DEFAULT_CREATION_MODE_OPTIONS = [
   { value: 'agent', label: 'Agent 模式' },
@@ -788,8 +795,15 @@ const upsertSystemConfigItem = async (executor: RawExecutor, code: string, confi
   )
 }
 
-// 读取后台系统设置。
-export const getAdminSystemConfig = async () => {
+export const invalidateSystemConfigCaches = async () => {
+  await invalidateRedisCaches([
+    ADMIN_SYSTEM_CONFIG_CACHE_KEY,
+    PUBLIC_SYSTEM_CONFIG_CACHE_KEY,
+    REDIS_RUNTIME_SETTINGS_CACHE_KEY,
+  ])
+}
+
+const readAdminSystemConfigFromDatabase = async () => {
   const rows = await listSystemConfigRows()
   if (!rows.length) {
     return createDefaultSystemConfig()
@@ -809,9 +823,22 @@ export const getAdminSystemConfig = async () => {
   })
 }
 
+// 读取后台系统设置。
+export const getAdminSystemConfig = async () => {
+  return getOrSetJsonCache({
+    key: ADMIN_SYSTEM_CONFIG_CACHE_KEY,
+    ttlSeconds: 600,
+    factory: readAdminSystemConfigFromDatabase,
+  })
+}
+
 // 读取前台可见系统设置。
 export const getPublicSystemConfig = async () => {
-  return getAdminSystemConfig()
+  return getOrSetJsonCache({
+    key: PUBLIC_SYSTEM_CONFIG_CACHE_KEY,
+    ttlSeconds: 600,
+    factory: async () => getAdminSystemConfig(),
+  })
 }
 
 // 保存后台系统设置。
@@ -830,12 +857,19 @@ export const saveAdminSystemConfig = async (payload: SystemConfigPayload) => {
     await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.redisRuntimeSettings, normalized.redisRuntimeSettings)
   })
 
+  await invalidateSystemConfigCaches()
   return normalized
 }
 
 export const getAdminRedisRuntimeSettings = async () => {
-  const settings = await getAdminSystemConfig()
-  return normalizeRedisRuntimeSettings(settings.redisRuntimeSettings)
+  return getOrSetJsonCache({
+    key: REDIS_RUNTIME_SETTINGS_CACHE_KEY,
+    ttlSeconds: 120,
+    factory: async () => {
+      const settings = await getAdminSystemConfig()
+      return normalizeRedisRuntimeSettings(settings.redisRuntimeSettings)
+    },
+  })
 }
 
 export const saveAdminRedisRuntimeSettings = async (payload: SystemRedisRuntimeSettingsPayload) => {
@@ -843,5 +877,6 @@ export const saveAdminRedisRuntimeSettings = async (payload: SystemRedisRuntimeS
   await prisma.$transaction(async (tx) => {
     await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.redisRuntimeSettings, normalized)
   })
+  await invalidateSystemConfigCaches()
   return normalized
 }

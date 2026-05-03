@@ -1,8 +1,14 @@
+import { invalidateRedisCachePatterns, invalidateRedisCaches } from '../redis/cache-manager'
+import { getOrSetJsonCache } from '../redis/json-cache'
+import { redisKeys } from '../redis/keys'
 import { prisma } from '../db/prisma'
 
 const DEFAULT_GENERATION_SESSION_TITLE = '默认创作'
 const NEW_GENERATION_SESSION_TITLE = '新对话'
 const MAX_GENERATION_SESSION_TITLE_LENGTH = 120
+const GENERATION_SESSIONS_LIST_SCOPE = 'generation-sessions-list'
+const GENERATION_SESSIONS_LIST_CACHE_PATTERN = redisKeys.cache(GENERATION_SESSIONS_LIST_SCOPE, '*')
+const buildGenerationSessionsListCacheKey = (currentUserId: string) => redisKeys.cache(GENERATION_SESSIONS_LIST_SCOPE, currentUserId)
 
 const normalizeGenerationSessionTitle = (title?: string, fallback = NEW_GENERATION_SESSION_TITLE) => {
   const normalizedTitle = String(title || '').trim()
@@ -116,21 +122,38 @@ export const resolveGenerationSessionForUser = async (tx: any, currentUserId: st
 
 // 获取当前用户的全部生成会话，若不存在则自动创建默认会话。
 export const listGenerationSessions = async (currentUserId: string) => {
-  await prisma.$transaction(async (tx) => {
-    await ensureDefaultGenerationSession(tx, currentUserId)
-  })
+  const normalizedUserId = String(currentUserId || '').trim()
+  return getOrSetJsonCache({
+    key: buildGenerationSessionsListCacheKey(normalizedUserId),
+    ttlSeconds: 60,
+    factory: async () => {
+      await prisma.$transaction(async (tx) => {
+        await ensureDefaultGenerationSession(tx, normalizedUserId)
+      })
 
-  const sessions = await prisma.generationSession.findMany({
-    where: { userId: currentUserId },
-    include: buildGenerationSessionInclude(),
-    orderBy: [
-      { isDefault: 'desc' },
-      { lastRecordAt: 'desc' },
-      { updatedAt: 'desc' },
-    ],
-  })
+      const sessions = await prisma.generationSession.findMany({
+        where: { userId: normalizedUserId },
+        include: buildGenerationSessionInclude(),
+        orderBy: [
+          { isDefault: 'desc' },
+          { lastRecordAt: 'desc' },
+          { updatedAt: 'desc' },
+        ],
+      })
 
-  return sessions.map(serializeGenerationSession)
+      return sessions.map(serializeGenerationSession)
+    },
+  })
+}
+
+export const invalidateGenerationSessionsCache = async (currentUserId?: string | null) => {
+  const normalizedUserId = String(currentUserId || '').trim()
+  if (normalizedUserId) {
+    await invalidateRedisCaches([buildGenerationSessionsListCacheKey(normalizedUserId)])
+    return
+  }
+
+  await invalidateRedisCachePatterns([GENERATION_SESSIONS_LIST_CACHE_PATTERN])
 }
 
 // 创建新会话。
@@ -149,6 +172,7 @@ export const createGenerationSession = async (payload: { title?: string }, curre
     })
   })
 
+  await invalidateGenerationSessionsCache(currentUserId)
   return serializeGenerationSession(session)
 }
 
@@ -173,6 +197,7 @@ export const updateGenerationSession = async (id: string, payload: { title?: str
     include: buildGenerationSessionInclude(),
   })
 
+  await invalidateGenerationSessionsCache(currentUserId)
   return serializeGenerationSession(session)
 }
 
@@ -201,6 +226,7 @@ export const deleteGenerationSession = async (id: string, currentUserId: string)
     await ensureDefaultGenerationSession(tx, currentUserId)
   })
 
+  await invalidateGenerationSessionsCache(currentUserId)
   return {
     id,
   }

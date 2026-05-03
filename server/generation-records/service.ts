@@ -1,8 +1,25 @@
 import { Buffer } from 'node:buffer'
+import { invalidateAssetItemsCaches } from '../asset-items/service'
+import { invalidateAdminDashboardOverviewCache } from '../admin-dashboard/service'
+import { invalidateAdminUsersCaches } from '../admin-users/service'
+import { invalidateRedisCachePatterns, invalidateRedisCaches } from '../redis/cache-manager'
+import { getOrSetJsonCache } from '../redis/json-cache'
+import { redisKeys } from '../redis/keys'
 import { saveUploadedBuffer } from '../storage/service'
 import { prisma } from '../db/prisma'
-import { ensureDefaultGenerationSession, refreshGenerationSessionLastRecordAt, resolveGenerationSessionForUser } from '../generation-sessions/service'
+import {
+  ensureDefaultGenerationSession,
+  invalidateGenerationSessionsCache,
+  refreshGenerationSessionLastRecordAt,
+  resolveGenerationSessionForUser,
+} from '../generation-sessions/service'
 import type { GenerationRecordPayload, GenerationOutputPayload } from './shared'
+
+const GENERATION_RECORDS_LIST_SCOPE = 'generation-records-list'
+const GENERATION_RECORDS_LIST_CACHE_PATTERN = redisKeys.cache(GENERATION_RECORDS_LIST_SCOPE, '*')
+const buildGenerationRecordsListCacheKey = (currentUserId: string) => {
+  return redisKeys.cache(GENERATION_RECORDS_LIST_SCOPE, currentUserId)
+}
 
 // 前端创建类型映射到数据库枚举
 const mapGenerationType = (type: string) => {
@@ -608,18 +625,35 @@ export const listGenerationRecords = async (currentUserId?: string | null) => {
     return []
   }
 
-  await prisma.$transaction(async (tx) => {
-    await ensureDefaultGenerationSession(tx, currentUserId)
-  })
+  const normalizedUserId = String(currentUserId || '').trim()
+  return getOrSetJsonCache({
+    key: buildGenerationRecordsListCacheKey(normalizedUserId),
+    ttlSeconds: 15,
+    factory: async () => {
+      await prisma.$transaction(async (tx) => {
+        await ensureDefaultGenerationSession(tx, normalizedUserId)
+      })
 
-  const records = await prisma.generationRecord.findMany({
-    where: { userId: currentUserId },
-    include: buildRecordInclude(),
-    orderBy: { createdAt: 'desc' },
-    take: 50,
-  })
+      const records = await prisma.generationRecord.findMany({
+        where: { userId: normalizedUserId },
+        include: buildRecordInclude(),
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      })
 
-  return records.map(serializeGenerationRecord)
+      return records.map(serializeGenerationRecord)
+    },
+  })
+}
+
+export const invalidateGenerationRecordsCache = async (currentUserId?: string | null) => {
+  const normalizedUserId = String(currentUserId || '').trim()
+  if (normalizedUserId) {
+    await invalidateRedisCaches([buildGenerationRecordsListCacheKey(normalizedUserId)])
+    return
+  }
+
+  await invalidateRedisCachePatterns([GENERATION_RECORDS_LIST_CACHE_PATTERN])
 }
 
 // 按 id 获取单条生成记录详情，并校验归属用户。
@@ -860,6 +894,12 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
     generationRecordId: created.id,
     outputCount: outputs.length,
   })
+
+  await invalidateGenerationSessionsCache(currentUserId)
+  await invalidateGenerationRecordsCache(currentUserId)
+  await invalidateAssetItemsCaches()
+  await invalidateAdminDashboardOverviewCache(currentUserId)
+  await invalidateAdminUsersCaches(currentUserId)
 
   return serializeGenerationRecord(record)
 }
@@ -1157,6 +1197,12 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
     generationRecordId: id,
     outputCount: outputs.length,
   })
+
+  await invalidateGenerationSessionsCache(currentUserId)
+  await invalidateGenerationRecordsCache(currentUserId)
+  await invalidateAssetItemsCaches()
+  await invalidateAdminDashboardOverviewCache(currentUserId)
+  await invalidateAdminUsersCaches(currentUserId)
 
   return serializeGenerationRecord(record)
 }

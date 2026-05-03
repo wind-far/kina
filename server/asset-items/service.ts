@@ -1,4 +1,10 @@
+import crypto from 'node:crypto'
 import type { Prisma } from '@prisma/client'
+import { invalidateAdminDashboardOverviewCache } from '../admin-dashboard/service'
+import { invalidateAdminUsersCaches } from '../admin-users/service'
+import { invalidateRedisCachePatterns } from '../redis/cache-manager'
+import { getOrSetJsonCache } from '../redis/json-cache'
+import { redisKeys } from '../redis/keys'
 import { prisma } from '../db/prisma'
 import type { AssetActionPayload, AssetListQuery, AssetListResult } from './shared'
 
@@ -7,6 +13,48 @@ const DEFAULT_AUTHOR = {
   name: '创作者',
   avatarSrc: '',
   email: '',
+}
+
+const PUBLIC_ASSET_ITEMS_SCOPE = 'asset-items-public'
+const MINE_ASSET_ITEMS_SCOPE = 'asset-items-mine'
+const ALL_ASSET_ITEMS_SCOPE = 'asset-items-all'
+const PUBLIC_ASSET_ITEMS_CACHE_PATTERN = redisKeys.cache(PUBLIC_ASSET_ITEMS_SCOPE, '*')
+const MINE_ASSET_ITEMS_CACHE_PATTERN = redisKeys.cache(MINE_ASSET_ITEMS_SCOPE, '*')
+const ALL_ASSET_ITEMS_CACHE_PATTERN = redisKeys.cache(ALL_ASSET_ITEMS_SCOPE, '*')
+
+const buildAssetItemsQueryHash = (query: AssetListQuery) => {
+  return crypto
+    .createHash('sha1')
+    .update(JSON.stringify({
+      scope: String(query.scope || '').trim(),
+      assetType: String(query.assetType || '').trim(),
+      page: Number(query.page || 1),
+      pageSize: Number(query.pageSize || 0),
+      take: Number(query.take || 0),
+      publishState: String(query.publishState || '').trim(),
+      ownerKeyword: String(query.ownerKeyword || '').trim(),
+    }))
+    .digest('hex')
+}
+
+const buildPublicAssetItemsCacheKey = (query: AssetListQuery) => {
+  return redisKeys.cache(PUBLIC_ASSET_ITEMS_SCOPE, buildAssetItemsQueryHash(query))
+}
+
+const buildMineAssetItemsCacheKey = (query: AssetListQuery, currentUserId: string) => {
+  return redisKeys.cache(MINE_ASSET_ITEMS_SCOPE, `${currentUserId}:${buildAssetItemsQueryHash(query)}`)
+}
+
+const buildAllAssetItemsCacheKey = (query: AssetListQuery) => {
+  return redisKeys.cache(ALL_ASSET_ITEMS_SCOPE, buildAssetItemsQueryHash(query))
+}
+
+export const invalidateAssetItemsCaches = async () => {
+  await invalidateRedisCachePatterns([
+    PUBLIC_ASSET_ITEMS_CACHE_PATTERN,
+    MINE_ASSET_ITEMS_CACHE_PATTERN,
+    ALL_ASSET_ITEMS_CACHE_PATTERN,
+  ])
 }
 
 // 统一把关联用户信息映射为前端作者结构。
@@ -145,111 +193,129 @@ const serializeAssetItem = (record: any) => {
 
 // 查询首页公开瀑布流。
 export const listPublicAssetItems = async (query: AssetListQuery) => {
-  const where: Prisma.AssetItemWhereInput = {
-    assetType: query.assetType === 'video' ? 'VIDEO' : 'IMAGE',
-    isDeleted: false,
-    visibility: 'PUBLIC',
-    publishStatus: 'PUBLISHED',
-    reviewStatus: 'APPROVED',
-  }
-  const totalCount = await prisma.assetItem.count({ where })
-  const pagination = resolvePagination(query, totalCount)
-  const records = await prisma.assetItem.findMany({
-    where,
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          avatarUrl: true,
+  return getOrSetJsonCache({
+    key: buildPublicAssetItemsCacheKey(query),
+    ttlSeconds: 45,
+    factory: async () => {
+      const where: Prisma.AssetItemWhereInput = {
+        assetType: query.assetType === 'video' ? 'VIDEO' : 'IMAGE',
+        isDeleted: false,
+        visibility: 'PUBLIC',
+        publishStatus: 'PUBLISHED',
+        reviewStatus: 'APPROVED',
+      }
+      const totalCount = await prisma.assetItem.count({ where })
+      const pagination = resolvePagination(query, totalCount)
+      const records = await prisma.assetItem.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+            },
+          },
         },
-      },
-    },
-    orderBy: [
-      { publishedAt: 'desc' },
-      { createdAt: 'desc' },
-    ],
-    skip: pagination.skip,
-    take: pagination.pageSize,
-  })
+        orderBy: [
+          { publishedAt: 'desc' },
+          { createdAt: 'desc' },
+        ],
+        skip: pagination.skip,
+        take: pagination.pageSize,
+      })
 
-  return buildAssetListResult(records.map(serializeAssetItem), pagination)
+      return buildAssetListResult(records.map(serializeAssetItem), pagination)
+    },
+  })
 }
 
 // 查询当前用户资产。
 export const listMineAssetItems = async (query: AssetListQuery, currentUserId: string) => {
-  const publishStateWhere = buildPublishStateWhereInput(query.publishState)
-  const where: Prisma.AssetItemWhereInput = {
-    userId: currentUserId,
-    assetType: query.assetType === 'video' ? 'VIDEO' : 'IMAGE',
-    isDeleted: false,
-    ...publishStateWhere,
-  }
-  const totalCount = await prisma.assetItem.count({ where })
-  const pagination = resolvePagination(query, totalCount)
+  return getOrSetJsonCache({
+    key: buildMineAssetItemsCacheKey(query, currentUserId),
+    ttlSeconds: 30,
+    factory: async () => {
+      const publishStateWhere = buildPublishStateWhereInput(query.publishState)
+      const where: Prisma.AssetItemWhereInput = {
+        userId: currentUserId,
+        assetType: query.assetType === 'video' ? 'VIDEO' : 'IMAGE',
+        isDeleted: false,
+        ...publishStateWhere,
+      }
+      const totalCount = await prisma.assetItem.count({ where })
+      const pagination = resolvePagination(query, totalCount)
 
-  const records = await prisma.assetItem.findMany({
-    where,
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          avatarUrl: true,
+      const records = await prisma.assetItem.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+            },
+          },
         },
-      },
-    },
-    orderBy: [
-      query.publishState === 'published'
-        ? { publishedAt: 'desc' }
-        : { createdAt: 'desc' },
-      { createdAt: 'desc' },
-    ],
-    skip: pagination.skip,
-    take: pagination.pageSize,
-  })
+        orderBy: [
+          query.publishState === 'published'
+            ? { publishedAt: 'desc' }
+            : { createdAt: 'desc' },
+          { createdAt: 'desc' },
+        ],
+        skip: pagination.skip,
+        take: pagination.pageSize,
+      })
 
-  return buildAssetListResult(records.map(serializeAssetItem), pagination)
+      return buildAssetListResult(records.map(serializeAssetItem), pagination)
+    },
+  })
 }
 
 // 查询全站资源，供后台按用户维度统一管理。
 export const listAllAssetItems = async (query: AssetListQuery) => {
-  const publishStateWhere = buildPublishStateWhereInput(query.publishState)
-  const ownerWhere = buildOwnerWhereInput(query.ownerKeyword)
-  const where: Prisma.AssetItemWhereInput = {
-    assetType: query.assetType === 'video' ? 'VIDEO' : 'IMAGE',
-    isDeleted: false,
-    ...publishStateWhere,
-    ...ownerWhere,
-  }
-  const totalCount = await prisma.assetItem.count({ where })
-  const pagination = resolvePagination(query, totalCount)
+  return getOrSetJsonCache({
+    key: buildAllAssetItemsCacheKey(query),
+    ttlSeconds: 30,
+    factory: async () => {
+      const publishStateWhere = buildPublishStateWhereInput(query.publishState)
+      const ownerWhere = buildOwnerWhereInput(query.ownerKeyword)
+      const where: Prisma.AssetItemWhereInput = {
+        assetType: query.assetType === 'video' ? 'VIDEO' : 'IMAGE',
+        isDeleted: false,
+        ...publishStateWhere,
+        ...ownerWhere,
+      }
+      const totalCount = await prisma.assetItem.count({ where })
+      const pagination = resolvePagination(query, totalCount)
 
-  const records = await prisma.assetItem.findMany({
-    where,
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          avatarUrl: true,
+      const records = await prisma.assetItem.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+            },
+          },
         },
-      },
-    },
-    orderBy: [
-      query.publishState === 'published'
-        ? { publishedAt: 'desc' }
-        : { createdAt: 'desc' },
-      { createdAt: 'desc' },
-    ],
-    skip: pagination.skip,
-    take: pagination.pageSize,
-  })
+        orderBy: [
+          query.publishState === 'published'
+            ? { publishedAt: 'desc' }
+            : { createdAt: 'desc' },
+          { createdAt: 'desc' },
+        ],
+        skip: pagination.skip,
+        take: pagination.pageSize,
+      })
 
-  return buildAssetListResult(records.map(serializeAssetItem), pagination)
+      return buildAssetListResult(records.map(serializeAssetItem), pagination)
+    },
+  })
 }
 
 // 批量更新资源状态。
@@ -279,6 +345,19 @@ export const applyAssetAction = async (payload: AssetActionPayload, currentUserI
     where.userId = currentUserId
   }
 
+  const invalidateRelatedCaches = async () => {
+    await invalidateAssetItemsCaches()
+
+    if (payload.scope === 'all' && isAdminUser) {
+      await invalidateAdminDashboardOverviewCache()
+      await invalidateAdminUsersCaches()
+      return
+    }
+
+    await invalidateAdminDashboardOverviewCache(currentUserId)
+    await invalidateAdminUsersCaches(currentUserId)
+  }
+
   switch (payload.action) {
     case 'delete': {
       const result = await prisma.assetItem.updateMany({
@@ -290,6 +369,7 @@ export const applyAssetAction = async (payload: AssetActionPayload, currentUserI
         },
       })
 
+      await invalidateRelatedCaches()
       return {
         action: payload.action,
         affectedCount: result.count,
@@ -306,6 +386,7 @@ export const applyAssetAction = async (payload: AssetActionPayload, currentUserI
         },
       })
 
+      await invalidateRelatedCaches()
       return {
         action: payload.action,
         affectedCount: result.count,
@@ -322,6 +403,7 @@ export const applyAssetAction = async (payload: AssetActionPayload, currentUserI
         },
       })
 
+      await invalidateRelatedCaches()
       return {
         action: payload.action,
         affectedCount: result.count,

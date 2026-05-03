@@ -71,3 +71,13 @@ export const sendAuthError = (res: any, statusCode: number, message: string) => 
     },
   })
 }
+
+export class AuthRequestError extends Error {
+  statusCode: number
+
+  constructor(statusCode: number, message: string) {
+    super(message)
+    this.name = 'AuthRequestError'
+    this.statusCode = statusCode
+  }
+}

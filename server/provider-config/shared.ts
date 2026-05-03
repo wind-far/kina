@@ -9,3 +9,13 @@ export const sendProviderRuntimeError = (res: any, statusCode: number, message: 
     },
   })
 }
+
+export class ProviderConfigRequestError extends Error {
+  statusCode: number
+
+  constructor(statusCode: number, message: string) {
+    super(message)
+    this.name = 'ProviderConfigRequestError'
+    this.statusCode = statusCode
+  }
+}

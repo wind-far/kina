@@ -30,6 +30,16 @@ export interface GenerationTaskStreamEvent {
   agentEvent?: AgentWorkspaceEvent
 }
 
+export class GenerationTaskRequestError extends Error {
+  statusCode: number
+
+  constructor(statusCode: number, message: string) {
+    super(message)
+    this.name = 'GenerationTaskRequestError'
+    this.statusCode = statusCode
+  }
+}
+
 // 读取生成任务请求体。
 export const readGenerationTaskBody = async (req: any) => {
   const payload = await readJsonBody(req)

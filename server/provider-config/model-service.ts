@@ -1,5 +1,6 @@
 import type { ModelCategory } from '@prisma/client'
 import { prisma } from '../db/prisma'
+import { getOrSetJsonCache, invalidateRedisCaches, redisKeys } from '../redis'
 import { ensureProviderSeedData, getAdminProviderDetail } from './service'
 
 export interface ProviderModelPayload {
@@ -144,50 +145,67 @@ const resolveProviderModelsUrl = (baseUrl: string) => {
   return `${baseUrl}/v1/models`
 }
 
+const buildProviderDiscoverCacheKey = (providerId: string) => redisKeys.cache('provider-model-discover', providerId)
+
 // 读取上游 /v1/models 结果，供后台批量选择导入。
 export const discoverProviderModels = async (providerId: string) => {
   const normalizedProviderId = await assertProviderExists(providerId)
-  const { baseUrl, apiKey, provider } = await getProviderRuntimeConnection(normalizedProviderId)
-  const requestUrl = resolveProviderModelsUrl(baseUrl)
+  return getOrSetJsonCache({
+    key: buildProviderDiscoverCacheKey(normalizedProviderId),
+    ttlSeconds: 5 * 60,
+    factory: async () => {
+      const { baseUrl, apiKey, provider } = await getProviderRuntimeConnection(normalizedProviderId)
+      const requestUrl = resolveProviderModelsUrl(baseUrl)
 
-  const response = await fetch(requestUrl, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-  })
+      const response = await fetch(requestUrl, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      })
 
-  if (!response.ok) {
-    const responseText = await response.text().catch(() => '')
-    throw new Error(responseText || `拉取模型列表失败 (${response.status})`)
-  }
-
-  const data = await response.json().catch(() => null) as Record<string, any> | null
-  const rawModels = Array.isArray(data?.data) ? data!.data : []
-  const items = rawModels
-    .map((item, index) => {
-      const record = item && typeof item === 'object' ? item as Record<string, any> : {}
-      const modelKey = String(record.id || record.model || '').trim()
-      if (!modelKey) {
-        return null
+      if (!response.ok) {
+        const responseText = await response.text().catch(() => '')
+        throw new Error(responseText || `拉取模型列表失败 (${response.status})`)
       }
+
+      const data = await response.json().catch(() => null) as Record<string, any> | null
+      const rawModels = Array.isArray(data?.data) ? data!.data : []
+      const items = rawModels
+        .map((item, index) => {
+          const record = item && typeof item === 'object' ? item as Record<string, any> : {}
+          const modelKey = String(record.id || record.model || '').trim()
+          if (!modelKey) {
+            return null
+          }
+
+          return {
+            modelKey,
+            label: String(record.name || record.id || record.model || '').trim() || modelKey,
+            description: String(record.description || record.owned_by || '').trim(),
+            category: 'CHAT' as ModelCategory,
+            sortOrder: index * 10,
+            raw: record,
+          }
+        })
+        .filter(Boolean)
 
       return {
-        modelKey,
-        label: String(record.name || record.id || record.model || '').trim() || modelKey,
-        description: String(record.description || record.owned_by || '').trim(),
-        category: 'CHAT' as ModelCategory,
-        sortOrder: index * 10,
-        raw: record,
+        provider,
+        requestUrl,
+        models: items,
       }
-    })
-    .filter(Boolean)
+    },
+  })
+}
 
-  return {
-    provider,
-    requestUrl,
-    models: items,
+export const invalidateProviderDiscoverModelsCache = async (providerId?: string) => {
+  const normalizedProviderId = String(providerId || '').trim()
+  if (!normalizedProviderId) {
+    return
   }
+
+  await invalidateRedisCaches([buildProviderDiscoverCacheKey(normalizedProviderId)])
 }
 
 export const listProviderModels = async (providerId: string) => {

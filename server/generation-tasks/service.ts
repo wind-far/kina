@@ -27,24 +27,51 @@ import {
   type AgentWorkspaceEvent,
 } from '../../src/shared/agent-workspace'
 import { normalizeGenerationErrorMessage } from '../../src/shared/generation-error'
+import {
+  addTaskStreamSubscriber,
+  deleteLocalRunningTask,
+  getLocalRunningTask,
+  hasLocalRunningTask,
+  removeTaskStreamSubscriber,
+  setLocalRunningTask,
+  type LocalRunningGenerationTask,
+} from './local-runtime'
+import {
+  clearSharedTaskAbortRequested,
+  appendSharedTaskRecentEvent,
+  getSharedTaskRuntime,
+  hasSharedTaskAbortRequested,
+  markSharedTaskAbortRequested,
+  setSharedTaskRuntime,
+  setSharedTaskSnapshot,
+} from './runtime-store'
+import {
+  cleanupDistributedTaskSubscriptionIfIdle,
+  emitDistributedTaskStreamEvent,
+  ensureDistributedTaskSubscription,
+} from './event-bus'
+import {
+  acquireRedisLock,
+  buildTaskSubmissionIdempotencyKey,
+  claimIdempotencyKey,
+  clearPendingIdempotencyKey,
+  completeIdempotencyKey,
+  REDIS_CONFIG,
+  redisKeys,
+  releaseRedisLock,
+  releaseTaskConcurrencySlots,
+  renewRedisLock,
+  tryAcquireProviderTaskSlot,
+  tryAcquireSkillTaskSlot,
+  tryAcquireUserTaskSlot,
+  type RedisConcurrencySlot,
+  getRedisRuntimeSettings,
+} from '../redis'
+import { GenerationTaskRequestError } from './shared'
 
-interface RunningGenerationTask {
-  recordId: string
-  userId: string
-  type: 'image' | 'agent'
+type RunningGenerationTask = LocalRunningGenerationTask & {
   strategyKey: GenerationTaskStrategyKey
-  abortController: AbortController
-  associationNo: string
-  billedEndpointType: 'chat' | 'image' | 'video'
-  billedPointCost: number
-  billedProviderId: string
-  billedModelKey: string
-  billedModelName: string
-  refundCommitted: boolean
 }
-
-const runningGenerationTasks = new Map<string, RunningGenerationTask>()
-const taskStreamSubscribers = new Map<string, Set<any>>()
 
 // 统一输出生成任务日志，方便排查离页后任务是否仍在服务端继续执行。
 const logGenerationTask = (stage: string, detail: Record<string, unknown>) => {
@@ -159,25 +186,25 @@ const fetchWithBurstRateRetry = async (input: {
   throw new Error('上游请求重试流程异常结束')
 }
 
-// 向当前任务的所有 SSE 订阅者广播最新状态。
 const emitTaskStreamEvent = (recordId: string, event: GenerationTaskStreamEvent) => {
-  const subscribers = taskStreamSubscribers.get(recordId)
-  if (!subscribers?.size) {
-    return
+  if (event.record) {
+    void setSharedTaskSnapshot(recordId, event.record).catch((error) => {
+      logGenerationTaskError('task_snapshot_cache_failed', error, {
+        recordId,
+        eventType: event.type,
+      })
+    })
   }
 
-  const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
-  for (const res of subscribers) {
-    try {
-      res.write(payload)
-    } catch {
-      subscribers.delete(res)
-    }
-  }
+  void appendSharedTaskRecentEvent(recordId, event).catch((error) => {
+    logGenerationTaskError('task_recent_event_cache_failed', error, {
+      recordId,
+      eventType: event.type,
+      stage: event.stage || null,
+    })
+  })
 
-  if (!subscribers.size) {
-    taskStreamSubscribers.delete(recordId)
-  }
+  emitDistributedTaskStreamEvent(recordId, event)
 }
 
 // 推送当前任务的业务阶段进度，让事件流更易理解。
@@ -238,15 +265,103 @@ const emitTaskAgentEvent = (recordId: string, input: {
   })
 }
 
+const syncSharedTaskRuntime = async (task: RunningGenerationTask, status: 'running' | 'completed' | 'failed' | 'stopped') => {
+  await setSharedTaskRuntime({
+    recordId: task.recordId,
+    userId: task.userId,
+    type: task.type,
+    strategyKey: task.strategyKey,
+    status,
+    updatedAt: new Date().toISOString(),
+  })
+}
+
+// 同一个 recordId 在多实例下只能有一个真正执行者。
+// 这里用 Redis 锁包住后台执行阶段，避免重复扣费、重复调上游、重复写结果。
+const runTaskWithExecutionLock = async (
+  task: RunningGenerationTask,
+  runner: () => Promise<void>,
+) => {
+  const lockKey = redisKeys.taskLock(task.recordId)
+  const executionLock = await acquireRedisLock(lockKey)
+  if (!executionLock) {
+    logGenerationTask('task_execution_skipped_by_lock', {
+      recordId: task.recordId,
+      userId: task.userId,
+      strategyKey: task.strategyKey,
+    })
+    return false
+  }
+
+  const renewIntervalMs = Math.max(5_000, Math.floor(REDIS_CONFIG.taskLockTtlMs / 3))
+  let renewTimer: ReturnType<typeof setInterval> | null = null
+  let lockLost = false
+
+  // 锁续租放在独立定时器里，避免长耗时任务执行期间锁自动过期。
+  renewTimer = setInterval(() => {
+    void renewRedisLock(executionLock).then((renewed) => {
+      if (renewed) {
+        return
+      }
+
+      lockLost = true
+      logGenerationTaskError('task_execution_lock_renew_failed', new Error('lock_lost'), {
+        recordId: task.recordId,
+        userId: task.userId,
+        strategyKey: task.strategyKey,
+      })
+      task.abortController.abort()
+    }).catch((error) => {
+      lockLost = true
+      logGenerationTaskError('task_execution_lock_renew_error', error, {
+        recordId: task.recordId,
+        userId: task.userId,
+        strategyKey: task.strategyKey,
+      })
+      task.abortController.abort()
+    })
+  }, renewIntervalMs)
+
+  try {
+    await runner()
+    if (lockLost) {
+      throw new Error('任务执行锁已失效，当前任务已中断')
+    }
+    return true
+  } finally {
+    if (renewTimer) {
+      clearInterval(renewTimer)
+    }
+    await releaseRedisLock(executionLock)
+  }
+}
+
+// 统一检查本地停止信号和 Redis 跨实例停止标记。
+const ensureTaskNotAborted = async (task: RunningGenerationTask) => {
+  if (task.abortController.signal.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+
+  const remoteAbortRequested = await hasSharedTaskAbortRequested(task.recordId)
+  if (!remoteAbortRequested) {
+    return
+  }
+
+  task.abortController.abort()
+  throw new DOMException('Aborted', 'AbortError')
+}
+
 // 当服务端内存里已经没有运行中的任务，但数据库里仍是未完成态时，
 // 说明它多半是旧实例遗留或异常中断，需要主动回收，避免前端一直订阅。
 const resolveTaskRecordSnapshot = async (recordId: string, currentUserId: string) => {
   let record = await getGenerationRecordById(recordId, currentUserId)
+  const sharedRuntime = await getSharedTaskRuntime(recordId)
 
   if (
     !record.done
     && !record.stopped
-    && !runningGenerationTasks.has(recordId)
+    && !hasLocalRunningTask(recordId)
+    && sharedRuntime?.status !== 'running'
   ) {
     await updateGenerationRecord(recordId, {
       type: record.type,
@@ -285,12 +400,8 @@ export const subscribeGenerationTaskStream = async (recordId: string, currentUse
     res.flushHeaders()
   }
 
-  let subscribers = taskStreamSubscribers.get(recordId)
-  if (!subscribers) {
-    subscribers = new Set()
-    taskStreamSubscribers.set(recordId, subscribers)
-  }
-  subscribers.add(res)
+  addTaskStreamSubscriber(recordId, res)
+  await ensureDistributedTaskSubscription(recordId)
 
   res.write(`event: connected\ndata: ${JSON.stringify({
     type: 'connected',
@@ -326,14 +437,8 @@ export const subscribeGenerationTaskStream = async (recordId: string, currentUse
 
   const cleanup = () => {
     clearInterval(heartbeatTimer)
-    const currentSubscribers = taskStreamSubscribers.get(recordId)
-    if (!currentSubscribers) {
-      return
-    }
-    currentSubscribers.delete(res)
-    if (!currentSubscribers.size) {
-      taskStreamSubscribers.delete(recordId)
-    }
+    removeTaskStreamSubscriber(recordId, res)
+    void cleanupDistributedTaskSubscriptionIfIdle(recordId)
   }
 
   res.on('close', cleanup)
@@ -366,6 +471,67 @@ const buildInitialRecordPayload = (payload: GenerationTaskStartPayload): Generat
   stopped: false,
   images: [],
 })
+
+const buildGenerationTaskIdempotencyKey = (input: {
+  payload: GenerationTaskStartPayload
+  userId: string
+  strategyKey: string
+  providerId: string
+  modelKey: string
+}) => {
+  return buildTaskSubmissionIdempotencyKey({
+    userId: input.userId,
+    strategyKey: input.strategyKey,
+    providerId: input.providerId,
+    modelKey: input.modelKey,
+    skill: String(input.payload.skill || '').trim(),
+    prompt: String(input.payload.prompt || '').trim(),
+    requestMode: String(input.payload.requestMode || '').trim(),
+    referenceImages: Array.isArray(input.payload.referenceImages) ? input.payload.referenceImages : [],
+    requestBody: input.payload.requestBody || null,
+  })
+}
+
+const resolveTaskSkillKey = (payload: GenerationTaskStartPayload, strategyKey: GenerationTaskStrategyKey) => {
+  return String(payload.skill || '').trim() || strategyKey || 'general'
+}
+
+// 统一申请生成任务占用的并发槽位，避免单个用户或单个厂商被瞬时流量打满。
+const acquireTaskConcurrencySlots = async (input: {
+  userId: string
+  providerId: string
+  skillKey: string
+}) => {
+  const acquiredSlots: RedisConcurrencySlot[] = []
+  const runtimeSettings = await getRedisRuntimeSettings()
+
+  const userResult = await tryAcquireUserTaskSlot(input.userId, runtimeSettings.taskUserConcurrencyLimit)
+  if (!userResult.acquired || !userResult.slot) {
+    throw new GenerationTaskRequestError(429, `当前账号正在执行的任务过多，请稍后再试（上限 ${userResult.limit}）`)
+  }
+  acquiredSlots.push(userResult.slot)
+
+  try {
+    const skillResult = await tryAcquireSkillTaskSlot(input.skillKey, runtimeSettings.taskSkillConcurrencyLimit)
+    if (!skillResult.acquired || !skillResult.slot) {
+      throw new GenerationTaskRequestError(429, `当前技能任务较多，请稍后再试（上限 ${skillResult.limit}）`)
+    }
+    acquiredSlots.push(skillResult.slot)
+
+    if (input.providerId) {
+      const providerResult = await tryAcquireProviderTaskSlot(input.providerId, runtimeSettings.taskProviderConcurrencyLimit)
+      if (!providerResult.acquired || !providerResult.slot) {
+        throw new GenerationTaskRequestError(429, `当前模型厂商任务较多，请稍后再试（上限 ${providerResult.limit}）`)
+      }
+      acquiredSlots.push(providerResult.slot)
+    }
+
+    return acquiredSlots
+  } catch (error) {
+    await releaseTaskConcurrencySlots(acquiredSlots)
+    throw error
+  }
+}
 
 const extractImageUrlsFromJsonResponse = (result: any) => {
   const urls: string[] = []
@@ -681,6 +847,7 @@ const resolveWorkspaceImageModel = async (binding?: {
 }
 
 const executeImageGenerationTask = async (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
+  await ensureTaskNotAborted(task)
   const modelKey = String(payload.modelKey || '').trim()
   if (!modelKey) {
     throw new Error('缺少图片模型标识')
@@ -734,6 +901,7 @@ const executeImageGenerationTask = async (task: RunningGenerationTask, payload: 
       modelKey,
       requestBody,
     })
+  await ensureTaskNotAborted(task)
 
   logGenerationTask('image_task:request_upstream', {
     recordId: task.recordId,
@@ -757,6 +925,7 @@ const executeImageGenerationTask = async (task: RunningGenerationTask, payload: 
     images: imageUrls,
   }, task.userId)
   const completedRecord = await getGenerationRecordById(task.recordId, task.userId)
+  await syncSharedTaskRuntime(task, 'completed')
   emitTaskStreamEvent(task.recordId, {
     type: 'completed',
     recordId: task.recordId,
@@ -1154,6 +1323,7 @@ const requestAgentWorkspaceModelPlan = async (input: {
 }
 
 const executeAgentChatTask = async (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
+  await ensureTaskNotAborted(task)
   const modelKey = String(payload.modelKey || '').trim()
   if (!modelKey) {
     throw new Error('缺少对话模型标识')
@@ -1245,6 +1415,7 @@ const executeAgentChatTask = async (task: RunningGenerationTask, payload: Genera
       stopped: false,
     }, task.userId)
     const completedRecord = await getGenerationRecordById(task.recordId, task.userId)
+    await syncSharedTaskRuntime(task, 'completed')
     emitTaskStreamEvent(task.recordId, {
       type: 'completed',
       recordId: task.recordId,
@@ -1395,6 +1566,7 @@ const executeAgentChatTask = async (task: RunningGenerationTask, payload: Genera
     stopped: false,
   }, task.userId)
   const completedRecord = await getGenerationRecordById(task.recordId, task.userId)
+  await syncSharedTaskRuntime(task, 'completed')
   emitTaskStreamEvent(task.recordId, {
     type: 'completed',
     recordId: task.recordId,
@@ -1448,6 +1620,7 @@ const persistAgentWorkspaceRecord = async (input: {
 }
 
 const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
+  await ensureTaskNotAborted(task)
   const skill = String(payload.skill || '').trim() || 'general'
   const skillPrompt = String(payload.prompt || '').trim()
   const skillMeta = await getAgentWorkspaceSkillMeta(skill)
@@ -1521,6 +1694,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
     lines: string[]
   }) => {
     for (const line of input.lines) {
+      await ensureTaskNotAborted(task)
       const text = line.trim()
       if (!text) {
         continue
@@ -1743,6 +1917,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
     const hasWorkspaceReferenceImages = referenceImages.length > 0
 
     for (const [index, imageTask] of plan.imageTasks.entries()) {
+      await ensureTaskNotAborted(task)
       await sleepWithWorkspaceAbort(task.abortController.signal, getWorkspaceRandomDelay(workspaceTimingProfile.betweenImageDelayRange))
 
       const requestBody = {
@@ -1782,6 +1957,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
     }
 
     await sleepWithWorkspaceAbort(task.abortController.signal, getWorkspaceRandomDelay(workspaceTimingProfile.completionDelayRange))
+    await syncSharedTaskRuntime(task, 'completed')
     await emitWorkspaceEvent({
       type: 'run_completed',
       taskId: task.recordId,
@@ -1795,6 +1971,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
   } catch (error) {
     if (error instanceof AgentWorkspaceStoppedError) {
       await refundTaskPointsIfNeeded(task, 'task_aborted')
+      await syncSharedTaskRuntime(task, 'stopped')
       await emitWorkspaceEvent({
         type: 'run_stopped',
         taskId: task.recordId,
@@ -1805,6 +1982,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
 
     const errorMessage = normalizeGenerationErrorMessage(error, '技能任务执行失败')
     await refundTaskPointsIfNeeded(task, 'task_failed')
+    await syncSharedTaskRuntime(task, 'failed')
     await emitWorkspaceEvent({
       type: 'run_failed',
       taskId: task.recordId,
@@ -1837,8 +2015,11 @@ const refundTaskPointsIfNeeded = async (task: RunningGenerationTask, reason: str
 
 const runImageTaskInBackground = (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
   void (async () => {
+    let ownsExecution = false
     try {
-      await executeImageGenerationTask(task, payload)
+      ownsExecution = await runTaskWithExecutionLock(task, async () => {
+        await executeImageGenerationTask(task, payload)
+      })
     } catch (error) {
       const isAbortError = error instanceof DOMException
         ? error.name === 'AbortError'
@@ -1859,6 +2040,7 @@ const runImageTaskInBackground = (task: RunningGenerationTask, payload: Generati
           images: [],
         }, task.userId)
         const stoppedRecord = await getGenerationRecordById(task.recordId, task.userId)
+        await syncSharedTaskRuntime(task, 'stopped')
         emitTaskStreamEvent(task.recordId, {
           type: 'stopped',
           recordId: task.recordId,
@@ -1887,6 +2069,7 @@ const runImageTaskInBackground = (task: RunningGenerationTask, payload: Generati
           images: [],
         }, task.userId)
         const failedRecord = await getGenerationRecordById(task.recordId, task.userId)
+        await syncSharedTaskRuntime(task, 'failed')
         emitTaskStreamEvent(task.recordId, {
           type: 'failed',
           recordId: task.recordId,
@@ -1902,19 +2085,26 @@ const runImageTaskInBackground = (task: RunningGenerationTask, payload: Generati
         })
       }
     } finally {
-      runningGenerationTasks.delete(task.recordId)
+      deleteLocalRunningTask(task.recordId)
+      await releaseTaskConcurrencySlots(task.concurrencySlots)
+      if (ownsExecution) {
+        await clearSharedTaskAbortRequested(task.recordId)
+      }
     }
   })()
 }
 
 const runAgentTaskInBackground = (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
   void (async () => {
+    let ownsExecution = false
     try {
-      if (task.strategyKey === 'agent-workspace') {
-        await executeAgentWorkspaceTask(task, payload)
-      } else {
-        await executeAgentChatTask(task, payload)
-      }
+      ownsExecution = await runTaskWithExecutionLock(task, async () => {
+        if (task.strategyKey === 'agent-workspace') {
+          await executeAgentWorkspaceTask(task, payload)
+        } else {
+          await executeAgentChatTask(task, payload)
+        }
+      })
     } catch (error) {
       const isAbortError = error instanceof DOMException
         ? error.name === 'AbortError'
@@ -1936,6 +2126,7 @@ const runAgentTaskInBackground = (task: RunningGenerationTask, payload: Generati
             error: '',
           }, task.userId)
           const stoppedRecord = await getGenerationRecordById(task.recordId, task.userId)
+          await syncSharedTaskRuntime(task, 'stopped')
           emitTaskStreamEvent(task.recordId, {
             type: 'stopped',
             recordId: task.recordId,
@@ -1960,6 +2151,7 @@ const runAgentTaskInBackground = (task: RunningGenerationTask, payload: Generati
             error: '',
           }, task.userId)
           const stoppedRecord = await getGenerationRecordById(task.recordId, task.userId)
+          await syncSharedTaskRuntime(task, 'stopped')
           emitTaskStreamEvent(task.recordId, {
             type: 'stopped',
             recordId: task.recordId,
@@ -1987,6 +2179,7 @@ const runAgentTaskInBackground = (task: RunningGenerationTask, payload: Generati
             error: errorMessage,
           }, task.userId)
           const failedRecord = await getGenerationRecordById(task.recordId, task.userId)
+          await syncSharedTaskRuntime(task, 'failed')
           emitTaskStreamEvent(task.recordId, {
             type: 'failed',
             recordId: task.recordId,
@@ -2014,6 +2207,7 @@ const runAgentTaskInBackground = (task: RunningGenerationTask, payload: Generati
             error: errorMessage,
           }, task.userId)
           const failedRecord = await getGenerationRecordById(task.recordId, task.userId)
+          await syncSharedTaskRuntime(task, 'failed')
           emitTaskStreamEvent(task.recordId, {
             type: 'failed',
             recordId: task.recordId,
@@ -2030,7 +2224,11 @@ const runAgentTaskInBackground = (task: RunningGenerationTask, payload: Generati
         }
       }
     } finally {
-      runningGenerationTasks.delete(task.recordId)
+      deleteLocalRunningTask(task.recordId)
+      await releaseTaskConcurrencySlots(task.concurrencySlots)
+      if (ownsExecution) {
+        await clearSharedTaskAbortRequested(task.recordId)
+      }
     }
   })()
 }
@@ -2038,23 +2236,237 @@ const runAgentTaskInBackground = (task: RunningGenerationTask, payload: Generati
 // 创建新的生成任务，并立即把运行态记录持久化。
 export const startGenerationTask = async (payload: GenerationTaskStartPayload, currentUserId: string) => {
   const strategy = resolveGenerationTaskStrategy(payload)
+  const providerId = String((payload.requestBody || {}).providerId || '').trim()
+  const modelKey = String(payload.modelKey || '').trim()
+  const skillKey = resolveTaskSkillKey(payload, strategy.key)
+  const idempotencyKey = buildGenerationTaskIdempotencyKey({
+    payload,
+    userId: currentUserId,
+    strategyKey: strategy.key,
+    providerId,
+    modelKey,
+  })
+  const idempotencyClaim = await claimIdempotencyKey<{ recordId?: string }>(idempotencyKey)
 
-  if (strategy.key === 'agent-chat') {
-    const providerId = String((payload.requestBody || {}).providerId || '').trim()
-    const modelKey = String(payload.modelKey || '').trim()
+  if (idempotencyClaim.state === 'completed' && idempotencyClaim.data?.recordId) {
+    return getGenerationRecordById(String(idempotencyClaim.data.recordId), currentUserId)
+  }
+
+  if (idempotencyClaim.state === 'in_progress') {
+    throw new GenerationTaskRequestError(409, '检测到相同任务正在处理中，请稍候查看结果')
+  }
+
+  let concurrencySlots: RedisConcurrencySlot[] = []
+
+  try {
+    if (strategy.key === 'agent-chat') {
+      if (!providerId) {
+        throw new GenerationTaskRequestError(400, '未匹配到后台模型配置，请先在后台配置可用模型')
+      }
+
+      if (!modelKey) {
+        throw new GenerationTaskRequestError(400, '缺少对话模型标识')
+      }
+
+      concurrencySlots = await acquireTaskConcurrencySlots({
+        userId: currentUserId,
+        providerId,
+        skillKey,
+      })
+
+      const billingDetail = await resolveGenerationPointCost({
+        providerId,
+        modelKey,
+        endpointType: 'chat',
+      })
+
+      const associationNo = buildGatewayAssociationNo()
+      const pointLog = billingDetail.pointCost > 0
+        ? await consumeGenerationPoints({
+          userId: currentUserId,
+          pointCost: billingDetail.pointCost,
+          sourceId: associationNo,
+          associationNo,
+          endpointType: 'chat',
+          providerId,
+          modelKey,
+          modelName: billingDetail.modelName,
+          metaJson: {
+            source: 'generation-task',
+            taskType: 'agent-chat',
+          },
+        })
+        : null
+
+      const createdRecord = await createGenerationRecord(buildInitialRecordPayload(payload), currentUserId)
+      await attachGenerationPointRecordId({
+        associationNo,
+        userId: currentUserId,
+        generationRecordId: createdRecord.id,
+      })
+      await completeIdempotencyKey(idempotencyKey, idempotencyClaim.token, {
+        recordId: createdRecord.id,
+      })
+
+      const task: RunningGenerationTask = {
+        recordId: createdRecord.id,
+        userId: currentUserId,
+        type: 'agent',
+        strategyKey: strategy.key,
+        abortController: new AbortController(),
+        associationNo,
+        billedEndpointType: 'chat',
+        billedPointCost: pointLog ? billingDetail.pointCost : 0,
+        billedProviderId: providerId,
+        billedModelKey: modelKey,
+        billedModelName: billingDetail.modelName || String(payload.model || '').trim(),
+        refundCommitted: false,
+        concurrencySlots,
+      }
+
+      setLocalRunningTask(task)
+      await syncSharedTaskRuntime(task, 'running')
+      emitTaskStreamEvent(createdRecord.id, {
+        type: 'progress',
+        recordId: createdRecord.id,
+        done: false,
+        stopped: false,
+        record: createdRecord as unknown as Record<string, unknown>,
+        stage: 'queued',
+        message: '任务已创建，等待服务端执行',
+      })
+
+      logGenerationTask('task_created', {
+        recordId: createdRecord.id,
+        userId: currentUserId,
+        type: payload.type,
+        strategyKey: strategy.key,
+        providerId,
+        modelKey,
+      })
+
+      runAgentTaskInBackground(task, payload)
+      return createdRecord
+    }
+
+    if (strategy.key === 'agent-workspace') {
+      if (!providerId) {
+        throw new GenerationTaskRequestError(400, '未匹配到后台模型配置，请先在后台配置可用模型')
+      }
+
+      if (!modelKey) {
+        throw new GenerationTaskRequestError(400, '缺少对话模型标识')
+      }
+
+      concurrencySlots = await acquireTaskConcurrencySlots({
+        userId: currentUserId,
+        providerId,
+        skillKey,
+      })
+
+      const billingDetail = await resolveGenerationPointCost({
+        providerId,
+        modelKey,
+        endpointType: 'chat',
+      })
+
+      const associationNo = buildGatewayAssociationNo()
+      const pointLog = billingDetail.pointCost > 0
+        ? await consumeGenerationPoints({
+          userId: currentUserId,
+          pointCost: billingDetail.pointCost,
+          sourceId: associationNo,
+          associationNo,
+          endpointType: 'chat',
+          providerId,
+          modelKey,
+          modelName: billingDetail.modelName,
+          metaJson: {
+            source: 'generation-task',
+            taskType: 'agent-workspace',
+            skill: String(payload.skill || '').trim(),
+          },
+        })
+        : null
+
+      const initialPayload = {
+        ...buildInitialRecordPayload(payload),
+        agentRun: buildAgentPendingRun(
+          `record-${Date.now()}`,
+          String(payload.prompt || '').trim(),
+          String(payload.skill || '').trim() || 'general',
+          Array.isArray(payload.referenceImages) ? payload.referenceImages : [],
+        ) as unknown as Record<string, unknown>,
+      }
+      const createdRecord = await createGenerationRecord(initialPayload, currentUserId)
+      await attachGenerationPointRecordId({
+        associationNo,
+        userId: currentUserId,
+        generationRecordId: createdRecord.id,
+      })
+      await completeIdempotencyKey(idempotencyKey, idempotencyClaim.token, {
+        recordId: createdRecord.id,
+      })
+
+      const task: RunningGenerationTask = {
+        recordId: createdRecord.id,
+        userId: currentUserId,
+        type: 'agent',
+        strategyKey: strategy.key,
+        abortController: new AbortController(),
+        associationNo,
+        billedEndpointType: 'chat',
+        billedPointCost: pointLog ? billingDetail.pointCost : 0,
+        billedProviderId: providerId,
+        billedModelKey: modelKey,
+        billedModelName: billingDetail.modelName || String(payload.model || '').trim(),
+        refundCommitted: false,
+        concurrencySlots,
+      }
+
+      setLocalRunningTask(task)
+      await syncSharedTaskRuntime(task, 'running')
+      emitTaskStreamEvent(createdRecord.id, {
+        type: 'progress',
+        recordId: createdRecord.id,
+        done: false,
+        stopped: false,
+        record: createdRecord as unknown as Record<string, unknown>,
+        stage: 'queued',
+        message: '技能任务已创建，等待服务端执行',
+      })
+
+      logGenerationTask('task_created', {
+        recordId: createdRecord.id,
+        userId: currentUserId,
+        type: payload.type,
+        strategyKey: strategy.key,
+        skill: payload.skill,
+        modelKey: payload.modelKey,
+      })
+
+      runAgentTaskInBackground(task, payload)
+      return createdRecord
+    }
 
     if (!providerId) {
-      throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
+      throw new GenerationTaskRequestError(400, '未匹配到后台模型配置，请先在后台配置可用模型')
     }
 
     if (!modelKey) {
-      throw new Error('缺少对话模型标识')
+      throw new GenerationTaskRequestError(400, '缺少图片模型标识')
     }
+
+    concurrencySlots = await acquireTaskConcurrencySlots({
+      userId: currentUserId,
+      providerId,
+      skillKey,
+    })
 
     const billingDetail = await resolveGenerationPointCost({
       providerId,
       modelKey,
-      endpointType: 'chat',
+      endpointType: 'image',
     })
 
     const associationNo = buildGatewayAssociationNo()
@@ -2064,13 +2476,12 @@ export const startGenerationTask = async (payload: GenerationTaskStartPayload, c
         pointCost: billingDetail.pointCost,
         sourceId: associationNo,
         associationNo,
-        endpointType: 'chat',
+        endpointType: 'image',
         providerId,
         modelKey,
         modelName: billingDetail.modelName,
         metaJson: {
           source: 'generation-task',
-          taskType: 'agent-chat',
         },
       })
       : null
@@ -2081,22 +2492,28 @@ export const startGenerationTask = async (payload: GenerationTaskStartPayload, c
       userId: currentUserId,
       generationRecordId: createdRecord.id,
     })
+    await completeIdempotencyKey(idempotencyKey, idempotencyClaim.token, {
+      recordId: createdRecord.id,
+    })
+
     const task: RunningGenerationTask = {
       recordId: createdRecord.id,
       userId: currentUserId,
-      type: 'agent',
+      type: 'image',
       strategyKey: strategy.key,
       abortController: new AbortController(),
       associationNo,
-      billedEndpointType: 'chat',
+      billedEndpointType: 'image',
       billedPointCost: pointLog ? billingDetail.pointCost : 0,
       billedProviderId: providerId,
       billedModelKey: modelKey,
-      billedModelName: billingDetail.modelName || String(payload.model || '').trim(),
+      billedModelName: billingDetail.modelName,
       refundCommitted: false,
+      concurrencySlots,
     }
 
-    runningGenerationTasks.set(createdRecord.id, task)
+    setLocalRunningTask(task)
+    await syncSharedTaskRuntime(task, 'running')
     emitTaskStreamEvent(createdRecord.id, {
       type: 'progress',
       recordId: createdRecord.id,
@@ -2116,174 +2533,15 @@ export const startGenerationTask = async (payload: GenerationTaskStartPayload, c
       modelKey,
     })
 
-    runAgentTaskInBackground(task, payload)
+    runImageTaskInBackground(task, payload)
     return createdRecord
-  }
-
-  if (strategy.key === 'agent-workspace') {
-    const providerId = String((payload.requestBody || {}).providerId || '').trim()
-    const modelKey = String(payload.modelKey || '').trim()
-
-    if (!providerId) {
-      throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
+  } catch (error) {
+    if (concurrencySlots.length) {
+      await releaseTaskConcurrencySlots(concurrencySlots)
     }
-
-    if (!modelKey) {
-      throw new Error('缺少对话模型标识')
-    }
-
-    const billingDetail = await resolveGenerationPointCost({
-      providerId,
-      modelKey,
-      endpointType: 'chat',
-    })
-
-    const associationNo = buildGatewayAssociationNo()
-    const pointLog = billingDetail.pointCost > 0
-      ? await consumeGenerationPoints({
-        userId: currentUserId,
-        pointCost: billingDetail.pointCost,
-        sourceId: associationNo,
-        associationNo,
-        endpointType: 'chat',
-        providerId,
-        modelKey,
-        modelName: billingDetail.modelName,
-        metaJson: {
-          source: 'generation-task',
-          taskType: 'agent-workspace',
-          skill: String(payload.skill || '').trim(),
-        },
-      })
-      : null
-
-    const initialPayload = {
-      ...buildInitialRecordPayload(payload),
-      agentRun: buildAgentPendingRun(`record-${Date.now()}`, String(payload.prompt || '').trim(), String(payload.skill || '').trim() || 'general') as unknown as Record<string, unknown>,
-    }
-    const createdRecord = await createGenerationRecord(initialPayload, currentUserId)
-    await attachGenerationPointRecordId({
-      associationNo,
-      userId: currentUserId,
-      generationRecordId: createdRecord.id,
-    })
-    const task: RunningGenerationTask = {
-      recordId: createdRecord.id,
-      userId: currentUserId,
-      type: 'agent',
-      strategyKey: strategy.key,
-      abortController: new AbortController(),
-      associationNo,
-      billedEndpointType: 'chat',
-      billedPointCost: pointLog ? billingDetail.pointCost : 0,
-      billedProviderId: providerId,
-      billedModelKey: modelKey,
-      billedModelName: billingDetail.modelName || String(payload.model || '').trim(),
-      refundCommitted: false,
-    }
-
-    runningGenerationTasks.set(createdRecord.id, task)
-    emitTaskStreamEvent(createdRecord.id, {
-      type: 'progress',
-      recordId: createdRecord.id,
-      done: false,
-      stopped: false,
-      record: createdRecord as unknown as Record<string, unknown>,
-      stage: 'queued',
-      message: '技能任务已创建，等待服务端执行',
-    })
-
-    logGenerationTask('task_created', {
-      recordId: createdRecord.id,
-      userId: currentUserId,
-      type: payload.type,
-      strategyKey: strategy.key,
-      skill: payload.skill,
-      modelKey: payload.modelKey,
-    })
-
-    runAgentTaskInBackground(task, payload)
-    return createdRecord
+    await clearPendingIdempotencyKey(idempotencyKey, idempotencyClaim.token)
+    throw error
   }
-
-  const providerId = String((payload.requestBody || {}).providerId || '').trim()
-  const modelKey = String(payload.modelKey || '').trim()
-
-  if (!providerId) {
-    throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
-  }
-
-  if (!modelKey) {
-    throw new Error('缺少图片模型标识')
-  }
-
-  const billingDetail = await resolveGenerationPointCost({
-    providerId,
-    modelKey,
-    endpointType: 'image',
-  })
-
-  const associationNo = buildGatewayAssociationNo()
-  const pointLog = billingDetail.pointCost > 0
-    ? await consumeGenerationPoints({
-      userId: currentUserId,
-      pointCost: billingDetail.pointCost,
-      sourceId: associationNo,
-      associationNo,
-      endpointType: 'image',
-      providerId,
-      modelKey,
-      modelName: billingDetail.modelName,
-      metaJson: {
-        source: 'generation-task',
-      },
-    })
-    : null
-
-  const createdRecord = await createGenerationRecord(buildInitialRecordPayload(payload), currentUserId)
-  await attachGenerationPointRecordId({
-    associationNo,
-    userId: currentUserId,
-    generationRecordId: createdRecord.id,
-  })
-
-  const task: RunningGenerationTask = {
-    recordId: createdRecord.id,
-    userId: currentUserId,
-    type: 'image',
-    strategyKey: strategy.key,
-    abortController: new AbortController(),
-    associationNo,
-    billedEndpointType: 'image',
-    billedPointCost: pointLog ? billingDetail.pointCost : 0,
-    billedProviderId: providerId,
-    billedModelKey: modelKey,
-    billedModelName: billingDetail.modelName,
-    refundCommitted: false,
-  }
-
-  runningGenerationTasks.set(createdRecord.id, task)
-  emitTaskStreamEvent(createdRecord.id, {
-    type: 'progress',
-    recordId: createdRecord.id,
-    done: false,
-    stopped: false,
-    record: createdRecord as unknown as Record<string, unknown>,
-    stage: 'queued',
-    message: '任务已创建，等待服务端执行',
-  })
-
-  logGenerationTask('task_created', {
-    recordId: createdRecord.id,
-    userId: currentUserId,
-    type: payload.type,
-    strategyKey: strategy.key,
-    providerId,
-    modelKey,
-  })
-
-  runImageTaskInBackground(task, payload)
-  return createdRecord
 }
 
 // 查询任务对应的最新生成记录。
@@ -2293,7 +2551,7 @@ export const getGenerationTaskRecord = async (recordId: string, currentUserId: s
 
 // 停止正在运行的任务；若任务已不在内存中，则尝试直接把记录落成已停止。
 export const stopGenerationTask = async (recordId: string, currentUserId: string) => {
-  const task = runningGenerationTasks.get(recordId)
+  const task = getLocalRunningTask(recordId)
 
   if (task) {
     if (task.userId !== currentUserId) {
@@ -2301,6 +2559,12 @@ export const stopGenerationTask = async (recordId: string, currentUserId: string
     }
     task.abortController.abort()
   } else {
+    const sharedRuntime = await getSharedTaskRuntime(recordId)
+    if (sharedRuntime?.status === 'running') {
+      await markSharedTaskAbortRequested(recordId)
+      return getGenerationRecordById(recordId, currentUserId)
+    }
+
     const currentRecord = await getGenerationRecordById(recordId, currentUserId)
     if (currentRecord.done) {
       return currentRecord

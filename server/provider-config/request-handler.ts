@@ -1,11 +1,13 @@
 import { sendJson, readJsonBody } from '../ai-gateway/shared'
 import { isPrismaConfigured } from '../db/prisma'
 import { requireAdminSessionUser } from '../auth/session'
+import { REDIS_CONFIG, consumeFixedWindowRateLimit, getRedisRuntimeSettings } from '../redis'
 import {
   createAdminProvider,
   deleteAdminProvider,
   getAdminProviderDetail,
   getPublicModelCatalog,
+  invalidatePublicModelCatalogCache,
   listAdminProviders,
   updateAdminProvider,
 } from './service'
@@ -14,10 +16,11 @@ import {
   createProviderModel,
   deleteProviderModel,
   discoverProviderModels,
+  invalidateProviderDiscoverModelsCache,
   listProviderModels,
   updateProviderModel,
 } from './model-service'
-import { sendProviderRuntimeError } from './shared'
+import { ProviderConfigRequestError, sendProviderRuntimeError } from './shared'
 import { PROVIDER_CONFIG_CATALOG_PATH, PROVIDER_CONFIG_PROVIDERS_PATH } from './constants'
 
 const matchProviderDetailPath = (requestPath: string) => {
@@ -127,6 +130,7 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await createAdminProvider(payload as any)
+      await invalidatePublicModelCatalogCache()
       sendJson(res, 200, { data, message: '厂商已创建' })
       return
     }
@@ -139,6 +143,8 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await updateAdminProvider(providerDetailMatch.providerId, payload as any)
+      await invalidatePublicModelCatalogCache()
+      await invalidateProviderDiscoverModelsCache(providerDetailMatch.providerId)
       sendJson(res, 200, { data, message: '厂商已更新' })
       return
     }
@@ -150,6 +156,8 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       }
 
       const data = await deleteAdminProvider(providerDetailMatch.providerId)
+      await invalidatePublicModelCatalogCache()
+      await invalidateProviderDiscoverModelsCache(providerDetailMatch.providerId)
       sendJson(res, 200, { data, message: '厂商已删除' })
       return
     }
@@ -170,6 +178,21 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       if (!currentUser) {
         return
       }
+      const runtimeSettings = await getRedisRuntimeSettings()
+
+      const rateLimitResult = await consumeFixedWindowRateLimit({
+        scope: 'provider-model-discover',
+        identifier: `${String(currentUser.id || '').trim()}:${providerModelDiscoverMatch.providerId}`,
+        limit: runtimeSettings.providerModelDiscoverRateLimit || Math.max(REDIS_CONFIG.taskSubmitRateLimit, 3),
+        windowSeconds: Math.max(REDIS_CONFIG.rateLimitWindowSeconds, 60),
+      })
+
+      if (!rateLimitResult.allowed) {
+        throw new ProviderConfigRequestError(
+          429,
+          `模型发现过于频繁，请在 ${rateLimitResult.retryAfterSeconds || REDIS_CONFIG.rateLimitWindowSeconds} 秒后重试`,
+        )
+      }
 
       const data = await discoverProviderModels(providerModelDiscoverMatch.providerId)
       sendJson(res, 200, { data, message: '模型列表已获取' })
@@ -184,6 +207,8 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await createProviderModel(providerModelsMatch.providerId, payload as any)
+      await invalidatePublicModelCatalogCache()
+      await invalidateProviderDiscoverModelsCache(providerModelsMatch.providerId)
       sendJson(res, 200, { data, message: '模型已创建' })
       return
     }
@@ -196,6 +221,8 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await batchUpsertProviderModels(providerModelBatchUpsertMatch.providerId, payload as any)
+      await invalidatePublicModelCatalogCache()
+      await invalidateProviderDiscoverModelsCache(providerModelBatchUpsertMatch.providerId)
       sendJson(res, 200, { data, message: '模型已批量导入' })
       return
     }
@@ -208,6 +235,8 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await updateProviderModel(providerModelDetailMatch.providerId, providerModelDetailMatch.modelId, payload as any)
+      await invalidatePublicModelCatalogCache()
+      await invalidateProviderDiscoverModelsCache(providerModelDetailMatch.providerId)
       sendJson(res, 200, { data, message: '模型已更新' })
       return
     }
@@ -219,12 +248,17 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       }
 
       const data = await deleteProviderModel(providerModelDetailMatch.providerId, providerModelDetailMatch.modelId)
+      await invalidatePublicModelCatalogCache()
+      await invalidateProviderDiscoverModelsCache(providerModelDetailMatch.providerId)
       sendJson(res, 200, { data, message: '模型已删除' })
       return
     }
 
     sendProviderRuntimeError(res, 405, 'Method Not Allowed')
   } catch (error: any) {
-    sendProviderRuntimeError(res, 500, error?.message || '读取配置失败')
+    const statusCode = error instanceof ProviderConfigRequestError
+      ? error.statusCode
+      : 500
+    sendProviderRuntimeError(res, statusCode, error?.message || '读取配置失败')
   }
 }

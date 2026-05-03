@@ -261,6 +261,16 @@ export interface SystemGenerationProgressSettingsPayload {
   stages?: SystemGenerationProgressStagePayload[]
 }
 
+export interface SystemRedisRuntimeSettingsPayload {
+  taskSubmitRateLimit?: number
+  authVerificationRateLimit?: number
+  authLoginRateLimit?: number
+  providerModelDiscoverRateLimit?: number
+  taskUserConcurrencyLimit?: number
+  taskSkillConcurrencyLimit?: number
+  taskProviderConcurrencyLimit?: number
+}
+
 export interface SystemConfigPayload {
   siteInfo?: SystemSiteInfoPayload
   policySettings?: SystemPolicyPayload
@@ -270,6 +280,7 @@ export interface SystemConfigPayload {
   globalThemeSettings?: SystemGlobalThemeSettingsPayload
   homeSideMenuSettings?: SystemHomeSideMenuSettingsPayload
   homeLayoutSettings?: SystemHomeLayoutSettingsPayload
+  redisRuntimeSettings?: SystemRedisRuntimeSettingsPayload
 }
 
 // 读取系统设置请求体。

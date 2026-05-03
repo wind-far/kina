@@ -1,9 +1,11 @@
 import crypto from 'node:crypto'
 import prisma from '../db/prisma'
+import { REDIS_CONFIG } from '../redis/config'
 import type {
   SystemConfigPayload,
   SystemConversationModeOptionPayload,
   SystemConversationSettingsPayload,
+  SystemRedisRuntimeSettingsPayload,
 } from './shared'
 
 const SYSTEM_CONFIG_CODES = {
@@ -15,6 +17,7 @@ const SYSTEM_CONFIG_CODES = {
   globalThemeSettings: 'GLOBAL_THEME_SETTINGS',
   homeSideMenuSettings: 'HOME_SIDE_MENU_SETTINGS',
   homeLayoutSettings: 'HOME_LAYOUT_SETTINGS',
+  redisRuntimeSettings: 'REDIS_RUNTIME_SETTINGS',
 } as const
 
 const SYSTEM_CONFIG_NAMES = {
@@ -26,6 +29,7 @@ const SYSTEM_CONFIG_NAMES = {
   [SYSTEM_CONFIG_CODES.globalThemeSettings]: '全局主题',
   [SYSTEM_CONFIG_CODES.homeSideMenuSettings]: '首页左侧菜单',
   [SYSTEM_CONFIG_CODES.homeLayoutSettings]: '首页布局配置',
+  [SYSTEM_CONFIG_CODES.redisRuntimeSettings]: 'Redis 运行参数',
 } as const
 
 const DEFAULT_CREATION_MODE_OPTIONS = [
@@ -257,7 +261,43 @@ const createDefaultSystemConfig = () => ({
       items: DEFAULT_HOME_BANNER_ITEMS.map(item => ({ ...item })),
     },
   },
+  redisRuntimeSettings: {
+    taskSubmitRateLimit: REDIS_CONFIG.taskSubmitRateLimit,
+    authVerificationRateLimit: REDIS_CONFIG.authVerificationRateLimit,
+    authLoginRateLimit: REDIS_CONFIG.authLoginRateLimit,
+    providerModelDiscoverRateLimit: Math.max(REDIS_CONFIG.taskSubmitRateLimit, 3),
+    taskUserConcurrencyLimit: REDIS_CONFIG.taskUserConcurrencyLimit,
+    taskSkillConcurrencyLimit: REDIS_CONFIG.taskSkillConcurrencyLimit,
+    taskProviderConcurrencyLimit: REDIS_CONFIG.taskProviderConcurrencyLimit,
+  },
 })
+
+const normalizeRedisRuntimeSettings = (value?: SystemRedisRuntimeSettingsPayload | null) => {
+  const defaults = createDefaultSystemConfig().redisRuntimeSettings
+  return {
+    taskSubmitRateLimit: Number.isFinite(Number(value?.taskSubmitRateLimit))
+      ? Math.max(1, Math.min(200, Number(value?.taskSubmitRateLimit)))
+      : defaults.taskSubmitRateLimit,
+    authVerificationRateLimit: Number.isFinite(Number(value?.authVerificationRateLimit))
+      ? Math.max(1, Math.min(200, Number(value?.authVerificationRateLimit)))
+      : defaults.authVerificationRateLimit,
+    authLoginRateLimit: Number.isFinite(Number(value?.authLoginRateLimit))
+      ? Math.max(1, Math.min(200, Number(value?.authLoginRateLimit)))
+      : defaults.authLoginRateLimit,
+    providerModelDiscoverRateLimit: Number.isFinite(Number(value?.providerModelDiscoverRateLimit))
+      ? Math.max(1, Math.min(200, Number(value?.providerModelDiscoverRateLimit)))
+      : defaults.providerModelDiscoverRateLimit,
+    taskUserConcurrencyLimit: Number.isFinite(Number(value?.taskUserConcurrencyLimit))
+      ? Math.max(1, Math.min(200, Number(value?.taskUserConcurrencyLimit)))
+      : defaults.taskUserConcurrencyLimit,
+    taskSkillConcurrencyLimit: Number.isFinite(Number(value?.taskSkillConcurrencyLimit))
+      ? Math.max(1, Math.min(200, Number(value?.taskSkillConcurrencyLimit)))
+      : defaults.taskSkillConcurrencyLimit,
+    taskProviderConcurrencyLimit: Number.isFinite(Number(value?.taskProviderConcurrencyLimit))
+      ? Math.max(1, Math.min(500, Number(value?.taskProviderConcurrencyLimit)))
+      : defaults.taskProviderConcurrencyLimit,
+  }
+}
 
 const normalizeConversationModeOptions = (value: unknown, fallback: SystemConversationModeOptionPayload[]) => {
   if (!Array.isArray(value)) {
@@ -692,6 +732,7 @@ const normalizeSystemConfig = (input?: SystemConfigPayload | null) => {
         items: normalizeHomeBannerItems(homeLayoutBannerSettings.items, defaults.homeLayoutSettings.banner.items),
       },
     },
+    redisRuntimeSettings: normalizeRedisRuntimeSettings(input?.redisRuntimeSettings),
   }
 }
 
@@ -764,6 +805,7 @@ export const getAdminSystemConfig = async () => {
     globalThemeSettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.globalThemeSettings)?.config_json),
     homeSideMenuSettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.homeSideMenuSettings)?.config_json),
     homeLayoutSettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.homeLayoutSettings)?.config_json),
+    redisRuntimeSettings: readPlainObject(rowMap.get(SYSTEM_CONFIG_CODES.redisRuntimeSettings)?.config_json),
   })
 }
 
@@ -785,7 +827,21 @@ export const saveAdminSystemConfig = async (payload: SystemConfigPayload) => {
     await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.globalThemeSettings, normalized.globalThemeSettings)
     await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.homeSideMenuSettings, normalized.homeSideMenuSettings)
     await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.homeLayoutSettings, normalized.homeLayoutSettings)
+    await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.redisRuntimeSettings, normalized.redisRuntimeSettings)
   })
 
+  return normalized
+}
+
+export const getAdminRedisRuntimeSettings = async () => {
+  const settings = await getAdminSystemConfig()
+  return normalizeRedisRuntimeSettings(settings.redisRuntimeSettings)
+}
+
+export const saveAdminRedisRuntimeSettings = async (payload: SystemRedisRuntimeSettingsPayload) => {
+  const normalized = normalizeRedisRuntimeSettings(payload)
+  await prisma.$transaction(async (tx) => {
+    await upsertSystemConfigItem(tx, SYSTEM_CONFIG_CODES.redisRuntimeSettings, normalized)
+  })
   return normalized
 }

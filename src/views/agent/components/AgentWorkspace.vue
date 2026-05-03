@@ -5,12 +5,10 @@
       <div class="agent-workspace-scroll">
         <div class="agent-workspace-content">
           <div class="agent-workspace-date">今天</div>
-          <div class="agent-workspace-query">{{ run.query }}</div>
-          <AgentTaskTimeline :steps="run.steps" />
-          <AgentResultSection
-            :summary="run.result?.summary"
-            :images="run.result?.images"
-          />
+          <div v-if="run.status === 'idle'" class="agent-workspace-empty">
+            发送一个任务后，这里会按对话记录展示用户消息、执行过程和结果。
+          </div>
+          <GenerateAgentRecord v-else :run="run" />
         </div>
       </div>
       <AgentBottomDock
@@ -27,9 +25,8 @@ import { computed } from 'vue'
 import type { AgentRunState } from '@/types/agent'
 import type { CreationType } from '@/components/generate/selectors'
 import AgentBottomDock from './AgentBottomDock.vue'
-import AgentResultSection from './AgentResultSection.vue'
-import AgentTaskTimeline from './AgentTaskTimeline.vue'
 import AgentTopbar from './AgentTopbar.vue'
+import GenerateAgentRecord from '@/views/generate/components/GenerateAgentRecord.vue'
 
 const emit = defineEmits<{
   send: [message: string, type: CreationType, options?: {
@@ -40,6 +37,7 @@ const emit = defineEmits<{
     duration?: string
     feature?: string
     skill?: string
+    referenceImages?: string[]
   }]
 }>()
 
@@ -95,22 +93,11 @@ const resolvedIndicator = computed(() => props.run.indicator || {
   font-weight: 600;
 }
 
-.agent-workspace-query {
-  display: inline-flex;
-  align-items: center;
-  max-width: min(100%, 720px);
-  min-height: 38px;
-  padding: 0 16px;
-  margin: 24px 0 28px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.035);
-  color: rgba(255, 255, 255, 0.72);
+.agent-workspace-empty {
+  margin-top: 24px;
+  color: rgba(255, 255, 255, 0.5);
   font-size: 13px;
-  line-height: 20px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 22px;
 }
 
 @media (max-width: 768px) {
@@ -130,11 +117,8 @@ const resolvedIndicator = computed(() => props.run.indicator || {
     font-size: 22px;
   }
 
-  .agent-workspace-query {
-    display: flex;
-    white-space: normal;
-    border-radius: 18px;
-    padding: 10px 14px;
+  .agent-workspace-empty {
+    margin-top: 18px;
   }
 }
 </style>

@@ -560,6 +560,7 @@ const serializeGenerationRecord = (record: any) => ({
         query: record.agentRun.query,
         skill: record.agentRun.skill || 'general',
         status: String(record.agentRun.status || '').toLowerCase(),
+        referenceImages: resolveReferenceImagesFromMeta(record.metaJson),
         user: {
           name: record.agentRun.agentName || '',
           avatarSrc: record.agentRun.agentAvatarUrl || undefined,
@@ -652,10 +653,12 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
   })
 
   let outputs: GenerationOutputPayload[] = []
-  let normalizedReferenceImages: string[] = []
+  let normalizedReferenceImages: string[] | undefined
   try {
     outputs = await normalizeOutputs(payload)
-    normalizedReferenceImages = await normalizeReferenceImages(payload.referenceImages)
+    if (payload.referenceImages !== undefined) {
+      normalizedReferenceImages = await normalizeReferenceImages(payload.referenceImages)
+    }
   } catch (error) {
     logGenerationRecordError('create_generation_record:normalize_assets', error, {
       currentUserId,
@@ -872,10 +875,12 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
   })
 
   let outputs: GenerationOutputPayload[] = []
-  let normalizedReferenceImages: string[] = []
+  let normalizedReferenceImages: string[] | undefined
   try {
     outputs = await normalizeOutputs(payload)
-    normalizedReferenceImages = await normalizeReferenceImages(payload.referenceImages)
+    if (payload.referenceImages !== undefined) {
+      normalizedReferenceImages = await normalizeReferenceImages(payload.referenceImages)
+    }
   } catch (error) {
     logGenerationRecordError('update_generation_record:normalize_assets', error, {
       currentUserId,
@@ -892,7 +897,7 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
     await prisma.$transaction(async (tx) => {
       const existingRecord = await tx.generationRecord.findUnique({
         where: { id },
-        select: { id: true, userId: true, sessionId: true, createdAt: true },
+        select: { id: true, userId: true, sessionId: true, createdAt: true, metaJson: true },
       })
 
       if (!existingRecord) {
@@ -904,6 +909,11 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
       }
 
       const session = await resolveGenerationSessionForUser(tx, currentUserId, payload.sessionId || existingRecord.sessionId)
+      const existingReferenceImages = Array.isArray((existingRecord.metaJson as any)?.referenceImages)
+        ? (existingRecord.metaJson as any).referenceImages
+        : []
+      const shouldOverwriteReferenceImages = normalizedReferenceImages !== undefined
+        && (normalizedReferenceImages.length > 0 || existingReferenceImages.length === 0)
 
       await tx.generationRecord.update({
         where: { id },
@@ -923,7 +933,10 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
           skill: String(payload.skill || '').trim() || 'general',
           agentTaskId: String(payload.agentTaskId || '').trim() || null,
           metaJson: {
-            referenceImages: normalizedReferenceImages,
+            ...(((existingRecord.metaJson as Record<string, unknown> | null) || {})),
+            ...(shouldOverwriteReferenceImages
+              ? { referenceImages: normalizedReferenceImages }
+              : {}),
           },
           finishedAt: payload.done ? new Date() : null,
         },

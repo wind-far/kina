@@ -626,45 +626,47 @@ const formatGroupLabel = (date: Date): string => {
 }
 
 // 将后端返回的持久化记录还原成页面使用结构。
-const createRecordFromPersisted = (record: PersistedGenerationRecord): GeneratingRecord => ({
-  id: nextId++,
-  dbId: record.id,
-  sessionId: record.sessionId,
-  sessionTitle: record.sessionTitle || '',
-  type: record.type,
-  prompt: record.prompt,
-  time: formatGroupLabel(new Date(record.createdAt)),
-  // 后端若返回旧的 model 文本，这里统一按最新后台模型目录重新解析展示名称。
-  model: resolveModelLabel(
-    record.modelKey || record.model,
-    record.type === 'image' ? 'IMAGE' : record.type === 'agent' ? 'CHAT' : 'VIDEO',
-  ) || record.model,
-  modelKey: record.modelKey,
-  ratio: record.ratio,
-  resolution: record.resolution,
-  duration: record.duration,
-  feature: record.feature,
-  skill: record.skill,
-  referenceImages: Array.isArray(record.referenceImages) ? [...record.referenceImages] : [],
-  content: record.type === 'image'
-    ? (record.content || (!record.done ? '[[queued]]任务已创建，等待服务端执行' : ''))
-    : record.content,
-  images: record.images,
-  done: record.done,
-  stopped: Boolean(record.stopped),
-  progressStage: record.type === 'image'
-    ? (record.done ? (record.stopped ? 'stopped' : 'completed') : 'queued')
-    : undefined,
-  progressMessage: record.type === 'image'
-    ? (record.done
-      ? resolveTaskStageLabel(record.stopped ? 'stopped' : 'completed', record.stopped ? '任务已停止' : '任务已完成')
-      : resolveTaskStageLabel('queued', '任务已创建，等待服务端执行'))
-    : undefined,
-  progressPercent: record.type === 'image' ? (record.done ? 100 : 5) : 0,
-  error: record.done || record.stopped ? record.error : '',
-  agentTaskId: record.agentTaskId,
-  agentRun: record.agentRun,
-})
+const createRecordFromPersisted = (record: PersistedGenerationRecord): GeneratingRecord => {
+  return {
+    id: nextId++,
+    dbId: record.id,
+    sessionId: record.sessionId,
+    sessionTitle: record.sessionTitle || '',
+    type: record.type,
+    prompt: record.prompt,
+    time: formatGroupLabel(new Date(record.createdAt)),
+    // 后端若返回旧的 model 文本，这里统一按最新后台模型目录重新解析展示名称。
+    model: resolveModelLabel(
+      record.modelKey || record.model,
+      record.type === 'image' ? 'IMAGE' : record.type === 'agent' ? 'CHAT' : 'VIDEO',
+    ) || record.model,
+    modelKey: record.modelKey,
+    ratio: record.ratio,
+    resolution: record.resolution,
+    duration: record.duration,
+    feature: record.feature,
+    skill: record.skill,
+    referenceImages: Array.isArray(record.referenceImages) ? [...record.referenceImages] : [],
+    content: record.type === 'image'
+      ? (record.content || (!record.done ? '[[queued]]任务已创建，等待服务端执行' : ''))
+      : record.content,
+    images: record.images,
+    done: record.done,
+    stopped: Boolean(record.stopped),
+    progressStage: record.type === 'image'
+      ? (record.done ? (record.stopped ? 'stopped' : 'completed') : 'queued')
+      : undefined,
+    progressMessage: record.type === 'image'
+      ? (record.done
+        ? resolveTaskStageLabel(record.stopped ? 'stopped' : 'completed', record.stopped ? '任务已停止' : '任务已完成')
+        : resolveTaskStageLabel('queued', '任务已创建，等待服务端执行'))
+      : undefined,
+    progressPercent: record.type === 'image' ? (record.done ? 100 : 5) : 0,
+    error: record.done || record.stopped ? record.error : '',
+    agentTaskId: record.agentTaskId,
+    agentRun: record.agentRun,
+  }
+}
 
 
 // 将后端持久化后的正式资源地址回写到当前记录，避免重复提交 base64 或上游临时链接。
@@ -689,12 +691,23 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
     ? 100
     : Math.max(record.progressPercent || 0, mapTaskStageToProgressPercent(record.progressStage))
   record.images = Array.isArray(saved.images) ? [...saved.images] : []
-  if (Array.isArray(saved.referenceImages)) {
+  if (Array.isArray(saved.referenceImages) && saved.referenceImages.length) {
     record.referenceImages = [...saved.referenceImages]
+  } else if (!Array.isArray(record.referenceImages)) {
+    record.referenceImages = []
   }
   if (saved.agentRun) {
+    const nextAgentRunReferenceImages = Array.isArray(saved.agentRun.referenceImages) && saved.agentRun.referenceImages.length
+      ? [...saved.agentRun.referenceImages]
+      : Array.isArray(record.referenceImages) && record.referenceImages.length
+        ? [...record.referenceImages]
+        : Array.isArray(record.agentRun?.referenceImages) && record.agentRun.referenceImages.length
+          ? [...record.agentRun.referenceImages]
+          : []
+
     record.agentRun = {
       ...saved.agentRun,
+      referenceImages: nextAgentRunReferenceImages,
       result: {
         ...saved.agentRun.result,
         images: Array.isArray(saved.agentRun.result?.images)
@@ -1061,7 +1074,12 @@ const handleSend = async (message: string, type: CreationType, options?: { model
     progressPercent: type === 'image' ? 5 : 0,
     error: '',
     agentRun: type === 'agent' && shouldUseAgentWorkspaceFlow(options?.skill)
-      ? buildAgentPendingRun(recordId, message, options?.skill || 'general')
+      ? buildAgentPendingRun(
+          recordId,
+          message,
+          options?.skill || 'general',
+          Array.isArray(options?.referenceImages) ? options.referenceImages : [],
+        )
       : undefined,
   }
 
@@ -1394,6 +1412,7 @@ onUnmounted(() => {
                                 <GenerateAgentRecord
                                   v-if="record.type === 'agent' && record.agentRun"
                                   :run="record.agentRun"
+                                  :reference-images="record.referenceImages || []"
                                   :error-text="record.error ? formatGenerationError(record.error, '任务执行失败') : ''"
                                   @stop="handleStopAgentExecution(record)"
                                 />
@@ -1402,6 +1421,7 @@ onUnmounted(() => {
                                   :prompt="record.prompt"
                                   :content="record.content"
                                   :done="record.done"
+                                  :reference-images="record.referenceImages || []"
                                   :error="record.error ? formatGenerationError(record.error, '对话生成失败') : ''"
                                 />
                                 <ImageLoadingRecord

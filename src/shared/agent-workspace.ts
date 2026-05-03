@@ -237,34 +237,44 @@ export const buildExecutionSteps = (options: {
   ]
 }
 
-export const buildAgentPendingRun = (id: number | string, message: string, skill: string): AgentRunState => ({
-  id: `agent-run-${id}`,
-  query: message,
-  skill,
-  status: 'thinking',
-  user: {
-    name: 'Canana Agent',
-  },
-  steps: buildExecutionSteps({
-    workflowLabel: '任务规划中',
-    expectedImageCount: 0,
-    finishedImageCount: 0,
-    phase: 'analyzing',
-  }),
-  indicator: {
+export const buildAgentPendingRun = (
+  id: number | string,
+  message: string,
+  skill: string,
+  referenceImages?: string[],
+): AgentRunState => {
+  const normalizedReferenceImages = Array.isArray(referenceImages) ? [...referenceImages] : []
+
+  return {
+    id: `agent-run-${id}`,
+    query: message,
+    skill,
     status: 'thinking',
-    title: '再思考片刻...',
-    description: '正在理解你的意图，并匹配合适的技能与工作流。',
-  },
-  result: {
-    title: '',
-    summary: '',
-    images: [],
-    expectedImageCount: 0,
-    outputVisible: false,
-  },
-  processSections: [],
-})
+    referenceImages: normalizedReferenceImages,
+    user: {
+      name: 'Canana Agent',
+    },
+    steps: buildExecutionSteps({
+      workflowLabel: '任务规划中',
+      expectedImageCount: 0,
+      finishedImageCount: 0,
+      phase: 'analyzing',
+    }),
+    indicator: {
+      status: 'thinking',
+      title: '再思考片刻...',
+      description: '正在理解你的意图，并匹配合适的技能与工作流。',
+    },
+    result: {
+      title: '',
+      summary: '',
+      images: [],
+      expectedImageCount: 0,
+      outputVisible: false,
+    },
+    processSections: [],
+  }
+}
 
 export const upsertProcessSection = (
   sections: AgentProcessSection[],
@@ -402,8 +412,10 @@ export const buildAgentErrorRun = (currentRun: AgentRunState, errorMessage: stri
   },
   result: {
     title: currentRun.result?.title || '',
-    summary: '当前任务未能完成分析，你可以修改需求后再次发送。',
-    images: [],
+    summary: currentRun.result?.images?.length
+      ? '任务在执行过程中中断，已返回的结果已保留，你可以基于现有结果继续调整后重试。'
+      : '当前任务未能完成分析，你可以修改需求后再次发送。',
+    images: currentRun.result?.images || [],
     expectedImageCount: currentRun.result?.expectedImageCount || 0,
     outputVisible: true,
   },

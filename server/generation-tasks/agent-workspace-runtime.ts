@@ -6,6 +6,11 @@ export interface AgentWorkspaceTaskPayload {
   skill: string
 }
 
+export interface AgentWorkspaceImageModelBinding {
+  providerId: string
+  modelKey: string
+}
+
 export interface AgentWorkspacePlannedImageTask {
   label: string
   promptText: string
@@ -23,6 +28,7 @@ export interface AgentWorkspaceSkillRuntimeMeta {
   skillLabel: string
   workspaceSkillKey: string
   dependencySkillKeys: string[]
+  imageModelBinding?: AgentWorkspaceImageModelBinding
 }
 
 export const workspaceTimingProfile = {
@@ -319,6 +325,38 @@ export const buildWorkspaceCompletionSummary = (options: {
   return `${subject}任务已完成。`
 }
 
+// 从技能扩展配置中解析工作台出图模型绑定。
+const resolveWorkspaceImageModelBinding = (configJson: unknown): AgentWorkspaceImageModelBinding | undefined => {
+  if (!configJson || typeof configJson !== 'object' || Array.isArray(configJson)) {
+    return undefined
+  }
+
+  const configRecord = configJson as Record<string, unknown>
+  const bindingRecord = configRecord.imageModelBinding && typeof configRecord.imageModelBinding === 'object' && !Array.isArray(configRecord.imageModelBinding)
+    ? configRecord.imageModelBinding as Record<string, unknown>
+    : null
+
+  const providerId = String(
+    bindingRecord?.providerId
+    || configRecord.imageModelProviderId
+    || '',
+  ).trim()
+  const modelKey = String(
+    bindingRecord?.modelKey
+    || configRecord.imageModelKey
+    || '',
+  ).trim()
+
+  if (!providerId || !modelKey) {
+    return undefined
+  }
+
+  return {
+    providerId,
+    modelKey,
+  }
+}
+
 // 获取工作台执行所需的技能运行时元信息。
 export const getAgentWorkspaceSkillMeta = async (skill: string): Promise<AgentWorkspaceSkillRuntimeMeta> => {
   const normalizedSkill = String(skill || '').trim() || 'general'
@@ -334,6 +372,7 @@ export const getAgentWorkspaceSkillMeta = async (skill: string): Promise<AgentWo
     dependencySkillKeys: runtimeConfig?.dependencySkillKeys?.length
       ? runtimeConfig.dependencySkillKeys
       : (workspaceDependencySkillKeyMap[normalizedSkill] || []),
+    imageModelBinding: resolveWorkspaceImageModelBinding(runtimeConfig?.configJson),
   }
 }
 

@@ -657,8 +657,21 @@ const requestImageEdit = async (input: {
   }
 }
 
-const resolveWorkspaceImageModel = async () => {
+const resolveWorkspaceImageModel = async (binding?: {
+  providerId: string
+  modelKey: string
+}) => {
   const catalog = await getPublicModelCatalog()
+  if (binding?.providerId && binding?.modelKey) {
+    const matchedImageModel = catalog.models.image.find(item => {
+      return item.providerId === binding.providerId && item.modelKey === binding.modelKey
+    })
+    if (!matchedImageModel) {
+      throw new Error('当前技能绑定的图片模型不可用，请在后台技能配置中重新选择')
+    }
+    return matchedImageModel
+  }
+
   const imageModel = catalog.models.image[0]
   if (!imageModel) {
     throw new Error('未配置可用图片模型，请先在后台启用图片模型')
@@ -1088,7 +1101,18 @@ const requestAgentWorkspaceModelPlan = async (input: {
     ? parsed.submit_lines.map(item => String(item || '').trim()).filter(Boolean)
     : []
   const planItems = Array.isArray(parsed.plan_items)
-    ? parsed.plan_items.map(item => String(item || '').trim()).filter(Boolean)
+    ? parsed.plan_items.map((item) => {
+        if (typeof item === 'string') {
+          return item.trim()
+        }
+
+        if (item && typeof item === 'object') {
+          const record = item as Record<string, unknown>
+          return String(record.title || record.label || record.text || '').trim()
+        }
+
+        return ''
+      }).filter(Boolean)
     : []
   const imageTasks = Array.isArray(parsed.image_tasks)
     ? parsed.image_tasks.map((item) => {
@@ -1404,6 +1428,7 @@ const persistAgentWorkspaceRecord = async (input: {
     ...buildInitialRecordPayload(input.payload),
     content: '',
     agentRun: input.agentRun,
+    referenceImages: undefined,
     outputs: agentRunImages
       .filter((image) => String(image?.imageSrc || '').trim())
       .map((image, index) => ({
@@ -1433,7 +1458,12 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
   const referenceImages = Array.isArray(payload.referenceImages)
     ? payload.referenceImages.map(item => String(item || '').trim()).filter(Boolean)
     : []
-  let currentRun = buildAgentPendingRun(task.recordId, String(payload.prompt || '').trim(), skill)
+  let currentRun = buildAgentPendingRun(
+    task.recordId,
+    String(payload.prompt || '').trim(),
+    skill,
+    referenceImages,
+  )
 
   const initialRecord = await persistAgentWorkspaceRecord({
     task,
@@ -1706,7 +1736,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
       expectedImageCount: plan.imageTasks.length,
     })
 
-    const imageModel = await resolveWorkspaceImageModel()
+    const imageModel = await resolveWorkspaceImageModel(skillMeta.imageModelBinding)
     const defaultRequestBody = imageModel.defaultParamsJson && typeof imageModel.defaultParamsJson === 'object'
       ? { ...imageModel.defaultParamsJson }
       : {}

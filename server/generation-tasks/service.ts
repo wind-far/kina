@@ -1740,6 +1740,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
     const defaultRequestBody = imageModel.defaultParamsJson && typeof imageModel.defaultParamsJson === 'object'
       ? { ...imageModel.defaultParamsJson }
       : {}
+    const hasWorkspaceReferenceImages = referenceImages.length > 0
 
     for (const [index, imageTask] of plan.imageTasks.entries()) {
       await sleepWithWorkspaceAbort(task.abortController.signal, getWorkspaceRandomDelay(workspaceTimingProfile.betweenImageDelayRange))
@@ -1750,12 +1751,21 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
         n: 1,
       } as Record<string, unknown>
 
-      const { imageUrls } = await requestImageGeneration({
-        signal: task.abortController.signal,
-        providerId: imageModel.providerId,
-        modelKey: imageModel.modelKey,
-        requestBody,
-      })
+      const { imageUrls } = hasWorkspaceReferenceImages
+        ? await requestImageEdit({
+          signal: task.abortController.signal,
+          providerId: imageModel.providerId,
+          modelKey: imageModel.modelKey,
+          prompt: imageTask.promptText,
+          size: String(requestBody.size || '').trim() || undefined,
+          referenceImages,
+        })
+        : await requestImageGeneration({
+          signal: task.abortController.signal,
+          providerId: imageModel.providerId,
+          modelKey: imageModel.modelKey,
+          requestBody,
+        })
 
       await emitWorkspaceEvent({
         type: 'image_completed',

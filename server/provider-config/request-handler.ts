@@ -9,7 +9,14 @@ import {
   listAdminProviders,
   updateAdminProvider,
 } from './service'
-import { createProviderModel, deleteProviderModel, listProviderModels, updateProviderModel } from './model-service'
+import {
+  batchUpsertProviderModels,
+  createProviderModel,
+  deleteProviderModel,
+  discoverProviderModels,
+  listProviderModels,
+  updateProviderModel,
+} from './model-service'
 import { sendProviderRuntimeError } from './shared'
 import { PROVIDER_CONFIG_CATALOG_PATH, PROVIDER_CONFIG_PROVIDERS_PATH } from './constants'
 
@@ -47,6 +54,28 @@ const matchProviderModelDetailPath = (requestPath: string) => {
   }
 }
 
+const matchProviderModelDiscoverPath = (requestPath: string) => {
+  const matched = requestPath.match(/^\/api\/provider-config\/providers\/([^/]+)\/models\/discover$/)
+  if (!matched) {
+    return null
+  }
+
+  return {
+    providerId: decodeURIComponent(matched[1]),
+  }
+}
+
+const matchProviderModelBatchUpsertPath = (requestPath: string) => {
+  const matched = requestPath.match(/^\/api\/provider-config\/providers\/([^/]+)\/models\/batch-upsert$/)
+  if (!matched) {
+    return null
+  }
+
+  return {
+    providerId: decodeURIComponent(matched[1]),
+  }
+}
+
 // 处理厂商配置与模型配置请求。
 export const handleProviderConfigRequest = async (req: any, res: any) => {
   try {
@@ -59,6 +88,8 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
     const providerDetailMatch = matchProviderDetailPath(requestPath)
     const providerModelsMatch = matchProviderModelsPath(requestPath)
     const providerModelDetailMatch = matchProviderModelDetailPath(requestPath)
+    const providerModelDiscoverMatch = matchProviderModelDiscoverPath(requestPath)
+    const providerModelBatchUpsertMatch = matchProviderModelBatchUpsertPath(requestPath)
 
     if (req.method === 'GET' && requestPath === PROVIDER_CONFIG_CATALOG_PATH) {
       const data = await getPublicModelCatalog()
@@ -134,6 +165,17 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       return
     }
 
+    if (req.method === 'GET' && providerModelDiscoverMatch) {
+      const currentUser = await requireAdminSessionUser(req, res)
+      if (!currentUser) {
+        return
+      }
+
+      const data = await discoverProviderModels(providerModelDiscoverMatch.providerId)
+      sendJson(res, 200, { data, message: '模型列表已获取' })
+      return
+    }
+
     if (req.method === 'POST' && providerModelsMatch) {
       const currentUser = await requireAdminSessionUser(req, res)
       if (!currentUser) {
@@ -143,6 +185,18 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       const payload = await readJsonBody(req)
       const data = await createProviderModel(providerModelsMatch.providerId, payload as any)
       sendJson(res, 200, { data, message: '模型已创建' })
+      return
+    }
+
+    if (req.method === 'POST' && providerModelBatchUpsertMatch) {
+      const currentUser = await requireAdminSessionUser(req, res)
+      if (!currentUser) {
+        return
+      }
+
+      const payload = await readJsonBody(req)
+      const data = await batchUpsertProviderModels(providerModelBatchUpsertMatch.providerId, payload as any)
+      sendJson(res, 200, { data, message: '模型已批量导入' })
       return
     }
 

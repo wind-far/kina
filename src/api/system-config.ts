@@ -796,6 +796,50 @@ export interface RedisHealthConfig {
   message: string
 }
 
+export interface RedisBusinessCacheHotKeyConfig {
+  scope: string
+  key: string
+  score: number
+}
+
+export interface RedisBusinessCacheLargeValueConfig {
+  scope: string
+  key: string
+  bytes: number
+}
+
+export interface RedisBusinessCacheWarningConfig {
+  level: 'info' | 'warning'
+  message: string
+}
+
+export interface RedisBusinessCacheModuleConfig {
+  scope: string
+  currentKeyCount: number
+  sampleKeys: string[]
+  hitCount: number
+  missCount: number
+  readCount: number
+  writeCount: number
+  invalidateCount: number
+  hitRate: number
+  lastHitAt: string
+  lastMissAt: string
+  lastWriteAt: string
+  lastInvalidateAt: string
+  lastValueBytes: number
+  maxValueBytes: number
+  averageValueBytes: number
+  hotKeys: Array<{
+    key: string
+    score: number
+  }>
+  largeValues: Array<{
+    key: string
+    bytes: number
+  }>
+}
+
 export interface RedisAdminOverviewConfig {
   enabled: boolean
   prefix: string
@@ -897,6 +941,14 @@ export interface RedisAdminOverviewConfig {
       sampleKeys: string[]
     }
   }
+  businessCaches: {
+    modules: RedisBusinessCacheModuleConfig[]
+    diagnostics: {
+      hotKeys: RedisBusinessCacheHotKeyConfig[]
+      largeValues: RedisBusinessCacheLargeValueConfig[]
+      warnings: RedisBusinessCacheWarningConfig[]
+    }
+  }
 }
 
 export interface RedisTaskDetailConfig {
@@ -906,8 +958,11 @@ export interface RedisTaskDetailConfig {
     userId: string
     type: 'image' | 'agent'
     strategyKey: string
-    status: 'running' | 'completed' | 'failed' | 'stopped'
+    status: 'queued' | 'running' | 'completed' | 'failed' | 'stopped'
     updatedAt: string
+    providerId?: string
+    modelKey?: string
+    skillKey?: string
   } | null
   abort: {
     exists: boolean
@@ -957,6 +1012,30 @@ export interface RedisTaskDetailConfig {
     agentRunStatus: string
     updatedAt: string
   } | null
+  governance: {
+    queue: {
+      enteredAt: string
+      startedAt: string
+      waitDurationMs: number
+      reason: string
+    } | null
+    retry: {
+      totalRetryCount: number
+      burstRateRetryCount: number
+      lastRetryAt: string
+      lastRetryStage: string
+      lastWaitDurationMs: number
+      lastStatusCode: number
+      lastErrorPreview: string
+    } | null
+    execution: {
+      lockAcquiredAt: string
+      lockLost: boolean
+      completedAt: string
+      lastErrorAt: string
+      lastErrorMessage: string
+    } | null
+  }
 }
 
 export interface SystemRedisRuntimeSettingsConfig {

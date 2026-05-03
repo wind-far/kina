@@ -42,6 +42,7 @@ import {
   getSharedTaskRuntime,
   hasSharedTaskAbortRequested,
   markSharedTaskAbortRequested,
+  patchSharedTaskRuntime,
   setSharedTaskRuntime,
   setSharedTaskSnapshot,
 } from './runtime-store'
@@ -150,6 +151,13 @@ const fetchWithBurstRateRetry = async (input: {
   signal: AbortSignal
   stage: string
   detail: Record<string, unknown>
+  onRetry?: (retryState: {
+    attempt: number
+    waitDurationMs: number
+    status: number
+    errorPreview: string
+    stage: string
+  }) => Promise<void> | void
 }) => {
   for (let attemptIndex = 0; attemptIndex <= BURST_RATE_RETRY_DELAYS.length; attemptIndex += 1) {
     const response = await fetch(input.url, {
@@ -178,6 +186,14 @@ const fetchWithBurstRateRetry = async (input: {
       attempt: attemptIndex + 1,
       waitDurationMs,
       errorPreview: responseText.slice(0, 240),
+    })
+
+    await input.onRetry?.({
+      attempt: attemptIndex + 1,
+      waitDurationMs,
+      status: response.status,
+      errorPreview: responseText.slice(0, 240),
+      stage: input.stage,
     })
 
     await sleepWithAbortSignal(input.signal, waitDurationMs)
@@ -265,14 +281,113 @@ const emitTaskAgentEvent = (recordId: string, input: {
   })
 }
 
-const syncSharedTaskRuntime = async (task: RunningGenerationTask, status: 'running' | 'completed' | 'failed' | 'stopped') => {
-  await setSharedTaskRuntime({
-    recordId: task.recordId,
-    userId: task.userId,
-    type: task.type,
-    strategyKey: task.strategyKey,
-    status,
-    updatedAt: new Date().toISOString(),
+const syncSharedTaskRuntime = async (
+  task: RunningGenerationTask,
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'stopped',
+  extra?: Partial<Awaited<ReturnType<typeof getSharedTaskRuntime>>>,
+) => {
+  const now = new Date().toISOString()
+
+  await patchSharedTaskRuntime(task.recordId, (current) => {
+    const currentQueue = current?.queue
+    const queueStartedAt = status === 'running'
+      ? (currentQueue?.startedAt || now)
+      : (currentQueue?.startedAt || '')
+    const queueEnteredAt = currentQueue?.enteredAt || (status === 'queued' ? now : '')
+    const queueWaitDurationMs = status === 'running' && queueEnteredAt
+      ? Math.max(Date.parse(queueStartedAt) - Date.parse(queueEnteredAt), 0)
+      : Number(currentQueue?.waitDurationMs || 0)
+
+    return {
+      recordId: task.recordId,
+      userId: task.userId,
+      type: task.type,
+      strategyKey: task.strategyKey,
+      status,
+      updatedAt: now,
+      providerId: task.billedProviderId,
+      modelKey: task.billedModelKey,
+      skillKey: current?.skillKey || '',
+      queue: {
+        enteredAt: queueEnteredAt,
+        startedAt: queueStartedAt,
+        waitDurationMs: queueWaitDurationMs,
+        reason: currentQueue?.reason || '等待服务端执行',
+      },
+      retry: current?.retry || {
+        totalRetryCount: 0,
+        burstRateRetryCount: 0,
+        lastRetryAt: '',
+        lastRetryStage: '',
+        lastWaitDurationMs: 0,
+        lastStatusCode: 0,
+        lastErrorPreview: '',
+      },
+      execution: {
+        lockAcquiredAt: current?.execution?.lockAcquiredAt || '',
+        lockLost: Boolean(current?.execution?.lockLost),
+        completedAt: status === 'completed' || status === 'failed' || status === 'stopped'
+          ? now
+          : (current?.execution?.completedAt || ''),
+        lastErrorAt: current?.execution?.lastErrorAt || '',
+        lastErrorMessage: current?.execution?.lastErrorMessage || '',
+      },
+      ...(extra || {}),
+    }
+  })
+}
+
+// 记录任务排队、重试与执行阶段的治理信息，供后台 Redis 诊断页查看。
+const markTaskRetryState = async (task: RunningGenerationTask, input: {
+  attempt: number
+  waitDurationMs: number
+  status: number
+  errorPreview: string
+  stage: string
+}) => {
+  await patchSharedTaskRuntime(task.recordId, (current) => {
+    if (!current) {
+      return current
+    }
+
+    return {
+      ...current,
+      updatedAt: new Date().toISOString(),
+      retry: {
+        totalRetryCount: Math.max(Number(current.retry?.totalRetryCount || 0), input.attempt),
+        burstRateRetryCount: Math.max(Number(current.retry?.burstRateRetryCount || 0), input.attempt),
+        lastRetryAt: new Date().toISOString(),
+        lastRetryStage: input.stage,
+        lastWaitDurationMs: input.waitDurationMs,
+        lastStatusCode: input.status,
+        lastErrorPreview: input.errorPreview,
+      },
+    }
+  })
+}
+
+const markTaskExecutionState = async (task: RunningGenerationTask, input: {
+  lockAcquiredAt?: string
+  lockLost?: boolean
+  lastErrorAt?: string
+  lastErrorMessage?: string
+}) => {
+  await patchSharedTaskRuntime(task.recordId, (current) => {
+    if (!current) {
+      return current
+    }
+
+    return {
+      ...current,
+      updatedAt: new Date().toISOString(),
+      execution: {
+        lockAcquiredAt: input.lockAcquiredAt ?? current.execution?.lockAcquiredAt ?? '',
+        lockLost: typeof input.lockLost === 'boolean' ? input.lockLost : Boolean(current.execution?.lockLost),
+        completedAt: current.execution?.completedAt || '',
+        lastErrorAt: input.lastErrorAt ?? current.execution?.lastErrorAt ?? '',
+        lastErrorMessage: input.lastErrorMessage ?? current.execution?.lastErrorMessage ?? '',
+      },
+    }
   })
 }
 
@@ -293,6 +408,11 @@ const runTaskWithExecutionLock = async (
     return false
   }
 
+  await markTaskExecutionState(task, {
+    lockAcquiredAt: new Date().toISOString(),
+    lockLost: false,
+  })
+
   const renewIntervalMs = Math.max(5_000, Math.floor(REDIS_CONFIG.taskLockTtlMs / 3))
   let renewTimer: ReturnType<typeof setInterval> | null = null
   let lockLost = false
@@ -305,6 +425,11 @@ const runTaskWithExecutionLock = async (
       }
 
       lockLost = true
+      void markTaskExecutionState(task, {
+        lockLost: true,
+        lastErrorAt: new Date().toISOString(),
+        lastErrorMessage: '任务执行锁续租失败，任务已中断',
+      })
       logGenerationTaskError('task_execution_lock_renew_failed', new Error('lock_lost'), {
         recordId: task.recordId,
         userId: task.userId,
@@ -313,6 +438,11 @@ const runTaskWithExecutionLock = async (
       task.abortController.abort()
     }).catch((error) => {
       lockLost = true
+      void markTaskExecutionState(task, {
+        lockLost: true,
+        lastErrorAt: new Date().toISOString(),
+        lastErrorMessage: '任务执行锁续租异常，任务已中断',
+      })
       logGenerationTaskError('task_execution_lock_renew_error', error, {
         recordId: task.recordId,
         userId: task.userId,
@@ -362,6 +492,7 @@ const resolveTaskRecordSnapshot = async (recordId: string, currentUserId: string
     && !record.stopped
     && !hasLocalRunningTask(recordId)
     && sharedRuntime?.status !== 'running'
+    && sharedRuntime?.status !== 'queued'
   ) {
     await updateGenerationRecord(recordId, {
       type: record.type,
@@ -633,6 +764,13 @@ const requestImageGeneration = async (input: {
   providerId: string
   modelKey: string
   requestBody: Record<string, unknown>
+  onRetry?: (retryState: {
+    attempt: number
+    waitDurationMs: number
+    status: number
+    errorPreview: string
+    stage: string
+  }) => Promise<void> | void
 }) => {
   const upstream = await resolveGatewayProviderUpstream({
     providerId: input.providerId,
@@ -663,6 +801,7 @@ const requestImageGeneration = async (input: {
       modelKey: input.modelKey,
       endpointType: 'image',
     },
+    onRetry: input.onRetry,
     init: {
       method: 'POST',
       headers,
@@ -757,6 +896,13 @@ const requestImageEdit = async (input: {
   prompt: string
   size?: string
   referenceImages: string[]
+  onRetry?: (retryState: {
+    attempt: number
+    waitDurationMs: number
+    status: number
+    errorPreview: string
+    stage: string
+  }) => Promise<void> | void
 }) => {
   const upstream = await resolveGatewayProviderUpstream({
     providerId: input.providerId,
@@ -797,6 +943,7 @@ const requestImageEdit = async (input: {
       endpointType: 'image-edit',
       referenceImageCount: input.referenceImages.length,
     },
+    onRetry: input.onRetry,
     init: {
       method: 'POST',
       headers,
@@ -847,6 +994,7 @@ const resolveWorkspaceImageModel = async (binding?: {
 }
 
 const executeImageGenerationTask = async (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
+  await syncSharedTaskRuntime(task, 'running')
   await ensureTaskNotAborted(task)
   const modelKey = String(payload.modelKey || '').trim()
   if (!modelKey) {
@@ -894,12 +1042,14 @@ const executeImageGenerationTask = async (task: RunningGenerationTask, payload: 
       prompt: String(requestBody.prompt || payload.prompt || '').trim(),
       size: String(requestBody.size || '').trim() || undefined,
       referenceImages,
+      onRetry: (retryState) => markTaskRetryState(task, retryState),
     })
     : await requestImageGeneration({
       signal: task.abortController.signal,
       providerId,
       modelKey,
       requestBody,
+      onRetry: (retryState) => markTaskRetryState(task, retryState),
     })
   await ensureTaskNotAborted(task)
 
@@ -1323,6 +1473,7 @@ const requestAgentWorkspaceModelPlan = async (input: {
 }
 
 const executeAgentChatTask = async (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
+  await syncSharedTaskRuntime(task, 'running')
   await ensureTaskNotAborted(task)
   const modelKey = String(payload.modelKey || '').trim()
   if (!modelKey) {
@@ -1382,6 +1533,7 @@ const executeAgentChatTask = async (task: RunningGenerationTask, payload: Genera
       modelKey,
       endpointType: 'chat',
     },
+    onRetry: (retryState) => markTaskRetryState(task, retryState),
     init: {
       method: 'POST',
       headers,
@@ -1620,6 +1772,7 @@ const persistAgentWorkspaceRecord = async (input: {
 }
 
 const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
+  await syncSharedTaskRuntime(task, 'running')
   await ensureTaskNotAborted(task)
   const skill = String(payload.skill || '').trim() || 'general'
   const skillPrompt = String(payload.prompt || '').trim()
@@ -1934,12 +2087,14 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
           prompt: imageTask.promptText,
           size: String(requestBody.size || '').trim() || undefined,
           referenceImages,
+          onRetry: (retryState) => markTaskRetryState(task, retryState),
         })
         : await requestImageGeneration({
           signal: task.abortController.signal,
           providerId: imageModel.providerId,
           modelKey: imageModel.modelKey,
           requestBody,
+          onRetry: (retryState) => markTaskRetryState(task, retryState),
         })
 
       await emitWorkspaceEvent({
@@ -2027,6 +2182,10 @@ const runImageTaskInBackground = (task: RunningGenerationTask, payload: Generati
 
       if (isAbortError) {
         await refundTaskPointsIfNeeded(task, 'task_aborted')
+        await markTaskExecutionState(task, {
+          lastErrorAt: new Date().toISOString(),
+          lastErrorMessage: '任务已收到停止指令',
+        })
         emitTaskProgressEvent(task.recordId, {
           stage: 'stopping',
           stopped: true,
@@ -2057,6 +2216,10 @@ const runImageTaskInBackground = (task: RunningGenerationTask, payload: Generati
       } else {
         await refundTaskPointsIfNeeded(task, 'task_failed')
         const errorMessage = normalizeGenerationErrorMessage(error, '图片生成失败')
+        await markTaskExecutionState(task, {
+          lastErrorAt: new Date().toISOString(),
+          lastErrorMessage: errorMessage,
+        })
         emitTaskProgressEvent(task.recordId, {
           stage: 'failing',
           message: '任务执行异常，正在写入失败状态',
@@ -2112,6 +2275,10 @@ const runAgentTaskInBackground = (task: RunningGenerationTask, payload: Generati
 
       if (isAbortError) {
         await refundTaskPointsIfNeeded(task, 'task_aborted')
+        await markTaskExecutionState(task, {
+          lastErrorAt: new Date().toISOString(),
+          lastErrorMessage: '任务已收到停止指令',
+        })
         if (task.strategyKey === 'agent-workspace') {
           const currentRecord = await getGenerationRecordById(task.recordId, task.userId)
           const stoppedRun = currentRecord.agentRun
@@ -2165,6 +2332,10 @@ const runAgentTaskInBackground = (task: RunningGenerationTask, payload: Generati
       } else {
         const errorMessage = normalizeGenerationErrorMessage(error, '对话生成失败')
         await refundTaskPointsIfNeeded(task, 'task_failed')
+        await markTaskExecutionState(task, {
+          lastErrorAt: new Date().toISOString(),
+          lastErrorMessage: errorMessage,
+        })
         if (task.strategyKey === 'agent-workspace') {
           const currentRecord = await getGenerationRecordById(task.recordId, task.userId)
           const errorRun = currentRecord.agentRun
@@ -2325,7 +2496,9 @@ export const startGenerationTask = async (payload: GenerationTaskStartPayload, c
       }
 
       setLocalRunningTask(task)
-      await syncSharedTaskRuntime(task, 'running')
+      await syncSharedTaskRuntime(task, 'queued', {
+        skillKey,
+      })
       emitTaskStreamEvent(createdRecord.id, {
         type: 'progress',
         recordId: createdRecord.id,
@@ -2425,7 +2598,9 @@ export const startGenerationTask = async (payload: GenerationTaskStartPayload, c
       }
 
       setLocalRunningTask(task)
-      await syncSharedTaskRuntime(task, 'running')
+      await syncSharedTaskRuntime(task, 'queued', {
+        skillKey,
+      })
       emitTaskStreamEvent(createdRecord.id, {
         type: 'progress',
         recordId: createdRecord.id,
@@ -2513,7 +2688,9 @@ export const startGenerationTask = async (payload: GenerationTaskStartPayload, c
     }
 
     setLocalRunningTask(task)
-    await syncSharedTaskRuntime(task, 'running')
+    await syncSharedTaskRuntime(task, 'queued', {
+      skillKey,
+    })
     emitTaskStreamEvent(createdRecord.id, {
       type: 'progress',
       recordId: createdRecord.id,

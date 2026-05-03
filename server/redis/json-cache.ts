@@ -1,5 +1,6 @@
 import { REDIS_CONFIG, isRedisEnabled } from './config'
 import { getRedisClient } from './client'
+import { recordCacheHitMetric, recordCacheMissMetric, recordCacheWriteMetric } from './metrics'
 
 interface JsonCacheOptions<T> {
   key: string
@@ -30,12 +31,14 @@ export const writeJsonCache = async (key: string, value: unknown, ttlSeconds = R
     return
   }
 
+  const serializedValue = JSON.stringify(value)
   const client = await getRedisClient()
   if (!client) {
     return
   }
 
-  await client.set(key, JSON.stringify(value), 'EX', ttlSeconds)
+  await client.set(key, serializedValue, 'EX', ttlSeconds)
+  await recordCacheWriteMetric(key, Buffer.byteLength(serializedValue))
 }
 
 export const deleteJsonCache = async (key: string) => {
@@ -55,9 +58,11 @@ export const deleteJsonCache = async (key: string) => {
 export const getOrSetJsonCache = async <T>(options: JsonCacheOptions<T>): Promise<T> => {
   const cachedValue = await readJsonCache<T>(options.key)
   if (cachedValue !== null) {
+    await recordCacheHitMetric(options.key)
     return cachedValue
   }
 
+  await recordCacheMissMetric(options.key)
   const freshValue = await options.factory()
   await writeJsonCache(options.key, freshValue, options.ttlSeconds)
   return freshValue

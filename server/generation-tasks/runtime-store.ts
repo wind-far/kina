@@ -6,8 +6,33 @@ export interface SharedTaskRuntimeState {
   userId: string
   type: 'image' | 'agent'
   strategyKey: string
-  status: 'running' | 'completed' | 'failed' | 'stopped'
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'stopped'
   updatedAt: string
+  providerId?: string
+  modelKey?: string
+  skillKey?: string
+  queue?: {
+    enteredAt: string
+    startedAt: string
+    waitDurationMs: number
+    reason: string
+  }
+  retry?: {
+    totalRetryCount: number
+    burstRateRetryCount: number
+    lastRetryAt: string
+    lastRetryStage: string
+    lastWaitDurationMs: number
+    lastStatusCode: number
+    lastErrorPreview: string
+  }
+  execution?: {
+    lockAcquiredAt: string
+    lockLost: boolean
+    completedAt: string
+    lastErrorAt: string
+    lastErrorMessage: string
+  }
 }
 
 export interface SharedTaskRecentEventItem {
@@ -29,6 +54,21 @@ export const setSharedTaskRuntime = async (state: SharedTaskRuntimeState) => {
 
 export const getSharedTaskRuntime = async (recordId: string) => {
   return readJsonCache<SharedTaskRuntimeState>(redisKeys.taskRuntime(recordId))
+}
+
+// 统一做任务运行态局部更新，避免不同阶段分别维护整份对象时互相覆盖。
+export const patchSharedTaskRuntime = async (
+  recordId: string,
+  updater: (current: SharedTaskRuntimeState | null) => SharedTaskRuntimeState | null,
+) => {
+  const current = await getSharedTaskRuntime(recordId)
+  const next = updater(current)
+  if (!next) {
+    return null
+  }
+
+  await setSharedTaskRuntime(next)
+  return next
 }
 
 export const clearSharedTaskRuntime = async (recordId: string) => {

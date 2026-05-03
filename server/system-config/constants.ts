@@ -19,4 +19,5 @@ export const isSystemConfigPath = (requestPath: string) => {
     || requestPath === SYSTEM_CONFIG_REDIS_OVERVIEW_PATH
     || requestPath === SYSTEM_CONFIG_REDIS_ACTIONS_PATH
     || requestPath === SYSTEM_CONFIG_REDIS_TASK_DETAIL_PATH
+    || requestPath === SYSTEM_CONFIG_REDIS_SETTINGS_PATH
 }

@@ -1,4 +1,5 @@
 import { REDIS_CONFIG, isRedisEnabled } from './config'
+import { getBusinessCacheMetricsOverview } from './metrics'
 import { getRedisClient } from './client'
 import { redisKeys } from './keys'
 import { pingRedis } from './health'
@@ -90,6 +91,7 @@ export const getRedisAdminOverview = async () => {
     authLoginRateStats,
     publicModelCatalogTtl,
     publicEnabledSkillsTtl,
+    businessCaches,
   ] = await Promise.all([
     countRedisKeys(publicModelCatalogKey),
     countRedisKeys(providerDiscoverCachePattern),
@@ -110,6 +112,7 @@ export const getRedisAdminOverview = async () => {
     countRedisKeys(authLoginRatePattern),
     getRedisKeyTtlSeconds(publicModelCatalogKey),
     getRedisKeyTtlSeconds(publicEnabledSkillsKey),
+    getBusinessCacheMetricsOverview(),
   ])
 
   const riskHints: Array<{ level: 'info' | 'warning' | 'danger'; message: string }> = []
@@ -242,6 +245,7 @@ export const getRedisAdminOverview = async () => {
         sampleKeys: authLoginRateStats.sampleKeys,
       },
     },
+    businessCaches,
   }
 }
 
@@ -378,5 +382,35 @@ export const getRedisTaskDetail = async (recordId: string) => {
           updatedAt: String(snapshot.updatedAt || ''),
         }
       : null,
+    governance: {
+      queue: runtime?.queue
+        ? {
+            enteredAt: String(runtime.queue.enteredAt || ''),
+            startedAt: String(runtime.queue.startedAt || ''),
+            waitDurationMs: Number(runtime.queue.waitDurationMs || 0),
+            reason: String(runtime.queue.reason || ''),
+          }
+        : null,
+      retry: runtime?.retry
+        ? {
+            totalRetryCount: Number(runtime.retry.totalRetryCount || 0),
+            burstRateRetryCount: Number(runtime.retry.burstRateRetryCount || 0),
+            lastRetryAt: String(runtime.retry.lastRetryAt || ''),
+            lastRetryStage: String(runtime.retry.lastRetryStage || ''),
+            lastWaitDurationMs: Number(runtime.retry.lastWaitDurationMs || 0),
+            lastStatusCode: Number(runtime.retry.lastStatusCode || 0),
+            lastErrorPreview: String(runtime.retry.lastErrorPreview || ''),
+          }
+        : null,
+      execution: runtime?.execution
+        ? {
+            lockAcquiredAt: String(runtime.execution.lockAcquiredAt || ''),
+            lockLost: Boolean(runtime.execution.lockLost),
+            completedAt: String(runtime.execution.completedAt || ''),
+            lastErrorAt: String(runtime.execution.lastErrorAt || ''),
+            lastErrorMessage: String(runtime.execution.lastErrorMessage || ''),
+          }
+        : null,
+    },
   }
 }

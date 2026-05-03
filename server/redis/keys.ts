@@ -10,6 +10,10 @@ const buildNamespaceKey = (...parts: Array<string | number>) => {
 
 export const redisKeys = {
   cache: (scope: string, identifier: string) => buildNamespaceKey('cache', scope, identifier),
+  cacheMetricsModules: () => buildNamespaceKey('metrics', 'cache', 'modules'),
+  cacheMetricsModuleSummary: (scope: string) => buildNamespaceKey('metrics', 'cache', 'summary', scope),
+  cacheMetricsModuleHotKeys: (scope: string) => buildNamespaceKey('metrics', 'cache', 'hot-keys', scope),
+  cacheMetricsModuleLargeValues: (scope: string) => buildNamespaceKey('metrics', 'cache', 'large-values', scope),
   taskRuntime: (recordId: string) => buildNamespaceKey('task', 'runtime', recordId),
   taskSnapshot: (recordId: string) => buildNamespaceKey('task', 'snapshot', recordId),
   taskRecentEvents: (recordId: string) => buildNamespaceKey('task', 'recent-events', recordId),

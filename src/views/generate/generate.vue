@@ -579,6 +579,14 @@ const shouldUseAgentWorkspaceFlow = (skill?: string) => {
   return isAgentWorkspaceSkill(skill)
 }
 
+const buildAgentRequestMessages = (record: GeneratingRecord) => {
+  return buildAgentChatMessages(
+    record.skill || 'general',
+    record.prompt,
+    Array.isArray(record.referenceImages) ? record.referenceImages : [],
+  )
+}
+
 // 将页面内的记录结构转换为后端持久化结构。
 const toGenerationRecordPayload = (record: GeneratingRecord): GenerationRecordUpsertPayload => ({
   sessionId: record.sessionId,
@@ -1085,10 +1093,11 @@ const startWorkspaceAgentTask = async (record: GeneratingRecord) => {
       model: record.model,
       modelKey: currentModelKey,
       skill: record.skill,
+      referenceImages: Array.isArray(record.referenceImages) ? [...record.referenceImages] : [],
       requestBody: {
         providerId,
         model: currentModelKey,
-        messages: buildAgentChatMessages(record.skill, record.prompt),
+        messages: buildAgentRequestMessages(record),
         stream: true,
       },
     })
@@ -1122,10 +1131,11 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
       model: record.model,
       modelKey: currentModelKey,
       skill: record.skill,
+      referenceImages: Array.isArray(record.referenceImages) ? [...record.referenceImages] : [],
       requestBody: {
         providerId,
         model: currentModelKey,
-        messages: buildAgentChatMessages(record.skill, record.prompt),
+        messages: buildAgentRequestMessages(record),
         stream: true,
       },
     })
@@ -1267,11 +1277,37 @@ onMounted(() => {
 
   // 检查路由参数（从首页跳转过来的发送请求）
   const { message, type, model, ratio, resolution, skill } = route.query
+  const pendingPayloadRaw = typeof window !== 'undefined'
+    ? window.sessionStorage.getItem('canana:home-header:pending-send')
+    : ''
+  let pendingPayload: {
+    referenceImages?: string[]
+    modelKey?: string
+    duration?: string
+    feature?: string
+  } | null = null
+  if (pendingPayloadRaw) {
+    try {
+      pendingPayload = JSON.parse(pendingPayloadRaw)
+    } catch {
+      pendingPayload = null
+    }
+    window.sessionStorage.removeItem('canana:home-header:pending-send')
+  }
   if (message && type) {
     handleSend(
       message as string,
       type as CreationType,
-      { model: model as string, ratio: ratio as string, resolution: resolution as string, skill: skill as string }
+      {
+        model: model as string,
+        modelKey: pendingPayload?.modelKey || '',
+        ratio: ratio as string,
+        resolution: resolution as string,
+        duration: pendingPayload?.duration || '',
+        feature: pendingPayload?.feature || '',
+        skill: skill as string,
+        referenceImages: Array.isArray(pendingPayload?.referenceImages) ? pendingPayload.referenceImages : [],
+      }
     )
     router.replace({ path: '/generate' })
   }

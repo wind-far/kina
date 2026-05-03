@@ -150,6 +150,15 @@ const handleSend = (message: string, type: CreationType, options?: HomeHeaderSen
     return
   }
 
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.setItem('canana:home-header:pending-send', JSON.stringify({
+      modelKey: options?.modelKey || '',
+      duration: options?.duration || '',
+      feature: options?.feature || '',
+      referenceImages: Array.isArray(options?.referenceImages) ? options.referenceImages : [],
+    }))
+  }
+
   router.push({
     path: '/generate',
     query: {

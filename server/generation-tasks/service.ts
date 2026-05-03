@@ -1003,6 +1003,7 @@ const requestAgentWorkspaceModelPlan = async (input: {
   workspaceSkillKey: string
   dependencySkillKeys?: string[]
   prompt: string
+  referenceImages?: string[]
 }) => {
   const upstream = await resolveGatewayProviderUpstream({
     providerId: input.providerId,
@@ -1018,7 +1019,7 @@ const requestAgentWorkspaceModelPlan = async (input: {
   }
 
   const messages = [
-    ...buildAgentChatMessages(input.skill, input.prompt),
+    ...buildAgentChatMessages(input.skill, input.prompt, input.referenceImages),
     {
       role: 'system',
       content: [
@@ -1029,6 +1030,7 @@ const requestAgentWorkspaceModelPlan = async (input: {
         'analysis_lines 至少 3 条，用中文简洁说明：需求理解、技能匹配、执行策略。',
         `当前技能展示名：${input.skillLabel}。当前技能键：${input.workspaceSkillKey}。`,
         input.dependencySkillKeys?.length ? `依赖技能键：${input.dependencySkillKeys.join('、')}。` : '当前无依赖技能。',
+        input.referenceImages?.length ? `当前还提供了 ${input.referenceImages.length} 张参考图，你必须结合这些参考图理解主体、风格、构图或保留要求。` : '当前没有提供参考图。',
         'workflow_params.workflow_type 当前仅允许 text_to_image。',
         'plan_items 和 image_tasks 默认给 4 项，并保持一一对应。',
         '每个 image_tasks 元素必须包含 label 和 promptText；promptText 要适合直接用于图片生成，必须中文，且彼此有明确差异。',
@@ -1428,6 +1430,9 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
   const dependencySkillKeys = skillMeta.dependencySkillKeys
   const plannerProviderId = String((payload.requestBody || {}).providerId || '').trim()
   const plannerModelKey = String(payload.modelKey || '').trim()
+  const referenceImages = Array.isArray(payload.referenceImages)
+    ? payload.referenceImages.map(item => String(item || '').trim()).filter(Boolean)
+    : []
   let currentRun = buildAgentPendingRun(task.recordId, String(payload.prompt || '').trim(), skill)
 
   const initialRecord = await persistAgentWorkspaceRecord({
@@ -1529,6 +1534,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
       stageLabel: '需求分析',
       lines: [
         `正在分析你的需求：“${skillPrompt || '当前主题'}”。`,
+        referenceImages.length ? `同时收到了 ${referenceImages.length} 张参考图，我会把这些图一起纳入后续理解与生成约束。` : '当前没有附带参考图，本次按纯文本需求执行。',
         workspaceSkillKey !== skill
           ? `根据当前技能规则，这类任务优先匹配技能 ${workspaceSkillKey}，对应前台展示为“${skillLabel}”。`
           : `根据当前技能规则，这类任务匹配“${skillLabel}”技能。`,
@@ -1625,6 +1631,7 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
           workspaceSkillKey,
           dependencySkillKeys,
           prompt: skillPrompt,
+          referenceImages,
         })
 
         logGenerationTask('agent_workspace:model_plan_success', {

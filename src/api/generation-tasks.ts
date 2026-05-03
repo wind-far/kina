@@ -7,6 +7,7 @@ import type { AgentWorkspaceEvent } from '@/shared/agent-workspace'
 export interface GenerationTaskStartPayload {
   sessionId?: string
   type: 'image' | 'agent'
+  requestMode?: 'image-generation' | 'image-edit'
   prompt: string
   model?: string
   modelKey?: string

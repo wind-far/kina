@@ -41,6 +41,7 @@ export const handleGenerationTasksRequest = async (req: any, res: any) => {
       payloadSummary = {
         sessionId: payload?.sessionId || null,
         type: payload?.type || null,
+        requestMode: payload?.requestMode || null,
         referenceImageCount: Array.isArray(payload?.referenceImages) ? payload.referenceImages.length : 0,
         hasRequestBody: Boolean(payload?.requestBody),
       }

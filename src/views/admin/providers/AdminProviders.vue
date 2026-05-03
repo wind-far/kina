@@ -197,6 +197,11 @@
           </div>
 
           <div class="admin-form__field">
+            <label class="admin-form__label" for="provider-image-edit-endpoint">图片编辑端点</label>
+            <input id="provider-image-edit-endpoint" v-model.trim="providerForm.imageEditEndpoint" class="admin-input" type="text" placeholder="/images/edits">
+          </div>
+
+          <div class="admin-form__field">
             <label class="admin-form__label" for="provider-video-endpoint">视频端点</label>
             <input id="provider-video-endpoint" v-model.trim="providerForm.videoEndpoint" class="admin-input" type="text" placeholder="/videos">
           </div>
@@ -497,6 +502,7 @@ const providerForm = reactive<AdminProviderPayload>({
   apiKey: '',
   chatEndpoint: '/chat/completions',
   imageEndpoint: '/images/generations',
+  imageEditEndpoint: '/images/edits',
   videoEndpoint: '/videos',
   defaultChatModel: '',
   supportedTypes: ['CHAT'],
@@ -568,6 +574,7 @@ const resetProviderForm = () => {
   providerForm.apiKey = ''
   providerForm.chatEndpoint = '/chat/completions'
   providerForm.imageEndpoint = '/images/generations'
+  providerForm.imageEditEndpoint = '/images/edits'
   providerForm.videoEndpoint = '/videos'
   providerForm.defaultChatModel = ''
   providerForm.supportedTypes = ['CHAT']
@@ -585,6 +592,7 @@ const applyProviderForm = (provider: AdminProviderDetail) => {
   providerForm.apiKey = provider.apiKey || ''
   providerForm.chatEndpoint = provider.chatEndpoint
   providerForm.imageEndpoint = provider.imageEndpoint
+  providerForm.imageEditEndpoint = provider.imageEditEndpoint
   providerForm.videoEndpoint = provider.videoEndpoint
   providerForm.defaultChatModel = provider.defaultChatModel || ''
   providerForm.supportedTypes = Array.isArray(provider.supportedTypes) ? [...provider.supportedTypes] : ['CHAT']
@@ -747,6 +755,7 @@ const buildProviderPayload = (): AdminProviderPayload => ({
   apiKey: providerForm.apiKey,
   chatEndpoint: providerForm.chatEndpoint,
   imageEndpoint: providerForm.imageEndpoint,
+  imageEditEndpoint: providerForm.imageEditEndpoint,
   videoEndpoint: providerForm.videoEndpoint,
   defaultChatModel: providerForm.defaultChatModel,
   supportedTypes: providerForm.supportedTypes,

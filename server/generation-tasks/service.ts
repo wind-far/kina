@@ -526,6 +526,137 @@ const requestImageGeneration = async (input: {
   }
 }
 
+const inferReferenceImageMimeType = (value: string) => {
+  const normalizedValue = String(value || '').trim()
+  if (/^data:image\/png/i.test(normalizedValue)) return 'image/png'
+  if (/^data:image\/webp/i.test(normalizedValue)) return 'image/webp'
+  if (/^data:image\/gif/i.test(normalizedValue)) return 'image/gif'
+  if (/^data:image\/bmp/i.test(normalizedValue)) return 'image/bmp'
+  if (/^data:image\/svg\+xml/i.test(normalizedValue)) return 'image/svg+xml'
+  if (/^data:image\/jpe?g/i.test(normalizedValue)) return 'image/jpeg'
+  return 'image/png'
+}
+
+const sanitizeReferenceImageExtension = (mimeType: string) => {
+  switch (mimeType) {
+    case 'image/jpeg':
+      return 'jpg'
+    case 'image/webp':
+      return 'webp'
+    case 'image/gif':
+      return 'gif'
+    case 'image/bmp':
+      return 'bmp'
+    case 'image/svg+xml':
+      return 'svg'
+    default:
+      return 'png'
+  }
+}
+
+const decodeReferenceImageToBlob = async (value: string) => {
+  const normalizedValue = String(value || '').trim()
+  if (!normalizedValue) {
+    throw new Error('参考图内容为空')
+  }
+
+  if (/^data:/i.test(normalizedValue)) {
+    const response = await fetch(normalizedValue)
+    const blob = await response.blob()
+    return {
+      blob,
+      mimeType: blob.type || inferReferenceImageMimeType(normalizedValue),
+    }
+  }
+
+  if (/^https?:\/\//i.test(normalizedValue)) {
+    const response = await fetch(normalizedValue)
+    if (!response.ok) {
+      throw new Error(`参考图下载失败 (${response.status})`)
+    }
+    const blob = await response.blob()
+    return {
+      blob,
+      mimeType: blob.type || inferReferenceImageMimeType(normalizedValue),
+    }
+  }
+
+  throw new Error('暂不支持当前参考图格式，请重新上传图片后再试')
+}
+
+const requestImageEdit = async (input: {
+  signal: AbortSignal
+  providerId: string
+  modelKey: string
+  prompt: string
+  size?: string
+  referenceImages: string[]
+}) => {
+  const upstream = await resolveGatewayProviderUpstream({
+    providerId: input.providerId,
+    endpointType: 'image-edit',
+    modelKey: input.modelKey,
+  })
+
+  const formData = new FormData()
+  formData.set('model', input.modelKey)
+  formData.set('prompt', input.prompt)
+  formData.set('n', '1')
+  if (input.size) {
+    formData.set('size', input.size)
+  }
+
+  for (let index = 0; index < input.referenceImages.length; index += 1) {
+    const { blob, mimeType } = await decodeReferenceImageToBlob(input.referenceImages[index])
+    formData.append(
+      'image',
+      blob,
+      `reference-${index + 1}.${sanitizeReferenceImageExtension(mimeType)}`,
+    )
+  }
+
+  const headers = new Headers()
+  if (upstream.apiKey) {
+    headers.set('Authorization', `Bearer ${upstream.apiKey}`)
+  }
+
+  const upstreamUrl = `${upstream.baseUrl.replace(/\/+$/, '')}/${upstream.endpoint.replace(/^\/+/, '')}`
+  const response = await fetchWithBurstRateRetry({
+    url: upstreamUrl,
+    signal: input.signal,
+    stage: 'image_edit',
+    detail: {
+      providerId: input.providerId,
+      modelKey: input.modelKey,
+      endpointType: 'image-edit',
+      referenceImageCount: input.referenceImages.length,
+    },
+    init: {
+      method: 'POST',
+      headers,
+      body: formData,
+    },
+  })
+
+  if (!response.ok) {
+    const responseText = await response.text().catch(() => '')
+    throw new Error(normalizeGenerationErrorMessage(
+      responseText,
+      `图片编辑失败 (${response.status})`,
+    ))
+  }
+
+  const imageUrls = extractImageUrlsFromJsonResponse(await response.json())
+  if (!imageUrls.length) {
+    throw new Error('未能获取到编辑后的图片')
+  }
+
+  return {
+    upstreamUrl,
+    imageUrls,
+  }
+}
+
 const resolveWorkspaceImageModel = async () => {
   const catalog = await getPublicModelCatalog()
   const imageModel = catalog.models.image[0]
@@ -552,6 +683,12 @@ const executeImageGenerationTask = async (task: RunningGenerationTask, payload: 
     message: '已解析厂商与模型配置，准备请求上游图片接口',
   })
 
+  const requestMode = String(payload.requestMode || '').trim() === 'image-edit'
+    ? 'image-edit'
+    : 'image-generation'
+  const referenceImages = Array.isArray(payload.referenceImages)
+    ? payload.referenceImages.map(item => String(item || '').trim()).filter(Boolean)
+    : []
   const requestBody = {
     ...(payload.requestBody || {}),
     model: modelKey,
@@ -561,18 +698,29 @@ const executeImageGenerationTask = async (task: RunningGenerationTask, payload: 
     recordId: task.recordId,
     userId: task.userId,
     modelKey,
+    requestMode,
+    referenceImageCount: referenceImages.length,
   })
   emitTaskProgressEvent(task.recordId, {
     stage: 'requesting_upstream',
     message: '已开始请求上游图片模型',
   })
 
-  const { upstreamUrl, imageUrls } = await requestImageGeneration({
-    signal: task.abortController.signal,
-    providerId,
-    modelKey,
-    requestBody,
-  })
+  const { upstreamUrl, imageUrls } = requestMode === 'image-edit'
+    ? await requestImageEdit({
+      signal: task.abortController.signal,
+      providerId,
+      modelKey,
+      prompt: String(requestBody.prompt || payload.prompt || '').trim(),
+      size: String(requestBody.size || '').trim() || undefined,
+      referenceImages,
+    })
+    : await requestImageGeneration({
+      signal: task.abortController.signal,
+      providerId,
+      modelKey,
+      requestBody,
+    })
 
   logGenerationTask('image_task:request_upstream', {
     recordId: task.recordId,

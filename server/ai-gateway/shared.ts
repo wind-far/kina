@@ -6,7 +6,7 @@ export interface GatewayForwardBody {
     apiKey?: string
     endpoint?: string
     providerId?: string
-    endpointType?: 'chat' | 'image' | 'video'
+    endpointType?: 'chat' | 'image' | 'image-edit' | 'video'
     modelKey?: string
   }
   request?: {

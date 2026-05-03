@@ -4,6 +4,7 @@
  */
 
 import { type AiEndpointType } from './provider-config'
+import { resolveEndpointModelCategory } from './provider-config'
 import { loadPublicModelCatalog, resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 
 export const AI_GATEWAY_REQUEST_PATH = '/api/ai/request'
@@ -49,10 +50,11 @@ export const createGatewayPayload = async (
   const modelValue = rawBody && typeof rawBody === 'object' && !Array.isArray(rawBody)
     ? String((rawBody as Record<string, unknown>).model || '').trim()
     : ''
+  const modelCategory = resolveEndpointModelCategory(type)
   const providerId = String(options.providerId || '').trim()
-    || resolveRequestProviderId(modelValue, type.toUpperCase() as 'CHAT' | 'IMAGE' | 'VIDEO')
+    || resolveRequestProviderId(modelValue, modelCategory)
   const modelKey = String(options.modelKey || '').trim()
-    || resolveRequestModelKey(modelValue, type.toUpperCase() as 'CHAT' | 'IMAGE' | 'VIDEO')
+    || resolveRequestModelKey(modelValue, modelCategory)
   const upstream = providerId
     ? {
         // 命中后台模型目录时，只把最小识别信息发给同源网关。

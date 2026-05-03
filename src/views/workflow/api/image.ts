@@ -17,14 +17,79 @@ const notifyMarketingPointsUpdated = (response: Response) => {
 
 const DEFAULT_IMAGE_ENDPOINT = '/images/generations'
 
+const resolveImageMimeType = (value: string) => {
+  const dataMatch = value.match(/^data:([^;,]+)[;,]/i)
+  if (dataMatch?.[1]) return dataMatch[1]
+
+  const lowerValue = value.toLowerCase()
+  if (lowerValue.includes('.webp')) return 'image/webp'
+  if (lowerValue.includes('.gif')) return 'image/gif'
+  if (lowerValue.includes('.jpg') || lowerValue.includes('.jpeg')) return 'image/jpeg'
+  return 'image/png'
+}
+
+const resolveImageFileExtension = (mimeType: string) => {
+  if (mimeType === 'image/webp') return 'webp'
+  if (mimeType === 'image/gif') return 'gif'
+  if (mimeType === 'image/jpeg') return 'jpg'
+  return 'png'
+}
+
+const toImageEditFormData = async (data: any) => {
+  const formData = new FormData()
+  const prompt = String(data?.prompt || '').trim()
+  const model = String(data?.model || '').trim()
+  const size = String(data?.size || '').trim()
+  const quality = String(data?.quality || '').trim()
+  const referenceImages = Array.isArray(data?.image) ? data.image : []
+
+  if (model) formData.append('model', model)
+  if (prompt) formData.append('prompt', prompt)
+  formData.append('n', String(data?.n || 1))
+  if (size) formData.append('size', size)
+  if (quality) formData.append('quality', quality)
+
+  for (let index = 0; index < referenceImages.length; index += 1) {
+    const item = referenceImages[index]
+    const imageValue = typeof item === 'string'
+      ? item.trim()
+      : ''
+    if (!imageValue) continue
+
+    const blob = await fetch(imageValue).then((response) => {
+      if (!response.ok) {
+        throw new Error(`参考图读取失败 (${response.status})`)
+      }
+      return response.blob()
+    })
+    const mimeType = blob.type || resolveImageMimeType(imageValue)
+    const extension = resolveImageFileExtension(mimeType)
+    formData.append('image', blob, `workflow-reference-${index + 1}.${extension}`)
+  }
+
+  return formData
+}
 
 export const generateImage = async (data: any, options: any = {}) => {
   const { requestType = 'json', endpoint, signal } = options
   const url = endpoint || DEFAULT_IMAGE_ENDPOINT
+  const referenceImages = Array.isArray(data?.image)
+    ? data.image.filter((item: unknown) => typeof item === 'string' && String(item).trim())
+    : []
 
   // 如果路径包含 chat/completions，使用 chat 协议
   if (url.includes('chat/completions')) {
     return generateImageViaChat(data, signal)
+  }
+
+  if (referenceImages.length) {
+    const formData = await toImageEditFormData(data)
+    return request({
+      url: '/images/edits',
+      method: 'post',
+      data: formData,
+      signal,
+    }, 'image-edit')
   }
 
   return request({

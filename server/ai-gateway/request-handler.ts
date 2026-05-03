@@ -11,14 +11,20 @@ import { consumeGenerationPoints, refundGenerationPoints, resolveGenerationPoint
 
 const shouldExposeGatewayDebug = () => String(process.env.AI_GATEWAY_DEBUG_HEADERS || '').trim() === 'true'
 
+const normalizeChargeableEndpointType = (endpointType?: 'chat' | 'image' | 'image-edit' | 'video') => {
+  if (endpointType === 'image-edit') return 'image'
+  return endpointType
+}
+
 const isChargeableGenerationRequest = (input: {
   providerId: string
-  endpointType?: 'chat' | 'image' | 'video'
+  endpointType?: 'chat' | 'image' | 'image-edit' | 'video'
   method: string
 }) => {
+  const chargeableEndpointType = normalizeChargeableEndpointType(input.endpointType)
   return Boolean(input.providerId)
     && input.method === 'POST'
-    && (input.endpointType === 'image' || input.endpointType === 'video')
+    && (chargeableEndpointType === 'image' || chargeableEndpointType === 'video')
 }
 
 const buildGatewayAssociationNo = () => {
@@ -39,9 +45,10 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
     const headerEndpoint = String(req.headers['x-upstream-endpoint'] || '').trim()
     const headerApiKey = String(req.headers['x-upstream-api-key'] || '').trim()
     const headerProviderId = String(req.headers['x-upstream-provider-id'] || '').trim()
-    const headerEndpointType = String(req.headers['x-upstream-endpoint-type'] || '').trim() as 'chat' | 'image' | 'video'
+    const headerEndpointType = String(req.headers['x-upstream-endpoint-type'] || '').trim() as 'chat' | 'image' | 'image-edit' | 'video'
     const headerModelKey = String(req.headers['x-upstream-model-key'] || '').trim()
     const headerMethod = String(req.headers['x-upstream-method'] || 'POST').trim().toUpperCase()
+    const billedHeaderEndpointType = normalizeChargeableEndpointType(headerEndpointType)
 
     const shouldChargeHeaderRequest = isChargeableGenerationRequest({
       providerId: headerProviderId,
@@ -67,7 +74,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
         ? await resolveGenerationPointCost({
           providerId: headerProviderId,
           modelKey: headerModelKey,
-          endpointType: headerEndpointType,
+          endpointType: billedHeaderEndpointType as 'image' | 'video',
         })
         : { pointCost: 0, modelId: '', modelName: '' }
 
@@ -78,7 +85,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
           pointCost: billingDetail.pointCost,
           sourceId: associationNo,
           associationNo,
-          endpointType: headerEndpointType,
+          endpointType: billedHeaderEndpointType as 'image' | 'video',
           providerId: headerProviderId,
           modelKey: headerModelKey,
           modelName: billingDetail.modelName,
@@ -98,7 +105,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
             pointCost: billingDetail.pointCost,
             sourceId: associationNo,
             associationNo,
-            endpointType: headerEndpointType,
+            endpointType: billedHeaderEndpointType as 'image' | 'video',
             providerId: headerProviderId,
             modelKey: headerModelKey,
             modelName: billingDetail.modelName,
@@ -173,6 +180,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
       endpointType: normalized.endpointType,
       method: normalized.method,
     })
+    const billedJsonEndpointType = normalizeChargeableEndpointType(normalized.endpointType)
 
     const currentUser = shouldChargeJsonRequest ? await requireCurrentSessionUser(req, res) : null
     if (shouldChargeJsonRequest && !currentUser?.id) {
@@ -183,7 +191,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
       ? await resolveGenerationPointCost({
         providerId: normalized.providerId,
         modelKey: normalized.modelKey,
-        endpointType: normalized.endpointType as 'image' | 'video',
+        endpointType: billedJsonEndpointType as 'image' | 'video',
       })
       : { pointCost: 0, modelId: '', modelName: '' }
 
@@ -194,7 +202,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
         pointCost: billingDetail.pointCost,
         sourceId: associationNo,
         associationNo,
-        endpointType: normalized.endpointType as 'image' | 'video',
+        endpointType: billedJsonEndpointType as 'image' | 'video',
         providerId: normalized.providerId,
         modelKey: normalized.modelKey,
         modelName: billingDetail.modelName,
@@ -214,7 +222,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
           pointCost: billingDetail.pointCost,
           sourceId: associationNo,
           associationNo,
-          endpointType: normalized.endpointType as 'image' | 'video',
+          endpointType: billedJsonEndpointType as 'image' | 'video',
           providerId: normalized.providerId,
           modelKey: normalized.modelKey,
           modelName: billingDetail.modelName,

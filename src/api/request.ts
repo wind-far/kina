@@ -5,6 +5,7 @@
 
 import {
   type AiEndpointType,
+  resolveEndpointModelCategory,
 } from './provider-config'
 import {
   AI_GATEWAY_REQUEST_PATH,
@@ -48,10 +49,11 @@ export const request = async (
       formData.append(key, value)
     })
     const originalModel = String(formData.get('model') || '').trim()
+    const modelCategory = resolveEndpointModelCategory(type)
     const providerId = String(options.providerId || '').trim()
-      || resolveRequestProviderId(originalModel, type.toUpperCase() as 'CHAT' | 'IMAGE' | 'VIDEO')
+      || resolveRequestProviderId(originalModel, modelCategory)
     const modelKey = String(options.modelKey || '').trim()
-      || resolveRequestModelKey(originalModel, type.toUpperCase() as 'CHAT' | 'IMAGE' | 'VIDEO')
+      || resolveRequestModelKey(originalModel, modelCategory)
     if (!providerId) {
       throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
     }

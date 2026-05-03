@@ -206,6 +206,7 @@ model AiProvider {
   apiKeyHint         String?   @map("api_key_hint") @db.VarChar(64)
   chatEndpoint       String    @default("/chat/completions") @map("chat_endpoint") @db.VarChar(255)
   imageEndpoint      String    @default("/images/generations") @map("image_endpoint") @db.VarChar(255)
+  imageEditEndpoint  String    @default("/images/edits") @map("image_edit_endpoint") @db.VarChar(255)
   videoEndpoint      String    @default("/videos") @map("video_endpoint") @db.VarChar(255)
   defaultChatModel   String?   @map("default_chat_model") @db.VarChar(191)
   supportedTypesJson Json?     @map("supported_types_json")

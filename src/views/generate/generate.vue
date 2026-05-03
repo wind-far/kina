@@ -1141,7 +1141,7 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
 }
 
 // 图片生成改为提交服务端任务，由后端继续执行并写回生成记录。
-const startImageGenerationTask = async (record: GeneratingRecord) => {
+  const startImageGenerationTask = async (record: GeneratingRecord) => {
   try {
     const providerId = resolveRequestProviderId(record.modelKey, 'IMAGE')
     const requestModelKey = resolveRequestModelKey(record.modelKey, 'IMAGE')
@@ -1156,6 +1156,7 @@ const startImageGenerationTask = async (record: GeneratingRecord) => {
     const size = modelConfig?.sizes?.length
       ? (modelConfig.sizes.find((sizeItem: string) => sizeItem.includes(record.ratio.replace(':', 'x'))) || modelConfig.defaultParams?.size || '')
       : (record.ratio ? record.ratio.replace(':', 'x') : '')
+    const hasReferenceImages = Array.isArray(record.referenceImages) && record.referenceImages.length > 0
     let data: any = {
       model: requestModelKey,
       prompt: record.prompt,
@@ -1165,11 +1166,14 @@ const startImageGenerationTask = async (record: GeneratingRecord) => {
     if (size) {
       data.size = size
     }
-    data = appendImageReferencesToRequestBody(data, record.referenceImages)
+    if (!hasReferenceImages) {
+      data = appendImageReferencesToRequestBody(data, record.referenceImages)
+    }
 
     const saved = await createGenerationTask({
       sessionId: record.sessionId,
       type: 'image',
+      requestMode: hasReferenceImages ? 'image-edit' : 'image-generation',
       prompt: record.prompt,
       model: record.model,
       modelKey: requestModelKey,

@@ -11,6 +11,7 @@ export interface AdminProviderItem {
   apiKeyHint: string
   chatEndpoint: string
   imageEndpoint: string
+  imageEditEndpoint: string
   videoEndpoint: string
   defaultChatModel: string
   supportedTypes: string[]
@@ -36,6 +37,7 @@ export interface AdminProviderPayload {
   apiKey: string
   chatEndpoint: string
   imageEndpoint: string
+  imageEditEndpoint: string
   videoEndpoint: string
   defaultChatModel: string
   supportedTypes: string[]

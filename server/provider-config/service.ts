@@ -62,6 +62,7 @@ export interface AdminProviderPayload {
   apiKey?: string
   chatEndpoint?: string
   imageEndpoint?: string
+  imageEditEndpoint?: string
   videoEndpoint?: string
   defaultChatModel?: string
   supportedTypes?: string[]
@@ -131,6 +132,7 @@ const normalizeProviderPayload = (payload: AdminProviderPayload, options: { isCr
     apiKey: String(payload.apiKey || '').trim(),
     chatEndpoint: String(payload.chatEndpoint || '/chat/completions').trim() || '/chat/completions',
     imageEndpoint: String(payload.imageEndpoint || '/images/generations').trim() || '/images/generations',
+    imageEditEndpoint: String(payload.imageEditEndpoint || '/images/edits').trim() || '/images/edits',
     videoEndpoint: String(payload.videoEndpoint || '/videos').trim() || '/videos',
     defaultChatModel: String(payload.defaultChatModel || '').trim(),
     supportedTypes: normalizeSupportedTypes(payload.supportedTypes),
@@ -150,6 +152,7 @@ const buildProviderListItem = (provider: {
   apiKeyHint: string | null
   chatEndpoint: string
   imageEndpoint: string
+  imageEditEndpoint: string
   videoEndpoint: string
   defaultChatModel: string | null
   supportedTypesJson: unknown
@@ -181,6 +184,7 @@ const buildProviderListItem = (provider: {
     apiKeyHint: provider.apiKeyHint || '',
     chatEndpoint: provider.chatEndpoint,
     imageEndpoint: provider.imageEndpoint,
+    imageEditEndpoint: provider.imageEditEndpoint,
     videoEndpoint: provider.videoEndpoint,
     defaultChatModel: provider.defaultChatModel || '',
     supportedTypes,
@@ -221,6 +225,7 @@ const materializeLegacyProvider = async () => {
       apiKeyHint: legacyConfig.apiKeyHint,
       chatEndpoint: legacyConfig.chatEndpoint,
       imageEndpoint: legacyConfig.imageEndpoint,
+      imageEditEndpoint: '/images/edits',
       videoEndpoint: legacyConfig.videoEndpoint,
       defaultChatModel: legacyConfig.defaultChatModel,
       supportedTypesJson: DEFAULT_SUPPORTED_TYPES,
@@ -362,6 +367,7 @@ export const createAdminProvider = async (payload: AdminProviderPayload) => {
       apiKeyHint: maskApiKey(normalizedPayload.apiKey),
       chatEndpoint: normalizedPayload.chatEndpoint,
       imageEndpoint: normalizedPayload.imageEndpoint,
+      imageEditEndpoint: normalizedPayload.imageEditEndpoint,
       videoEndpoint: normalizedPayload.videoEndpoint,
       defaultChatModel: normalizedPayload.defaultChatModel || null,
       supportedTypesJson: normalizedPayload.supportedTypes,
@@ -411,6 +417,7 @@ export const updateAdminProvider = async (id: string, payload: AdminProviderPayl
       apiKeyHint: maskApiKey(normalizedPayload.apiKey),
       chatEndpoint: normalizedPayload.chatEndpoint,
       imageEndpoint: normalizedPayload.imageEndpoint,
+      imageEditEndpoint: normalizedPayload.imageEditEndpoint,
       videoEndpoint: normalizedPayload.videoEndpoint,
       defaultChatModel: normalizedPayload.defaultChatModel || null,
       supportedTypesJson: normalizedPayload.supportedTypes,
@@ -549,7 +556,7 @@ export const getPublicModelCatalog = async (): Promise<PublicModelCatalogResult>
 
 export const resolveGatewayProviderUpstream = async (input: {
   providerId?: string
-  endpointType?: 'chat' | 'image' | 'video'
+  endpointType?: 'chat' | 'image' | 'image-edit' | 'video'
   modelKey?: string
 }) => {
   const providerId = String(input.providerId || '').trim()
@@ -560,7 +567,7 @@ export const resolveGatewayProviderUpstream = async (input: {
     throw new Error('缺少厂商 ID')
   }
 
-  if (endpointType !== 'chat' && endpointType !== 'image' && endpointType !== 'video') {
+  if (endpointType !== 'chat' && endpointType !== 'image' && endpointType !== 'image-edit' && endpointType !== 'video') {
     throw new Error('缺少有效的上游接口类型')
   }
 
@@ -573,7 +580,7 @@ export const resolveGatewayProviderUpstream = async (input: {
   }
 
   if (modelKey) {
-    const category = endpointType.toUpperCase()
+    const category = endpointType === 'image-edit' ? 'IMAGE' : endpointType.toUpperCase()
     const model = await prisma.aiModel.findFirst({
       where: {
         providerId,
@@ -593,6 +600,8 @@ export const resolveGatewayProviderUpstream = async (input: {
     ? provider.chatEndpoint
     : endpointType === 'image'
       ? provider.imageEndpoint
+      : endpointType === 'image-edit'
+        ? provider.imageEditEndpoint
       : provider.videoEndpoint
 
   return {
@@ -616,6 +625,7 @@ export const getDefaultProviderOverview = async () => {
     defaultChatModel: provider.defaultChatModel || '',
     chatEndpoint: provider.chatEndpoint,
     imageEndpoint: provider.imageEndpoint,
+    imageEditEndpoint: provider.imageEditEndpoint,
     videoEndpoint: provider.videoEndpoint,
     isEnabled: provider.isEnabled,
   }

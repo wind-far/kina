@@ -9,7 +9,7 @@ services:
       - ${APP_ENV_FILE:-./.env}
     ports:
       # 对外暴露统一应用端口。
-      - "${APP_PORT:-5409}:${APP_PORT:-5409}"
+      - "${SERVER_PORT:-5409}:${SERVER_PORT:-5409}"
     volumes:
       # 持久化上传文件。
       - uploads_data:/app/uploads

@@ -86,6 +86,7 @@
 - `Node.js >= 20.19.0`
 - `npm >= 9`
 - `MySQL / MariaDB`（Prisma 连接数据库）
+- `Redis`（可选；用于任务运行态、缓存、跨实例事件广播）
 
 ### 安装依赖
 
@@ -103,6 +104,56 @@ npm run dev
 
 - 前端开发服务：`http://localhost:5010`
 - 本地后端服务：`http://localhost:5409`
+
+### Redis 可选配置
+
+如果你希望启用任务运行态共享、配置缓存和跨实例事件广播，可以补充以下环境变量：
+
+```env
+REDIS_ENABLED=true
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DATABASE=1
+REDIS_PREFIX=canana
+REDIS_ENV=development
+REDIS_URL=
+REDIS_DEFAULT_TTL_SECONDS=60
+REDIS_TASK_RUNTIME_TTL_SECONDS=1800
+REDIS_TASK_SNAPSHOT_TTL_SECONDS=1800
+REDIS_TASK_ABORT_TTL_SECONDS=300
+REDIS_TASK_LOCK_TTL_MS=30000
+REDIS_TASK_IDEMPOTENCY_TTL_SECONDS=600
+REDIS_TASK_CONCURRENCY_TTL_SECONDS=1800
+REDIS_RATE_LIMIT_WINDOW_SECONDS=60
+REDIS_TASK_SUBMIT_RATE_LIMIT=6
+REDIS_TASK_USER_CONCURRENCY_LIMIT=3
+REDIS_TASK_PROVIDER_CONCURRENCY_LIMIT=8
+REDIS_TASK_SKILL_CONCURRENCY_LIMIT=4
+REDIS_AUTH_VERIFICATION_RATE_LIMIT=5
+REDIS_AUTH_LOGIN_RATE_LIMIT=10
+```
+
+说明：
+
+- `REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`、`REDIS_DATABASE` 为推荐写法
+- `REDIS_URL` 为兼容保留字段，不填时会根据以上拆分字段自动拼接
+- `REDIS_PREFIX`、`REDIS_ENV` 以及各类 TTL 配置均为可选项，不配置会使用服务端默认值
+- 更完整的架构规划可参考：
+  - `docs/redis-enterprise-phase2-plan.md`
+
+当前实现支持“无 Redis 降级运行”：
+
+- 未配置 Redis：继续使用本机内存态，不影响现有开发流程
+- 已配置 Redis：额外启用共享任务运行态、SSE 事件广播和运行时缓存
+
+后台可通过以下接口快速验证 Redis 是否联通：
+
+```text
+GET /api/system-config/admin/redis-health
+```
+
+该接口需要管理员登录态。
 
 ### 生成 Prisma Client
 
@@ -140,6 +191,35 @@ npm run start
 2. 启动服务端
 3. 由服务端统一托管前端静态资源与 API
 
+## 🖼️ 图片生成与编辑链路
+
+当前项目已经将“纯文生图”和“带参考图的图片编辑”拆成两条长期可维护的正式链路。
+
+### 后台供应商配置
+
+后台 `厂商配置` 页面现在支持以下图片相关端点：
+
+- `图片生成端点`：默认 `/images/generations`
+- `图片编辑端点`：默认 `/images/edits`
+
+- 文生图：`/v1/images/generations`
+- 图编辑：`/v1/images/edits`
+
+### 生成页行为
+
+- 没有参考图时：走标准图片生成接口
+- 有参考图时：自动切换到图片编辑接口
+- 服务端生成任务会按 `requestMode` 分流，不再把参考图继续塞进旧 JSON 请求体
+
+
+其中图片编辑请求会发送如下核心字段：
+
+- `model`
+- `prompt`
+- `n`
+- `size`（有值时发送）
+- 一个或多个 `image`
+
 ## 🐳 Docker 部署
 
 仓库已提供：
@@ -160,6 +240,14 @@ PROVIDER_CONFIG_SECRET=请替换成你自己的密钥
 STORAGE_CONFIG_SECRET=
 AUTH_LOGIN_CODE_EXPIRE_MINUTES=5
 AUTH_SESSION_EXPIRE_DAYS=30
+REDIS_ENABLED=true
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DATABASE=1
+REDIS_PREFIX=canana
+REDIS_ENV=production
+REDIS_URL=
 ```
 
 ### 启动方式

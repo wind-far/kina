@@ -241,6 +241,9 @@
           </div>
         </div>
         <div class="admin-dialog__header-actions">
+          <button class="admin-button admin-button--secondary" type="button" @click="openDiscoverModelsDialog" :disabled="!selectedProvider || modelLoading || modelSaving || discoveringModels">
+            {{ discoveringModels ? '获取中...' : '拉取模型' }}
+          </button>
           <button class="admin-button admin-button--primary" type="button" @click="openCreateModelDialog" :disabled="!selectedProvider">添加模型</button>
           <button class="admin-dialog__close" type="button" @click="closeModelManager">×</button>
         </div>
@@ -293,6 +296,79 @@
             :disabled="modelLoading || modelSaving"
           />
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div v-if="discoverDialogVisible" class="admin-dialog-mask admin-dialog-mask--inner" @click="closeDiscoverModelsDialog">
+    <div class="admin-dialog admin-dialog--model-discover" @click.stop>
+      <div class="admin-dialog__header">
+        <div>
+          <h3 class="admin-dialog__title">拉取上游模型</h3>
+          <div class="admin-dialog__desc">{{ discoveredRequestUrl || '将根据当前厂商配置请求 /v1/models' }}</div>
+        </div>
+        <button class="admin-dialog__close" type="button" @click="closeDiscoverModelsDialog">×</button>
+      </div>
+
+      <div class="admin-dialog__body">
+        <div class="admin-form__grid">
+          <div class="admin-form__field">
+            <label class="admin-form__label">批量模型类型</label>
+            <select v-model="discoverBatchSettings.category" class="admin-input">
+              <option v-for="option in modelCategoryOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+          </div>
+          <div class="admin-form__field">
+            <label class="admin-form__label">排序起点</label>
+            <input v-model.number="discoverBatchSettings.sortOrderStart" class="admin-input" type="number" min="0">
+          </div>
+          <div class="admin-form__field">
+            <label class="admin-form__label">排序步长</label>
+            <input v-model.number="discoverBatchSettings.sortOrderStep" class="admin-input" type="number" min="1">
+          </div>
+          <div class="admin-form__field">
+            <label class="admin-form__label">导入状态</label>
+            <select v-model="discoverBatchSettings.isEnabled" class="admin-input">
+              <option :value="true">启用</option>
+              <option :value="false">禁用</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="admin-model-discover__toolbar">
+          <label class="admin-check-item">
+            <input :checked="isAllDiscoveredSelected" type="checkbox" @change="handleSelectAllDiscoveredModelsChange">
+            <span>全选</span>
+          </label>
+          <span class="admin-model-discover__summary">
+            已选 {{ selectedDiscoveredModelCount }} / {{ discoveredModels.length }}
+            <em v-if="selectedDiscoveredModelCount">，将新建 {{ selectedDiscoveredCreateCount }} 个，更新 {{ selectedDiscoveredUpdateCount }} 个</em>
+          </span>
+        </div>
+
+        <div v-if="!discoveredModels.length" class="admin-empty">当前未获取到可导入的模型。</div>
+        <div v-else class="admin-model-discover__list">
+          <label v-for="item in discoveredModels" :key="item.modelKey" class="admin-model-discover__row">
+            <input v-model="selectedDiscoveredModelKeys" :value="item.modelKey" type="checkbox">
+            <div class="admin-model-discover__content">
+              <div class="admin-model-discover__headline">
+                <strong>{{ item.label }}</strong>
+                <span class="admin-model-discover__badge" :class="getDiscoveredModelImportAction(item) === 'update' ? 'is-update' : 'is-create'">
+                  {{ getDiscoveredModelImportAction(item) === 'update' ? '将更新' : '将新建' }}
+                </span>
+              </div>
+              <span>{{ item.modelKey }}</span>
+              <small>{{ item.description || '暂无描述' }}</small>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div class="admin-form__footer">
+        <button class="admin-button admin-button--secondary" type="button" @click="closeDiscoverModelsDialog">取消</button>
+        <button class="admin-button admin-button--primary" type="button" :disabled="discoverImporting || !selectedDiscoveredModelCount" @click="handleBatchImportModels">
+          {{ discoverImporting ? '导入中...' : `导入所选模型（${selectedDiscoveredModelCount}）` }}
+        </button>
       </div>
     </div>
   </div>
@@ -424,11 +500,14 @@ import {
   type AdminProviderPayload,
 } from '@/api/admin-providers'
 import {
+  batchUpsertAdminProviderModels,
   createAdminProviderModel,
   deleteAdminProviderModel,
+  discoverAdminProviderModels,
   listAdminProviderModels,
   updateAdminProviderModel,
   type AdminModelCategory,
+  type DiscoveredProviderModelItem,
   type AdminProviderModelItem,
   type AdminProviderModelPayload,
 } from '@/api/admin-models'
@@ -474,6 +553,7 @@ const selectedProvider = ref<AdminProviderItem | null>(null)
 const providerDialogVisible = ref(false)
 const modelManagerVisible = ref(false)
 const modelDialogVisible = ref(false)
+const discoverDialogVisible = ref(false)
 const editingProviderId = ref('')
 const editingModelId = ref('')
 const activeProviderMenuId = ref('')
@@ -482,6 +562,11 @@ const modelKeyword = ref('')
 const modelStatus = ref<'ALL' | 'ENABLED' | 'DISABLED'>('ALL')
 const modelCategoryFilter = ref<'ALL' | AdminModelCategory>('ALL')
 const models = ref<AdminProviderModelItem[]>([])
+const discoveredModels = ref<DiscoveredProviderModelItem[]>([])
+const discoveredRequestUrl = ref('')
+const selectedDiscoveredModelKeys = ref<string[]>([])
+const discoveringModels = ref(false)
+const discoverImporting = ref(false)
 const { activeFilterCount: providerActiveFilterCount, resetFilters: resetProviderFilterValues } = useAdminListFilters({
   filters: providerFilters,
   defaults: providerFilterDefaults,
@@ -528,6 +613,13 @@ const modelForm = reactive({
   isDefault: false,
 })
 
+const discoverBatchSettings = reactive({
+  category: 'CHAT' as AdminModelCategory,
+  isEnabled: true,
+  sortOrderStart: 0,
+  sortOrderStep: 10,
+})
+
 const filteredProviders = computed(() => {
   return providers.value.filter((provider) => {
     const matchedKeyword = matchesAdminKeyword(providerFilters.keyword, [provider.name, provider.code])
@@ -564,6 +656,19 @@ const filteredModels = computed(() => {
     .sort((prevItem, nextItem) => prevItem.sortOrder - nextItem.sortOrder)
 })
 const paginatedModels = computed(() => sliceModelItems(filteredModels.value))
+const selectedDiscoveredModelCount = computed(() => selectedDiscoveredModelKeys.value.length)
+const isAllDiscoveredSelected = computed(() => {
+  return discoveredModels.value.length > 0 && selectedDiscoveredModelKeys.value.length === discoveredModels.value.length
+})
+const selectedDiscoveredItems = computed(() => {
+  return discoveredModels.value.filter(item => selectedDiscoveredModelKeys.value.includes(item.modelKey))
+})
+const selectedDiscoveredCreateCount = computed(() => {
+  return selectedDiscoveredItems.value.filter(item => getDiscoveredModelImportAction(item) === 'create').length
+})
+const selectedDiscoveredUpdateCount = computed(() => {
+  return selectedDiscoveredItems.value.filter(item => getDiscoveredModelImportAction(item) === 'update').length
+})
 
 const resetProviderForm = () => {
   providerForm.code = ''
@@ -840,8 +945,12 @@ const openModelManager = async (provider: AdminProviderItem) => {
 const closeModelManager = () => {
   modelManagerVisible.value = false
   modelDialogVisible.value = false
+  discoverDialogVisible.value = false
   selectedProvider.value = null
   models.value = []
+  discoveredModels.value = []
+  discoveredRequestUrl.value = ''
+  selectedDiscoveredModelKeys.value = []
   resetModelForm()
   resetModelPage()
 }
@@ -857,6 +966,94 @@ watch(() => [modelKeyword.value, modelStatus.value, modelCategoryFilter.value] a
 const openCreateModelDialog = () => {
   resetModelForm()
   modelDialogVisible.value = true
+}
+
+const resetDiscoverState = () => {
+  discoveredModels.value = []
+  discoveredRequestUrl.value = ''
+  selectedDiscoveredModelKeys.value = []
+  discoverBatchSettings.category = 'CHAT'
+  discoverBatchSettings.isEnabled = true
+  discoverBatchSettings.sortOrderStart = 0
+  discoverBatchSettings.sortOrderStep = 10
+}
+
+const openDiscoverModelsDialog = async () => {
+  if (!selectedProvider.value) {
+    ElMessage.error('请先选择厂商')
+    return
+  }
+
+  try {
+    discoveringModels.value = true
+    resetDiscoverState()
+    const result = await discoverAdminProviderModels(selectedProvider.value.id)
+    discoveredModels.value = result.models
+    discoveredRequestUrl.value = result.requestUrl
+    selectedDiscoveredModelKeys.value = result.models.map(item => item.modelKey)
+    discoverDialogVisible.value = true
+  } catch (error: any) {
+    ElMessage.error(error?.message || '拉取模型失败')
+  } finally {
+    discoveringModels.value = false
+  }
+}
+
+const closeDiscoverModelsDialog = () => {
+  discoverDialogVisible.value = false
+  resetDiscoverState()
+}
+
+const toggleSelectAllDiscoveredModels = (checked: boolean) => {
+  selectedDiscoveredModelKeys.value = checked ? discoveredModels.value.map(item => item.modelKey) : []
+}
+
+const handleSelectAllDiscoveredModelsChange = (event: Event) => {
+  toggleSelectAllDiscoveredModels(Boolean((event.target as HTMLInputElement | null)?.checked))
+}
+
+const getDiscoveredModelImportAction = (item: DiscoveredProviderModelItem) => {
+  const matchedModel = models.value.find(model => {
+    return model.category === discoverBatchSettings.category && model.modelKey === item.modelKey
+  })
+  return matchedModel ? 'update' : 'create'
+}
+
+const handleBatchImportModels = async () => {
+  if (!selectedProvider.value) {
+    ElMessage.error('请先选择厂商')
+    return
+  }
+  const selectedItems = discoveredModels.value.filter(item => selectedDiscoveredModelKeys.value.includes(item.modelKey))
+  if (!selectedItems.length) {
+    ElMessage.error('请至少选择一个模型')
+    return
+  }
+
+  try {
+    discoverImporting.value = true
+    const payloadItems = selectedItems.map((item, index) => ({
+      category: discoverBatchSettings.category,
+      label: item.label || item.modelKey,
+      modelKey: item.modelKey,
+      description: item.description || '',
+      sortOrder: Number(discoverBatchSettings.sortOrderStart) + index * Math.max(1, Number(discoverBatchSettings.sortOrderStep) || 10),
+      isEnabled: Boolean(discoverBatchSettings.isEnabled),
+      capabilityJson: null,
+      defaultParamsJson: null,
+    }))
+
+    await batchUpsertAdminProviderModels(selectedProvider.value.id, {
+      items: payloadItems,
+    })
+    await loadModels(selectedProvider.value.id)
+    await loadProviders()
+    closeDiscoverModelsDialog()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '批量导入模型失败')
+  } finally {
+    discoverImporting.value = false
+  }
 }
 
 const openEditModelDialog = (model: AdminProviderModelItem) => {
@@ -991,3 +1188,91 @@ onBeforeUnmount(() => {
   window.removeEventListener('click', handleWindowClick)
 })
 </script>
+
+<style scoped>
+.admin-model-discover__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0 12px;
+}
+
+.admin-model-discover__summary {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.admin-model-discover__summary em {
+  font-style: normal;
+}
+
+.admin-model-discover__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.admin-model-discover__row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 12px;
+  background: var(--bg-surface);
+}
+
+.admin-model-discover__content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-model-discover__headline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-model-discover__content strong,
+.admin-model-discover__content span,
+.admin-model-discover__content small {
+  word-break: break-word;
+}
+
+.admin-model-discover__content span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.admin-model-discover__content small {
+  color: var(--text-tertiary, #8a8f98);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.admin-model-discover__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.admin-model-discover__badge.is-update {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+
+.admin-model-discover__badge.is-create {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+</style>

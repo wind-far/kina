@@ -106,6 +106,11 @@
           <span>默认 {{ skill.expectedImageCount }} 张</span>
         </div>
 
+        <div class="admin-skill-tile__binding">
+          <span>图片模型</span>
+          <strong>{{ getSkillImageModelSummary(skill.skillKey) }}</strong>
+        </div>
+
         <div class="admin-skill-tile__meta-row">
           <span>提示词 {{ getPromptCount(skill.skillKey) }}</span>
           <span>工作流 {{ getWorkflowCount(skill.skillKey) }}</span>
@@ -269,6 +274,20 @@
                     <div class="admin-form__field">
                       <label class="admin-form__label">运行时技能键</label>
                       <input v-model.trim="skillForm.workspaceSkillKey" class="admin-input" type="text" placeholder="例如 image-poster">
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-form__label">图片模型厂商</label>
+                      <select v-model="skillForm.imageModelProviderId" class="admin-input">
+                        <option value="">跟随默认图片模型</option>
+                        <option v-for="provider in imageModelProviderOptions" :key="provider.id" :value="provider.id">{{ provider.name }}</option>
+                      </select>
+                    </div>
+                    <div class="admin-form__field">
+                      <label class="admin-form__label">图片模型</label>
+                      <select v-model="skillForm.imageModelKey" class="admin-input" :disabled="!skillForm.imageModelProviderId">
+                        <option value="">{{ skillForm.imageModelProviderId ? '请选择图片模型' : '请先选择厂商' }}</option>
+                        <option v-for="model in currentImageModelOptions" :key="model.id" :value="model.modelKey">{{ model.label }}（{{ model.modelKey }}）</option>
+                      </select>
                     </div>
                     <div class="admin-form__field admin-form__field--full">
                       <label class="admin-form__label">依赖技能键（逗号分隔）</label>
@@ -666,6 +685,10 @@
                     <strong>{{ normalizedDependencySkillKeys.length ? normalizedDependencySkillKeys.join('、') : '无' }}</strong>
                   </div>
                   <div class="admin-skill-summary__row">
+                    <span>图片模型</span>
+                    <strong>{{ currentSkillImageModelSummary }}</strong>
+                  </div>
+                  <div class="admin-skill-summary__row">
                     <span>提示词模板</span>
                     <strong>{{ enabledPromptCount }}/{{ skillForm.promptTemplates.length }}</strong>
                   </div>
@@ -755,6 +778,7 @@ import {
   type AdminSkillUiMode,
 } from '@/api/admin-skills'
 import { listAdminProviders, type AdminProviderItem } from '@/api/admin-providers'
+import { listAdminProviderModels, type AdminProviderModelItem } from '@/api/admin-models'
 import { updateAdminSkill } from '@/api/admin-skills'
 
 interface SkillPromptFormItem {
@@ -820,6 +844,7 @@ const collapsedTemplateItemKeys = ref<Set<string>>(new Set())
 const skills = ref<AdminSkillDetail['skill'][]>([])
 const skillDetailMap = ref<Record<string, AdminSkillDetail>>({})
 const providerOptions = ref<AdminProviderItem[]>([])
+const providerImageModelMap = ref<Record<string, AdminProviderModelItem[]>>({})
 const { activeFilterCount, resetFilters } = useAdminListFilters({
   filters,
   defaults: filterDefaults,
@@ -858,6 +883,8 @@ const skillForm = reactive({
   isBuiltIn: false,
   sortOrder: 0,
   workspaceSkillKey: '',
+  imageModelProviderId: '',
+  imageModelKey: '',
   dependencySkillKeysText: '',
   configJsonText: '',
   promptTemplates: [] as SkillPromptFormItem[],
@@ -893,6 +920,21 @@ const executionModeOptions = computed(() => {
 const categoryOptions = computed(() => {
   return Array.from(new Set(skills.value.map(item => item.category).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'zh-CN'))
 })
+const imageModelProviderOptions = computed(() => {
+  return providerOptions.value.filter((provider) => {
+    const models = providerImageModelMap.value[provider.id] || []
+    return models.length > 0
+  })
+})
+const currentImageModelOptions = computed(() => {
+  if (!skillForm.imageModelProviderId) {
+    return []
+  }
+  return providerImageModelMap.value[skillForm.imageModelProviderId] || []
+})
+const currentSkillImageModelSummary = computed(() => {
+  return formatImageModelSummary(skillForm.imageModelProviderId, skillForm.imageModelKey)
+})
 const visibleSectionNavItems = computed(() => {
   const currentTab = editorTabs.find(item => item.key === activeEditorTab.value)
   if (!currentTab) {
@@ -917,6 +959,38 @@ const getPromptCount = (skillKey: string) => skillDetailMap.value[skillKey]?.pro
 const getWorkflowCount = (skillKey: string) => skillDetailMap.value[skillKey]?.workflowTemplates.length || 0
 const getPlanCount = (skillKey: string) => skillDetailMap.value[skillKey]?.planTemplates.length || 0
 const getStageCount = (skillKey: string) => skillDetailMap.value[skillKey]?.stageTemplates.length || 0
+
+const formatImageModelSummary = (providerId?: string, modelKey?: string) => {
+  const normalizedProviderId = String(providerId || '').trim()
+  const normalizedModelKey = String(modelKey || '').trim()
+  if (!normalizedProviderId || !normalizedModelKey) {
+    return '跟随默认图片模型'
+  }
+
+  const provider = providerOptions.value.find(item => item.id === normalizedProviderId)
+  const matchedModel = (providerImageModelMap.value[normalizedProviderId] || []).find(item => item.modelKey === normalizedModelKey)
+  const modelLabel = matchedModel?.label || normalizedModelKey
+  const providerLabel = provider?.name || normalizedProviderId
+
+  return `${providerLabel} / ${modelLabel}`
+}
+
+const getSkillImageModelSummary = (skillKey: string) => {
+  const detail = skillDetailMap.value[skillKey]
+  const configJson = detail?.skill?.configJson as Record<string, unknown> | null | undefined
+  const providerId = String(
+    (configJson?.imageModelBinding as Record<string, unknown> | undefined)?.providerId
+    || configJson?.imageModelProviderId
+    || '',
+  ).trim()
+  const modelKey = String(
+    (configJson?.imageModelBinding as Record<string, unknown> | undefined)?.modelKey
+    || configJson?.imageModelKey
+    || '',
+  ).trim()
+
+  return formatImageModelSummary(providerId, modelKey)
+}
 
 const getSkillInitial = (label: string) => String(label || '').trim().slice(0, 1).toUpperCase() || 'S'
 const isSkillToggling = (skillKey: string) => togglingSkillKeys.value.has(skillKey)
@@ -1106,6 +1180,8 @@ const resetForm = () => {
   skillForm.isBuiltIn = false
   skillForm.sortOrder = 0
   skillForm.workspaceSkillKey = ''
+  skillForm.imageModelProviderId = ''
+  skillForm.imageModelKey = ''
   skillForm.dependencySkillKeysText = ''
   skillForm.configJsonText = ''
   skillForm.promptTemplates = []
@@ -1153,6 +1229,19 @@ const buildConfigJson = () => {
     nextConfigJson.workspaceSkillKey = skillForm.workspaceSkillKey.trim()
   } else {
     delete nextConfigJson.workspaceSkillKey
+  }
+
+  if (skillForm.imageModelProviderId.trim() && skillForm.imageModelKey.trim()) {
+    nextConfigJson.imageModelProviderId = skillForm.imageModelProviderId.trim()
+    nextConfigJson.imageModelKey = skillForm.imageModelKey.trim()
+    nextConfigJson.imageModelBinding = {
+      providerId: skillForm.imageModelProviderId.trim(),
+      modelKey: skillForm.imageModelKey.trim(),
+    }
+  } else {
+    delete nextConfigJson.imageModelProviderId
+    delete nextConfigJson.imageModelKey
+    delete nextConfigJson.imageModelBinding
   }
 
   const dependencySkillKeys = parseDependencySkillKeys(skillForm.dependencySkillKeysText)
@@ -1230,6 +1319,16 @@ const applyDetailToForm = (detail: AdminSkillDetail) => {
   skillForm.isBuiltIn = detail.skill.isBuiltIn
   skillForm.sortOrder = detail.skill.sortOrder
   skillForm.workspaceSkillKey = String(configJson.workspaceSkillKey || '').trim()
+  skillForm.imageModelProviderId = String(
+    (configJson.imageModelBinding as Record<string, unknown> | undefined)?.providerId
+    || configJson.imageModelProviderId
+    || '',
+  ).trim()
+  skillForm.imageModelKey = String(
+    (configJson.imageModelBinding as Record<string, unknown> | undefined)?.modelKey
+    || configJson.imageModelKey
+    || '',
+  ).trim()
   skillForm.dependencySkillKeysText = (
     Array.isArray(configJson.dependencySkillKeys)
       ? configJson.dependencySkillKeys
@@ -1268,6 +1367,22 @@ const applyDetailToForm = (detail: AdminSkillDetail) => {
 
 const loadProviders = async () => {
   providerOptions.value = await listAdminProviders()
+  const imageModelEntries = await Promise.all(providerOptions.value.map(async (provider) => {
+    try {
+      const result = await listAdminProviderModels(provider.id)
+      return [
+        provider.id,
+        result.models.filter(model => model.category === 'IMAGE' && model.isEnabled),
+      ] as [string, AdminProviderModelItem[]]
+    } catch {
+      return [provider.id, []] as [string, AdminProviderModelItem[]]
+    }
+  }))
+
+  providerImageModelMap.value = imageModelEntries.reduce<Record<string, AdminProviderModelItem[]>>((result, [providerId, models]) => {
+    result[providerId] = models
+    return result
+  }, {})
 }
 
 const loadSkillList = async () => {
@@ -1308,6 +1423,14 @@ const openEditDialog = async (skillKey: string) => {
     saving.value = false
   }
 }
+
+watch(() => skillForm.imageModelProviderId, (providerId) => {
+  const currentModels = providerId ? (providerImageModelMap.value[providerId] || []) : []
+  if (currentModels.some(model => model.modelKey === skillForm.imageModelKey)) {
+    return
+  }
+  skillForm.imageModelKey = ''
+})
 
 const closeDialog = () => {
   dialogVisible.value = false
@@ -1479,6 +1602,27 @@ onMounted(async () => {
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.6;
+}
+
+.admin-skill-tile__binding {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-surface-secondary, #00000008);
+}
+
+.admin-skill-tile__binding span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.admin-skill-tile__binding strong {
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
 }
 
 .admin-skill-tile__meta-row {

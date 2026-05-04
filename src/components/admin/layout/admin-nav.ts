@@ -84,6 +84,11 @@ export const adminNavGroups: AdminNavGroup[] = [
         description: '维护站点信息、协议文案与登录方式',
       },
       {
+        label: 'Redis 管理',
+        path: '/admin/redis',
+        description: '查看 Redis 健康状态、缓存数量与任务运行态',
+      },
+      {
         label: '主题配置',
         path: '/admin/theme',
         description: '单独维护主题模式、品牌主色、渐变与界面尺寸',

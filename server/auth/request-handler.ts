@@ -1,6 +1,7 @@
 import type { AuthMethodType } from '@prisma/client'
 import { sendJson } from '../ai-gateway/shared'
 import { isPrismaConfigured } from '../db/prisma'
+import { REDIS_CONFIG, consumeFixedWindowRateLimit, getRedisRuntimeSettings } from '../redis'
 import {
   AUTH_CONFIGS_PATH,
   AUTH_LOGIN_PATH,
@@ -13,7 +14,7 @@ import {
 import { readSessionTokenFromRequest, requireAdminSessionUser } from './session'
 import { getAuthStrategy } from './strategies'
 import { getAuthMethodConfig, getSessionCookieMaxAge, getUserBySessionToken, listAuthMethodConfigs, listEnabledAuthMethods, revokeSessionToken, saveAuthMethodConfigs, AUTH_SESSION_COOKIE_NAME } from './service'
-import { type AuthLoginPayload, type AuthMethodConfigSavePayload, type AuthOAuthAuthorizePayload, type AuthVerificationCodePayload, normalizeAuthMethodConfigList, readAuthBody, sendAuthError } from './shared'
+import { AuthRequestError, type AuthLoginPayload, type AuthMethodConfigSavePayload, type AuthOAuthAuthorizePayload, type AuthVerificationCodePayload, normalizeAuthMethodConfigList, readAuthBody, sendAuthError } from './shared'
 
 // 推导请求来源 IP。
 const readRequesterIp = (req: any) => {
@@ -111,6 +112,22 @@ export const handleAuthRequest = async (req: any, res: any) => {
 
     if (req.method === 'POST' && requestUrl === AUTH_VERIFICATION_CODE_PATH) {
       const payload = await readAuthBody<AuthVerificationCodePayload>(req)
+      const verificationTarget = String(payload.target || '').trim()
+      const runtimeSettings = await getRedisRuntimeSettings()
+      const verificationRateLimit = await consumeFixedWindowRateLimit({
+        scope: 'auth-verification',
+        identifier: `${readRequesterIp(req)}:${verificationTarget || 'unknown'}`,
+        limit: runtimeSettings.authVerificationRateLimit || REDIS_CONFIG.authVerificationRateLimit,
+        windowSeconds: REDIS_CONFIG.rateLimitWindowSeconds,
+      })
+
+      if (!verificationRateLimit.allowed) {
+        throw new AuthRequestError(
+          429,
+          `验证码请求过于频繁，请在 ${verificationRateLimit.retryAfterSeconds || REDIS_CONFIG.rateLimitWindowSeconds} 秒后重试`,
+        )
+      }
+
       const methodType = readMethodType(payload.methodType)
       const methodConfig = await getAuthMethodConfig(methodType)
 
@@ -125,7 +142,7 @@ export const handleAuthRequest = async (req: any, res: any) => {
 
       const data = await strategy.sendCode({
         methodType,
-        target: String(payload.target || '').trim(),
+        target: verificationTarget,
         requesterIp: readRequesterIp(req),
         userAgent: String(req.headers['user-agent'] || '').trim(),
         methodConfig,
@@ -137,6 +154,22 @@ export const handleAuthRequest = async (req: any, res: any) => {
 
     if (req.method === 'POST' && requestUrl === AUTH_LOGIN_PATH) {
       const payload = await readAuthBody<AuthLoginPayload>(req)
+      const loginTarget = String(payload.target || '').trim()
+      const runtimeSettings = await getRedisRuntimeSettings()
+      const loginRateLimit = await consumeFixedWindowRateLimit({
+        scope: 'auth-login',
+        identifier: `${readRequesterIp(req)}:${loginTarget || 'unknown'}`,
+        limit: runtimeSettings.authLoginRateLimit || REDIS_CONFIG.authLoginRateLimit,
+        windowSeconds: REDIS_CONFIG.rateLimitWindowSeconds,
+      })
+
+      if (!loginRateLimit.allowed) {
+        throw new AuthRequestError(
+          429,
+          `登录请求过于频繁，请在 ${loginRateLimit.retryAfterSeconds || REDIS_CONFIG.rateLimitWindowSeconds} 秒后重试`,
+        )
+      }
+
       const methodType = readMethodType(payload.methodType)
       const methodConfig = await getAuthMethodConfig(methodType)
 
@@ -151,7 +184,7 @@ export const handleAuthRequest = async (req: any, res: any) => {
 
       const data = await strategy.login({
         methodType,
-        target: String(payload.target || '').trim(),
+        target: loginTarget,
         code: String(payload.code || '').trim(),
         requesterIp: readRequesterIp(req),
         userAgent: String(req.headers['user-agent'] || '').trim(),
@@ -222,6 +255,9 @@ export const handleAuthRequest = async (req: any, res: any) => {
 
     sendAuthError(res, 405, 'Method Not Allowed')
   } catch (error: any) {
-    sendAuthError(res, 500, error?.message || '处理登录请求失败')
+    const statusCode = error instanceof AuthRequestError
+      ? error.statusCode
+      : 500
+    sendAuthError(res, statusCode, error?.message || '处理登录请求失败')
   }
 }

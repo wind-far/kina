@@ -6,6 +6,7 @@ import {
   createAdminSkill,
   deleteAdminSkill,
   getSkillDefinitionDetail,
+  invalidateSkillRuntimeCache,
   listAdminSkills,
   listPublicEnabledSkills,
   setAdminSkillEnabled,
@@ -80,6 +81,7 @@ export const handleSkillConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await createAdminSkill(payload as any)
+      await invalidateSkillRuntimeCache(data?.skill?.skillKey)
       sendJson(res, 200, { data, message: '技能已创建' })
       return
     }
@@ -92,6 +94,7 @@ export const handleSkillConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await updateAdminSkill(skillDetailMatch.skillKey, payload as any)
+      await invalidateSkillRuntimeCache(skillDetailMatch.skillKey)
       sendJson(res, 200, { data, message: '技能已更新' })
       return
     }
@@ -104,6 +107,7 @@ export const handleSkillConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await setAdminSkillEnabled(skillDetailMatch.skillKey, Boolean((payload as any)?.isEnabled))
+      await invalidateSkillRuntimeCache(skillDetailMatch.skillKey)
       sendJson(res, 200, { data, message: '技能状态已更新' })
       return
     }
@@ -115,6 +119,7 @@ export const handleSkillConfigRequest = async (req: any, res: any) => {
       }
 
       const data = await deleteAdminSkill(skillDetailMatch.skillKey)
+      await invalidateSkillRuntimeCache(skillDetailMatch.skillKey)
       sendJson(res, 200, { data, message: '技能已删除' })
       return
     }

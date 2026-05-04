@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import type {
   AuthMethodType,
   MembershipOrderSource,
@@ -7,6 +8,9 @@ import type {
   UserStatus,
 } from '@prisma/client'
 import prisma from '../db/prisma'
+import { invalidateRedisCachePatterns, invalidateRedisCaches } from '../redis/cache-manager'
+import { getOrSetJsonCache } from '../redis/json-cache'
+import { redisKeys } from '../redis/keys'
 import { isValidEmail, isValidPhone, maskEmail, maskPhone } from '../auth/service'
 
 interface AdminUserRecord {
@@ -30,6 +34,25 @@ export interface ListAdminUsersOptions {
   keyword?: string
   role?: 'ALL' | 'USER' | 'ADMIN'
   status?: 'ALL' | 'ANONYMOUS' | 'ACTIVE' | 'DISABLED'
+}
+
+const ADMIN_USERS_LIST_SCOPE = 'admin-users-list'
+const ADMIN_USERS_DETAIL_SCOPE = 'admin-users-detail'
+const ADMIN_USERS_LIST_CACHE_PATTERN = redisKeys.cache(ADMIN_USERS_LIST_SCOPE, '*')
+const ADMIN_USERS_DETAIL_CACHE_PATTERN = redisKeys.cache(ADMIN_USERS_DETAIL_SCOPE, '*')
+const buildAdminUsersListCacheKey = (options: ListAdminUsersOptions = {}) => {
+  const hash = crypto
+    .createHash('sha1')
+    .update(JSON.stringify({
+      keyword: String(options.keyword || '').trim(),
+      role: String(options.role || 'ALL').trim(),
+      status: String(options.status || 'ALL').trim(),
+    }))
+    .digest('hex')
+  return redisKeys.cache(ADMIN_USERS_LIST_SCOPE, hash)
+}
+const buildAdminUserDetailCacheKey = (targetUserId: string) => {
+  return redisKeys.cache(ADMIN_USERS_DETAIL_SCOPE, targetUserId)
 }
 
 export interface UpdateAdminUserProfileInput {
@@ -494,30 +517,50 @@ const buildAdminUserDetail = async (targetUserId: string) => {
   })
 }
 
+export const invalidateAdminUsersCaches = async (targetUserId?: string | null) => {
+  const normalizedUserId = String(targetUserId || '').trim()
+  if (normalizedUserId) {
+    await invalidateRedisCaches([buildAdminUserDetailCacheKey(normalizedUserId)])
+    await invalidateRedisCachePatterns([ADMIN_USERS_LIST_CACHE_PATTERN])
+    return
+  }
+
+  await invalidateRedisCachePatterns([
+    ADMIN_USERS_LIST_CACHE_PATTERN,
+    ADMIN_USERS_DETAIL_CACHE_PATTERN,
+  ])
+}
+
 export const listAdminUsers = async (options: ListAdminUsersOptions = {}) => {
-  const users = await prisma.appUser.findMany({
-    where: buildUserWhereInput(options),
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      phone: true,
-      avatarUrl: true,
-      role: true,
-      status: true,
-      createdAt: true,
-      updatedAt: true,
+  return getOrSetJsonCache({
+    key: buildAdminUsersListCacheKey(options),
+    ttlSeconds: 120,
+    factory: async () => {
+      const users = await prisma.appUser.findMany({
+        where: buildUserWhereInput(options),
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          avatarUrl: true,
+          role: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: [
+          { createdAt: 'desc' },
+          { id: 'desc' },
+        ],
+      })
+
+      const userIds = users.map(item => item.id)
+      const countMap = await getUserCountMaps(userIds)
+
+      return users.map(user => buildAdminUserItem(user, countMap.get(user.id)))
     },
-    orderBy: [
-      { createdAt: 'desc' },
-      { id: 'desc' },
-    ],
   })
-
-  const userIds = users.map(item => item.id)
-  const countMap = await getUserCountMaps(userIds)
-
-  return users.map(user => buildAdminUserItem(user, countMap.get(user.id)))
 }
 
 export const getAdminUserDetail = async (targetUserId: string) => {
@@ -526,7 +569,11 @@ export const getAdminUserDetail = async (targetUserId: string) => {
     throw new Error('缺少目标用户 ID')
   }
 
-  return await buildAdminUserDetail(normalizedUserId)
+  return getOrSetJsonCache({
+    key: buildAdminUserDetailCacheKey(normalizedUserId),
+    ttlSeconds: 120,
+    factory: async () => buildAdminUserDetail(normalizedUserId),
+  })
 }
 
 export const createAdminUser = async (input: CreateAdminUserInput) => {
@@ -614,6 +661,7 @@ export const createAdminUser = async (input: CreateAdminUserInput) => {
     return user
   })
 
+  await invalidateAdminUsersCaches(createdUser.id)
   return await buildAdminUserDetail(createdUser.id)
 }
 
@@ -654,7 +702,9 @@ export const updateAdminUserRole = async (input: {
   })
 
   const countMap = await getUserCountMaps([targetUserId])
-  return buildAdminUserItem(updatedUser, countMap.get(targetUserId))
+  const result = buildAdminUserItem(updatedUser, countMap.get(targetUserId))
+  await invalidateAdminUsersCaches(targetUserId)
+  return result
 }
 
 export const updateAdminUserProfile = async (input: UpdateAdminUserProfileInput) => {
@@ -713,6 +763,7 @@ export const updateAdminUserProfile = async (input: UpdateAdminUserProfileInput)
     },
   })
 
+  await invalidateAdminUsersCaches(targetUserId)
   return await buildAdminUserDetail(targetUserId)
 }
 
@@ -738,6 +789,7 @@ export const adjustAdminUserPoints = async (input: AdjustAdminUserPointsInput) =
     })
   })
 
+  await invalidateAdminUsersCaches(targetUserId)
   return serializeAdminUserRecord(pointLog)
 }
 
@@ -890,6 +942,7 @@ export const adjustAdminUserMembership = async (input: AdjustAdminUserMembership
     }
   })
 
+  await invalidateAdminUsersCaches(targetUserId)
   return serializeAdminUserRecord(result)
 }
 
@@ -961,5 +1014,6 @@ export const deleteAdminUser = async (input: {
     where: { id: targetUserId },
   })
 
+  await invalidateAdminUsersCaches(targetUserId)
   return true
 }

@@ -1,4 +1,14 @@
 import prisma from '../db/prisma'
+import { invalidateRedisCachePatterns, invalidateRedisCaches } from '../redis/cache-manager'
+import { getOrSetJsonCache } from '../redis/json-cache'
+import { redisKeys } from '../redis/keys'
+
+const MARKETING_CENTER_OVERVIEW_SCOPE = 'marketing-center-overview'
+const MARKETING_CENTER_GUEST_OVERVIEW_CACHE_KEY = redisKeys.cache(MARKETING_CENTER_OVERVIEW_SCOPE, 'guest')
+const MARKETING_CENTER_OVERVIEW_CACHE_PATTERN = redisKeys.cache(MARKETING_CENTER_OVERVIEW_SCOPE, '*')
+const buildMarketingCenterUserOverviewCacheKey = (userId: string) => {
+  return redisKeys.cache(MARKETING_CENTER_OVERVIEW_SCOPE, `user:${userId}`)
+}
 
 const buildSerialNo = (prefix: string) => {
   const now = new Date()
@@ -84,6 +94,16 @@ const buildCyclePrefix = (cycleType: string, now = new Date()) => {
   if (cycleType === 'WEEKLY') return formatWeekKey(now)
   if (cycleType === 'MONTHLY') return formatMonthKey(now)
   return 'ONCE'
+}
+
+export const invalidateMarketingCenterOverviewCache = async (userId?: string | null) => {
+  const normalizedUserId = String(userId || '').trim()
+  if (normalizedUserId) {
+    await invalidateRedisCaches([buildMarketingCenterUserOverviewCacheKey(normalizedUserId)])
+    return
+  }
+
+  await invalidateRedisCachePatterns([MARKETING_CENTER_OVERVIEW_CACHE_PATTERN])
 }
 
 // BuildingAI 风格会员计费规则。
@@ -329,7 +349,7 @@ export const refundGenerationPoints = async (input: {
     return null
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     return appendPointLog(tx, {
       userId: input.userId,
       changeType: 'REFUND',
@@ -354,6 +374,9 @@ export const refundGenerationPoints = async (input: {
       },
     })
   })
+
+  await invalidateMarketingCenterOverviewCache(input.userId)
+  return result
 }
 
 // 在生成任务记录创建完成后，把 generationRecordId 追写回积分消费流水，便于后续做失败补偿与审计。
@@ -582,125 +605,142 @@ const grantRewardByTrigger = async (tx: any, input: {
 
 // 用户登录成功后触发每日登录奖励。
 export const grantLoginReward = async (userId: string) => {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     return grantRewardByTrigger(tx, {
       userId,
       triggerType: 'LOGIN_DAILY',
       remark: '每日登录奖励',
     })
   })
+
+  await invalidateMarketingCenterOverviewCache(userId)
+  return result
 }
 
 // 新用户注册成功后发放一次性注册奖励。
 export const grantRegisterReward = async (userId: string) => {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     return grantRewardByTrigger(tx, {
       userId,
       triggerType: 'REGISTER_ONCE',
       remark: '新用户注册奖励',
     })
   })
+
+  await invalidateMarketingCenterOverviewCache(userId)
+  return result
 }
 
 // 获取用户侧营销中心总览。
 export const getMarketingCenterOverview = async (userId?: string | null) => {
-  const [rawMembershipPlans, membershipLevels, rechargePackages, rewardRules] = await Promise.all([
-    prisma.membershipPlan.findMany({
-      where: { isEnabled: true },
-      include: { level: true },
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-    }),
-    prisma.membershipLevel.findMany({ where: { isEnabled: true } }),
-    prisma.rechargePackage.findMany({
-      where: { isEnabled: true },
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-    }),
-    prisma.rewardRule.findMany({
-      where: { isEnabled: true },
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-    }),
-  ])
+  const normalizedUserId = String(userId || '').trim()
+  const cacheKey = normalizedUserId
+    ? buildMarketingCenterUserOverviewCacheKey(normalizedUserId)
+    : MARKETING_CENTER_GUEST_OVERVIEW_CACHE_KEY
 
-  const membershipPlans = expandMembershipPlansByBilling(rawMembershipPlans, membershipLevels)
+  return getOrSetJsonCache({
+    key: cacheKey,
+    ttlSeconds: normalizedUserId ? 120 : 600,
+    factory: async () => {
+      const [rawMembershipPlans, membershipLevels, rechargePackages, rewardRules] = await Promise.all([
+        prisma.membershipPlan.findMany({
+          where: { isEnabled: true },
+          include: { level: true },
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        }),
+        prisma.membershipLevel.findMany({ where: { isEnabled: true } }),
+        prisma.rechargePackage.findMany({
+          where: { isEnabled: true },
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        }),
+        prisma.rewardRule.findMany({
+          where: { isEnabled: true },
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        }),
+      ])
 
-  if (!userId) {
-    return serializeMarketingCenterRecord({
-      user: null,
-      points: {
-        balance: 0,
-        available: 0,
-        logs: [],
-      },
-      subscription: null,
-      membershipPlans,
-      rechargePackages,
-      rewardRules,
-      cardRedeemRecords: [],
-      checkin: {
-        checkedInToday: false,
-        currentRecord: null,
-      },
-    })
-  }
+      const membershipPlans = expandMembershipPlansByBilling(rawMembershipPlans, membershipLevels)
 
-  const [currentUser, currentBalance, activeSubscription, recentPointLogs, recentRedeemRecords, todayCheckinRecord] = await Promise.all([
-    prisma.appUser.findUnique({
-      where: { id: userId },
-      select: { id: true, name: true, email: true, phone: true, role: true, createdAt: true },
-    }),
-    readCurrentPointBalance(userId),
-    prisma.userSubscription.findFirst({
-      where: {
-        userId,
-        status: 'ACTIVE',
-        endTime: { gt: new Date() },
-      },
-      include: { level: true },
-      orderBy: { endTime: 'desc' },
-    }),
-    prisma.pointAccountLog.findMany({
-      where: { userId },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: 10,
-    }),
-    prisma.cardRedeemRecord.findMany({
-      where: { userId },
-      include: { batch: true, rewardLevel: true },
-      orderBy: [{ createdAt: 'desc' }],
-      take: 10,
-    }),
-    prisma.userCheckinRecord.findUnique({
-      where: {
-        userId_checkinDate: {
-          userId,
-          checkinDate: formatDateKey(new Date()),
+      if (!normalizedUserId) {
+        return serializeMarketingCenterRecord({
+          user: null,
+          points: {
+            balance: 0,
+            available: 0,
+            logs: [],
+          },
+          subscription: null,
+          membershipPlans,
+          rechargePackages,
+          rewardRules,
+          cardRedeemRecords: [],
+          checkin: {
+            checkedInToday: false,
+            currentRecord: null,
+          },
+        })
+      }
+
+      const [currentUser, currentBalance, activeSubscription, recentPointLogs, recentRedeemRecords, todayCheckinRecord] = await Promise.all([
+        prisma.appUser.findUnique({
+          where: { id: normalizedUserId },
+          select: { id: true, name: true, email: true, phone: true, role: true, createdAt: true },
+        }),
+        readCurrentPointBalance(normalizedUserId),
+        prisma.userSubscription.findFirst({
+          where: {
+            userId: normalizedUserId,
+            status: 'ACTIVE',
+            endTime: { gt: new Date() },
+          },
+          include: { level: true },
+          orderBy: { endTime: 'desc' },
+        }),
+        prisma.pointAccountLog.findMany({
+          where: { userId: normalizedUserId },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 10,
+        }),
+        prisma.cardRedeemRecord.findMany({
+          where: { userId: normalizedUserId },
+          include: { batch: true, rewardLevel: true },
+          orderBy: [{ createdAt: 'desc' }],
+          take: 10,
+        }),
+        prisma.userCheckinRecord.findUnique({
+          where: {
+            userId_checkinDate: {
+              userId: normalizedUserId,
+              checkinDate: formatDateKey(new Date()),
+            },
+          },
+        }),
+      ])
+
+      return serializeMarketingCenterRecord({
+        user: currentUser,
+        points: {
+          balance: currentBalance,
+          available: currentBalance,
+          logs: recentPointLogs,
         },
-      },
-    }),
-  ])
-
-  return serializeMarketingCenterRecord({
-    user: currentUser,
-    points: {
-      balance: currentBalance,
-      available: currentBalance,
-      logs: recentPointLogs,
-    },
-    subscription: activeSubscription,
-    membershipPlans,
-    rechargePackages,
-    rewardRules,
-    cardRedeemRecords: recentRedeemRecords,
-    checkin: {
-      checkedInToday: Boolean(todayCheckinRecord),
-      currentRecord: todayCheckinRecord,
+        subscription: activeSubscription,
+        membershipPlans,
+        rechargePackages,
+        rewardRules,
+        cardRedeemRecords: recentRedeemRecords,
+        checkin: {
+          checkedInToday: Boolean(todayCheckinRecord),
+          currentRecord: todayCheckinRecord,
+        },
+      })
     },
   })
 }
 
 // 用户签到。
 export const performUserCheckin = async (userId: string) => {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const today = formatDateKey(new Date())
     const existing = await tx.userCheckinRecord.findUnique({
       where: {
@@ -750,11 +790,14 @@ export const performUserCheckin = async (userId: string) => {
       currentBalance: await readCurrentPointBalance(userId, tx),
     })
   })
+
+  await invalidateMarketingCenterOverviewCache(userId)
+  return result
 }
 
 // 用户购买会员计划。
 export const createMembershipPurchaseOrder = async (userId: string, selectedPlanId: string) => {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const selection = parsePlanPurchaseSelection(selectedPlanId)
     const plan = await tx.membershipPlan.findFirst({
       where: { id: selection.planId, isEnabled: true },
@@ -824,11 +867,14 @@ export const createMembershipPurchaseOrder = async (userId: string, selectedPlan
       currentBalance: await readCurrentPointBalance(userId, tx),
     })
   })
+
+  await invalidateMarketingCenterOverviewCache(userId)
+  return result
 }
 
 // 用户创建充值订单并立即入账。
 export const createRechargePurchaseOrder = async (userId: string, rechargePackageId: string) => {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const rechargePackage = await tx.rechargePackage.findFirst({
       where: { id: rechargePackageId, isEnabled: true },
     })
@@ -880,11 +926,14 @@ export const createRechargePurchaseOrder = async (userId: string, rechargePackag
       currentBalance: await readCurrentPointBalance(userId, tx),
     })
   })
+
+  await invalidateMarketingCenterOverviewCache(userId)
+  return result
 }
 
 // 用户兑换卡密。
 export const redeemCardCode = async (userId: string, code: string) => {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const normalizedCode = String(code || '').trim().toUpperCase()
     if (!normalizedCode) {
       throw new Error('请输入卡密')
@@ -1007,4 +1056,7 @@ export const redeemCardCode = async (userId: string, code: string) => {
       currentBalance: await readCurrentPointBalance(userId, tx),
     }
   })
+
+  await invalidateMarketingCenterOverviewCache(userId)
+  return result
 }

@@ -1,9 +1,10 @@
 import { requireCurrentSessionUser } from '../auth/session'
 import { sendJson } from '../ai-gateway/shared'
 import { isPrismaConfigured } from '../db/prisma'
+import { REDIS_CONFIG, consumeFixedWindowRateLimit, getRedisRuntimeSettings } from '../redis'
 import { GENERATION_TASKS_BASE_PATH } from './constants'
 import { getGenerationTaskRecord, startGenerationTask, stopGenerationTask, subscribeGenerationTaskStream } from './service'
-import { readGenerationTaskBody, sendGenerationTaskError } from './shared'
+import { GenerationTaskRequestError, readGenerationTaskBody, sendGenerationTaskError } from './shared'
 
 // 统一输出生成任务请求异常，便于排查启动、轮询和停止链路。
 const logGenerationTaskRequestError = (detail: Record<string, unknown>) => {
@@ -37,6 +38,21 @@ export const handleGenerationTasksRequest = async (req: any, res: any) => {
     }
 
     if (req.method === 'POST' && requestUrl === GENERATION_TASKS_BASE_PATH) {
+      const runtimeSettings = await getRedisRuntimeSettings()
+      const rateLimitResult = await consumeFixedWindowRateLimit({
+        scope: 'task-submit',
+        identifier: String(currentUser.id || '').trim(),
+        limit: runtimeSettings.taskSubmitRateLimit || REDIS_CONFIG.taskSubmitRateLimit,
+        windowSeconds: REDIS_CONFIG.rateLimitWindowSeconds,
+      })
+
+      if (!rateLimitResult.allowed) {
+        throw new GenerationTaskRequestError(
+          429,
+          `提交过于频繁，请在 ${rateLimitResult.retryAfterSeconds || REDIS_CONFIG.rateLimitWindowSeconds} 秒后重试`,
+        )
+      }
+
       const payload = await readGenerationTaskBody(req)
       payloadSummary = {
         sessionId: payload?.sessionId || null,
@@ -77,6 +93,9 @@ export const handleGenerationTasksRequest = async (req: any, res: any) => {
       errorMessage: error?.message || '处理生成任务失败',
       errorStack: error?.stack || null,
     })
-    sendGenerationTaskError(res, 500, error?.message || '处理生成任务失败')
+    const statusCode = error instanceof GenerationTaskRequestError
+      ? error.statusCode
+      : 500
+    sendGenerationTaskError(res, statusCode, error?.message || '处理生成任务失败')
   }
 }

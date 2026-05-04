@@ -36,6 +36,7 @@ import { handleStorageUploadRequest } from './storage/request-handler'
 import { getUploadsDir } from './storage/service'
 import { isSkillConfigPath } from './skill-config/constants'
 import { handleSkillConfigRequest } from './skill-config/request-handler'
+import { REDIS_CONFIG, isRedisEnabled } from './redis'
 
 // 后端服务默认监听端口。
 const DEFAULT_SERVER_PORT = 5409
@@ -89,6 +90,14 @@ const readRuntimeClientConfig = () => ({
   VITE_API_BASE_URL: String(process.env.VITE_API_BASE_URL || '').trim(),
   VITE_PROVIDER_DEFAULT_BASE_URL: String(process.env.VITE_PROVIDER_DEFAULT_BASE_URL || 'https://api.chatfire.site/v1').trim(),
 })
+
+const resolveRedisStartupSummary = () => {
+  if (!isRedisEnabled()) {
+    return '未启用'
+  }
+
+  return `已启用 (${REDIS_CONFIG.host}:${REDIS_CONFIG.port}/${REDIS_CONFIG.database})`
+}
 
 // 将运行时配置脚本注入到首页 HTML 中。
 const injectRuntimeClientConfig = (html: string) => {
@@ -478,6 +487,15 @@ const serverPort = readServerPort()
 
 // 启动服务并输出日志。
 server.listen(serverPort, '0.0.0.0', () => {
-  // 输出启动完成日志，方便开发和部署确认。
-  console.info(`[server] 独立后端服务已启动: http://0.0.0.0:${serverPort}`)
+  const staticDistDir = readStaticDistDir()
+  const uploadsDir = getUploadsDir()
+  const allowedOrigins = readAllowedOrigins()
+
+  // 输出启动概览，避免部署时只能看到一个端口日志。
+  console.info('[server] 启动完成')
+  console.info(`[server] 服务地址: http://0.0.0.0:${serverPort}`)
+  console.info(`[server] 静态目录: ${staticDistDir}`)
+  console.info(`[server] 上传目录: ${uploadsDir}`)
+  console.info(`[server] CORS 来源: ${allowedOrigins.join(', ')}`)
+  console.info(`[server] Redis: ${resolveRedisStartupSummary()}`)
 })

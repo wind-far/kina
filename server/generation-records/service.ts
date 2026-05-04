@@ -1,8 +1,25 @@
 import { Buffer } from 'node:buffer'
+import { invalidateAssetItemsCaches } from '../asset-items/service'
+import { invalidateAdminDashboardOverviewCache } from '../admin-dashboard/service'
+import { invalidateAdminUsersCaches } from '../admin-users/service'
+import { invalidateRedisCachePatterns, invalidateRedisCaches } from '../redis/cache-manager'
+import { getOrSetJsonCache } from '../redis/json-cache'
+import { redisKeys } from '../redis/keys'
 import { saveUploadedBuffer } from '../storage/service'
 import { prisma } from '../db/prisma'
-import { ensureDefaultGenerationSession, refreshGenerationSessionLastRecordAt, resolveGenerationSessionForUser } from '../generation-sessions/service'
+import {
+  ensureDefaultGenerationSession,
+  invalidateGenerationSessionsCache,
+  refreshGenerationSessionLastRecordAt,
+  resolveGenerationSessionForUser,
+} from '../generation-sessions/service'
 import type { GenerationRecordPayload, GenerationOutputPayload } from './shared'
+
+const GENERATION_RECORDS_LIST_SCOPE = 'generation-records-list'
+const GENERATION_RECORDS_LIST_CACHE_PATTERN = redisKeys.cache(GENERATION_RECORDS_LIST_SCOPE, '*')
+const buildGenerationRecordsListCacheKey = (currentUserId: string) => {
+  return redisKeys.cache(GENERATION_RECORDS_LIST_SCOPE, currentUserId)
+}
 
 // 前端创建类型映射到数据库枚举
 const mapGenerationType = (type: string) => {
@@ -560,6 +577,7 @@ const serializeGenerationRecord = (record: any) => ({
         query: record.agentRun.query,
         skill: record.agentRun.skill || 'general',
         status: String(record.agentRun.status || '').toLowerCase(),
+        referenceImages: resolveReferenceImagesFromMeta(record.metaJson),
         user: {
           name: record.agentRun.agentName || '',
           avatarSrc: record.agentRun.agentAvatarUrl || undefined,
@@ -607,18 +625,35 @@ export const listGenerationRecords = async (currentUserId?: string | null) => {
     return []
   }
 
-  await prisma.$transaction(async (tx) => {
-    await ensureDefaultGenerationSession(tx, currentUserId)
-  })
+  const normalizedUserId = String(currentUserId || '').trim()
+  return getOrSetJsonCache({
+    key: buildGenerationRecordsListCacheKey(normalizedUserId),
+    ttlSeconds: 15,
+    factory: async () => {
+      await prisma.$transaction(async (tx) => {
+        await ensureDefaultGenerationSession(tx, normalizedUserId)
+      })
 
-  const records = await prisma.generationRecord.findMany({
-    where: { userId: currentUserId },
-    include: buildRecordInclude(),
-    orderBy: { createdAt: 'desc' },
-    take: 50,
-  })
+      const records = await prisma.generationRecord.findMany({
+        where: { userId: normalizedUserId },
+        include: buildRecordInclude(),
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      })
 
-  return records.map(serializeGenerationRecord)
+      return records.map(serializeGenerationRecord)
+    },
+  })
+}
+
+export const invalidateGenerationRecordsCache = async (currentUserId?: string | null) => {
+  const normalizedUserId = String(currentUserId || '').trim()
+  if (normalizedUserId) {
+    await invalidateRedisCaches([buildGenerationRecordsListCacheKey(normalizedUserId)])
+    return
+  }
+
+  await invalidateRedisCachePatterns([GENERATION_RECORDS_LIST_CACHE_PATTERN])
 }
 
 // 按 id 获取单条生成记录详情，并校验归属用户。
@@ -652,10 +687,12 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
   })
 
   let outputs: GenerationOutputPayload[] = []
-  let normalizedReferenceImages: string[] = []
+  let normalizedReferenceImages: string[] | undefined
   try {
     outputs = await normalizeOutputs(payload)
-    normalizedReferenceImages = await normalizeReferenceImages(payload.referenceImages)
+    if (payload.referenceImages !== undefined) {
+      normalizedReferenceImages = await normalizeReferenceImages(payload.referenceImages)
+    }
   } catch (error) {
     logGenerationRecordError('create_generation_record:normalize_assets', error, {
       currentUserId,
@@ -858,6 +895,12 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
     outputCount: outputs.length,
   })
 
+  await invalidateGenerationSessionsCache(currentUserId)
+  await invalidateGenerationRecordsCache(currentUserId)
+  await invalidateAssetItemsCaches()
+  await invalidateAdminDashboardOverviewCache(currentUserId)
+  await invalidateAdminUsersCaches(currentUserId)
+
   return serializeGenerationRecord(record)
 }
 
@@ -872,10 +915,12 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
   })
 
   let outputs: GenerationOutputPayload[] = []
-  let normalizedReferenceImages: string[] = []
+  let normalizedReferenceImages: string[] | undefined
   try {
     outputs = await normalizeOutputs(payload)
-    normalizedReferenceImages = await normalizeReferenceImages(payload.referenceImages)
+    if (payload.referenceImages !== undefined) {
+      normalizedReferenceImages = await normalizeReferenceImages(payload.referenceImages)
+    }
   } catch (error) {
     logGenerationRecordError('update_generation_record:normalize_assets', error, {
       currentUserId,
@@ -892,7 +937,7 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
     await prisma.$transaction(async (tx) => {
       const existingRecord = await tx.generationRecord.findUnique({
         where: { id },
-        select: { id: true, userId: true, sessionId: true, createdAt: true },
+        select: { id: true, userId: true, sessionId: true, createdAt: true, metaJson: true },
       })
 
       if (!existingRecord) {
@@ -904,6 +949,11 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
       }
 
       const session = await resolveGenerationSessionForUser(tx, currentUserId, payload.sessionId || existingRecord.sessionId)
+      const existingReferenceImages = Array.isArray((existingRecord.metaJson as any)?.referenceImages)
+        ? (existingRecord.metaJson as any).referenceImages
+        : []
+      const shouldOverwriteReferenceImages = normalizedReferenceImages !== undefined
+        && (normalizedReferenceImages.length > 0 || existingReferenceImages.length === 0)
 
       await tx.generationRecord.update({
         where: { id },
@@ -923,7 +973,10 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
           skill: String(payload.skill || '').trim() || 'general',
           agentTaskId: String(payload.agentTaskId || '').trim() || null,
           metaJson: {
-            referenceImages: normalizedReferenceImages,
+            ...(((existingRecord.metaJson as Record<string, unknown> | null) || {})),
+            ...(shouldOverwriteReferenceImages
+              ? { referenceImages: normalizedReferenceImages }
+              : {}),
           },
           finishedAt: payload.done ? new Date() : null,
         },
@@ -1144,6 +1197,12 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
     generationRecordId: id,
     outputCount: outputs.length,
   })
+
+  await invalidateGenerationSessionsCache(currentUserId)
+  await invalidateGenerationRecordsCache(currentUserId)
+  await invalidateAssetItemsCaches()
+  await invalidateAdminDashboardOverviewCache(currentUserId)
+  await invalidateAdminUsersCaches(currentUserId)
 
   return serializeGenerationRecord(record)
 }

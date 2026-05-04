@@ -2,6 +2,9 @@ import crypto from 'node:crypto'
 import type { AuthMethodCategory, AuthMethodType, VerificationChannel } from '@prisma/client'
 import prisma from '../db/prisma'
 import { grantRegisterReward } from '../marketing-center/service'
+import { invalidateRedisCaches } from '../redis/cache-manager'
+import { getOrSetJsonCache } from '../redis/json-cache'
+import { redisKeys } from '../redis/keys'
 import type { AuthMethodConfigPayload, AuthUserProfile, PublicAuthMethod } from './types'
 
 // 验证码默认有效期，单位分钟。
@@ -12,6 +15,10 @@ const DEFAULT_SESSION_EXPIRE_DAYS = 30
 
 // 会话 Cookie 名称。
 export const AUTH_SESSION_COOKIE_NAME = 'canana_session'
+
+const AUTH_METHOD_LIST_CACHE_KEY = redisKeys.cache('auth-method', 'list:all')
+const AUTH_METHOD_ENABLED_LIST_CACHE_KEY = redisKeys.cache('auth-method', 'list:enabled')
+const buildAuthMethodDetailCacheKey = (methodType: AuthMethodType) => redisKeys.cache('auth-method', `detail:${methodType}`)
 
 // 默认登录方式配置。
 const DEFAULT_AUTH_METHOD_CONFIGS: AuthMethodConfigPayload[] = [
@@ -185,6 +192,20 @@ const normalizeAuthMethodConfigPayload = (payload: AuthMethodConfigPayload): Aut
   }
 }
 
+const invalidateAuthMethodCaches = async (methodTypes: AuthMethodType[] = []) => {
+  const normalizedMethodTypes = Array.from(new Set(
+    methodTypes
+      .map(item => String(item || '').trim())
+      .filter(Boolean) as AuthMethodType[],
+  ))
+
+  await invalidateRedisCaches([
+    AUTH_METHOD_LIST_CACHE_KEY,
+    AUTH_METHOD_ENABLED_LIST_CACHE_KEY,
+    ...normalizedMethodTypes.map(item => buildAuthMethodDetailCacheKey(item)),
+  ])
+}
+
 // 确保默认登录方式配置存在。
 export const ensureDefaultAuthMethodConfigs = async () => {
   const existingCount = await prisma.authMethodConfig.count()
@@ -212,37 +233,55 @@ export const ensureDefaultAuthMethodConfigs = async () => {
 
 // 获取所有登录方式配置。
 export const listAuthMethodConfigs = async () => {
-  await ensureDefaultAuthMethodConfigs()
-  const rows = await prisma.authMethodConfig.findMany({
-    orderBy: [
-      { sortOrder: 'asc' },
-      { createdAt: 'asc' },
-    ],
-  })
+  return getOrSetJsonCache({
+    key: AUTH_METHOD_LIST_CACHE_KEY,
+    ttlSeconds: 600,
+    factory: async () => {
+      await ensureDefaultAuthMethodConfigs()
+      const rows = await prisma.authMethodConfig.findMany({
+        orderBy: [
+          { sortOrder: 'asc' },
+          { createdAt: 'asc' },
+        ],
+      })
 
-  return rows.map(toPublicAuthMethod)
+      return rows.map(toPublicAuthMethod)
+    },
+  })
 }
 
 // 获取前台启用的登录方式配置。
 export const listEnabledAuthMethods = async () => {
-  const rows = await listAuthMethodConfigs()
-  return rows.filter(item => item.isEnabled && item.isVisible)
+  return getOrSetJsonCache({
+    key: AUTH_METHOD_ENABLED_LIST_CACHE_KEY,
+    ttlSeconds: 600,
+    factory: async () => {
+      const rows = await listAuthMethodConfigs()
+      return rows.filter(item => item.isEnabled && item.isVisible)
+    },
+  })
 }
 
 // 读取指定登录方式配置。
 export const getAuthMethodConfig = async (methodType: AuthMethodType) => {
-  await ensureDefaultAuthMethodConfigs()
-  const row = await prisma.authMethodConfig.findUnique({
-    where: {
-      methodType,
+  return getOrSetJsonCache({
+    key: buildAuthMethodDetailCacheKey(methodType),
+    ttlSeconds: 600,
+    factory: async () => {
+      await ensureDefaultAuthMethodConfigs()
+      const row = await prisma.authMethodConfig.findUnique({
+        where: {
+          methodType,
+        },
+      })
+
+      if (!row) {
+        throw new Error('登录方式配置不存在')
+      }
+
+      return toPublicAuthMethod(row)
     },
   })
-
-  if (!row) {
-    throw new Error('登录方式配置不存在')
-  }
-
-  return toPublicAuthMethod(row)
 }
 
 // 批量保存登录方式配置。
@@ -251,6 +290,15 @@ export const saveAuthMethodConfigs = async (payload: AuthMethodConfigPayload[]) 
 
   const normalizedItems = payload.map(normalizeAuthMethodConfigPayload)
   const methodTypes = normalizedItems.map(item => item.methodType)
+  const existingRows = await prisma.authMethodConfig.findMany({
+    select: {
+      methodType: true,
+    },
+  })
+  const relatedMethodTypes = Array.from(new Set([
+    ...existingRows.map(item => item.methodType),
+    ...methodTypes,
+  ]))
 
   await prisma.$transaction(async (tx) => {
     if (methodTypes.length) {
@@ -299,6 +347,7 @@ export const saveAuthMethodConfigs = async (payload: AuthMethodConfigPayload[]) 
     }
   })
 
+  await invalidateAuthMethodCaches(relatedMethodTypes)
   return listAuthMethodConfigs()
 }
 

@@ -4,6 +4,29 @@
       <div class="agentic-record-uRPmpt">
         <div class="agentic-record-content-Bgk_hF completed-WGVjke">
           <div class="user-message-AAqI02">
+            <div
+              v-if="visibleReferenceImages.length"
+              class="user-reference-stack"
+              :style="referenceStyleVars"
+            >
+              <div class="user-reference-stack__group" :style="referenceGroupStyle">
+                <div
+                  v-for="(item, index) in visibleReferenceImages"
+                  :key="`${item.src}-${index}`"
+                  class="user-reference-stack__item"
+                  :style="buildReferenceItemStyle(index)"
+                >
+                  <div class="user-reference-stack__card" :style="buildReferenceCardStyle(index)">
+                    <img
+                      class="user-reference-stack__image"
+                      :src="item.src"
+                      alt="参考图"
+                      loading="lazy"
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
             <div class="bubble">
               <div class="context-menu-trigger-ZXpguB">
                 <div class="prompt-value-container-lIP4pF">
@@ -308,6 +331,7 @@ import './generate-agent-record.css'
 const props = defineProps<{
   run: AgentRunState
   errorText?: string
+  referenceImages?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -342,9 +366,57 @@ interface ImageDisplaySlot {
   image?: AgentImageResult
 }
 
+const maxVisibleReferenceCount = 4
+const collapsedReferenceOffsetX = 12
+const referenceRotateList = [-8, 5, -4, 3]
+const referenceTopOffsetList = [0, 1, 0, 1]
+const referenceDepthList = [4, 3, 2, 1]
+
 const isProcessGroupExpanded = ref(true)
 const collapsedSectionKeys = ref<Set<string>>(new Set())
 const sectionBodyRefs = ref<Record<string, HTMLElement | null>>({})
+
+const visibleReferenceImages = computed(() => {
+  const sourceReferenceImages = Array.isArray(props.run.referenceImages) && props.run.referenceImages.length
+    ? props.run.referenceImages
+    : Array.isArray(props.referenceImages)
+      ? props.referenceImages
+      : []
+
+  return sourceReferenceImages
+    .map(item => String(item || '').trim())
+    .filter(Boolean)
+    .slice(-maxVisibleReferenceCount)
+    .map(src => ({ src }))
+})
+
+const referenceStyleVars = computed(() => ({
+  '--reference-count': String(Math.max(visibleReferenceImages.value.length, 1)),
+}))
+
+const referenceGroupStyle = computed(() => ({
+  width: `${48 + Math.max(visibleReferenceImages.value.length - 1, 0) * collapsedReferenceOffsetX}px`,
+  height: '48px',
+}))
+
+const buildReferenceItemStyle = (index: number) => {
+  const offsetX = index * collapsedReferenceOffsetX
+  const offsetY = referenceTopOffsetList[index] ?? 0
+  const zIndex = referenceDepthList[index] ?? Math.max(1, maxVisibleReferenceCount - index)
+
+  return {
+    left: `${offsetX}px`,
+    top: `${offsetY}px`,
+    zIndex,
+  }
+}
+
+const buildReferenceCardStyle = (index: number) => {
+  const rotate = referenceRotateList[index] ?? (index % 2 === 0 ? -4 : 4)
+  return {
+    transform: `rotate(${rotate}deg)`,
+  }
+}
 
 const getSectionTone = (section: AgentProcessSection): ContentSection['tone'] => {
   if (section.key === 'parameter-adjustment') return 'warning'

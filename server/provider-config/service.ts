@@ -1,5 +1,6 @@
 import { prisma } from '../db/prisma'
 import { decryptProviderApiKey, encryptProviderApiKey, maskApiKey } from './crypto'
+import { getOrSetJsonCache, invalidateRedisCaches, redisKeys } from '../redis'
 
 const DEFAULT_PROVIDER_CODE = 'default-generate-provider'
 const DEFAULT_PROVIDER_NAME = '默认生成厂商'
@@ -52,6 +53,7 @@ export interface PublicModelCatalogResult {
 }
 
 const buildModelSelectionKey = (providerId: string, category: string, modelKey: string) => `${providerId}::${category}::${modelKey}`
+const PUBLIC_MODEL_CATALOG_CACHE_KEY = redisKeys.cache('provider-config', 'public-model-catalog')
 
 export interface AdminProviderPayload {
   code?: string
@@ -470,88 +472,98 @@ export const deleteAdminProvider = async (id: string) => {
 }
 
 
-export const getPublicModelCatalog = async (): Promise<PublicModelCatalogResult> => {
-  await ensureProviderSeedData()
+export const invalidatePublicModelCatalogCache = async () => {
+  await invalidateRedisCaches([PUBLIC_MODEL_CATALOG_CACHE_KEY])
+}
 
-  const providers = await prisma.aiProvider.findMany({
-    where: { isEnabled: true },
-    include: {
-      models: {
+export const getPublicModelCatalog = async (): Promise<PublicModelCatalogResult> => {
+  return getOrSetJsonCache({
+    key: PUBLIC_MODEL_CATALOG_CACHE_KEY,
+    ttlSeconds: 60,
+    factory: async () => {
+      await ensureProviderSeedData()
+
+      const providers = await prisma.aiProvider.findMany({
         where: { isEnabled: true },
+        include: {
+          models: {
+            where: { isEnabled: true },
+            orderBy: [
+              { category: 'asc' },
+              { sortOrder: 'asc' },
+              { createdAt: 'asc' },
+            ],
+          },
+        },
         orderBy: [
-          { category: 'asc' },
           { sortOrder: 'asc' },
           { createdAt: 'asc' },
         ],
-      },
+      })
+
+      const providerItems: PublicProviderCatalogItem[] = []
+      const chatModels: PublicModelCatalogItem[] = []
+      const imageModels: PublicModelCatalogItem[] = []
+      const videoModels: PublicModelCatalogItem[] = []
+
+      for (const provider of providers) {
+        const supportedTypes = Array.isArray(provider.supportedTypesJson)
+          ? provider.supportedTypesJson.map(item => String(item || '').trim()).filter(Boolean)
+          : []
+
+        providerItems.push({
+          id: provider.id,
+          code: provider.code,
+          name: provider.name,
+          iconUrl: provider.iconUrl || '',
+          supportedTypes,
+          sortOrder: provider.sortOrder,
+        })
+
+        for (const model of provider.models) {
+          const currentItem: PublicModelCatalogItem = {
+            id: model.id,
+            selectionKey: buildModelSelectionKey(provider.id, model.category, model.modelKey),
+            providerId: provider.id,
+            providerCode: provider.code,
+            providerName: provider.name,
+            category: model.category,
+            label: model.name,
+            modelKey: model.modelKey,
+            description: model.description || '',
+            capabilityJson: model.capabilityJson && typeof model.capabilityJson === 'object' ? model.capabilityJson as Record<string, any> : null,
+            defaultParamsJson: model.defaultParamsJson && typeof model.defaultParamsJson === 'object' ? model.defaultParamsJson as Record<string, any> : null,
+            sortOrder: model.sortOrder,
+            isDefault: model.category === 'CHAT' && provider.defaultChatModel === model.modelKey,
+          }
+
+          if (model.category === 'CHAT') {
+            chatModels.push(currentItem)
+          } else if (model.category === 'IMAGE') {
+            imageModels.push(currentItem)
+          } else if (model.category === 'VIDEO') {
+            videoModels.push(currentItem)
+          }
+        }
+      }
+
+      const defaults = {
+        chat: chatModels.find(item => item.isDefault)?.selectionKey || chatModels[0]?.selectionKey || '',
+        image: imageModels[0]?.selectionKey || '',
+        video: videoModels[0]?.selectionKey || '',
+      }
+
+      return {
+        providers: providerItems,
+        models: {
+          chat: chatModels,
+          image: imageModels,
+          video: videoModels,
+        },
+        defaults,
+      }
     },
-    orderBy: [
-      { sortOrder: 'asc' },
-      { createdAt: 'asc' },
-    ],
   })
-
-  const providerItems: PublicProviderCatalogItem[] = []
-  const chatModels: PublicModelCatalogItem[] = []
-  const imageModels: PublicModelCatalogItem[] = []
-  const videoModels: PublicModelCatalogItem[] = []
-
-  for (const provider of providers) {
-    const supportedTypes = Array.isArray(provider.supportedTypesJson)
-      ? provider.supportedTypesJson.map(item => String(item || '').trim()).filter(Boolean)
-      : []
-
-    providerItems.push({
-      id: provider.id,
-      code: provider.code,
-      name: provider.name,
-      iconUrl: provider.iconUrl || '',
-      supportedTypes,
-      sortOrder: provider.sortOrder,
-    })
-
-    for (const model of provider.models) {
-      const currentItem: PublicModelCatalogItem = {
-        id: model.id,
-        selectionKey: buildModelSelectionKey(provider.id, model.category, model.modelKey),
-        providerId: provider.id,
-        providerCode: provider.code,
-        providerName: provider.name,
-        category: model.category,
-        label: model.name,
-        modelKey: model.modelKey,
-        description: model.description || '',
-        capabilityJson: model.capabilityJson && typeof model.capabilityJson === 'object' ? model.capabilityJson as Record<string, any> : null,
-        defaultParamsJson: model.defaultParamsJson && typeof model.defaultParamsJson === 'object' ? model.defaultParamsJson as Record<string, any> : null,
-        sortOrder: model.sortOrder,
-        isDefault: model.category === 'CHAT' && provider.defaultChatModel === model.modelKey,
-      }
-
-      if (model.category === 'CHAT') {
-        chatModels.push(currentItem)
-      } else if (model.category === 'IMAGE') {
-        imageModels.push(currentItem)
-      } else if (model.category === 'VIDEO') {
-        videoModels.push(currentItem)
-      }
-    }
-  }
-
-  const defaults = {
-    chat: chatModels.find(item => item.isDefault)?.selectionKey || chatModels[0]?.selectionKey || '',
-    image: imageModels[0]?.selectionKey || '',
-    video: videoModels[0]?.selectionKey || '',
-  }
-
-  return {
-    providers: providerItems,
-    models: {
-      chat: chatModels,
-      image: imageModels,
-      video: videoModels,
-    },
-    defaults,
-  }
 }
 
 export const resolveGatewayProviderUpstream = async (input: {

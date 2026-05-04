@@ -6,6 +6,7 @@ import type {
   Prisma,
 } from '@prisma/client'
 import { isPrismaConfigured, prisma } from '../db/prisma'
+import { getOrSetJsonCache, invalidateRedisCaches, redisKeys } from '../redis'
 
 export interface AdminSkillItem {
   id: string
@@ -170,6 +171,10 @@ export interface AdminSkillPayload {
 interface BuiltInSkillSeedDefinition {
   payload: AdminSkillPayload
 }
+
+const PUBLIC_ENABLED_SKILLS_CACHE_KEY = redisKeys.cache('skill-config', 'public-enabled-skills')
+const RUNTIME_SKILL_CACHE_KEY_PREFIX = 'runtime-skill'
+const WORKSPACE_RUNTIME_SKILL_CACHE_KEY_PREFIX = 'workspace-runtime-skill'
 
 const DEFAULT_WORKSPACE_STAGE_TEMPLATES: AdminSkillStageTemplatePayload[] = [
   {
@@ -988,37 +993,51 @@ export const getSkillDefinitionDetail = async (skillKey: string): Promise<SkillD
 
 // 返回运行时使用的完整技能定义。
 export const getRuntimeSkillDefinition = async (skillKey: string) => {
-  const skill = await loadSkillWithTemplates(skillKey, true)
-  if (!skill) {
-    return null
-  }
+  const normalizedSkillKey = normalizeTrimmedString(skillKey)
+  return getOrSetJsonCache({
+    key: redisKeys.cache(RUNTIME_SKILL_CACHE_KEY_PREFIX, normalizedSkillKey),
+    ttlSeconds: 60,
+    factory: async () => {
+      const skill = await loadSkillWithTemplates(normalizedSkillKey, true)
+      if (!skill) {
+        return null
+      }
 
-  return buildRuntimeSkillDefinition(skill)
+      return buildRuntimeSkillDefinition(skill)
+    },
+  })
 }
 
 // 返回工作台执行引擎需要的技能运行时配置。
 export const getWorkspaceSkillRuntimeConfig = async (skillKey: string) => {
-  const runtimeSkill = await getRuntimeSkillDefinition(skillKey)
-  if (!runtimeSkill) {
-    return null
-  }
+  const normalizedSkillKey = normalizeTrimmedString(skillKey)
+  return getOrSetJsonCache({
+    key: redisKeys.cache(WORKSPACE_RUNTIME_SKILL_CACHE_KEY_PREFIX, normalizedSkillKey),
+    ttlSeconds: 60,
+    factory: async () => {
+      const runtimeSkill = await getRuntimeSkillDefinition(normalizedSkillKey)
+      if (!runtimeSkill) {
+        return null
+      }
 
-  return {
-    skillKey: runtimeSkill.skill.skillKey,
-    label: runtimeSkill.skill.label,
-    uiMode: runtimeSkill.skill.uiMode,
-    executionMode: runtimeSkill.skill.executionMode,
-    plannerModelCategory: runtimeSkill.skill.plannerModelCategory,
-    workflowType: runtimeSkill.skill.workflowType,
-    expectedImageCount: runtimeSkill.skill.expectedImageCount,
-    workspaceSkillKey: runtimeSkill.workspaceSkillKey,
-    dependencySkillKeys: runtimeSkill.dependencySkillKeys,
-    prompts: runtimeSkill.prompts,
-    workflowTemplate: runtimeSkill.workflowTemplate,
-    planTemplates: runtimeSkill.planTemplates,
-    stageTemplates: runtimeSkill.stageTemplates,
-    configJson: runtimeSkill.skill.configJson,
-  }
+      return {
+        skillKey: runtimeSkill.skill.skillKey,
+        label: runtimeSkill.skill.label,
+        uiMode: runtimeSkill.skill.uiMode,
+        executionMode: runtimeSkill.skill.executionMode,
+        plannerModelCategory: runtimeSkill.skill.plannerModelCategory,
+        workflowType: runtimeSkill.skill.workflowType,
+        expectedImageCount: runtimeSkill.skill.expectedImageCount,
+        workspaceSkillKey: runtimeSkill.workspaceSkillKey,
+        dependencySkillKeys: runtimeSkill.dependencySkillKeys,
+        prompts: runtimeSkill.prompts,
+        workflowTemplate: runtimeSkill.workflowTemplate,
+        planTemplates: runtimeSkill.planTemplates,
+        stageTemplates: runtimeSkill.stageTemplates,
+        configJson: runtimeSkill.skill.configJson,
+      }
+    },
+  })
 }
 
 // 仅返回运行时可安全暴露给前台的启用技能配置。
@@ -1027,59 +1046,81 @@ export const listPublicEnabledSkills = async () => {
     return []
   }
 
-  await ensureBuiltInSkillSeeds()
+  return getOrSetJsonCache({
+    key: PUBLIC_ENABLED_SKILLS_CACHE_KEY,
+    ttlSeconds: 60,
+    factory: async () => {
+      await ensureBuiltInSkillSeeds()
 
-  const skills = await prisma.aiSkill.findMany({
-    where: {
-      isEnabled: true,
-    },
-    include: {
-      dependencies: {
-        include: {
-          dependencySkill: true,
+      const skills = await prisma.aiSkill.findMany({
+        where: {
+          isEnabled: true,
         },
-        orderBy: { sortOrder: 'asc' },
-      },
-      prompts: {
-        where: { isEnabled: true },
-        orderBy: { scene: 'asc' },
-      },
-      workflowTemplates: {
-        where: { isEnabled: true },
-        orderBy: { createdAt: 'asc' },
-      },
-      planTemplates: {
-        where: { isEnabled: true },
-        orderBy: { sortOrder: 'asc' },
-      },
-      stageTemplates: {
-        where: { isEnabled: true },
-        orderBy: { sortOrder: 'asc' },
-      },
-    },
-    orderBy: [
-      { sortOrder: 'asc' },
-      { createdAt: 'asc' },
-    ],
-  })
+        include: {
+          dependencies: {
+            include: {
+              dependencySkill: true,
+            },
+            orderBy: { sortOrder: 'asc' },
+          },
+          prompts: {
+            where: { isEnabled: true },
+            orderBy: { scene: 'asc' },
+          },
+          workflowTemplates: {
+            where: { isEnabled: true },
+            orderBy: { createdAt: 'asc' },
+          },
+          planTemplates: {
+            where: { isEnabled: true },
+            orderBy: { sortOrder: 'asc' },
+          },
+          stageTemplates: {
+            where: { isEnabled: true },
+            orderBy: { sortOrder: 'asc' },
+          },
+        },
+        orderBy: [
+          { sortOrder: 'asc' },
+          { createdAt: 'asc' },
+        ],
+      })
 
-  return skills.map(skill => {
-    const runtimeSkill = buildRuntimeSkillDefinition(skill)
-    return {
-      ...runtimeSkill.skill,
-      workspaceSkillKey: runtimeSkill.workspaceSkillKey,
-      dependencySkillKeys: runtimeSkill.dependencySkillKeys,
-      dependencies: runtimeSkill.dependencies.map(item => ({
-        skillKey: item.dependencySkillKey,
-        label: item.dependencySkillLabel,
-        sortOrder: item.sortOrder,
-      })),
-      prompts: Object.values(runtimeSkill.prompts),
-      workflowTemplates: runtimeSkill.workflowTemplates,
-      planTemplates: runtimeSkill.planTemplates,
-      stageTemplates: runtimeSkill.stageTemplates,
-    }
+      return skills.map(skill => {
+        const runtimeSkill = buildRuntimeSkillDefinition(skill)
+        return {
+          ...runtimeSkill.skill,
+          workspaceSkillKey: runtimeSkill.workspaceSkillKey,
+          dependencySkillKeys: runtimeSkill.dependencySkillKeys,
+          dependencies: runtimeSkill.dependencies.map(item => ({
+            skillKey: item.dependencySkillKey,
+            label: item.dependencySkillLabel,
+            sortOrder: item.sortOrder,
+          })),
+          prompts: Object.values(runtimeSkill.prompts),
+          workflowTemplates: runtimeSkill.workflowTemplates,
+          planTemplates: runtimeSkill.planTemplates,
+          stageTemplates: runtimeSkill.stageTemplates,
+        }
+      })
+    },
   })
+}
+
+export const invalidateSkillRuntimeCache = async (skillKey?: string) => {
+  const normalizedSkillKey = normalizeTrimmedString(skillKey)
+  const cacheKeys = [PUBLIC_ENABLED_SKILLS_CACHE_KEY]
+  if (!normalizedSkillKey) {
+    await invalidateRedisCaches(cacheKeys)
+    return
+  }
+
+  cacheKeys.push(
+    redisKeys.cache(RUNTIME_SKILL_CACHE_KEY_PREFIX, normalizedSkillKey),
+    redisKeys.cache(WORKSPACE_RUNTIME_SKILL_CACHE_KEY_PREFIX, normalizedSkillKey),
+  )
+
+  await invalidateRedisCaches(cacheKeys)
 }
 
 const assertProviderExists = async (providerId: string) => {

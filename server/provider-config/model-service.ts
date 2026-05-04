@@ -1,5 +1,6 @@
 import type { ModelCategory } from '@prisma/client'
 import { prisma } from '../db/prisma'
+import { getOrSetJsonCache, invalidateRedisCaches, redisKeys } from '../redis'
 import { ensureProviderSeedData, getAdminProviderDetail } from './service'
 
 export interface ProviderModelPayload {
@@ -11,6 +12,21 @@ export interface ProviderModelPayload {
   isEnabled?: boolean
   capabilityJson?: Record<string, any> | null
   defaultParamsJson?: Record<string, any> | null
+}
+
+export interface ProviderModelBatchUpsertItemPayload {
+  category?: 'CHAT' | 'IMAGE' | 'VIDEO'
+  label?: string
+  modelKey?: string
+  description?: string
+  sortOrder?: number
+  isEnabled?: boolean
+  capabilityJson?: Record<string, any> | null
+  defaultParamsJson?: Record<string, any> | null
+}
+
+export interface ProviderModelBatchUpsertPayload {
+  items?: ProviderModelBatchUpsertItemPayload[]
 }
 
 const normalizeCategory = (value: string) => {
@@ -104,6 +120,94 @@ const assertProviderExists = async (providerId: string) => {
   return normalizedProviderId
 }
 
+const getProviderRuntimeConnection = async (providerId: string) => {
+  const provider = await getAdminProviderDetail(providerId)
+  const baseUrl = String(provider.baseUrl || '').trim().replace(/\/+$/, '')
+  const apiKey = String(provider.apiKey || '').trim()
+  if (!baseUrl) {
+    throw new Error('当前厂商未配置基础地址')
+  }
+  if (!apiKey) {
+    throw new Error('当前厂商未配置 API Key')
+  }
+
+  return {
+    provider,
+    baseUrl,
+    apiKey,
+  }
+}
+
+const resolveProviderModelsUrl = (baseUrl: string) => {
+  if (/\/v1$/i.test(baseUrl)) {
+    return `${baseUrl}/models`
+  }
+  return `${baseUrl}/v1/models`
+}
+
+const buildProviderDiscoverCacheKey = (providerId: string) => redisKeys.cache('provider-model-discover', providerId)
+
+// 读取上游 /v1/models 结果，供后台批量选择导入。
+export const discoverProviderModels = async (providerId: string) => {
+  const normalizedProviderId = await assertProviderExists(providerId)
+  return getOrSetJsonCache({
+    key: buildProviderDiscoverCacheKey(normalizedProviderId),
+    ttlSeconds: 5 * 60,
+    factory: async () => {
+      const { baseUrl, apiKey, provider } = await getProviderRuntimeConnection(normalizedProviderId)
+      const requestUrl = resolveProviderModelsUrl(baseUrl)
+
+      const response = await fetch(requestUrl, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      })
+
+      if (!response.ok) {
+        const responseText = await response.text().catch(() => '')
+        throw new Error(responseText || `拉取模型列表失败 (${response.status})`)
+      }
+
+      const data = await response.json().catch(() => null) as Record<string, any> | null
+      const rawModels = Array.isArray(data?.data) ? data!.data : []
+      const items = rawModels
+        .map((item, index) => {
+          const record = item && typeof item === 'object' ? item as Record<string, any> : {}
+          const modelKey = String(record.id || record.model || '').trim()
+          if (!modelKey) {
+            return null
+          }
+
+          return {
+            modelKey,
+            label: String(record.name || record.id || record.model || '').trim() || modelKey,
+            description: String(record.description || record.owned_by || '').trim(),
+            category: 'CHAT' as ModelCategory,
+            sortOrder: index * 10,
+            raw: record,
+          }
+        })
+        .filter(Boolean)
+
+      return {
+        provider,
+        requestUrl,
+        models: items,
+      }
+    },
+  })
+}
+
+export const invalidateProviderDiscoverModelsCache = async (providerId?: string) => {
+  const normalizedProviderId = String(providerId || '').trim()
+  if (!normalizedProviderId) {
+    return
+  }
+
+  await invalidateRedisCaches([buildProviderDiscoverCacheKey(normalizedProviderId)])
+}
+
 export const listProviderModels = async (providerId: string) => {
   const normalizedProviderId = await assertProviderExists(providerId)
   const models = await prisma.aiModel.findMany({
@@ -169,6 +273,68 @@ export const createProviderModel = async (providerId: string, payload: ProviderM
   })
 
   return buildProviderModelItem(created)
+}
+
+// 批量导入或更新模型，便于从上游 /v1/models 选择后一次性落库。
+export const batchUpsertProviderModels = async (providerId: string, payload: ProviderModelBatchUpsertPayload) => {
+  const normalizedProviderId = await assertProviderExists(providerId)
+  const items = Array.isArray(payload.items) ? payload.items : []
+  if (!items.length) {
+    throw new Error('缺少待导入的模型列表')
+  }
+
+  const results = await prisma.$transaction(async (tx) => {
+    const upsertedItems: Array<ReturnType<typeof buildProviderModelItem>> = []
+
+    for (const item of items) {
+      const normalizedPayload = normalizeModelPayload(item)
+      const existing = await tx.aiModel.findFirst({
+        where: {
+          providerId: normalizedProviderId,
+          category: normalizedPayload.category,
+          modelKey: normalizedPayload.modelKey,
+        },
+      })
+
+      if (existing) {
+        const updated = await tx.aiModel.update({
+          where: { id: existing.id },
+          data: {
+            name: normalizedPayload.label,
+            description: normalizedPayload.description || null,
+            sortOrder: normalizedPayload.sortOrder,
+            isEnabled: normalizedPayload.isEnabled,
+            capabilityJson: normalizedPayload.capabilityJson,
+            defaultParamsJson: normalizedPayload.defaultParamsJson,
+          },
+        })
+        upsertedItems.push(buildProviderModelItem(updated))
+        continue
+      }
+
+      const created = await tx.aiModel.create({
+        data: {
+          providerId: normalizedProviderId,
+          category: normalizedPayload.category,
+          name: normalizedPayload.label,
+          modelKey: normalizedPayload.modelKey,
+          description: normalizedPayload.description || null,
+          sortOrder: normalizedPayload.sortOrder,
+          isEnabled: normalizedPayload.isEnabled,
+          capabilityJson: normalizedPayload.capabilityJson,
+          defaultParamsJson: normalizedPayload.defaultParamsJson,
+        },
+      })
+      upsertedItems.push(buildProviderModelItem(created))
+    }
+
+    return upsertedItems
+  })
+
+  return {
+    provider: await getAdminProviderDetail(normalizedProviderId),
+    models: results,
+  }
 }
 
 export const updateProviderModel = async (providerId: string, id: string, payload: ProviderModelPayload) => {

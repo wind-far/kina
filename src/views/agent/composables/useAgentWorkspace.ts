@@ -13,16 +13,18 @@ interface AgentSendOptions {
   duration?: string
   feature?: string
   skill?: string
+  referenceImages?: string[]
 }
 
 const createIdleRun = (): AgentRunState => ({
   id: 'agent-run-idle',
-  query: '设计一个小猫品牌图标',
+  query: '',
   skill: 'brand-design',
   status: 'idle',
   user: {
     name: 'Canana Agent',
   },
+  referenceImages: [],
   steps: [
     {
       id: 'step-empty',
@@ -166,6 +168,7 @@ export function useAgentWorkspace() {
       query: message,
       skill: skillKey,
       status: 'thinking',
+      referenceImages: [...(options?.referenceImages || [])],
       user: {
         name: 'Canana Agent',
       },
@@ -173,6 +176,7 @@ export function useAgentWorkspace() {
       result: {
         summary: '',
         images: [],
+        outputVisible: false,
       },
       indicator: {
         status: 'thinking',
@@ -203,6 +207,7 @@ export function useAgentWorkspace() {
         query: message,
         skill: skillKey,
         status: 'completed',
+        referenceImages: [...(options?.referenceImages || [])],
         user: {
           name: 'Canana Agent',
         },
@@ -210,6 +215,8 @@ export function useAgentWorkspace() {
         result: {
           summary: buildSummaryByParams(workflowParams, skillConfig.label),
           images: nextImages,
+          expectedImageCount: nextImages.length,
+          outputVisible: true,
         },
         indicator: {
           status: 'completed',
@@ -232,6 +239,7 @@ export function useAgentWorkspace() {
         result: {
           summary: '当前任务未能完成分析，你可以修改需求后再次发送。',
           images: [],
+          outputVisible: false,
         },
         indicator: {
           status: 'error',

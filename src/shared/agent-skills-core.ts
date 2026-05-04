@@ -425,11 +425,38 @@ export const getAgentSkillConfig = (skill: string): AgentSkillConfig => {
   return buildPublicSkillConfig(skill)
 }
 
-export const buildAgentChatMessages = (skill: string, input: string) => {
+const buildAgentUserContent = (input: string, referenceImages?: string[]) => {
+  const normalizedInput = String(input || '').trim()
+  const normalizedReferenceImages = Array.isArray(referenceImages)
+    ? referenceImages.map(item => String(item || '').trim()).filter(Boolean)
+    : []
+
+  if (!normalizedReferenceImages.length) {
+    return normalizedInput
+  }
+
+  return [
+    {
+      type: 'text',
+      text: normalizedInput,
+    },
+    ...normalizedReferenceImages.map((url) => ({
+      type: 'image_url',
+      image_url: {
+        url,
+      },
+    })),
+  ]
+}
+
+export const buildAgentChatMessages = (skill: string, input: string, referenceImages?: string[]) => {
   const config = getAgentSkillConfig(skill)
   return [
     { role: 'system', content: config.chatSystemPrompt },
-    { role: 'user', content: config.buildChatUserPrompt(input) },
+    {
+      role: 'user',
+      content: buildAgentUserContent(config.buildChatUserPrompt(input), referenceImages),
+    },
   ]
 }
 

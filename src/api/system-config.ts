@@ -784,6 +784,269 @@ export const createDefaultHomeLayoutSettings = (): SystemHomeLayoutSettingsConfi
 
 const SYSTEM_CONFIG_PUBLIC_API_PATH = '/api/system-config/public'
 const SYSTEM_CONFIG_ADMIN_API_PATH = '/api/system-config/admin'
+const SYSTEM_CONFIG_REDIS_HEALTH_API_PATH = '/api/system-config/admin/redis-health'
+const SYSTEM_CONFIG_REDIS_OVERVIEW_API_PATH = '/api/system-config/admin/redis-overview'
+const SYSTEM_CONFIG_REDIS_ACTIONS_API_PATH = '/api/system-config/admin/redis-actions'
+const SYSTEM_CONFIG_REDIS_TASK_DETAIL_API_PATH = '/api/system-config/admin/redis-task-detail'
+const SYSTEM_CONFIG_REDIS_SETTINGS_API_PATH = '/api/system-config/admin/redis-settings'
+
+export interface RedisHealthConfig {
+  enabled: boolean
+  ok: boolean
+  message: string
+}
+
+export interface RedisBusinessCacheHotKeyConfig {
+  scope: string
+  key: string
+  score: number
+}
+
+export interface RedisBusinessCacheLargeValueConfig {
+  scope: string
+  key: string
+  bytes: number
+}
+
+export interface RedisBusinessCacheWarningConfig {
+  level: 'info' | 'warning'
+  message: string
+}
+
+export interface RedisBusinessCacheModuleConfig {
+  scope: string
+  currentKeyCount: number
+  sampleKeys: string[]
+  hitCount: number
+  missCount: number
+  readCount: number
+  writeCount: number
+  invalidateCount: number
+  hitRate: number
+  lastHitAt: string
+  lastMissAt: string
+  lastWriteAt: string
+  lastInvalidateAt: string
+  lastValueBytes: number
+  maxValueBytes: number
+  averageValueBytes: number
+  hotKeys: Array<{
+    key: string
+    score: number
+  }>
+  largeValues: Array<{
+    key: string
+    bytes: number
+  }>
+}
+
+export interface RedisAdminOverviewConfig {
+  enabled: boolean
+  prefix: string
+  env: string
+  instanceId: string
+  health: RedisHealthConfig
+  riskHints: Array<{
+    level: 'info' | 'warning' | 'danger'
+    message: string
+  }>
+  caches: {
+    providerCatalog: {
+      key: string
+      count: number
+      ttlSeconds: number
+      sampleKeys: string[]
+    }
+    providerDiscover: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+    publicEnabledSkills: {
+      key: string
+      count: number
+      ttlSeconds: number
+      sampleKeys: string[]
+    }
+    runtimeSkills: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+    workspaceRuntimeSkills: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+  }
+  tasks: {
+    runtime: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+    snapshot: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+    abort: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+    lock: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+    idempotency: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+    userConcurrency: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+    skillConcurrency: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+    providerConcurrency: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+    submitRateLimit: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+    providerDiscoverRateLimit: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+    authVerificationRateLimit: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+    authLoginRateLimit: {
+      pattern: string
+      count: number
+      sampleKeys: string[]
+    }
+  }
+  businessCaches: {
+    modules: RedisBusinessCacheModuleConfig[]
+    diagnostics: {
+      hotKeys: RedisBusinessCacheHotKeyConfig[]
+      largeValues: RedisBusinessCacheLargeValueConfig[]
+      warnings: RedisBusinessCacheWarningConfig[]
+    }
+  }
+}
+
+export interface RedisTaskDetailConfig {
+  recordId: string
+  runtime: {
+    recordId: string
+    userId: string
+    type: 'image' | 'agent'
+    strategyKey: string
+    status: 'queued' | 'running' | 'completed' | 'failed' | 'stopped'
+    updatedAt: string
+    providerId?: string
+    modelKey?: string
+    skillKey?: string
+  } | null
+  abort: {
+    exists: boolean
+    ttlSeconds: number
+  }
+  lock: {
+    exists: boolean
+    ttlMs: number
+  }
+  recentEvents: Array<{
+    type: string
+    stage: string
+    message: string
+    done: boolean
+    stopped: boolean
+    createdAt: string
+  }>
+  database: {
+    id: string
+    userId: string
+    type: string
+    status: string
+    prompt: string
+    modelKey: string
+    skill: string
+    error: string
+    outputCount: number
+    imageCount: number
+    hasAgentRun: boolean
+    agentRunStatus: string
+    createdAt: string
+    updatedAt: string
+    finishedAt: string
+  } | null
+  snapshot: {
+    id: string
+    type: string
+    prompt: string
+    modelKey: string
+    skill: string
+    done: boolean
+    stopped: boolean
+    error: string
+    imageCount: number
+    outputCount: number
+    hasAgentRun: boolean
+    agentRunStatus: string
+    updatedAt: string
+  } | null
+  governance: {
+    queue: {
+      enteredAt: string
+      startedAt: string
+      waitDurationMs: number
+      reason: string
+    } | null
+    retry: {
+      totalRetryCount: number
+      burstRateRetryCount: number
+      lastRetryAt: string
+      lastRetryStage: string
+      lastWaitDurationMs: number
+      lastStatusCode: number
+      lastErrorPreview: string
+    } | null
+    execution: {
+      lockAcquiredAt: string
+      lockLost: boolean
+      completedAt: string
+      lastErrorAt: string
+      lastErrorMessage: string
+    } | null
+  }
+}
+
+export interface SystemRedisRuntimeSettingsConfig {
+  taskSubmitRateLimit: number
+  authVerificationRateLimit: number
+  authLoginRateLimit: number
+  providerModelDiscoverRateLimit: number
+  taskUserConcurrencyLimit: number
+  taskSkillConcurrencyLimit: number
+  taskProviderConcurrencyLimit: number
+}
 
 const normalizeGlobalThemeSettings = (value?: SystemGlobalThemeSettingsConfig | null): SystemGlobalThemeSettingsConfig => {
   const defaults = createDefaultGlobalThemeSettings()
@@ -886,6 +1149,83 @@ export const getAdminSystemConfig = async (): Promise<SystemConfigPayload> => {
   })
 
   return normalizeSystemConfigPayload(await readApiData<SystemConfigPayload>(response))
+}
+
+export const getRedisHealth = async (): Promise<RedisHealthConfig> => {
+  const response = await fetch(buildApiUrl(SYSTEM_CONFIG_REDIS_HEALTH_API_PATH), {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store',
+  })
+
+  return readApiData<RedisHealthConfig>(response)
+}
+
+export const getRedisAdminOverview = async (): Promise<RedisAdminOverviewConfig> => {
+  const response = await fetch(buildApiUrl(SYSTEM_CONFIG_REDIS_OVERVIEW_API_PATH), {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store',
+  })
+
+  return readApiData<RedisAdminOverviewConfig>(response)
+}
+
+export const clearRedisCacheScope = async (scope: 'provider-model-catalog' | 'skill-runtime' | 'task-runtime') => {
+  const response = await fetch(buildApiUrl(SYSTEM_CONFIG_REDIS_ACTIONS_API_PATH), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ scope }),
+  })
+
+  return readApiData<{ scope: string; deletedCount: number }>(response, {
+    showSuccessMessage: true,
+    showErrorMessage: true,
+  })
+}
+
+export const getRedisTaskDetail = async (recordId: string): Promise<RedisTaskDetailConfig> => {
+  const requestUrl = buildApiUrl(`${SYSTEM_CONFIG_REDIS_TASK_DETAIL_API_PATH}?recordId=${encodeURIComponent(recordId)}`)
+  const response = await fetch(requestUrl, {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store',
+  })
+
+  return readApiData<RedisTaskDetailConfig>(response, {
+    showErrorMessage: true,
+  })
+}
+
+export const getRedisRuntimeSettings = async (): Promise<SystemRedisRuntimeSettingsConfig> => {
+  const response = await fetch(buildApiUrl(SYSTEM_CONFIG_REDIS_SETTINGS_API_PATH), {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store',
+  })
+
+  return readApiData<SystemRedisRuntimeSettingsConfig>(response, {
+    showErrorMessage: true,
+  })
+}
+
+export const saveRedisRuntimeSettings = async (payload: SystemRedisRuntimeSettingsConfig): Promise<SystemRedisRuntimeSettingsConfig> => {
+  const response = await fetch(buildApiUrl(SYSTEM_CONFIG_REDIS_SETTINGS_API_PATH), {
+    method: 'PUT',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return readApiData<SystemRedisRuntimeSettingsConfig>(response, {
+    showSuccessMessage: true,
+    showErrorMessage: true,
+  })
 }
 
 // 保存后台系统设置。

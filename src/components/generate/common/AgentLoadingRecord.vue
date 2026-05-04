@@ -6,6 +6,29 @@
         <div :class="['agentic-record-content-pUXA3k', { 'completed-E206yG': done }]">
           <!-- 用户消息 -->
           <div class="user-message-IyG6vx">
+            <div
+              v-if="visibleReferenceImages.length"
+              class="user-reference-stack"
+              :style="referenceStyleVars"
+            >
+              <div class="user-reference-stack__group" :style="referenceGroupStyle">
+                <div
+                  v-for="(imageSrc, index) in visibleReferenceImages"
+                  :key="`${imageSrc}-${index}`"
+                  class="user-reference-stack__item"
+                  :style="buildReferenceItemStyle(index)"
+                >
+                  <div class="user-reference-stack__card" :style="buildReferenceCardStyle(index)">
+                    <img
+                      class="user-reference-stack__image"
+                      :src="imageSrc"
+                      alt="参考图"
+                      loading="lazy"
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
             <div class="context-menu-trigger-QXaWD5">
               <div class="user-message-content">
                 <div class="user-message-text">
@@ -41,7 +64,49 @@ const props = defineProps<{
   content: string
   done: boolean
   error?: string
+  referenceImages?: string[]
 }>()
+
+const maxVisibleReferenceCount = 4
+const collapsedReferenceOffsetX = 12
+const referenceRotateList = [-8, 5, -4, 3]
+const referenceTopOffsetList = [0, 1, 0, 1]
+const referenceDepthList = [4, 3, 2, 1]
+
+const visibleReferenceImages = computed(() => {
+  return (Array.isArray(props.referenceImages) ? props.referenceImages : [])
+    .map(item => String(item || '').trim())
+    .filter(Boolean)
+    .slice(-maxVisibleReferenceCount)
+})
+
+const referenceStyleVars = computed(() => ({
+  '--reference-count': String(Math.max(visibleReferenceImages.value.length, 1)),
+}))
+
+const referenceGroupStyle = computed(() => ({
+  width: `${48 + Math.max(visibleReferenceImages.value.length - 1, 0) * collapsedReferenceOffsetX}px`,
+  height: '48px',
+}))
+
+const buildReferenceItemStyle = (index: number) => {
+  const offsetX = index * collapsedReferenceOffsetX
+  const offsetY = referenceTopOffsetList[index] ?? 0
+  const zIndex = referenceDepthList[index] ?? Math.max(1, maxVisibleReferenceCount - index)
+
+  return {
+    left: `${offsetX}px`,
+    top: `${offsetY}px`,
+    zIndex,
+  }
+}
+
+const buildReferenceCardStyle = (index: number) => {
+  const rotate = referenceRotateList[index] ?? (index % 2 === 0 ? -4 : 4)
+  return {
+    transform: `rotate(${rotate}deg)`,
+  }
+}
 
 // 简单的 markdown 渲染（标题、段落、列表）
 const renderedContent = computed(() => {
@@ -61,6 +126,56 @@ const renderedContent = computed(() => {
 </script>
 
 <style scoped>
+.user-reference-stack {
+  display: flex;
+  justify-content: flex-end;
+  height: 48px;
+  margin-bottom: 8px;
+  padding: 4px 8px 0;
+  position: relative;
+  width: calc(var(--reference-count) * 36px);
+  z-index: 2;
+}
+
+.user-reference-stack__group {
+  height: 48px;
+  position: relative;
+}
+
+.user-reference-stack__item {
+  width: 48px;
+  height: 64px;
+  position: absolute;
+  scale: 0.75;
+  transform-origin: 100% 0;
+}
+
+.user-reference-stack__card {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
+  background-color: var(--bg-surface);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+.user-reference-stack__card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--bg-black);
+  opacity: 0.18;
+  z-index: 1;
+}
+
+.user-reference-stack__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .agent-loading-status-wrapper {
   display: flex;
   align-items: center;

@@ -293,7 +293,8 @@ const handleSubmit = () => {
     const toolbar = agentToolbarExpandRef.value || agentToolbarRef.value
     emit('send', message, currentType.value, {
       model: toolbar?.currentModelLabel || '',
-      skill: toolbar?.currentSkill || 'general'
+      skill: toolbar?.currentSkill || 'general',
+      referenceImages: [...imageReferenceImages.value],
     })
   } else {
     emit('send', message, currentType.value)
@@ -399,9 +400,9 @@ const collapsedSubmitButtonClass = computed(() =>
   isSidebar.value ? 'collapsed-submit-button-RE6ufv' : 'collapsed-submit-button-o26OIS collapsed-submit-button-CfMOHV submit-button-z7zxBM'
 )
 
-// 是否有参考图（图片和视频模式有参考图上传）
+// 是否有参考图（图片、视频和 Agent 模式有参考图上传）
 const hasReferences = computed(() =>
-  currentType.value === 'image' || currentType.value === 'video'
+  currentType.value === 'image' || currentType.value === 'video' || currentType.value === 'agent'
 )
 
 // 参考图容器类名（侧边栏和默认模式使用不同类名）
@@ -411,7 +412,7 @@ const hasReferencesClass = computed(() =>
 
 const imageReferenceCount = computed(() => imageReferenceImages.value.length)
 const collapsedReferenceRecordText = computed(() => {
-  if (currentType.value === 'image' && imageReferenceImages.value.length) {
+  if ((currentType.value === 'image' || currentType.value === 'agent') && imageReferenceImages.value.length) {
     return `参考图片 ${imageReferenceImages.value.length} 张`
   }
 
@@ -590,7 +591,7 @@ const clearVideoLastFrame = () => {
 }
 
 const clearCollapsedReferences = () => {
-  if (currentType.value === 'image') {
+  if (currentType.value === 'image' || currentType.value === 'agent') {
     imageReferenceImages.value = []
     return
   }
@@ -663,7 +664,7 @@ onUnmounted(() => {
       <div class="content-oZ2zsI">
         <!-- 参考图上传区域 -->
         <!-- 图片模式：上传前保持原单卡布局，上传后切多图编排 -->
-        <div v-if="currentType === 'image'" :class="['references-vWIzeo', 'references-Gf5d1P', { 'collapsed-_VpN2b collapsed-IXfvom': isCollapsed && !isSidebar }]">
+        <div v-if="currentType === 'image' || currentType === 'agent'" :class="['references-vWIzeo', 'references-Gf5d1P', { 'collapsed-_VpN2b collapsed-IXfvom': isCollapsed && !isSidebar }]">
           <div :class="['reference-group-_DAGw1', 'reference-group-c2buvf', { 'collapsed-J9LsWu collapsed-GMNiSS': isCollapsed && !isSidebar, 'generator-reference-group--multi': imageReferenceImages.length > 0 }]"
                :style="imageReferenceGroupStyle">
             <div class="reference-group-background-f6pFpT reference-group-background-cr79bH"></div>
@@ -1066,7 +1067,8 @@ onUnmounted(() => {
               <button v-if="isSidebar && currentType === 'agent'"
                       class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square lv-btn-icon-only button-lc3WzE toolbar-button-FhFnQ_"
                       type="button"
-                      title="添加附件">
+                      :title="imageReferenceCount ? `参考图片 ${imageReferenceCount} 张` : '添加参考图片'"
+                      @click.stop="openImageReferencePicker">
                 <svg width="1em" height="1em" viewBox="0 0 24 24"
                      preserveAspectRatio="xMidYMid meet" fill="none"
                      role="presentation" xmlns="http://www.w3.org/2000/svg">

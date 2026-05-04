@@ -36,6 +36,7 @@ const emit = defineEmits<{
     duration?: string
     feature?: string
     skill?: string
+    referenceImages?: string[]
   }]
 }>()
 </script>

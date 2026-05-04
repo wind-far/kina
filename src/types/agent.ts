@@ -50,6 +50,7 @@ export interface AgentRunState {
   query: string
   skill: string
   status: 'idle' | 'thinking' | 'running' | 'completed' | 'error' | 'stopped'
+  referenceImages?: string[]
   user?: AgentUser
   steps: AgentTaskStep[]
   indicator?: AgentTaskIndicatorState

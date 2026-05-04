@@ -117,8 +117,10 @@ jobs:
             AUTH_LOGIN_CODE_EXPIRE_MINUTES=5
             AUTH_SESSION_EXPIRE_DAYS=30
             EOF
-
+            
             ls -la
+            # 清理历史遗留的同名容器，避免旧部署方式残留导致 compose 重建失败。
+            docker rm -f canana-vue-app || true
             docker compose pull
             docker compose up -d --force-recreate --remove-orphans
             docker image prune -f

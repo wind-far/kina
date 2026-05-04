@@ -114,6 +114,11 @@ jobs:
             REDIS_DATABASE=${{ secrets.REDIS_DATABASE }}
             REDIS_PREFIX=canana
             REDIS_ENV=production
+            REDIS_DEFAULT_TTL_SECONDS=60
+            REDIS_TASK_RUNTIME_TTL_SECONDS=1800
+            REDIS_TASK_SNAPSHOT_TTL_SECONDS=1800
+            REDIS_TASK_ABORT_TTL_SECONDS=300
+            REDIS_TASK_LOCK_TTL_MS=30000
             AUTH_LOGIN_CODE_EXPIRE_MINUTES=5
             AUTH_SESSION_EXPIRE_DAYS=30
             EOF

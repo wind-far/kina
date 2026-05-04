@@ -32,6 +32,8 @@ const RUNTIME_DEPENDENCY_NAMES = [
   '@prisma/adapter-mariadb',
   '@prisma/client',
   'dotenv',
+  // Redis 运行时由服务端直接导入，必须随独立服务包一起安装。
+  'ioredis',
   'prisma',
 ]
 

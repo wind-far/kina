@@ -7,6 +7,11 @@ export interface RedisLockHandle {
   token: string
 }
 
+export interface RedisLockRenewResult {
+  ok: boolean
+  reason: 'renewed' | 'redis_disabled' | 'client_unavailable' | 'ownership_lost' | 'redis_error'
+}
+
 export const acquireRedisLock = async (key: string, ttlMs = REDIS_CONFIG.taskLockTtlMs): Promise<RedisLockHandle | null> => {
   if (!isRedisEnabled()) {
     return null
@@ -54,28 +59,54 @@ export const releaseRedisLock = async (lock: RedisLockHandle | null | undefined)
 }
 
 // 长任务执行期间按 token 续租，避免锁在任务未结束前过期。
-export const renewRedisLock = async (lock: RedisLockHandle | null | undefined, ttlMs = REDIS_CONFIG.taskLockTtlMs) => {
+export const renewRedisLock = async (
+  lock: RedisLockHandle | null | undefined,
+  ttlMs = REDIS_CONFIG.taskLockTtlMs,
+): Promise<RedisLockRenewResult> => {
   if (!lock || !isRedisEnabled()) {
-    return false
+    return {
+      ok: false,
+      reason: 'redis_disabled',
+    }
   }
 
   const client = await getRedisClient()
   if (!client) {
-    return false
+    return {
+      ok: false,
+      reason: 'client_unavailable',
+    }
   }
 
-  const result = await client.eval(
-    `
-      if redis.call("get", KEYS[1]) == ARGV[1] then
-        return redis.call("pexpire", KEYS[1], ARGV[2])
-      end
-      return 0
-    `,
-    1,
-    lock.key,
-    lock.token,
-    String(ttlMs),
-  )
+  try {
+    const result = await client.eval(
+      `
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+          return redis.call("pexpire", KEYS[1], ARGV[2])
+        end
+        return 0
+      `,
+      1,
+      lock.key,
+      lock.token,
+      String(ttlMs),
+    )
 
-  return Number(result) === 1
+    if (Number(result) === 1) {
+      return {
+        ok: true,
+        reason: 'renewed',
+      }
+    }
+
+    return {
+      ok: false,
+      reason: 'ownership_lost',
+    }
+  } catch {
+    return {
+      ok: false,
+      reason: 'redis_error',
+    }
+  }
 }

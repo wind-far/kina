@@ -74,6 +74,8 @@ type RunningGenerationTask = LocalRunningGenerationTask & {
   strategyKey: GenerationTaskStrategyKey
 }
 
+type TaskAbortReason = 'user_stop' | 'shared_stop' | 'execution_lock_lost'
+
 // 统一输出生成任务日志，方便排查离页后任务是否仍在服务端继续执行。
 const logGenerationTask = (stage: string, detail: Record<string, unknown>) => {
   console.log('[generation-tasks]', stage, JSON.stringify(detail))
@@ -87,6 +89,17 @@ const logGenerationTaskError = (stage: string, error: unknown, detail: Record<st
     errorMessage: err?.message || '未知异常',
     errorStack: err?.stack || null,
   }))
+}
+
+// 统一给任务写入中断原因，避免把系统中断误判成用户主动停止。
+const abortTaskWithReason = (task: RunningGenerationTask, reason: TaskAbortReason) => {
+  task.abortController.abort(reason)
+}
+
+// 解析本次中断的真实原因，便于后续决定写成 stopped 还是 failed。
+const resolveTaskAbortReason = (task: RunningGenerationTask): TaskAbortReason | '' => {
+  const reason = task.abortController.signal.reason
+  return typeof reason === 'string' ? reason as TaskAbortReason : ''
 }
 
 const BURST_RATE_RETRY_DELAYS = [1200, 2600, 5200]
@@ -416,39 +429,52 @@ const runTaskWithExecutionLock = async (
   const renewIntervalMs = Math.max(5_000, Math.floor(REDIS_CONFIG.taskLockTtlMs / 3))
   let renewTimer: ReturnType<typeof setInterval> | null = null
   let lockLost = false
+  let lastSuccessfulRenewAt = Date.now()
 
   // 锁续租放在独立定时器里，避免长耗时任务执行期间锁自动过期。
   renewTimer = setInterval(() => {
-    void renewRedisLock(executionLock).then((renewed) => {
-      if (renewed) {
+    void renewRedisLock(executionLock).then((renewResult) => {
+      if (renewResult.ok) {
+        lastSuccessfulRenewAt = Date.now()
         return
       }
 
-      lockLost = true
+      const renewDeadlineExceeded = Date.now() - lastSuccessfulRenewAt >= REDIS_CONFIG.taskLockTtlMs
+      const shouldAbortImmediately = renewResult.reason === 'ownership_lost'
+      const shouldAbort = shouldAbortImmediately || renewDeadlineExceeded
+
       void markTaskExecutionState(task, {
-        lockLost: true,
+        lockLost: shouldAbort,
         lastErrorAt: new Date().toISOString(),
-        lastErrorMessage: '任务执行锁续租失败，任务已中断',
+        lastErrorMessage: shouldAbort
+          ? '任务执行锁续租失败，任务已中断'
+          : '任务执行锁续租异常，正在等待下一次恢复',
       })
-      logGenerationTaskError('task_execution_lock_renew_failed', new Error('lock_lost'), {
+
+      if (shouldAbort) {
+        lockLost = true
+        logGenerationTaskError('task_execution_lock_renew_failed', new Error(renewResult.reason), {
+          recordId: task.recordId,
+          userId: task.userId,
+          strategyKey: task.strategyKey,
+          renewReason: renewResult.reason,
+          renewIntervalMs,
+          taskLockTtlMs: REDIS_CONFIG.taskLockTtlMs,
+          lastSuccessfulRenewAt: new Date(lastSuccessfulRenewAt).toISOString(),
+        })
+        abortTaskWithReason(task, 'execution_lock_lost')
+        return
+      }
+
+      logGenerationTask('task_execution_lock_renew_retrying', {
         recordId: task.recordId,
         userId: task.userId,
         strategyKey: task.strategyKey,
+        renewReason: renewResult.reason,
+        renewIntervalMs,
+        taskLockTtlMs: REDIS_CONFIG.taskLockTtlMs,
+        lastSuccessfulRenewAt: new Date(lastSuccessfulRenewAt).toISOString(),
       })
-      task.abortController.abort()
-    }).catch((error) => {
-      lockLost = true
-      void markTaskExecutionState(task, {
-        lockLost: true,
-        lastErrorAt: new Date().toISOString(),
-        lastErrorMessage: '任务执行锁续租异常，任务已中断',
-      })
-      logGenerationTaskError('task_execution_lock_renew_error', error, {
-        recordId: task.recordId,
-        userId: task.userId,
-        strategyKey: task.strategyKey,
-      })
-      task.abortController.abort()
     })
   }, renewIntervalMs)
 
@@ -477,7 +503,7 @@ const ensureTaskNotAborted = async (task: RunningGenerationTask) => {
     return
   }
 
-  task.abortController.abort()
+  abortTaskWithReason(task, 'shared_stop')
   throw new DOMException('Aborted', 'AbortError')
 }
 
@@ -2179,8 +2205,9 @@ const runImageTaskInBackground = (task: RunningGenerationTask, payload: Generati
       const isAbortError = error instanceof DOMException
         ? error.name === 'AbortError'
         : error instanceof Error && /abort/i.test(String(error.name || error.message || ''))
+      const abortReason = resolveTaskAbortReason(task)
 
-      if (isAbortError) {
+      if (isAbortError && (abortReason === 'user_stop' || abortReason === 'shared_stop')) {
         await refundTaskPointsIfNeeded(task, 'task_aborted')
         await markTaskExecutionState(task, {
           lastErrorAt: new Date().toISOString(),
@@ -2214,8 +2241,10 @@ const runImageTaskInBackground = (task: RunningGenerationTask, payload: Generati
           userId: task.userId,
         })
       } else {
+        const errorMessage = isAbortError && abortReason === 'execution_lock_lost'
+          ? '任务执行锁已失效，系统已中断本次生成'
+          : normalizeGenerationErrorMessage(error, '图片生成失败')
         await refundTaskPointsIfNeeded(task, 'task_failed')
-        const errorMessage = normalizeGenerationErrorMessage(error, '图片生成失败')
         await markTaskExecutionState(task, {
           lastErrorAt: new Date().toISOString(),
           lastErrorMessage: errorMessage,
@@ -2272,8 +2301,9 @@ const runAgentTaskInBackground = (task: RunningGenerationTask, payload: Generati
       const isAbortError = error instanceof DOMException
         ? error.name === 'AbortError'
         : error instanceof Error && /abort/i.test(String(error.name || error.message || ''))
+      const abortReason = resolveTaskAbortReason(task)
 
-      if (isAbortError) {
+      if (isAbortError && (abortReason === 'user_stop' || abortReason === 'shared_stop')) {
         await refundTaskPointsIfNeeded(task, 'task_aborted')
         await markTaskExecutionState(task, {
           lastErrorAt: new Date().toISOString(),
@@ -2330,7 +2360,9 @@ const runAgentTaskInBackground = (task: RunningGenerationTask, payload: Generati
           })
         }
       } else {
-        const errorMessage = normalizeGenerationErrorMessage(error, '对话生成失败')
+        const errorMessage = isAbortError && abortReason === 'execution_lock_lost'
+          ? '任务执行锁已失效，系统已中断本次任务'
+          : normalizeGenerationErrorMessage(error, '对话生成失败')
         await refundTaskPointsIfNeeded(task, 'task_failed')
         await markTaskExecutionState(task, {
           lastErrorAt: new Date().toISOString(),
@@ -2734,7 +2766,7 @@ export const stopGenerationTask = async (recordId: string, currentUserId: string
     if (task.userId !== currentUserId) {
       throw new Error('无权停止当前生成任务')
     }
-    task.abortController.abort()
+    abortTaskWithReason(task, 'user_stop')
   } else {
     const sharedRuntime = await getSharedTaskRuntime(recordId)
     if (sharedRuntime?.status === 'running') {

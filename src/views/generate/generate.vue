@@ -8,7 +8,7 @@ import ImageLoadingRecord from '../../components/generate/common/ImageLoadingRec
 import AgentLoadingRecord from '../../components/generate/common/AgentLoadingRecord.vue'
 import ImagePreview from '@/components/ImagePreview.vue'
 import { getAgentModel } from '@/api/agent'
-import { getModelByName, loadPublicModelCatalog, resolveModelLabel, resolveRequestModelKey, resolveRequestProviderId, type ImageModel } from '@/config/models'
+import { getModelByName, loadPublicModelCatalog, resolveModelLabel, type ImageModel } from '@/config/models'
 import { buildAgentChatMessages, isAgentWorkspaceSkill, loadPublicSkillCatalog } from '@/config/agentSkills'
 import {
   createGenerationRecord as createGenerationRecordRequest,
@@ -24,7 +24,7 @@ import {
   updateGenerationSession as updateGenerationSessionRequest,
   type PersistedGenerationSession,
 } from '@/api/generation-sessions'
-import { createGenerationTask, stopGenerationTask, subscribeGenerationTaskEvents, type GenerationTaskStreamEvent } from '@/api/generation-tasks'
+import { createGenerationTask, resolveGenerationTaskModel, stopGenerationTask, subscribeGenerationTaskEvents, type GenerationTaskStreamEvent } from '@/api/generation-tasks'
 import type { CreationType } from '../../components/generate/selectors'
 import type {
   AgentRunState,
@@ -678,15 +678,23 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   record.error = saved.done || saved.stopped ? saved.error : ''
   record.done = saved.done
   record.stopped = Boolean(saved.stopped)
+  const nextRunningStage = record.progressStage === 'stopping'
+    ? 'stopping'
+    : (record.progressStage || 'queued')
   record.progressStage = saved.done
     ? (saved.stopped ? 'stopped' : saved.error ? 'failed' : 'completed')
-    : (record.progressStage || 'queued')
+    : nextRunningStage
   record.progressMessage = saved.done
     ? resolveTaskStageLabel(
       saved.stopped ? 'stopped' : saved.error ? 'failed' : 'completed',
       saved.stopped ? '任务已停止' : saved.error ? saved.error : '任务已完成',
     )
-    : resolveTaskStageLabel(record.progressStage || 'queued', record.progressMessage || '任务执行中')
+    : resolveTaskStageLabel(
+      nextRunningStage,
+      nextRunningStage === 'stopping'
+        ? '任务已收到停止指令，正在收口状态'
+        : (record.progressMessage || '任务执行中'),
+    )
   record.progressPercent = saved.done
     ? 100
     : Math.max(record.progressPercent || 0, mapTaskStageToProgressPercent(record.progressStage))
@@ -731,6 +739,13 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   }
 
   syncSessionMetaFromRecord(record, saved)
+}
+
+// 用户点击停止后，先在本地切到“停止中”，避免等待接口回包期间像没点到一样。
+const markRecordStopping = (record: GeneratingRecord) => {
+  record.progressStage = 'stopping'
+  record.progressMessage = resolveTaskStageLabel('stopping', '任务已收到停止指令，正在收口状态')
+  record.progressPercent = Math.max(record.progressPercent || 0, mapTaskStageToProgressPercent('stopping'))
 }
 
 // 立即持久化一条记录；创建与更新都走这里统一收口。
@@ -1101,8 +1116,12 @@ const handleSend = async (message: string, type: CreationType, options?: { model
 // 技能工作台同样改为服务端任务，由后端持续推送结构化阶段事件。
 const startWorkspaceAgentTask = async (record: GeneratingRecord) => {
   try {
-    const currentModelKey = resolveRequestModelKey(record.modelKey || getAgentModel(), 'CHAT')
-    const providerId = resolveRequestProviderId(record.modelKey || currentModelKey, 'CHAT')
+    const { providerId, modelKey: currentModelKey } = resolveGenerationTaskModel({
+      modelKey: record.modelKey,
+      fallbackModelKey: getAgentModel(),
+      category: 'CHAT',
+      missingModelMessage: '缺少对话模型标识',
+    })
 
     const saved = await createGenerationTask({
       sessionId: record.sessionId,
@@ -1133,14 +1152,12 @@ const startWorkspaceAgentTask = async (record: GeneratingRecord) => {
 // 通用 AI 对话同样提交到服务端任务，由后端持续执行并通过 SSE 回推文本增量。
 const startGeneralAgentTask = async (record: GeneratingRecord) => {
   try {
-    const currentModelKey = resolveRequestModelKey(record.modelKey || getAgentModel(), 'CHAT')
-    const providerId = resolveRequestProviderId(record.modelKey || currentModelKey, 'CHAT')
-    if (!providerId) {
-      throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
-    }
-    if (!currentModelKey) {
-      throw new Error('缺少对话模型标识')
-    }
+    const { providerId, modelKey: currentModelKey } = resolveGenerationTaskModel({
+      modelKey: record.modelKey,
+      fallbackModelKey: getAgentModel(),
+      category: 'CHAT',
+      missingModelMessage: '缺少对话模型标识',
+    })
 
     const saved = await createGenerationTask({
       sessionId: record.sessionId,
@@ -1171,14 +1188,11 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
 // 图片生成改为提交服务端任务，由后端继续执行并写回生成记录。
   const startImageGenerationTask = async (record: GeneratingRecord) => {
   try {
-    const providerId = resolveRequestProviderId(record.modelKey, 'IMAGE')
-    const requestModelKey = resolveRequestModelKey(record.modelKey, 'IMAGE')
-    if (!providerId) {
-      throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
-    }
-    if (!requestModelKey) {
-      throw new Error('未匹配到有效图片模型，请先检查后台模型配置')
-    }
+    const { providerId, modelKey: requestModelKey } = resolveGenerationTaskModel({
+      modelKey: record.modelKey,
+      category: 'IMAGE',
+      missingModelMessage: '未匹配到有效图片模型，请先检查后台模型配置',
+    })
 
     const modelConfig = getModelByName(record.modelKey || requestModelKey) as ImageModel | null
     const size = modelConfig?.sizes?.length
@@ -1235,6 +1249,7 @@ const handleStopImageGeneration = async (record: GeneratingRecord) => {
   if (!record.dbId) return
 
   try {
+    markRecordStopping(record)
     const saved = await stopGenerationTask(record.dbId)
     syncRecordWithPersisted(record, saved)
     const controller = taskStreamControllers.get(record.dbId)
@@ -1251,6 +1266,7 @@ const handleStopAgentExecution = async (record: GeneratingRecord) => {
   if (!record.agentRun || record.done || !record.dbId) return
 
   try {
+    markRecordStopping(record)
     const saved = await stopGenerationTask(record.dbId)
     syncRecordWithPersisted(record, saved)
     const controller = taskStreamControllers.get(record.dbId)

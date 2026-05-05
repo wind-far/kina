@@ -161,14 +161,35 @@ const resolveTaskSkillKey = (payload: GenerationTaskStartPayload, strategyKey: G
   return String(payload.skill || '').trim() || strategyKey || 'general'
 }
 
+const resolveTaskBillingTarget = (
+  payload: GenerationTaskStartPayload,
+  strategyKey: GenerationTaskStrategyKey,
+) => {
+  const providerId = String((payload.requestBody || {}).providerId || '').trim()
+  const modelKey = String(payload.modelKey || '').trim()
+  const isImageTask = strategyKey === 'image'
+
+  if (!providerId) {
+    throw new GenerationTaskRequestError(400, '未匹配到后台模型配置，请先在后台配置可用模型')
+  }
+
+  if (!modelKey) {
+    throw new GenerationTaskRequestError(400, isImageTask ? '缺少图片模型标识' : '缺少对话模型标识')
+  }
+
+  return {
+    providerId,
+    modelKey,
+  }
+}
+
 export const startGenerationTask = async (
   payload: GenerationTaskStartPayload,
   currentUserId: string,
   context: TaskLifecycleContext,
 ) => {
   const strategy = context.resolveGenerationTaskStrategy(payload)
-  const providerId = String((payload.requestBody || {}).providerId || '').trim()
-  const modelKey = String(payload.modelKey || '').trim()
+  const { providerId, modelKey } = resolveTaskBillingTarget(payload, strategy.key)
   const skillKey = resolveTaskSkillKey(payload, strategy.key)
   const idempotencyKey = buildGenerationTaskIdempotencyKey(
     payload,
@@ -192,13 +213,6 @@ export const startGenerationTask = async (
 
   try {
     if (strategy.key === 'agent-chat') {
-      if (!providerId) {
-        throw new GenerationTaskRequestError(400, '未匹配到后台模型配置，请先在后台配置可用模型')
-      }
-      if (!modelKey) {
-        throw new GenerationTaskRequestError(400, '缺少对话模型标识')
-      }
-
       concurrencySlots = await context.acquireTaskConcurrencySlots({
         userId: currentUserId,
         providerId,
@@ -278,13 +292,6 @@ export const startGenerationTask = async (
     }
 
     if (strategy.key === 'agent-workspace') {
-      if (!providerId) {
-        throw new GenerationTaskRequestError(400, '未匹配到后台模型配置，请先在后台配置可用模型')
-      }
-      if (!modelKey) {
-        throw new GenerationTaskRequestError(400, '缺少对话模型标识')
-      }
-
       concurrencySlots = await context.acquireTaskConcurrencySlots({
         userId: currentUserId,
         providerId,
@@ -371,13 +378,6 @@ export const startGenerationTask = async (
       })
       context.runTaskInBackground(task, payload)
       return createdRecord
-    }
-
-    if (!providerId) {
-      throw new GenerationTaskRequestError(400, '未匹配到后台模型配置，请先在后台配置可用模型')
-    }
-    if (!modelKey) {
-      throw new GenerationTaskRequestError(400, '缺少图片模型标识')
     }
 
     concurrencySlots = await context.acquireTaskConcurrencySlots({

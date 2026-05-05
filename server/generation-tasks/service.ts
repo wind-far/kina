@@ -365,8 +365,10 @@ const runTaskInBackground = (task: RunningGenerationTask, payload: GenerationTas
         ? error.name === 'AbortError'
         : error instanceof Error && /abort/i.test(String(error.name || error.message || ''))
       const abortReason = resolveTaskAbortReason(task)
+      const isStoppedAbort = task.abortController.signal.aborted
+        && (abortReason === 'user_stop' || abortReason === 'shared_stop')
 
-      if (isAbortError && (abortReason === 'user_stop' || abortReason === 'shared_stop')) {
+      if (isStoppedAbort || (isAbortError && (abortReason === 'user_stop' || abortReason === 'shared_stop'))) {
         await executionStrategy.handleStopped(task, payload, executionStrategyContext)
       } else {
         const errorMessage = executionStrategy.resolveFailureMessage(error, abortReason, executionStrategyContext)

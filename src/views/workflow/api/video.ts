@@ -3,21 +3,15 @@
  */
 
 import { request } from './request'
-import { resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 
 const DEFAULT_VIDEO_ENDPOINT = '/videos'
 
 export const createVideoTask = (data: any, options: any = {}) => {
   const { endpoint } = options
-  const originalModel = String(data instanceof FormData ? data.get('model') || '' : data?.model || '').trim()
-  const providerId = resolveRequestProviderId(originalModel, 'VIDEO')
-  const modelKey = resolveRequestModelKey(originalModel, 'VIDEO')
   return request({
     url: endpoint || DEFAULT_VIDEO_ENDPOINT,
     method: 'post',
     data,
-    providerId,
-    modelKey,
     headers: { 'Content-Type': 'multipart/form-data' }
   }, 'video')
 }

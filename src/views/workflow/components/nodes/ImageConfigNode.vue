@@ -6,7 +6,8 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes, edges } from '../../composables/useWorkflowCanvas'
-import { BANANA_SIZE_OPTIONS, SEEDREAM_SIZE_OPTIONS, SEEDREAM_4K_SIZE_OPTIONS, SEEDREAM_QUALITY_OPTIONS, getAllImageModels, loadPublicModelCatalog, getDefaultImageModelKey, getModelByName, resolveRequestModelKey } from '@/config/models'
+import { BANANA_SIZE_OPTIONS, SEEDREAM_SIZE_OPTIONS, SEEDREAM_4K_SIZE_OPTIONS, SEEDREAM_QUALITY_OPTIONS, getAllImageModels, loadPublicModelCatalog, getDefaultImageModelKey, getModelByName } from '@/config/models'
+import { resolveGatewayUpstream } from '@/api/ai-gateway'
 import { generateImage } from '../../api/image'
 import WfSelect from '@/components/common/WfSelect.vue'
 import { collectOrderedImageReferences } from '@/shared/image-generation-request'
@@ -103,7 +104,10 @@ const handleGenerate = async () => {
   isGenerating.value = true
   let outputNodeId = null
   try {
-    let params = { model: resolveRequestModelKey(model.value, 'IMAGE'), prompt: prompt || '', n: 1 }
+    const { modelKey } = await resolveGatewayUpstream('image', {
+      modelValue: model.value,
+    })
+    let params = { model: modelKey, prompt: prompt || '', n: 1 }
     if (size.value && currentModel.value?.sizes?.length) params.size = size.value
     if (quality.value) params.quality = quality.value
     if (refImages.length) params.image = refImages

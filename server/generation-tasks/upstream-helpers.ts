@@ -1,6 +1,27 @@
 import { getPublicModelCatalog, resolveGatewayProviderUpstream } from '../provider-config/service'
 import { buildAgentChatMessages } from '../../src/shared/agent-skills-core'
 import { normalizeGenerationErrorMessage } from '../../src/shared/generation-error'
+import {
+  buildImageEditRequestFormData,
+  normalizeImageGenerationRequestBody,
+} from '../../src/shared/upstream-request-normalizer'
+import {
+  extractChatTextFromJsonPayload,
+  extractImageUrlsFromJsonResponse,
+  extractImageUrlsFromText,
+  parseChatChunkError,
+  parseChatChunkText,
+  parseUpstreamStreamChunk,
+} from '../../src/shared/upstream-stream-parser'
+
+export {
+  extractChatTextFromJsonPayload,
+  extractImageUrlsFromJsonResponse,
+  extractImageUrlsFromText,
+  parseChatChunkError,
+  parseChatChunkText,
+  parseUpstreamStreamChunk,
+} from '../../src/shared/upstream-stream-parser'
 
 const BURST_RATE_RETRY_DELAYS = [1200, 2600, 5200]
 
@@ -155,29 +176,8 @@ export const fetchWithBurstRateRetry = async (input: FetchWithBurstRateRetryInpu
   throw new Error('上游请求重试流程异常结束')
 }
 
-const isChatCompletionsEndpoint = (endpoint: string) => {
+export const isChatCompletionsEndpoint = (endpoint: string) => {
   return /chat\/completions/i.test(String(endpoint || '').trim())
-}
-
-export const extractImageUrlsFromJsonResponse = (result: any) => {
-  const urls: string[] = []
-
-  if (!Array.isArray(result?.data)) {
-    return urls
-  }
-
-  for (const item of result.data) {
-    if (item?.url) {
-      urls.push(item.url)
-      continue
-    }
-
-    if (item?.b64_json) {
-      urls.push(`data:image/png;base64,${item.b64_json}`)
-    }
-  }
-
-  return urls
 }
 
 export const extractChatTextFromNonStreamResponse = async (response: Response) => {
@@ -187,83 +187,6 @@ export const extractChatTextFromNonStreamResponse = async (response: Response) =
     return messageContent
   }
   return ''
-}
-
-export const extractChatTextFromJsonPayload = (result: any) => {
-  const normalizeContentValue = (value: unknown): string => {
-    if (typeof value === 'string' && value.trim()) {
-      return value
-    }
-
-    if (Array.isArray(value)) {
-      const joined = value
-        .map((item) => {
-          if (typeof item === 'string') {
-            return item
-          }
-          if (item && typeof item === 'object') {
-            const record = item as Record<string, unknown>
-            if (typeof record.text === 'string') {
-              return record.text
-            }
-            if (typeof record.content === 'string') {
-              return record.content
-            }
-          }
-          return ''
-        })
-        .filter(Boolean)
-        .join('')
-      if (joined.trim()) {
-        return joined
-      }
-    }
-
-    return ''
-  }
-
-  const candidates = [
-    result?.choices?.[0]?.message?.content,
-    result?.choices?.[0]?.delta?.content,
-    result?.choices?.[0]?.delta?.reasoning_content,
-    result?.choices?.[0]?.text,
-    result?.message?.content,
-    result?.delta?.content,
-    result?.content,
-    result?.text,
-    result?.response,
-  ]
-
-  for (const candidate of candidates) {
-    const normalized = normalizeContentValue(candidate)
-    if (normalized) {
-      return normalized
-    }
-  }
-
-  return ''
-}
-
-export const parseChatChunkText = (chunk: string) => {
-  try {
-    const parsed = JSON.parse(chunk)
-    return extractChatTextFromJsonPayload(parsed)
-  } catch {
-    return ''
-  }
-}
-
-export const parseChatChunkError = (chunk: string) => {
-  try {
-    const parsed = JSON.parse(chunk)
-    const errorMessage = parsed?.error?.message
-    if (typeof errorMessage === 'string' && errorMessage.trim()) {
-      return errorMessage.trim()
-    }
-    return ''
-  } catch {
-    return ''
-  }
 }
 
 export const extractImageUrlsFromStreamResponse = async (response: Response, signal: AbortSignal) => {
@@ -302,100 +225,20 @@ export const extractImageUrlsFromStreamResponse = async (response: Response, sig
         const chunk = trimmed.slice(5).trim()
         if (chunk === '[DONE]') continue
 
-        try {
-          const parsed = JSON.parse(chunk)
-          const delta = parsed.choices?.[0]?.delta
-          if (delta?.content) fullContent += delta.content
-          if (Array.isArray(delta?.images)) {
-            for (const img of delta.images) {
-              const url = img?.image_url?.url
-              if (url) imageUrls.push(url)
-            }
-          }
-          if (delta?.inline_data?.data) {
-            imageUrls.push(`data:${delta.inline_data.mime_type};base64,${delta.inline_data.data}`)
-          }
-        } catch {
-          // 跳过无效 SSE 数据块，继续处理后续消息。
+        const parsedChunk = parseUpstreamStreamChunk(chunk)
+        if (parsedChunk.text) {
+          fullContent += parsedChunk.text
+        }
+        if (parsedChunk.imageUrls.length) {
+          imageUrls.push(...parsedChunk.imageUrls)
         }
       }
     }
   }
 
-  const markdownImages = fullContent.match(/!\[.*?\]\((https?:\/\/[^\s)]+)\)/g)
-  if (markdownImages) {
-    for (const item of markdownImages) {
-      const matched = item.match(/\((https?:\/\/[^\s)]+)\)/)
-      if (matched?.[1]) {
-        imageUrls.push(matched[1])
-      }
-    }
-  }
-
-  const base64Image = fullContent.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/)
-  if (base64Image?.[0]) {
-    imageUrls.push(base64Image[0])
-  }
+  imageUrls.push(...extractImageUrlsFromText(fullContent))
 
   return imageUrls
-}
-
-const inferReferenceImageMimeType = (value: string) => {
-  const normalizedValue = String(value || '').trim()
-  if (/^data:image\/png/i.test(normalizedValue)) return 'image/png'
-  if (/^data:image\/webp/i.test(normalizedValue)) return 'image/webp'
-  if (/^data:image\/gif/i.test(normalizedValue)) return 'image/gif'
-  if (/^data:image\/bmp/i.test(normalizedValue)) return 'image/bmp'
-  if (/^data:image\/svg\+xml/i.test(normalizedValue)) return 'image/svg+xml'
-  if (/^data:image\/jpe?g/i.test(normalizedValue)) return 'image/jpeg'
-  return 'image/png'
-}
-
-const sanitizeReferenceImageExtension = (mimeType: string) => {
-  switch (mimeType) {
-    case 'image/jpeg':
-      return 'jpg'
-    case 'image/webp':
-      return 'webp'
-    case 'image/gif':
-      return 'gif'
-    case 'image/bmp':
-      return 'bmp'
-    case 'image/svg+xml':
-      return 'svg'
-    default:
-      return 'png'
-  }
-}
-
-const decodeReferenceImageToBlob = async (value: string) => {
-  const normalizedValue = String(value || '').trim()
-  if (!normalizedValue) {
-    throw new Error('参考图内容为空')
-  }
-
-  if (/^data:/i.test(normalizedValue)) {
-    const response = await fetch(normalizedValue)
-    const blob = await response.blob()
-    return {
-      blob,
-      mimeType: blob.type || inferReferenceImageMimeType(normalizedValue),
-    }
-  }
-
-  if (/^https?:\/\//i.test(normalizedValue)) {
-    const response = await fetch(normalizedValue)
-    if (!response.ok) {
-      throw new Error(`参考图下载失败 (${response.status})`)
-    }
-    const blob = await response.blob()
-    return {
-      blob,
-      mimeType: blob.type || inferReferenceImageMimeType(normalizedValue),
-    }
-  }
-
-  throw new Error('暂不支持当前参考图格式，请重新上传图片后再试')
 }
 
 export const requestImageGeneration = async (input: RequestImageGenerationInput) => {
@@ -412,11 +255,10 @@ export const requestImageGeneration = async (input: RequestImageGenerationInput)
     headers.set('Authorization', `Bearer ${upstream.apiKey}`)
   }
 
-  const requestBody = {
-    ...input.requestBody,
-    model: input.modelKey,
-  }
-  delete (requestBody as Record<string, unknown>).providerId
+  const requestBody = normalizeImageGenerationRequestBody({
+    requestBody: input.requestBody,
+    modelKey: input.modelKey,
+  })
 
   const upstreamUrl = `${upstream.baseUrl.replace(/\/+$/, '')}/${upstream.endpoint.replace(/^\/+/, '')}`
   const response = await input.fetchWithBurstRateRetry({
@@ -464,23 +306,13 @@ export const requestImageEdit = async (input: RequestImageEditInput) => {
     endpointType: 'image-edit',
     modelKey: input.modelKey,
   })
-
-  const formData = new FormData()
-  formData.set('model', input.modelKey)
-  formData.set('prompt', input.prompt)
-  formData.set('n', '1')
-  if (input.size) {
-    formData.set('size', input.size)
-  }
-
-  for (let index = 0; index < input.referenceImages.length; index += 1) {
-    const { blob, mimeType } = await decodeReferenceImageToBlob(input.referenceImages[index])
-    formData.append(
-      'image',
-      blob,
-      `reference-${index + 1}.${sanitizeReferenceImageExtension(mimeType)}`,
-    )
-  }
+  const formData = await buildImageEditRequestFormData({
+    modelKey: input.modelKey,
+    prompt: input.prompt,
+    size: input.size,
+    referenceImages: input.referenceImages,
+    fileNamePrefix: 'reference',
+  })
 
   const headers = new Headers()
   if (upstream.apiKey) {

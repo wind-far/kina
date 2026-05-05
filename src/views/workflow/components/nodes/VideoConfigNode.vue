@@ -5,7 +5,8 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes, edges } from '../../composables/useWorkflowCanvas'
-import { VIDEO_RATIO_LIST, getAllVideoModels, getDefaultVideoModelKey, getModelByName, loadPublicModelCatalog, resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
+import { VIDEO_RATIO_LIST, getAllVideoModels, getDefaultVideoModelKey, getModelByName, loadPublicModelCatalog } from '@/config/models'
+import { resolveGatewayUpstream } from '@/api/ai-gateway'
 import { createVideoTask, pollVideoTask } from '../../api/video'
 import WfSelect from '@/components/common/WfSelect.vue'
 
@@ -67,8 +68,11 @@ const handleGenerate = async () => {
   let outputNodeId = null
 
   try {
+    const { providerId, modelKey } = await resolveGatewayUpstream('video', {
+      modelValue: model.value,
+    })
     const formData = new FormData()
-    formData.append('model', resolveRequestModelKey(model.value, 'VIDEO'))
+    formData.append('model', modelKey)
     if (prompt) formData.append('prompt', prompt)
     formData.append('ratio', ratio.value)
     formData.append('duration', String(duration.value))
@@ -94,7 +98,6 @@ const handleGenerate = async () => {
 
     const task = await createVideoTask(formData)
     const taskId = task?.id || task?.task_id
-    const providerId = resolveRequestProviderId(model.value, 'VIDEO')
 
     if (taskId && providerId) {
       const result = await pollVideoTask(taskId, providerId)

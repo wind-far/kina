@@ -69,12 +69,14 @@ import {
   getRedisRuntimeSettings,
 } from '../redis'
 import { GenerationTaskRequestError } from './shared'
+import { getGenerationTaskExecutionStrategy, type TaskAbortReason } from './execution-strategies'
+import { executeImageTask } from './image-task-executor'
+import { executeAgentChatTaskFlow } from './agent-chat-task-executor'
+import { executeAgentWorkspaceTaskFlow } from './agent-workspace-task-executor'
 
 type RunningGenerationTask = LocalRunningGenerationTask & {
   strategyKey: GenerationTaskStrategyKey
 }
-
-type TaskAbortReason = 'user_stop' | 'shared_stop' | 'execution_lock_lost'
 
 // 统一输出生成任务日志，方便排查离页后任务是否仍在服务端继续执行。
 const logGenerationTask = (stage: string, detail: Record<string, unknown>) => {
@@ -629,6 +631,26 @@ const buildInitialRecordPayload = (payload: GenerationTaskStartPayload): Generat
   images: [],
 })
 
+// 统一构造任务执行策略上下文，先把停止/失败收口逻辑从中心 service 中迁出。
+const buildTaskExecutionStrategyContext = () => ({
+  executeImageGenerationTask,
+  executeAgentChatTask,
+  executeAgentWorkspaceTask,
+  refundTaskPointsIfNeeded,
+  markTaskExecutionState,
+  emitTaskProgressEvent,
+  emitTaskStreamEvent,
+  buildInitialRecordPayload,
+  updateGenerationRecord,
+  getGenerationRecordById,
+  syncSharedTaskRuntime,
+  buildAgentStoppedRun: (agentRun: Record<string, unknown>, message: string) => buildAgentStoppedRun(agentRun as any, message) as unknown as Record<string, unknown>,
+  buildAgentErrorRun: (agentRun: Record<string, unknown>, message: string) => buildAgentErrorRun(agentRun as any, message) as unknown as Record<string, unknown>,
+  normalizeGenerationErrorMessage,
+  logGenerationTask,
+  logGenerationTaskError,
+})
+
 const buildGenerationTaskIdempotencyKey = (input: {
   payload: GenerationTaskStartPayload
   userId: string
@@ -1020,102 +1042,18 @@ const resolveWorkspaceImageModel = async (binding?: {
 }
 
 const executeImageGenerationTask = async (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
-  await syncSharedTaskRuntime(task, 'running')
-  await ensureTaskNotAborted(task)
-  const modelKey = String(payload.modelKey || '').trim()
-  if (!modelKey) {
-    throw new Error('缺少图片模型标识')
-  }
-
-  const providerId = String((payload.requestBody || {}).providerId || '').trim()
-  if (!providerId) {
-    throw new Error('缺少图片厂商配置')
-  }
-
-  emitTaskProgressEvent(task.recordId, {
-    stage: 'resolved_provider',
-    message: '已解析厂商与模型配置，准备请求上游图片接口',
-  })
-
-  const requestMode = String(payload.requestMode || '').trim() === 'image-edit'
-    ? 'image-edit'
-    : 'image-generation'
-  const referenceImages = Array.isArray(payload.referenceImages)
-    ? payload.referenceImages.map(item => String(item || '').trim()).filter(Boolean)
-    : []
-  const requestBody = {
-    ...(payload.requestBody || {}),
-    model: modelKey,
-  }
-
-  logGenerationTask('image_task:request_start', {
-    recordId: task.recordId,
-    userId: task.userId,
-    modelKey,
-    requestMode,
-    referenceImageCount: referenceImages.length,
-  })
-  emitTaskProgressEvent(task.recordId, {
-    stage: 'requesting_upstream',
-    message: '已开始请求上游图片模型',
-  })
-
-  const { upstreamUrl, imageUrls } = requestMode === 'image-edit'
-    ? await requestImageEdit({
-      signal: task.abortController.signal,
-      providerId,
-      modelKey,
-      prompt: String(requestBody.prompt || payload.prompt || '').trim(),
-      size: String(requestBody.size || '').trim() || undefined,
-      referenceImages,
-      onRetry: (retryState) => markTaskRetryState(task, retryState),
-    })
-    : await requestImageGeneration({
-      signal: task.abortController.signal,
-      providerId,
-      modelKey,
-      requestBody,
-      onRetry: (retryState) => markTaskRetryState(task, retryState),
-    })
-  await ensureTaskNotAborted(task)
-
-  logGenerationTask('image_task:request_upstream', {
-    recordId: task.recordId,
-    userId: task.userId,
-    upstreamUrl,
-    modelKey,
-  })
-  emitTaskProgressEvent(task.recordId, {
-    stage: 'receiving_upstream_result',
-    message: '上游已返回结果，正在解析图片内容',
-  })
-  emitTaskProgressEvent(task.recordId, {
-    stage: 'syncing_record',
-    message: '图片结果已解析，正在同步记录与资源信息',
-  })
-
-  await updateGenerationRecord(task.recordId, {
-    ...buildInitialRecordPayload(payload),
-    done: true,
-    stopped: false,
-    images: imageUrls,
-  }, task.userId)
-  const completedRecord = await getGenerationRecordById(task.recordId, task.userId)
-  await syncSharedTaskRuntime(task, 'completed')
-  emitTaskStreamEvent(task.recordId, {
-    type: 'completed',
-    recordId: task.recordId,
-    done: true,
-    stopped: false,
-    record: completedRecord,
-    stage: 'completed',
-    message: '图片生成完成，结果已写入记录',
-  })
-
-  logGenerationTask('image_task:request_success', {
-    recordId: task.recordId,
-    userId: task.userId,
-    imageCount: imageUrls.length,
+  await executeImageTask(task, payload, {
+    syncSharedTaskRuntime,
+    ensureTaskNotAborted,
+    emitTaskProgressEvent,
+    markTaskRetryState,
+    requestImageGeneration,
+    requestImageEdit,
+    buildInitialRecordPayload,
+    updateGenerationRecord,
+    getGenerationRecordById,
+    emitTaskStreamEvent,
+    logGenerationTask,
   })
 }
 
@@ -1499,266 +1437,24 @@ const requestAgentWorkspaceModelPlan = async (input: {
 }
 
 const executeAgentChatTask = async (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
-  await syncSharedTaskRuntime(task, 'running')
-  await ensureTaskNotAborted(task)
-  const modelKey = String(payload.modelKey || '').trim()
-  if (!modelKey) {
-    throw new Error('缺少对话模型标识')
-  }
-
-  const providerId = String((payload.requestBody || {}).providerId || '').trim()
-  if (!providerId) {
-    throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
-  }
-
-  const upstream = await resolveGatewayProviderUpstream({
-    providerId,
-    endpointType: 'chat',
-    modelKey,
-  })
-  emitTaskProgressEvent(task.recordId, {
-    stage: 'resolved_provider',
-    message: '已解析厂商与模型配置，准备请求上游对话模型',
-  })
-
-  const headers = new Headers({
-    'Content-Type': 'application/json',
-  })
-  if (upstream.apiKey) {
-    headers.set('Authorization', `Bearer ${upstream.apiKey}`)
-  }
-
-  const requestBody = {
-    ...(payload.requestBody || {}),
-    model: modelKey,
-    stream: true,
-  }
-  delete (requestBody as Record<string, unknown>).providerId
-
-  const upstreamUrl = `${upstream.baseUrl.replace(/\/+$/, '')}/${upstream.endpoint.replace(/^\/+/, '')}`
-  logGenerationTask('agent_task:request_start', {
-    recordId: task.recordId,
-    userId: task.userId,
-    upstreamUrl,
-    modelKey,
-  })
-
-  emitTaskProgressEvent(task.recordId, {
-    stage: 'requesting_upstream',
-    message: '已开始请求上游对话模型',
-  })
-
-  const response = await fetchWithBurstRateRetry({
-    url: upstreamUrl,
-    signal: task.abortController.signal,
-    stage: 'agent_chat',
-    detail: {
-      recordId: task.recordId,
-      userId: task.userId,
-      providerId,
-      modelKey,
-      endpointType: 'chat',
-    },
-    onRetry: (retryState) => markTaskRetryState(task, retryState),
-    init: {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestBody),
-    },
-  })
-
-  if (!response.ok) {
-    const responseText = await response.text().catch(() => '')
-    throw new Error(responseText || `对话生成失败 (${response.status})`)
-  }
-
-  emitTaskProgressEvent(task.recordId, {
-    stage: 'receiving_upstream_result',
-    message: '上游已开始返回内容，正在持续生成对话',
-  })
-
-  const responseContentType = String(response.headers.get('content-type') || '').toLowerCase()
-  logGenerationTask('agent_task:response_headers', {
-    recordId: task.recordId,
-    userId: task.userId,
-    contentType: responseContentType,
-  })
-
-  if (!response.body) {
-    const content = await extractChatTextFromNonStreamResponse(response)
-    await updateGenerationRecord(task.recordId, {
-      ...buildInitialRecordPayload(payload),
-      content,
-      done: true,
-      stopped: false,
-    }, task.userId)
-    const completedRecord = await getGenerationRecordById(task.recordId, task.userId)
-    await syncSharedTaskRuntime(task, 'completed')
-    emitTaskStreamEvent(task.recordId, {
-      type: 'completed',
-      recordId: task.recordId,
-      done: true,
-      stopped: false,
-      record: completedRecord,
-      stage: 'completed',
-      message: '对话生成完成，结果已写入记录',
-    })
-    return
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let fullContent = ''
-  let rawResponseText = ''
-  let hasSseDelta = false
-  let streamErrorMessage = ''
-  const rawDataSamples: string[] = []
-  const persistState = {
-    lastPersistAt: Date.now(),
-    lastPersistContentLength: 0,
-  }
-
-  while (!task.abortController.signal.aborted) {
-    const { done, value } = await reader.read()
-    if (done) {
-      break
-    }
-
-    const decodedChunk = decoder.decode(value, { stream: true })
-    rawResponseText += decodedChunk
-    buffer += decodedChunk
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || !trimmed.startsWith('data:')) continue
-
-      const chunk = trimmed.slice(5).trim()
-      if (chunk === '[DONE]') {
-        continue
-      }
-
-      if (rawDataSamples.length < 5) {
-        rawDataSamples.push(chunk.slice(0, 500))
-      }
-
-      const chunkError = parseChatChunkError(chunk)
-      if (chunkError) {
-        streamErrorMessage = chunkError
-        break
-      }
-
-      try {
-        const delta = parseChatChunkText(chunk)
-        if (!delta) continue
-
-        hasSseDelta = true
-        fullContent += delta
-        emitTaskContentDeltaEvent(task.recordId, {
-          stage: 'receiving_upstream_result',
-          delta,
-          content: fullContent,
-        })
-        await persistAgentTaskContentIfNeeded({
-          task,
-          payload,
-          content: fullContent,
-        }, persistState)
-      } catch {
-        // 跳过无效 SSE 数据块，继续处理后续消息。
-      }
-    }
-
-    if (streamErrorMessage) {
-      break
-    }
-  }
-
-  if (streamErrorMessage) {
-    throw new Error(streamErrorMessage)
-  }
-
-  if (!hasSseDelta && rawResponseText.trim()) {
-    const trimmedText = rawResponseText.trim()
-    const parsedFromWholeJson = (() => {
-      try {
-        return extractChatTextFromJsonPayload(JSON.parse(trimmedText))
-      } catch {
-        return ''
-      }
-    })()
-
-    if (parsedFromWholeJson) {
-      fullContent = parsedFromWholeJson
-      emitTaskContentDeltaEvent(task.recordId, {
-        stage: 'receiving_upstream_result',
-        delta: parsedFromWholeJson,
-        content: fullContent,
-      })
-    } else {
-      const fallbackText = trimmedText
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map((line) => {
-          if (line.startsWith('data:')) {
-            return parseChatChunkText(line.slice(5).trim())
-          }
-          return ''
-        })
-        .join('')
-
-      if (fallbackText) {
-        fullContent = fallbackText
-        emitTaskContentDeltaEvent(task.recordId, {
-          stage: 'receiving_upstream_result',
-          delta: fallbackText,
-          content: fullContent,
-        })
-      }
-    }
-  }
-
-  if (!fullContent.trim()) {
-    logGenerationTask('agent_task:empty_stream_debug', {
-      recordId: task.recordId,
-      userId: task.userId,
-      sampleCount: rawDataSamples.length,
-      dataSamples: rawDataSamples,
-      rawResponseSnippet: rawResponseText.slice(0, 1200),
-    })
-    throw new Error('上游未返回有效对话内容')
-  }
-
-  emitTaskProgressEvent(task.recordId, {
-    stage: 'syncing_record',
-    message: '对话内容已生成，正在同步记录',
-  })
-
-  await updateGenerationRecord(task.recordId, {
-    ...buildInitialRecordPayload(payload),
-    content: fullContent,
-    done: true,
-    stopped: false,
-  }, task.userId)
-  const completedRecord = await getGenerationRecordById(task.recordId, task.userId)
-  await syncSharedTaskRuntime(task, 'completed')
-  emitTaskStreamEvent(task.recordId, {
-    type: 'completed',
-    recordId: task.recordId,
-    done: true,
-    stopped: false,
-    record: completedRecord,
-    stage: 'completed',
-    message: '对话生成完成，结果已写入记录',
-  })
-
-  logGenerationTask('agent_task:request_success', {
-    recordId: task.recordId,
-    userId: task.userId,
-    contentLength: fullContent.length,
+  await executeAgentChatTaskFlow(task, payload, {
+    syncSharedTaskRuntime,
+    ensureTaskNotAborted,
+    resolveGatewayProviderUpstream,
+    emitTaskProgressEvent,
+    fetchWithBurstRateRetry,
+    markTaskRetryState,
+    extractChatTextFromNonStreamResponse,
+    parseChatChunkError,
+    parseChatChunkText,
+    extractChatTextFromJsonPayload,
+    emitTaskContentDeltaEvent,
+    persistAgentTaskContentIfNeeded,
+    buildInitialRecordPayload,
+    updateGenerationRecord,
+    getGenerationRecordById,
+    emitTaskStreamEvent,
+    logGenerationTask,
   })
 }
 
@@ -1798,378 +1494,35 @@ const persistAgentWorkspaceRecord = async (input: {
 }
 
 const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
-  await syncSharedTaskRuntime(task, 'running')
-  await ensureTaskNotAborted(task)
-  const skill = String(payload.skill || '').trim() || 'general'
-  const skillPrompt = String(payload.prompt || '').trim()
-  const skillMeta = await getAgentWorkspaceSkillMeta(skill)
-  const workspaceSkillKey = skillMeta.workspaceSkillKey
-  const dependencySkillKeys = skillMeta.dependencySkillKeys
-  const plannerProviderId = String((payload.requestBody || {}).providerId || '').trim()
-  const plannerModelKey = String(payload.modelKey || '').trim()
-  const referenceImages = Array.isArray(payload.referenceImages)
-    ? payload.referenceImages.map(item => String(item || '').trim()).filter(Boolean)
-    : []
-  let currentRun = buildAgentPendingRun(
-    task.recordId,
-    String(payload.prompt || '').trim(),
-    skill,
-    referenceImages,
-  )
-
-  const initialRecord = await persistAgentWorkspaceRecord({
-    task,
-    payload,
-    agentRun: currentRun as unknown as Record<string, unknown>,
-    done: false,
-    stopped: false,
+  await executeAgentWorkspaceTaskFlow(task, payload, {
+    syncSharedTaskRuntime,
+    ensureTaskNotAborted,
+    getAgentWorkspaceSkillMeta,
+    buildAgentPendingRun: (recordId, query, skill, referenceImages) => (
+      buildAgentPendingRun(recordId, query, skill, referenceImages) as unknown as Record<string, unknown>
+    ),
+    applyAgentWorkspaceEvent: (currentRun, agentEvent) => (
+      applyAgentWorkspaceEvent(currentRun as any, agentEvent) as unknown as Record<string, unknown>
+    ),
+    persistAgentWorkspaceRecord,
+    emitTaskProgressEvent,
+    emitTaskAgentEvent,
+    sleepWithWorkspaceAbort,
+    getWorkspaceRandomDelay,
+    workspaceTimingProfile,
+    planAgentWorkspace,
+    requestAgentWorkspaceModelPlan,
+    logGenerationTask,
+    logGenerationTaskError,
+    resolveWorkspaceImageModel,
+    requestImageEdit,
+    requestImageGeneration,
+    markTaskRetryState,
+    refundTaskPointsIfNeeded,
+    normalizeGenerationErrorMessage,
+    buildWorkspaceCompletionSummary,
+    AgentWorkspaceStoppedError,
   })
-
-  emitTaskProgressEvent(task.recordId, {
-    stage: 'queued',
-    message: '技能任务已创建，等待服务端执行',
-    record: initialRecord as unknown as Record<string, unknown>,
-  })
-  const emitWorkspaceEvent = async (agentEvent: AgentWorkspaceEvent) => {
-    currentRun = applyAgentWorkspaceEvent(currentRun, agentEvent)
-    const isTerminalEvent = agentEvent.type === 'run_completed'
-      || agentEvent.type === 'run_failed'
-      || agentEvent.type === 'run_stopped'
-    const currentError = agentEvent.type === 'run_failed' ? agentEvent.errorMessage : ''
-    const persistedRecord = await persistAgentWorkspaceRecord({
-      task,
-      payload,
-      agentRun: currentRun as unknown as Record<string, unknown>,
-      done: isTerminalEvent,
-      stopped: agentEvent.type === 'run_stopped',
-      error: currentError,
-    })
-
-    emitTaskAgentEvent(task.recordId, {
-      agentEvent,
-      record: persistedRecord as unknown as Record<string, unknown>,
-      done: isTerminalEvent,
-      stopped: agentEvent.type === 'run_stopped',
-      stage: isTerminalEvent
-        ? (agentEvent.type === 'run_completed'
-          ? 'completed'
-          : agentEvent.type === 'run_stopped'
-            ? 'stopped'
-            : 'failed')
-        : 'agent_workspace_running',
-      message: isTerminalEvent
-        ? (agentEvent.type === 'run_completed'
-          ? '技能任务已完成'
-          : agentEvent.type === 'run_stopped'
-            ? agentEvent.message
-            : agentEvent.errorMessage)
-        : '技能任务执行中',
-    })
-  }
-
-  const emitWorkspaceReasoningBatch = async (input: {
-    stageKey: string
-    stageLabel: string
-    lines: string[]
-  }) => {
-    for (const line of input.lines) {
-      await ensureTaskNotAborted(task)
-      const text = line.trim()
-      if (!text) {
-        continue
-      }
-      await emitWorkspaceEvent({
-        type: 'reasoning_delta',
-        taskId: task.recordId,
-        stageKey: input.stageKey,
-        stageLabel: input.stageLabel,
-        text,
-      })
-      await sleepWithWorkspaceAbort(
-        task.abortController.signal,
-        getWorkspaceRandomDelay(workspaceTimingProfile.reasoningChunkDelayRange),
-      )
-    }
-  }
-
-  const emitActivateSkillToolCall = async (skillKey: string, label: string, sectionKey: string) => {
-    await emitWorkspaceEvent({
-      type: 'tool_call_started',
-      taskId: task.recordId,
-      toolName: 'activate_skill',
-      argumentsText: `技能标识：${skillKey}`,
-      sectionKey,
-      label,
-    })
-    await sleepWithWorkspaceAbort(
-      task.abortController.signal,
-      getWorkspaceRandomDelay(workspaceTimingProfile.toolCallDelayRange),
-    )
-  }
-
-  try {
-    await sleepWithWorkspaceAbort(task.abortController.signal, workspaceTimingProfile.preAnalyzeDelay)
-    await emitWorkspaceEvent({ type: 'run_started', taskId: task.recordId })
-
-    const skillLabel = skillMeta.skillLabel
-    await emitWorkspaceReasoningBatch({
-      stageKey: 'reasoning-analyze',
-      stageLabel: '需求分析',
-      lines: [
-        `正在分析你的需求：“${skillPrompt || '当前主题'}”。`,
-        referenceImages.length ? `同时收到了 ${referenceImages.length} 张参考图，我会把这些图一起纳入后续理解与生成约束。` : '当前没有附带参考图，本次按纯文本需求执行。',
-        workspaceSkillKey !== skill
-          ? `根据当前技能规则，这类任务优先匹配技能 ${workspaceSkillKey}，对应前台展示为“${skillLabel}”。`
-          : `根据当前技能规则，这类任务匹配“${skillLabel}”技能。`,
-        `为了按照技能规范执行，我会先调用 activate_skill 加载 ${workspaceSkillKey} 的完整指南。`,
-      ],
-    })
-
-    await emitActivateSkillToolCall(
-      workspaceSkillKey,
-      `调用技能：${workspaceSkillKey}`,
-      'tool-call-primary-skill',
-    )
-
-    await sleepWithWorkspaceAbort(task.abortController.signal, 900)
-    await emitWorkspaceEvent({
-      type: 'skill_activated',
-      taskId: task.recordId,
-      skillLabel,
-    })
-
-    await sleepWithWorkspaceAbort(task.abortController.signal, getWorkspaceRandomDelay([1200, 1800]))
-    await emitWorkspaceEvent({
-      type: 'skill_loaded',
-      taskId: task.recordId,
-      skillLabel,
-      dependencySkillLabel: dependencySkillKeys[0] || '',
-      sectionKey: 'skill-guide-primary',
-      label: `已加载技能：${workspaceSkillKey}`,
-    })
-
-    if (dependencySkillKeys.length) {
-      await emitWorkspaceReasoningBatch({
-        stageKey: 'reasoning-dependency',
-        stageLabel: '依赖技能',
-        lines: [
-          `已完成 ${workspaceSkillKey} 技能加载。`,
-          `根据技能依赖规则，还需要继续加载 ${dependencySkillKeys.join('、')}，这样后续的图片生成策略、提示词结构和结果数量才能保持完整。`,
-          '接下来继续调用 activate_skill，补齐依赖技能链。',
-        ],
-      })
-
-      for (const dependencySkillKey of dependencySkillKeys) {
-        await emitActivateSkillToolCall(
-          dependencySkillKey,
-          `调用技能：${dependencySkillKey}`,
-          'tool-call-dependency-skill',
-        )
-
-        await emitWorkspaceEvent({
-          type: 'skill_loaded',
-          taskId: task.recordId,
-          skillLabel: dependencySkillKey,
-          sectionKey: 'skill-guide-dependency',
-          label: `已加载依赖技能：${dependencySkillKey}`,
-        })
-      }
-    }
-
-    await sleepWithWorkspaceAbort(task.abortController.signal, getWorkspaceRandomDelay(workspaceTimingProfile.analyzeDelayRange))
-    let plan = await planAgentWorkspace({
-      prompt: skillPrompt,
-      skill,
-    })
-
-    let planningReasoningLines = [
-      `现在我已经具备主技能${dependencySkillKeys.length ? '与依赖技能' : ''}的执行上下文，开始整理最终工作流。`,
-      plan.imageTasks.length > 1
-        ? `本次会默认生成 ${plan.imageTasks.length} 张结果，确保方向差异、构图变化和传播可选性。`
-        : '本次将生成单张结果，并优先保证主题聚焦与完成度。',
-      `工作流会按“${plan.workflowLabel}”执行，并为每一张结果分别构建独立提示词。`,
-    ]
-    let submitReasoningLines = [
-      `即将把 ${plan.imageTasks.length} 个子任务提交到图片生成服务。`,
-      '服务端会逐张回传结果，并实时同步到当前记录流。',
-    ]
-
-    if (plannerProviderId && plannerModelKey) {
-      await emitWorkspaceEvent({
-        type: 'tool_call_started',
-        taskId: task.recordId,
-        toolName: 'chat.completions',
-        argumentsText: `模型：${plannerModelKey}`,
-        sectionKey: 'tool-call-model-planner',
-        label: `调用模型规划：${plannerModelKey}`,
-      })
-
-      try {
-        const modelPlan = await requestAgentWorkspaceModelPlan({
-          signal: task.abortController.signal,
-          providerId: plannerProviderId,
-          modelKey: plannerModelKey,
-          skill,
-          skillLabel,
-          workspaceSkillKey,
-          dependencySkillKeys,
-          prompt: skillPrompt,
-          referenceImages,
-        })
-
-        logGenerationTask('agent_workspace:model_plan_success', {
-          recordId: task.recordId,
-          userId: task.userId,
-          skill,
-          plannerModelKey,
-          analysisLineCount: modelPlan.analysisLines.length,
-          planItemCount: modelPlan.planItems?.length || 0,
-          imageTaskCount: modelPlan.imageTasks?.length || 0,
-          workflowLabel: modelPlan.workflowLabel || '',
-          rawTextPreview: modelPlan.rawTextPreview || '',
-        })
-
-        if (modelPlan.workflowLabel || modelPlan.workflowParams || modelPlan.planItems?.length || modelPlan.imageTasks?.length) {
-          plan = {
-            workflowLabel: modelPlan.workflowLabel || plan.workflowLabel,
-            workflowParams: modelPlan.workflowParams || plan.workflowParams,
-            planItems: modelPlan.planItems?.length ? modelPlan.planItems : plan.planItems,
-            imageTasks: modelPlan.imageTasks?.length ? modelPlan.imageTasks : plan.imageTasks,
-          }
-        }
-
-        if (modelPlan.analysisLines.length) {
-          planningReasoningLines = modelPlan.analysisLines
-        }
-        if (modelPlan.submitLines.length) {
-          submitReasoningLines = modelPlan.submitLines
-        }
-      } catch (error) {
-        logGenerationTaskError('agent_workspace:model_plan_failed', error, {
-          recordId: task.recordId,
-          userId: task.userId,
-          skill,
-          plannerModelKey,
-        })
-        planningReasoningLines = [
-          '规划模型调用失败，当前已自动回退到本地工作流规划。',
-          ...planningReasoningLines,
-        ]
-      }
-    }
-
-    await emitWorkspaceReasoningBatch({
-      stageKey: 'reasoning-plan',
-      stageLabel: '任务规划',
-      lines: planningReasoningLines,
-    })
-
-    await emitWorkspaceEvent({
-      type: 'workflow_planned',
-      taskId: task.recordId,
-      workflowLabel: plan.workflowLabel,
-      workflowParams: plan.workflowParams,
-      expectedImageCount: plan.imageTasks.length,
-      planItems: plan.planItems,
-    })
-
-    await sleepWithWorkspaceAbort(task.abortController.signal, getWorkspaceRandomDelay(workspaceTimingProfile.postPlanDelayRange))
-    await sleepWithWorkspaceAbort(task.abortController.signal, workspaceTimingProfile.preSubmitDelay)
-
-    await emitWorkspaceReasoningBatch({
-      stageKey: 'reasoning-submit',
-      stageLabel: '提交任务',
-      lines: submitReasoningLines,
-    })
-
-    await emitWorkspaceEvent({
-      type: 'submission_started',
-      taskId: task.recordId,
-      workflowLabel: plan.workflowLabel,
-      expectedImageCount: plan.imageTasks.length,
-    })
-
-    const imageModel = await resolveWorkspaceImageModel(skillMeta.imageModelBinding)
-    const defaultRequestBody = imageModel.defaultParamsJson && typeof imageModel.defaultParamsJson === 'object'
-      ? { ...imageModel.defaultParamsJson }
-      : {}
-    const hasWorkspaceReferenceImages = referenceImages.length > 0
-
-    for (const [index, imageTask] of plan.imageTasks.entries()) {
-      await ensureTaskNotAborted(task)
-      await sleepWithWorkspaceAbort(task.abortController.signal, getWorkspaceRandomDelay(workspaceTimingProfile.betweenImageDelayRange))
-
-      const requestBody = {
-        ...defaultRequestBody,
-        prompt: imageTask.promptText,
-        n: 1,
-      } as Record<string, unknown>
-
-      const { imageUrls } = hasWorkspaceReferenceImages
-        ? await requestImageEdit({
-          signal: task.abortController.signal,
-          providerId: imageModel.providerId,
-          modelKey: imageModel.modelKey,
-          prompt: imageTask.promptText,
-          size: String(requestBody.size || '').trim() || undefined,
-          referenceImages,
-          onRetry: (retryState) => markTaskRetryState(task, retryState),
-        })
-        : await requestImageGeneration({
-          signal: task.abortController.signal,
-          providerId: imageModel.providerId,
-          modelKey: imageModel.modelKey,
-          requestBody,
-          onRetry: (retryState) => markTaskRetryState(task, retryState),
-        })
-
-      await emitWorkspaceEvent({
-        type: 'image_completed',
-        taskId: task.recordId,
-        workflowLabel: plan.workflowLabel,
-        expectedImageCount: plan.imageTasks.length,
-        completedCount: index + 1,
-        image: {
-          id: `workspace-image-${index + 1}`,
-          imageSrc: imageUrls[0],
-          promptText: imageTask.promptText,
-        },
-      })
-    }
-
-    await sleepWithWorkspaceAbort(task.abortController.signal, getWorkspaceRandomDelay(workspaceTimingProfile.completionDelayRange))
-    await syncSharedTaskRuntime(task, 'completed')
-    await emitWorkspaceEvent({
-      type: 'run_completed',
-      taskId: task.recordId,
-      workflowLabel: plan.workflowLabel,
-      expectedImageCount: plan.imageTasks.length,
-      summary: buildWorkspaceCompletionSummary({
-        prompt: String(payload.prompt || '').trim(),
-        planItems: plan.planItems,
-      }),
-    })
-  } catch (error) {
-    if (error instanceof AgentWorkspaceStoppedError) {
-      await refundTaskPointsIfNeeded(task, 'task_aborted')
-      await syncSharedTaskRuntime(task, 'stopped')
-      await emitWorkspaceEvent({
-        type: 'run_stopped',
-        taskId: task.recordId,
-        message: error.message || '任务已停止',
-      })
-      return
-    }
-
-    const errorMessage = normalizeGenerationErrorMessage(error, '技能任务执行失败')
-    await refundTaskPointsIfNeeded(task, 'task_failed')
-    await syncSharedTaskRuntime(task, 'failed')
-    await emitWorkspaceEvent({
-      type: 'run_failed',
-      taskId: task.recordId,
-      errorMessage,
-    })
-  }
 }
 
 const refundTaskPointsIfNeeded = async (task: RunningGenerationTask, reason: string) => {
@@ -2194,12 +1547,16 @@ const refundTaskPointsIfNeeded = async (task: RunningGenerationTask, reason: str
   })
 }
 
-const runImageTaskInBackground = (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
+// 统一按策略键分派后台执行器，避免图片/Agent 两套后台壳逻辑重复演化。
+const runTaskInBackground = (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
   void (async () => {
     let ownsExecution = false
+    const executionStrategy = getGenerationTaskExecutionStrategy(task.strategyKey)
+    const executionStrategyContext = buildTaskExecutionStrategyContext()
+
     try {
       ownsExecution = await runTaskWithExecutionLock(task, async () => {
-        await executeImageGenerationTask(task, payload)
+        await executionStrategy.execute(task, payload, executionStrategyContext)
       })
     } catch (error) {
       const isAbortError = error instanceof DOMException
@@ -2208,223 +1565,10 @@ const runImageTaskInBackground = (task: RunningGenerationTask, payload: Generati
       const abortReason = resolveTaskAbortReason(task)
 
       if (isAbortError && (abortReason === 'user_stop' || abortReason === 'shared_stop')) {
-        await refundTaskPointsIfNeeded(task, 'task_aborted')
-        await markTaskExecutionState(task, {
-          lastErrorAt: new Date().toISOString(),
-          lastErrorMessage: '任务已收到停止指令',
-        })
-        emitTaskProgressEvent(task.recordId, {
-          stage: 'stopping',
-          stopped: true,
-          message: '任务已收到停止指令，正在收口状态',
-        })
-        await updateGenerationRecord(task.recordId, {
-          ...buildInitialRecordPayload(payload),
-          done: true,
-          stopped: true,
-          error: '',
-          images: [],
-        }, task.userId)
-        const stoppedRecord = await getGenerationRecordById(task.recordId, task.userId)
-        await syncSharedTaskRuntime(task, 'stopped')
-        emitTaskStreamEvent(task.recordId, {
-          type: 'stopped',
-          recordId: task.recordId,
-          done: true,
-          stopped: true,
-          record: stoppedRecord,
-          stage: 'stopped',
-          message: '任务已停止',
-        })
-        logGenerationTask('image_task:stopped', {
-          recordId: task.recordId,
-          userId: task.userId,
-        })
+        await executionStrategy.handleStopped(task, payload, executionStrategyContext)
       } else {
-        const errorMessage = isAbortError && abortReason === 'execution_lock_lost'
-          ? '任务执行锁已失效，系统已中断本次生成'
-          : normalizeGenerationErrorMessage(error, '图片生成失败')
-        await refundTaskPointsIfNeeded(task, 'task_failed')
-        await markTaskExecutionState(task, {
-          lastErrorAt: new Date().toISOString(),
-          lastErrorMessage: errorMessage,
-        })
-        emitTaskProgressEvent(task.recordId, {
-          stage: 'failing',
-          message: '任务执行异常，正在写入失败状态',
-        })
-        await updateGenerationRecord(task.recordId, {
-          ...buildInitialRecordPayload(payload),
-          done: true,
-          stopped: false,
-          error: errorMessage,
-          images: [],
-        }, task.userId)
-        const failedRecord = await getGenerationRecordById(task.recordId, task.userId)
-        await syncSharedTaskRuntime(task, 'failed')
-        emitTaskStreamEvent(task.recordId, {
-          type: 'failed',
-          recordId: task.recordId,
-          done: true,
-          stopped: false,
-          record: failedRecord,
-          stage: 'failed',
-          message: errorMessage,
-        })
-        logGenerationTaskError('image_task:failed', error, {
-          recordId: task.recordId,
-          userId: task.userId,
-        })
-      }
-    } finally {
-      deleteLocalRunningTask(task.recordId)
-      await releaseTaskConcurrencySlots(task.concurrencySlots)
-      if (ownsExecution) {
-        await clearSharedTaskAbortRequested(task.recordId)
-      }
-    }
-  })()
-}
-
-const runAgentTaskInBackground = (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
-  void (async () => {
-    let ownsExecution = false
-    try {
-      ownsExecution = await runTaskWithExecutionLock(task, async () => {
-        if (task.strategyKey === 'agent-workspace') {
-          await executeAgentWorkspaceTask(task, payload)
-        } else {
-          await executeAgentChatTask(task, payload)
-        }
-      })
-    } catch (error) {
-      const isAbortError = error instanceof DOMException
-        ? error.name === 'AbortError'
-        : error instanceof Error && /abort/i.test(String(error.name || error.message || ''))
-      const abortReason = resolveTaskAbortReason(task)
-
-      if (isAbortError && (abortReason === 'user_stop' || abortReason === 'shared_stop')) {
-        await refundTaskPointsIfNeeded(task, 'task_aborted')
-        await markTaskExecutionState(task, {
-          lastErrorAt: new Date().toISOString(),
-          lastErrorMessage: '任务已收到停止指令',
-        })
-        if (task.strategyKey === 'agent-workspace') {
-          const currentRecord = await getGenerationRecordById(task.recordId, task.userId)
-          const stoppedRun = currentRecord.agentRun
-            ? buildAgentStoppedRun(currentRecord.agentRun as any, '任务已停止')
-            : null
-          await updateGenerationRecord(task.recordId, {
-            ...buildInitialRecordPayload(payload),
-            content: '',
-            agentRun: stoppedRun as unknown as Record<string, unknown> | null,
-            done: true,
-            stopped: true,
-            error: '',
-          }, task.userId)
-          const stoppedRecord = await getGenerationRecordById(task.recordId, task.userId)
-          await syncSharedTaskRuntime(task, 'stopped')
-          emitTaskStreamEvent(task.recordId, {
-            type: 'stopped',
-            recordId: task.recordId,
-            done: true,
-            stopped: true,
-            record: stoppedRecord,
-            stage: 'stopped',
-            message: '任务已停止',
-          })
-        } else {
-          emitTaskProgressEvent(task.recordId, {
-            stage: 'stopping',
-            stopped: true,
-            message: '任务已收到停止指令，正在收口状态',
-          })
-          const currentRecord = await getGenerationRecordById(task.recordId, task.userId)
-          await updateGenerationRecord(task.recordId, {
-            ...buildInitialRecordPayload(payload),
-            content: currentRecord.content,
-            done: true,
-            stopped: true,
-            error: '',
-          }, task.userId)
-          const stoppedRecord = await getGenerationRecordById(task.recordId, task.userId)
-          await syncSharedTaskRuntime(task, 'stopped')
-          emitTaskStreamEvent(task.recordId, {
-            type: 'stopped',
-            recordId: task.recordId,
-            done: true,
-            stopped: true,
-            record: stoppedRecord,
-            stage: 'stopped',
-            message: '任务已停止',
-          })
-        }
-      } else {
-        const errorMessage = isAbortError && abortReason === 'execution_lock_lost'
-          ? '任务执行锁已失效，系统已中断本次任务'
-          : normalizeGenerationErrorMessage(error, '对话生成失败')
-        await refundTaskPointsIfNeeded(task, 'task_failed')
-        await markTaskExecutionState(task, {
-          lastErrorAt: new Date().toISOString(),
-          lastErrorMessage: errorMessage,
-        })
-        if (task.strategyKey === 'agent-workspace') {
-          const currentRecord = await getGenerationRecordById(task.recordId, task.userId)
-          const errorRun = currentRecord.agentRun
-            ? buildAgentErrorRun(currentRecord.agentRun as any, errorMessage)
-            : null
-          await updateGenerationRecord(task.recordId, {
-            ...buildInitialRecordPayload(payload),
-            content: '',
-            agentRun: errorRun as unknown as Record<string, unknown> | null,
-            done: true,
-            stopped: false,
-            error: errorMessage,
-          }, task.userId)
-          const failedRecord = await getGenerationRecordById(task.recordId, task.userId)
-          await syncSharedTaskRuntime(task, 'failed')
-          emitTaskStreamEvent(task.recordId, {
-            type: 'failed',
-            recordId: task.recordId,
-            done: true,
-            stopped: false,
-            record: failedRecord,
-            stage: 'failed',
-            message: errorMessage,
-          })
-          logGenerationTaskError('agent_workspace_task:failed', error, {
-            recordId: task.recordId,
-            userId: task.userId,
-          })
-        } else {
-          emitTaskProgressEvent(task.recordId, {
-            stage: 'failing',
-            message: '任务执行异常，正在写入失败状态',
-          })
-          const currentRecord = await getGenerationRecordById(task.recordId, task.userId)
-          await updateGenerationRecord(task.recordId, {
-            ...buildInitialRecordPayload(payload),
-            content: currentRecord.content,
-            done: true,
-            stopped: false,
-            error: errorMessage,
-          }, task.userId)
-          const failedRecord = await getGenerationRecordById(task.recordId, task.userId)
-          await syncSharedTaskRuntime(task, 'failed')
-          emitTaskStreamEvent(task.recordId, {
-            type: 'failed',
-            recordId: task.recordId,
-            done: true,
-            stopped: false,
-            record: failedRecord,
-            stage: 'failed',
-            message: errorMessage,
-          })
-          logGenerationTaskError('agent_task:failed', error, {
-            recordId: task.recordId,
-            userId: task.userId,
-          })
-        }
+        const errorMessage = executionStrategy.resolveFailureMessage(error, abortReason, executionStrategyContext)
+        await executionStrategy.handleFailed(task, payload, error, errorMessage, executionStrategyContext)
       }
     } finally {
       deleteLocalRunningTask(task.recordId)
@@ -2550,7 +1694,7 @@ export const startGenerationTask = async (payload: GenerationTaskStartPayload, c
         modelKey,
       })
 
-      runAgentTaskInBackground(task, payload)
+      runTaskInBackground(task, payload)
       return createdRecord
     }
 
@@ -2652,7 +1796,7 @@ export const startGenerationTask = async (payload: GenerationTaskStartPayload, c
         modelKey: payload.modelKey,
       })
 
-      runAgentTaskInBackground(task, payload)
+      runTaskInBackground(task, payload)
       return createdRecord
     }
 
@@ -2742,7 +1886,7 @@ export const startGenerationTask = async (payload: GenerationTaskStartPayload, c
       modelKey,
     })
 
-    runImageTaskInBackground(task, payload)
+    runTaskInBackground(task, payload)
     return createdRecord
   } catch (error) {
     if (concurrencySlots.length) {

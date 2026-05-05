@@ -6,6 +6,7 @@ import '@styles/styles.css'
 import App from './App.vue'
 import router from './router'
 import { useAuthStore } from './stores/auth'
+import { useSystemInitStore } from './stores/system-init'
 import { useSystemSettingsStore } from './stores/system-settings'
 
 const app = createApp(App)
@@ -20,9 +21,11 @@ app.use(ElementPlus, {
 app.use(router)
 
 const authStore = useAuthStore()
+const systemInitStore = useSystemInitStore()
 const systemSettingsStore = useSystemSettingsStore()
 
 void Promise.allSettled([
+  systemInitStore.loadStatus(),
   authStore.loadSession(),
   authStore.loadMethods(),
   systemSettingsStore.loadPublicSettings(),

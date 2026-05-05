@@ -14,6 +14,7 @@ export interface EditableAuthMethod extends PublicAuthMethod {
   targetLabel: string
   placeholder: string
   codePlaceholder: string
+  passwordPlaceholder: string
   debugSendEnabled: boolean
   senderName: string
   senderAddress: string
@@ -53,6 +54,24 @@ interface AuthMethodTemplate {
 }
 
 const AUTH_METHOD_TEMPLATES: AuthMethodTemplate[] = [
+  {
+    methodType: 'ADMIN_PASSWORD',
+    category: 'PASSWORD',
+    displayName: '管理员账号登录',
+    description: '使用管理员账号和密码登录',
+    iconType: 'admin',
+    iconUrl: '',
+    isEnabled: true,
+    isVisible: true,
+    sortOrder: 5,
+    allowAutoFill: false,
+    allowSignUp: false,
+    config: {
+      targetLabel: '管理员账号',
+      placeholder: '请输入管理员账号',
+      passwordPlaceholder: '请输入登录密码',
+    },
+  },
   {
     methodType: 'PHONE_CODE',
     category: 'CODE',
@@ -202,6 +221,7 @@ function toEditableAuthMethod(method: PublicAuthMethod): EditableAuthMethod {
     targetLabel: String(method.config?.targetLabel || ''),
     placeholder: String(method.config?.placeholder || ''),
     codePlaceholder: String(method.config?.codePlaceholder || ''),
+    passwordPlaceholder: String(method.config?.passwordPlaceholder || ''),
     debugSendEnabled: method.allowAutoFill !== false,
     senderName: String(method.config?.senderName || ''),
     senderAddress: String(method.config?.senderAddress || ''),
@@ -260,6 +280,7 @@ function applyEditableMethod(target: EditableAuthMethod, source: EditableAuthMet
   target.targetLabel = source.targetLabel
   target.placeholder = source.placeholder
   target.codePlaceholder = source.codePlaceholder
+  target.passwordPlaceholder = source.passwordPlaceholder
   target.debugSendEnabled = source.debugSendEnabled
   target.senderName = source.senderName
   target.senderAddress = source.senderAddress
@@ -300,6 +321,7 @@ function sortEditableAuthMethods(methods: EditableAuthMethod[]) {
 }
 
 export function getMethodCategoryLabel(category: AuthMethodCategory) {
+  if (category === 'PASSWORD') return '密码登录'
   return category === 'CODE' ? '验证码登录' : 'OAuth 登录'
 }
 
@@ -418,6 +440,12 @@ export function useAdminAuthMethods() {
       }
     }
 
+    if (method.category === 'PASSWORD') {
+      items.push(`账号标签：${method.targetLabel || '未设置'}`)
+      items.push(`输入占位：${method.placeholder || '未设置'}`)
+      items.push(`密码占位：${method.passwordPlaceholder || '未设置'}`)
+    }
+
     if (method.category === 'OAUTH') {
       items.push(`授权地址：${method.authorizeUrl || '未设置'}`)
       items.push(`Token 地址：${method.tokenUrl || '未设置'}`)
@@ -457,6 +485,7 @@ export function useAdminAuthMethods() {
       targetLabel: source.targetLabel.trim(),
       placeholder: source.placeholder.trim(),
       codePlaceholder: source.codePlaceholder.trim(),
+      passwordPlaceholder: source.passwordPlaceholder.trim(),
       senderName: source.senderName.trim(),
       senderAddress: source.senderAddress.trim(),
       providerCode: source.providerCode.trim(),
@@ -508,6 +537,12 @@ export function useAdminAuthMethods() {
         extraConfig.smtpSecure = method.smtpSecure
         extraConfig.smtpUser = method.smtpUser
         extraConfig.smtpPassword = method.smtpPassword
+      }
+
+      if (method.category === 'PASSWORD') {
+        extraConfig.targetLabel = method.targetLabel
+        extraConfig.placeholder = method.placeholder
+        extraConfig.passwordPlaceholder = method.passwordPlaceholder
       }
 
       if (method.category === 'OAUTH') {

@@ -13,6 +13,7 @@ export interface AuthLoginPayload {
   methodType?: AuthMethodType
   target?: string
   code?: string
+  password?: string
 }
 
 // OAuth 授权请求体。

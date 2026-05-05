@@ -6,7 +6,9 @@ import AccountManagement from '../views/account/AccountManagement.vue'
 import PublishCenter from '../views/publish/PublishCenter.vue'
 import AssetManagement from '../views/asset/AssetManagement.vue'
 import { useAuthStore } from '../stores/auth'
+import { useSystemInitStore } from '../stores/system-init'
 const Workflow = () => import('../views/workflow/index.vue')
+const Install = () => import('../views/install/InstallView.vue')
 const PolicyDetail = () => import('../views/policies/PolicyDetail.vue')
 const AdminLayout = () => import('../components/admin/layout/AdminLayout.vue')
 const AdminDashboard = () => import('../views/admin/dashboard/AdminDashboard.vue')
@@ -25,6 +27,11 @@ const AdminUsers = () => import('../views/admin/users/AdminUsers.vue')
 const AdminAccessDenied = () => import('../views/admin/AdminAccessDenied.vue')
 
 const routes: RouteRecordRaw[] = [
+  {
+    path: '/install',
+    name: 'Install',
+    component: Install,
+  },
   {
     path: '/',
     name: 'Home',
@@ -234,6 +241,26 @@ const router = createRouter({
 
 // 对需要登录的页面做统一拦截，未登录时回到首页显示登录入口。
 router.beforeEach(async (to) => {
+  const systemInitStore = useSystemInitStore()
+  if (!systemInitStore.systemInitInitialized.value || systemInitStore.systemInitLoading.value) {
+    await systemInitStore.loadStatus()
+  }
+
+  if (!systemInitStore.isInitialized.value && to.path !== '/install') {
+    return {
+      path: '/install',
+      query: to.fullPath && to.fullPath !== '/install'
+        ? { redirect: to.fullPath }
+        : undefined,
+    }
+  }
+
+  if (systemInitStore.isInitialized.value && to.path === '/install') {
+    return {
+      path: '/',
+    }
+  }
+
   if (!to.meta?.requiresAuth) {
     return true
   }

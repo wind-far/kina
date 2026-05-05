@@ -36,9 +36,9 @@
 
             <div class="lv-modal-content">
               <div>
-                <div v-if="codeMethods.length > 1" class="method-selector">
+                <div v-if="interactiveMethods.length > 1" class="method-selector">
                   <button
-                    v-for="method in codeMethods"
+                    v-for="method in interactiveMethods"
                     :key="method.methodType"
                     type="button"
                     class="method-tab"
@@ -61,7 +61,19 @@
                     >
                   </div>
 
-                  <div v-if="currentCodeMethod">
+                  <div v-if="currentPasswordMethod">
+                    <div class="label-gB9Ufj">登录密码</div>
+                    <input
+                      v-model="passwordValue"
+                      maxlength="64"
+                      type="password"
+                      :placeholder="currentPasswordPlaceholder"
+                      class="lv-input lv-input-size-large input-pYC00w"
+                      :disabled="isSubmitting"
+                    >
+                  </div>
+
+                  <div v-else-if="currentCodeMethod">
                     <div class="label-gB9Ufj">验证码</div>
                     <div class="sms-row">
                       <input
@@ -204,6 +216,9 @@ const targetValue = ref('')
 // 验证码输入值。
 const codeValue = ref('')
 
+// 密码输入值。
+const passwordValue = ref('')
+
 // 最近一次下发的调试验证码。
 const issuedCode = ref('')
 
@@ -229,8 +244,8 @@ let countdownTimer: number | null = null
 const authStore = useAuthStore()
 const systemSettingsStore = useSystemSettingsStore()
 
-// 所有验证码类登录方式。
-const codeMethods = computed(() => authStore.enabledMethods.value.filter(item => item.category === 'CODE'))
+// 所有可直接交互的登录方式（密码 + 验证码）。
+const interactiveMethods = computed(() => authStore.enabledMethods.value.filter(item => item.category !== 'OAUTH'))
 
 // 所有 OAuth 类登录方式。
 const oauthMethods = computed(() => authStore.enabledMethods.value.filter(item => item.category === 'OAUTH'))
@@ -243,19 +258,29 @@ const userAgreementHref = computed(() => policySettings.value.userAgreementUrl |
 const privacyPolicyHref = computed(() => policySettings.value.privacyPolicyUrl || '/policies/privacy-policy')
 const aiNoticeHref = computed(() => policySettings.value.aiNoticeUrl || '/policies/ai-notice')
 
+// 当前选中的主登录方式。
+const currentPrimaryMethod = computed(() => {
+  return interactiveMethods.value.find(item => item.methodType === activeMethodType.value) || interactiveMethods.value[0] || null
+})
+
 // 当前选中的验证码登录方式。
 const currentCodeMethod = computed(() => {
-  return codeMethods.value.find(item => item.methodType === activeMethodType.value) || codeMethods.value[0] || null
+  return currentPrimaryMethod.value?.category === 'CODE' ? currentPrimaryMethod.value : null
+})
+
+// 当前选中的密码登录方式。
+const currentPasswordMethod = computed(() => {
+  return currentPrimaryMethod.value?.category === 'PASSWORD' ? currentPrimaryMethod.value : null
 })
 
 // 当前目标输入标签。
 const currentTargetLabel = computed(() => {
-  return String(currentCodeMethod.value?.config?.targetLabel || currentCodeMethod.value?.displayName || '账号')
+  return String(currentPrimaryMethod.value?.config?.targetLabel || currentPrimaryMethod.value?.displayName || '账号')
 })
 
 // 当前目标输入占位文案。
 const currentTargetPlaceholder = computed(() => {
-  return String(currentCodeMethod.value?.config?.placeholder || '请输入账号')
+  return String(currentPrimaryMethod.value?.config?.placeholder || '请输入账号')
 })
 
 // 当前验证码输入占位文案。
@@ -263,22 +288,31 @@ const currentCodePlaceholder = computed(() => {
   return String(currentCodeMethod.value?.config?.codePlaceholder || '请输入验证码')
 })
 
+// 当前密码输入占位文案。
+const currentPasswordPlaceholder = computed(() => {
+  return String(currentPasswordMethod.value?.config?.passwordPlaceholder || '请输入登录密码')
+})
+
 // 主按钮文案。
 const primaryButtonText = computed(() => {
-  return currentCodeMethod.value?.displayName ? `使用${currentCodeMethod.value.displayName}` : '登录'
+  return currentPrimaryMethod.value?.displayName ? `使用${currentPrimaryMethod.value.displayName}` : '登录'
 })
 
 // 当前目标是否合法。
 const isTargetValid = computed(() => {
-  if (!currentCodeMethod.value) {
+  if (!currentPrimaryMethod.value) {
     return false
   }
 
-  if (currentCodeMethod.value.methodType === 'PHONE_CODE') {
+  if (currentPrimaryMethod.value.methodType === 'ADMIN_PASSWORD') {
+    return /^[a-zA-Z][a-zA-Z0-9_-]{3,31}$/.test(targetValue.value.trim())
+  }
+
+  if (currentPrimaryMethod.value.methodType === 'PHONE_CODE') {
     return /^1\d{10}$/.test(targetValue.value.trim())
   }
 
-  if (currentCodeMethod.value.methodType === 'EMAIL_CODE') {
+  if (currentPrimaryMethod.value.methodType === 'EMAIL_CODE') {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetValue.value.trim())
   }
 
@@ -299,9 +333,13 @@ const canSendCode = computed(() => {
 
 // 是否可提交登录。
 const canSubmit = computed(() => {
-  return Boolean(currentCodeMethod.value)
+  const hasCredential = currentPasswordMethod.value
+    ? passwordValue.value.length >= 8 && passwordValue.value.length <= 64
+    : isCodeValid.value
+
+  return Boolean(currentPrimaryMethod.value)
     && isTargetValid.value
-    && isCodeValid.value
+    && hasCredential
     && (!policySettings.value.agreementRequired || agreementChecked.value)
     && !isSubmitting.value
 })
@@ -324,6 +362,7 @@ const close = () => {
 const resetForm = () => {
   targetValue.value = ''
   codeValue.value = ''
+  passwordValue.value = ''
   issuedCode.value = ''
   agreementChecked.value = false
   countdown.value = 0
@@ -368,6 +407,7 @@ const selectMethod = (methodType: AuthMethodType) => {
   activeMethodType.value = methodType
   targetValue.value = ''
   codeValue.value = ''
+  passwordValue.value = ''
   issuedCode.value = ''
   countdown.value = 0
   clearCountdownTimer()
@@ -375,13 +415,13 @@ const selectMethod = (methodType: AuthMethodType) => {
 
 // 根据后端返回的可用方式同步当前激活项。
 const syncActiveMethod = () => {
-  if (currentCodeMethod.value) {
-    activeMethodType.value = currentCodeMethod.value.methodType
+  if (currentPrimaryMethod.value) {
+    activeMethodType.value = currentPrimaryMethod.value.methodType
     return
   }
 
-  if (codeMethods.value[0]) {
-    activeMethodType.value = codeMethods.value[0].methodType
+  if (interactiveMethods.value[0]) {
+    activeMethodType.value = interactiveMethods.value[0].methodType
   }
 }
 
@@ -414,9 +454,9 @@ const handleSendCode = async () => {
 
 // 提交验证码登录。
 const handleSubmit = async () => {
-  if (!currentCodeMethod.value || !canSubmit.value) return
+  if (!currentPrimaryMethod.value || !canSubmit.value) return
 
-  if (issuedCode.value && codeValue.value.trim() !== issuedCode.value) {
+  if (currentCodeMethod.value && issuedCode.value && codeValue.value.trim() !== issuedCode.value) {
     ElMessage.error('请输入刚刚获取到的验证码')
     return
   }
@@ -424,9 +464,10 @@ const handleSubmit = async () => {
   try {
     isSubmitting.value = true
     await authStore.login({
-      methodType: currentCodeMethod.value.methodType,
+      methodType: currentPrimaryMethod.value.methodType,
       target: targetValue.value.trim(),
-      code: codeValue.value.trim(),
+      code: currentCodeMethod.value ? codeValue.value.trim() : undefined,
+      password: currentPasswordMethod.value ? passwordValue.value : undefined,
     })
     ElMessage.success('登录成功')
     close()
@@ -468,7 +509,7 @@ watch(
   { immediate: true },
 )
 
-watch(codeMethods, () => {
+watch(interactiveMethods, () => {
   syncActiveMethod()
 })
 

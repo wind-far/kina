@@ -21,6 +21,8 @@ import { isMarketingCenterPath } from './marketing-center/constants'
 import { handleMarketingCenterRequest } from './marketing-center/request-handler'
 import { isSystemConfigPath } from './system-config/constants'
 import { handleSystemConfigRequest } from './system-config/request-handler'
+import { isSystemInitPath } from './system-init/constants'
+import { handleSystemInitRequest } from './system-init/request-handler'
 import { isGenerationRecordsPath } from './generation-records/constants'
 import { handleGenerationRecordsRequest } from './generation-records/request-handler'
 import { isGenerationSessionsPath } from './generation-sessions/constants'
@@ -461,6 +463,14 @@ const REQUEST_ROUTE_STRATEGIES: RequestRouteStrategy[] = [
     match: isMarketingCenterPath,
     handle: async (req, res) => {
       await handleMarketingCenterRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'system-init',
+    match: isSystemInitPath,
+    handle: async (req, res) => {
+      await handleSystemInitRequest(req, res)
       return true
     },
   },

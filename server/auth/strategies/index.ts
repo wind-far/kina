@@ -1,4 +1,5 @@
 import type { AuthMethodType } from '@prisma/client'
+import { adminPasswordStrategy } from './admin-password'
 import { emailCodeStrategy } from './email-code'
 import { createOAuthStrategy } from './oauth'
 import { phoneCodeStrategy } from './phone-code'
@@ -6,6 +7,7 @@ import type { AuthStrategy } from '../types'
 
 // 所有认证策略注册表。
 const AUTH_STRATEGIES: Record<AuthMethodType, AuthStrategy> = {
+  ADMIN_PASSWORD: adminPasswordStrategy,
   PHONE_CODE: phoneCodeStrategy,
   EMAIL_CODE: emailCodeStrategy,
   WECHAT_OAUTH: createOAuthStrategy('WECHAT_OAUTH'),

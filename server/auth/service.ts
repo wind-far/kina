@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { promisify } from 'node:util'
 import type { AuthMethodCategory, AuthMethodType, VerificationChannel } from '@prisma/client'
 import prisma from '../db/prisma'
 import { grantRegisterReward } from '../marketing-center/service'
@@ -22,6 +23,23 @@ const buildAuthMethodDetailCacheKey = (methodType: AuthMethodType) => redisKeys.
 
 // 默认登录方式配置。
 const DEFAULT_AUTH_METHOD_CONFIGS: AuthMethodConfigPayload[] = [
+  {
+    methodType: 'ADMIN_PASSWORD',
+    category: 'PASSWORD',
+    displayName: '管理员账号登录',
+    description: '使用管理员账号和密码登录',
+    iconType: 'admin',
+    isEnabled: true,
+    isVisible: true,
+    sortOrder: 5,
+    allowAutoFill: false,
+    allowSignUp: false,
+    config: {
+      targetLabel: '管理员账号',
+      placeholder: '请输入管理员账号',
+      passwordPlaceholder: '请输入登录密码',
+    },
+  },
   {
     methodType: 'PHONE_CODE',
     category: 'CODE',
@@ -122,6 +140,12 @@ export const maskEmail = (email: string) => {
 // 生成默认昵称。
 const buildDefaultUserName = (identifier: string) => `用户${identifier.slice(-4)}`
 
+// 管理员用户名校验规则。
+export const isValidAdminUsername = (username: string) => /^[a-zA-Z][a-zA-Z0-9_-]{3,31}$/.test(username)
+
+// 管理员密码校验规则。
+export const isValidAdminPassword = (password: string) => password.length >= 8 && password.length <= 64
+
 // 生成 6 位随机验证码。
 export const generateVerificationCode = () => String(Math.floor(100000 + Math.random() * 900000))
 
@@ -130,6 +154,34 @@ export const generateSessionToken = () => crypto.randomBytes(24).toString('base6
 
 // 计算会话令牌哈希。
 export const hashSessionToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex')
+
+const scryptAsync = promisify(crypto.scrypt)
+
+// 生成用户密码哈希。
+export const hashUserPassword = async (password: string) => {
+  const salt = crypto.randomBytes(16).toString('hex')
+  const derivedKey = await scryptAsync(password, salt, 64) as Buffer
+  return `scrypt:${salt}:${derivedKey.toString('hex')}`
+}
+
+// 校验用户密码。
+export const verifyUserPassword = async (password: string, passwordHash: string | null | undefined) => {
+  const normalizedHash = String(passwordHash || '').trim()
+  if (!normalizedHash.startsWith('scrypt:')) {
+    return false
+  }
+
+  const [, salt, expectedHash] = normalizedHash.split(':')
+  if (!salt || !expectedHash) {
+    return false
+  }
+
+  const derivedKey = await scryptAsync(password, salt, 64) as Buffer
+  const expectedBuffer = Buffer.from(expectedHash, 'hex')
+
+  return expectedBuffer.length === derivedKey.length
+    && crypto.timingSafeEqual(expectedBuffer, derivedKey)
+}
 
 // 读取验证码有效期。
 const readLoginCodeExpireMinutes = () => {
@@ -206,6 +258,10 @@ const invalidateAuthMethodCaches = async (methodTypes: AuthMethodType[] = []) =>
   ])
 }
 
+const findDefaultAuthMethodConfig = (methodType: AuthMethodType) => {
+  return DEFAULT_AUTH_METHOD_CONFIGS.find(item => item.methodType === methodType) || null
+}
+
 // 确保默认登录方式配置存在。
 export const ensureDefaultAuthMethodConfigs = async () => {
   const existingCount = await prisma.authMethodConfig.count()
@@ -228,6 +284,37 @@ export const ensureDefaultAuthMethodConfigs = async () => {
       allowSignUp: item.allowSignUp !== false,
       configJson: item.config || {},
     })),
+  })
+}
+
+// 确保指定登录方式配置存在。
+// 这里不能只判断整张表是否为空，因为数据库可能已经有部分方式，
+// 但缺少 ADMIN_PASSWORD 这类后续新增的方式。
+export const ensureAuthMethodConfigExists = async (methodType: AuthMethodType) => {
+  const defaultConfig = findDefaultAuthMethodConfig(methodType)
+  if (!defaultConfig) {
+    throw new Error(`缺少 ${methodType} 的默认登录方式配置定义`)
+  }
+
+  await prisma.authMethodConfig.upsert({
+    where: {
+      methodType,
+    },
+    update: {},
+    create: {
+      methodType: defaultConfig.methodType,
+      category: defaultConfig.category,
+      displayName: defaultConfig.displayName,
+      description: defaultConfig.description || null,
+      iconType: defaultConfig.iconType || null,
+      iconUrl: defaultConfig.iconUrl || null,
+      isEnabled: defaultConfig.isEnabled !== false,
+      isVisible: defaultConfig.isVisible !== false,
+      sortOrder: defaultConfig.sortOrder || 0,
+      allowAutoFill: defaultConfig.allowAutoFill !== false,
+      allowSignUp: defaultConfig.allowSignUp !== false,
+      configJson: defaultConfig.config || {},
+    },
   })
 }
 
@@ -536,6 +623,20 @@ export const resolveUserByIdentifier = async (input: {
   await grantRegisterReward(nextUser.id)
 
   return { user: nextUser, isNewUser: true }
+}
+
+// 按管理员账号查询用户。
+export const getUserByUsername = async (username: string) => {
+  const normalizedUsername = String(username || '').trim()
+  if (!normalizedUsername) {
+    return null
+  }
+
+  return prisma.appUser.findUnique({
+    where: {
+      username: normalizedUsername,
+    },
+  })
 }
 
 // 更新验证码记录绑定的用户。

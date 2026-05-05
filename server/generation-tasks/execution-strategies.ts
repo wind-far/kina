@@ -1,6 +1,7 @@
 import type { GenerationTaskStartPayload, GenerationTaskStreamEvent } from './shared'
 import type { GenerationRecordPayload } from '../generation-records/shared'
 import type { GenerationTaskStrategyKey } from './strategy'
+import type { AgentRunState } from '../../src/types/agent'
 
 export type TaskAbortReason = 'user_stop' | 'shared_stop' | 'execution_lock_lost'
 
@@ -12,7 +13,7 @@ type SettlementTask = {
 
 type SettlementRecord = Record<string, unknown> & {
   content?: string
-  agentRun?: Record<string, unknown> | null
+  agentRun?: AgentRunState | null
 }
 
 type EmitTaskProgressEvent = (recordId: string, event: {
@@ -38,8 +39,8 @@ export interface GenerationTaskExecutionStrategyContext {
   updateGenerationRecord: (recordId: string, payload: GenerationRecordPayload, currentUserId: string) => Promise<void>
   getGenerationRecordById: (recordId: string, currentUserId: string) => Promise<SettlementRecord>
   syncSharedTaskRuntime: (task: SettlementTask, status: 'stopped' | 'failed') => Promise<void>
-  buildAgentStoppedRun: (agentRun: Record<string, unknown>, message: string) => Record<string, unknown>
-  buildAgentErrorRun: (agentRun: Record<string, unknown>, message: string) => Record<string, unknown>
+  buildAgentStoppedRun: (agentRun: AgentRunState, message: string) => AgentRunState
+  buildAgentErrorRun: (agentRun: AgentRunState, message: string) => AgentRunState
   normalizeGenerationErrorMessage: (error: unknown, fallbackMessage: string) => string
   logGenerationTask: (stage: string, detail: Record<string, unknown>) => void
   logGenerationTaskError: (stage: string, error: unknown, detail: Record<string, unknown>) => void

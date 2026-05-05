@@ -1,5 +1,6 @@
 import type { GenerationTaskStartPayload } from './shared'
 import type { AgentWorkspaceEvent } from '../../src/shared/agent-workspace'
+import type { AgentRunState } from '../../src/types/agent'
 
 type AgentWorkspaceExecutionTask = {
   recordId: string
@@ -52,15 +53,15 @@ export interface AgentWorkspaceTaskExecutorContext {
     query: string,
     skill: string,
     referenceImages?: string[],
-  ) => Record<string, unknown>
+  ) => AgentRunState
   applyAgentWorkspaceEvent: (
-    currentRun: Record<string, unknown>,
+    currentRun: AgentRunState,
     agentEvent: AgentWorkspaceEvent,
-  ) => Record<string, unknown>
+  ) => AgentRunState
   persistAgentWorkspaceRecord: (input: {
     task: AgentWorkspaceExecutionTask
     payload: GenerationTaskStartPayload
-    agentRun: Record<string, unknown>
+    agentRun: AgentRunState
     done?: boolean
     stopped?: boolean
     error?: string

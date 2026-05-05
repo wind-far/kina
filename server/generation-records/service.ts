@@ -42,7 +42,7 @@ const mapGenerationType = (type: string) => {
 // 根据当前记录内容推导存储状态
 const mapGenerationStatus = (payload: GenerationRecordPayload) => {
   if (payload.agentRun && typeof payload.agentRun === 'object') {
-    const status = String((payload.agentRun as any).status || '').trim()
+    const status = String(payload.agentRun.status || '').trim()
     switch (status) {
       case 'completed':
         return 'COMPLETED'

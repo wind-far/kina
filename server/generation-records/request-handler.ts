@@ -4,6 +4,7 @@ import { isPrismaConfigured } from '../db/prisma'
 import { createGenerationRecord, getGenerationRecordById, listGenerationRecords, updateGenerationRecord } from './service'
 import { GENERATION_RECORDS_BASE_PATH } from './constants'
 import { readGenerationRecordBody, sendGenerationRecordError } from './shared'
+import type { GenerationRecordPayload } from './shared'
 
 // 统一输出生成记录接口的异常诊断日志，便于线上定位具体失败分支。
 const logGenerationRecordsRequestError = (detail: Record<string, unknown>) => {
@@ -14,6 +15,19 @@ const logGenerationRecordsRequestError = (detail: Record<string, unknown>) => {
 const logGenerationRecordsRequestAbort = (detail: Record<string, unknown>) => {
   console.warn('[generation-records][request-aborted]', JSON.stringify(detail))
 }
+
+// 把记录请求体摘要统一收敛，避免日志里散落一堆 any 判断。
+const buildPayloadSummary = (payload: GenerationRecordPayload) => ({
+  sessionId: payload.sessionId || null,
+  type: payload.type,
+  done: Boolean(payload.done),
+  imageCount: Array.isArray(payload.images) ? payload.images.length : 0,
+  referenceImageCount: Array.isArray(payload.referenceImages) ? payload.referenceImages.length : 0,
+  outputCount: Array.isArray(payload.outputs) ? payload.outputs.length : 0,
+  hasAgentRun: Boolean(payload.agentRun),
+  stepCount: Array.isArray(payload.agentRun?.steps) ? payload.agentRun.steps.length : 0,
+  processSectionCount: Array.isArray(payload.agentRun?.processSections) ? payload.agentRun.processSections.length : 0,
+})
 
 // 处理生成记录的列表、创建与更新请求
 export const handleGenerationRecordsRequest = async (req: any, res: any) => {
@@ -49,17 +63,7 @@ export const handleGenerationRecordsRequest = async (req: any, res: any) => {
 
     if (req.method === 'POST' && requestUrl === GENERATION_RECORDS_BASE_PATH) {
       const payload = await readGenerationRecordBody(req)
-      payloadSummary = {
-        sessionId: payload?.sessionId || null,
-        type: payload?.type,
-        done: Boolean(payload?.done),
-        imageCount: Array.isArray(payload?.images) ? payload.images.length : 0,
-        referenceImageCount: Array.isArray((payload as any)?.referenceImages) ? (payload as any).referenceImages.length : 0,
-        outputCount: Array.isArray((payload as any)?.outputs) ? (payload as any).outputs.length : 0,
-        hasAgentRun: Boolean(payload?.agentRun),
-        stepCount: Array.isArray((payload as any)?.agentRun?.steps) ? (payload as any).agentRun.steps.length : 0,
-        processSectionCount: Array.isArray((payload as any)?.agentRun?.processSections) ? (payload as any).agentRun.processSections.length : 0,
-      }
+      payloadSummary = buildPayloadSummary(payload)
       const data = await createGenerationRecord(payload, currentUser.id)
       sendJson(res, 200, { data })
       return
@@ -67,17 +71,7 @@ export const handleGenerationRecordsRequest = async (req: any, res: any) => {
 
     if (req.method === 'PATCH' && recordId) {
       const payload = await readGenerationRecordBody(req)
-      payloadSummary = {
-        sessionId: payload?.sessionId || null,
-        type: payload?.type,
-        done: Boolean(payload?.done),
-        imageCount: Array.isArray(payload?.images) ? payload.images.length : 0,
-        referenceImageCount: Array.isArray((payload as any)?.referenceImages) ? (payload as any).referenceImages.length : 0,
-        outputCount: Array.isArray((payload as any)?.outputs) ? (payload as any).outputs.length : 0,
-        hasAgentRun: Boolean(payload?.agentRun),
-        stepCount: Array.isArray((payload as any)?.agentRun?.steps) ? (payload as any).agentRun.steps.length : 0,
-        processSectionCount: Array.isArray((payload as any)?.agentRun?.processSections) ? (payload as any).agentRun.processSections.length : 0,
-      }
+      payloadSummary = buildPayloadSummary(payload)
       const data = await updateGenerationRecord(recordId, payload, currentUser.id)
       sendJson(res, 200, { data })
       return

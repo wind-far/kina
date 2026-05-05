@@ -1,4 +1,5 @@
 import { readJsonBody, sendJson } from '../ai-gateway/shared'
+import type { AgentRunState } from '../../src/types/agent'
 
 export interface GenerationOutputPayload {
   outputType: 'image' | 'video' | 'text' | 'file'
@@ -31,7 +32,7 @@ export interface GenerationRecordPayload {
   agentTaskId?: string
   images?: string[]
   outputs?: GenerationOutputPayload[]
-  agentRun?: Record<string, unknown> | null
+  agentRun?: AgentRunState | null
 }
 
 // 读取生成记录请求体

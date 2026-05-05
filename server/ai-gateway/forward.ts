@@ -5,12 +5,13 @@ import {
   setGatewayDebugHeaders,
   toDebugSnippet,
 } from './shared'
+import { writeScopedLog } from '../shared/logging'
 
 const logGatewayForward = (payload: {
   method: string
   upstreamUrl: string
 }) => {
-  console.info(`[ai-gateway] -> ${payload.method} ${payload.upstreamUrl}`)
+  writeScopedLog('info', 'AI 网关', `转发请求 ${payload.method} ${payload.upstreamUrl}`)
 }
 
 const logGatewayResponse = async (payload: {
@@ -20,13 +21,16 @@ const logGatewayResponse = async (payload: {
 }) => {
   const { method, upstreamUrl, upstreamResponse } = payload
   if (upstreamResponse.ok) {
-    console.info(`[ai-gateway] <- ${upstreamResponse.status} ${method} ${upstreamUrl}`)
+    writeScopedLog('info', 'AI 网关', `上游响应 ${upstreamResponse.status} ${method} ${upstreamUrl}`)
     return
   }
 
   const bodyText = await upstreamResponse.clone().text().catch(() => '')
-  console.error(
-    `[ai-gateway] <- ${upstreamResponse.status} ${method} ${upstreamUrl} | ${toDebugSnippet(bodyText || '[empty body]')}`,
+  writeScopedLog(
+    'error',
+    'AI 网关',
+    `上游响应异常 ${upstreamResponse.status} ${method} ${upstreamUrl}`,
+    toDebugSnippet(bodyText || '[empty body]'),
   )
 }
 

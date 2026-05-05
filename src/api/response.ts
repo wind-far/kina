@@ -47,6 +47,26 @@ const readResponsePayload = async <T>(response: Response) => {
   return await response.json().catch(() => ({})) as ApiResponseEnvelope<T>
 }
 
+// 统一提取接口失败文案，避免各处重复拼接 error/message/fallback。
+export const readApiErrorMessage = async (
+  response: Response,
+  fallbackMessage?: string,
+) => {
+  const payload = await readResponsePayload<unknown>(response)
+  const normalizedFallback = String(
+    fallbackMessage || `请求失败 (${response.status})`,
+  ).trim() || `请求失败 (${response.status})`
+
+  return {
+    payload,
+    message: normalizeGenerationErrorMessage(String(
+      payload?.error?.message
+      || payload?.message
+      || normalizedFallback,
+    ).trim(), normalizedFallback),
+  }
+}
+
 // 统一处理 401 登录失效场景，自动拉起登录弹窗。
 export const handleUnauthorizedResponse = (status: number, source = '') => {
   if (status !== 401) {
@@ -69,13 +89,14 @@ export const readApiData = async <T>(
 
   if (!response.ok) {
     handleUnauthorizedResponse(response.status, 'read-api-data')
-
+    const normalizedFallback = String(
+      options.errorMessage || `请求失败 (${response.status})`,
+    ).trim() || `请求失败 (${response.status})`
     const errorMessage = normalizeGenerationErrorMessage(String(
-      options.errorMessage
-      || payload?.error?.message
+      payload?.error?.message
       || payload?.message
-      || `请求失败 (${response.status})`,
-    ).trim(), `请求失败 (${response.status})`)
+      || normalizedFallback,
+    ).trim(), normalizedFallback)
 
     if (options.showErrorMessage !== false) {
       ElMessage.error(errorMessage)

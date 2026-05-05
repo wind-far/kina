@@ -1,22 +1,26 @@
-<script setup>
+<script setup lang="ts">
 /**
  * 工作流主页面
  * 基于 Vue Flow 的节点连线工作流画布
  */
-import { ref, computed, onMounted, onUnmounted, nextTick, markRaw } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
-import { VueFlow, useVueFlow } from '@vue-flow/core'
+import { VueFlow, useVueFlow, type Connection } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { MiniMap } from '@vue-flow/minimap'
 import {
   nodes, edges, addNode, addEdge, updateNode,
-  clearCanvas, canvasViewport, updateViewport,
-  undo, redo, canUndo, canRedo, manualSaveHistory, initSampleData, initHistory
+  canvasViewport, updateViewport,
+  undo, redo, canUndo, canRedo, manualSaveHistory, initSampleData, initHistory,
+  type WorkflowAddEdgeParams,
+  type WorkflowCanvasEdge,
+  type WorkflowNodeType,
 } from './composables/useWorkflowCanvas'
 import { WORKFLOW_TEMPLATES } from './config/workflows'
 import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import { useWorkflowOrchestrator } from './composables/useWorkflowOrchestrator'
 import { buildAgentWorkflowStrategy } from '@/config/agentSkills'
+import type { WorkflowCanvasPosition, WorkflowIntentAnalysisResult } from './composables/workflow-orchestrator-types'
 
 // 节点组件
 import TextNode from './components/nodes/TextNode.vue'
@@ -42,32 +46,58 @@ const nodeTypes = {
   videoConfig: markRaw(VideoConfigNode),
   video: markRaw(VideoNode),
   llmConfig: markRaw(LlmConfigNode)
-}
+} as any
 
 // 注册自定义边类型
 const edgeTypes = {
   imageRole: markRaw(ImageRoleEdge),
   promptOrder: markRaw(PromptOrderEdge),
   imageOrder: markRaw(ImageOrderEdge)
-}
+} as any
 
 // 工作流编排器
-const { analyzeIntent, executeWorkflow, isAnalyzing, isExecuting } = useWorkflowOrchestrator()
+const { analyzeIntent, executeWorkflow } = useWorkflowOrchestrator()
 
 // UI 状态
 const showNodeMenu = ref(false)
 const showTemplatePanel = ref(false)
 
+interface WorkflowTemplateNode {
+  id: string
+  type: WorkflowNodeType
+  position: WorkflowCanvasPosition
+  data: Record<string, unknown>
+  newId?: string
+}
+
+interface WorkflowTemplateDefinition {
+  createNodes: (startPosition: WorkflowCanvasPosition) => {
+    nodes: WorkflowTemplateNode[]
+    edges: WorkflowCanvasEdge[]
+  }
+}
+
+interface WorkflowNodeOption {
+  type: WorkflowNodeType
+  name: string
+  color: string
+  icon: string
+}
+
+interface PromptSendOptions {
+  skill?: string
+}
+
 // 添加工作流模板
-const handleAddWorkflow = (workflow) => {
+const handleAddWorkflow = (workflow: WorkflowTemplateDefinition) => {
   const cx = -viewport.value.x / viewport.value.zoom + (window.innerWidth / 2) / viewport.value.zoom
   const cy = -viewport.value.y / viewport.value.zoom + (window.innerHeight / 2) / viewport.value.zoom
   const start = { x: cx - 300, y: cy - 200 }
   const { nodes: newNodes, edges: newEdges } = workflow.createNodes(start)
 
-  newNodes.forEach(node => {
+  newNodes.forEach((node) => {
     const id = addNode(node.type, node.position, node.data)
-    newEdges.forEach(edge => {
+    newEdges.forEach((edge) => {
       if (edge.source === node.id) edge.source = id
       if (edge.target === node.id) edge.target = id
     })
@@ -78,14 +108,14 @@ const handleAddWorkflow = (workflow) => {
     newEdges.forEach(edge => {
       addEdge({ source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle || 'right', targetHandle: edge.targetHandle || 'left', type: edge.type, data: edge.data })
     })
-    newNodes.forEach(node => { if (node.newId) updateNodeInternals(node.newId) })
+    newNodes.forEach(node => { if (node.newId) updateNodeInternals([node.newId]) })
   }, 100)
 
   showTemplatePanel.value = false
 }
 
 // 节点类型菜单选项
-const nodeTypeOptions = [
+const nodeTypeOptions: WorkflowNodeOption[] = [
   { type: 'text', name: '文本节点', color: '#3b82f6', icon: 'M4 6h16M4 12h8m-8 6h16' },
   { type: 'imageConfig', name: '文生图配置', color: '#22c55e', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
   { type: 'videoConfig', name: '视频生成配置', color: '#f59e0b', icon: 'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z' },
@@ -102,41 +132,48 @@ const tools = [
 ]
 
 // 添加新节点
-const addNewNode = (type) => {
+const addNewNode = (type: WorkflowNodeType) => {
   const cx = -viewport.value.x / viewport.value.zoom + (window.innerWidth / 2) / viewport.value.zoom
   const cy = -viewport.value.y / viewport.value.zoom + (window.innerHeight / 2) / viewport.value.zoom
   const id = addNode(type, { x: cx - 140, y: cy - 100 })
   const maxZ = Math.max(0, ...nodes.value.map(n => n.zIndex || 0))
   updateNode(id, { zIndex: maxZ + 1 })
-  setTimeout(() => updateNodeInternals(id), 50)
+  setTimeout(() => updateNodeInternals([id]), 50)
   showNodeMenu.value = false
 }
 
 // 处理连接
-const onConnect = (params) => {
+const onConnect = (params: Connection) => {
+  if (!params.source || !params.target) return
+  const normalizedParams: WorkflowAddEdgeParams = {
+    source: params.source,
+    target: params.target,
+    sourceHandle: params.sourceHandle ?? undefined,
+    targetHandle: params.targetHandle ?? undefined,
+  }
   const sourceNode = nodes.value.find(n => n.id === params.source)
   const targetNode = nodes.value.find(n => n.id === params.target)
 
   if (sourceNode?.type === 'text' && targetNode?.type === 'imageConfig') {
     const existing = edges.value.filter(e => e.target === params.target && e.type === 'promptOrder')
-    addEdge({ ...params, type: 'promptOrder', data: { promptOrder: existing.length + 1 } })
+    addEdge({ ...normalizedParams, type: 'promptOrder', data: { promptOrder: existing.length + 1 } })
   } else if (sourceNode?.type === 'image' && targetNode?.type === 'imageConfig') {
     const existing = edges.value.filter(e => e.target === params.target && e.type === 'imageOrder')
-    addEdge({ ...params, type: 'imageOrder', data: { imageOrder: existing.length + 1 } })
+    addEdge({ ...normalizedParams, type: 'imageOrder', data: { imageOrder: existing.length + 1 } })
   } else if (sourceNode?.type === 'image' && targetNode?.type === 'videoConfig') {
-    addEdge({ ...params, type: 'imageRole', data: { imageRole: 'first_frame_image' } })
+    addEdge({ ...normalizedParams, type: 'imageRole', data: { imageRole: 'first_frame_image' } })
   } else if (sourceNode?.type === 'text' && targetNode?.type === 'videoConfig') {
-    addEdge({ ...params, type: 'promptOrder', data: { promptOrder: 1 } })
+    addEdge({ ...normalizedParams, type: 'promptOrder', data: { promptOrder: 1 } })
   } else {
-    addEdge(params)
+    addEdge(normalizedParams)
   }
 }
 
 // 处理视口变化
-const handleViewportChange = (v) => updateViewport(v)
+const handleViewportChange = (v: typeof canvasViewport.value) => updateViewport(v)
 
 // 处理边变化
-const onEdgesChange = (changes) => {
+const onEdgesChange = (changes: Array<{ type?: string }>) => {
   if (changes.some(c => c.type === 'remove')) {
     nextTick(() => manualSaveHistory())
   }
@@ -146,7 +183,11 @@ const onEdgesChange = (changes) => {
 const onPaneClick = () => { showNodeMenu.value = false }
 
 // 处理内容生成器发送（使用工作流编排器）
-const handlePromptSend = async (message, type, options) => {
+const handlePromptSend = async (
+  message: string,
+  type: string,
+  options?: PromptSendOptions,
+) => {
   const cx = -viewport.value.x / viewport.value.zoom + (window.innerWidth / 2) / viewport.value.zoom
   const cy = -viewport.value.y / viewport.value.zoom + (window.innerHeight / 2) / viewport.value.zoom
   const position = { x: cx - 300, y: cy - 100 }
@@ -156,7 +197,7 @@ const handlePromptSend = async (message, type, options) => {
     try {
       const strategy = buildAgentWorkflowStrategy(options?.skill || 'general', message)
       if (strategy.mode === 'direct') {
-        await executeWorkflow(strategy.params, position)
+        await executeWorkflow(strategy.params as unknown as WorkflowIntentAnalysisResult, position)
       } else {
         const intent = await analyzeIntent(strategy.userInput, {
           systemPromptOverride: strategy.systemPrompt
@@ -177,7 +218,7 @@ const handlePromptSend = async (message, type, options) => {
 const goBack = () => router.push('/')
 
 // 键盘快捷键
-const handleKeydown = (e) => {
+const handleKeydown = (e: KeyboardEvent) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
     e.preventDefault()
     e.shiftKey ? redo() : undo()

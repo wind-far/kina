@@ -4,10 +4,12 @@
  */
 
 import { request } from './request'
-import { loadPublicModelCatalog, resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
-import { AI_GATEWAY_REQUEST_PATH } from '@/api/ai-gateway'
-import { handleUnauthorizedResponse } from '@/api/response'
+import { AI_GATEWAY_REQUEST_PATH, createGatewayPayload } from '@/api/ai-gateway'
+import { buildApiUrl } from '@/api/http'
+import { handleUnauthorizedResponse, readApiErrorMessage } from '@/api/response'
 import { MARKETING_POINTS_UPDATED_EVENT } from '@/stores/marketing-center'
+import { extractImageUrlsFromText, parseUpstreamStreamChunk } from '@/shared/upstream-stream-parser'
+import { buildImageEditRequestFormData } from '@/shared/upstream-request-normalizer'
 
 const notifyMarketingPointsUpdated = (response: Response) => {
   if (typeof window === 'undefined') return
@@ -17,60 +19,37 @@ const notifyMarketingPointsUpdated = (response: Response) => {
 
 const DEFAULT_IMAGE_ENDPOINT = '/images/generations'
 
-const resolveImageMimeType = (value: string) => {
-  const dataMatch = value.match(/^data:([^;,]+)[;,]/i)
-  if (dataMatch?.[1]) return dataMatch[1]
-
-  const lowerValue = value.toLowerCase()
-  if (lowerValue.includes('.webp')) return 'image/webp'
-  if (lowerValue.includes('.gif')) return 'image/gif'
-  if (lowerValue.includes('.jpg') || lowerValue.includes('.jpeg')) return 'image/jpeg'
-  return 'image/png'
+export interface WorkflowImageGeneratePayload {
+  model?: string
+  prompt?: string
+  size?: string
+  quality?: string
+  n?: number
+  image?: string[]
 }
 
-const resolveImageFileExtension = (mimeType: string) => {
-  if (mimeType === 'image/webp') return 'webp'
-  if (mimeType === 'image/gif') return 'gif'
-  if (mimeType === 'image/jpeg') return 'jpg'
-  return 'png'
+export interface WorkflowImageGenerateOptions {
+  requestType?: 'json' | 'formdata'
+  endpoint?: string
+  signal?: AbortSignal
 }
 
-const toImageEditFormData = async (data: any) => {
-  const formData = new FormData()
-  const prompt = String(data?.prompt || '').trim()
-  const model = String(data?.model || '').trim()
-  const size = String(data?.size || '').trim()
-  const quality = String(data?.quality || '').trim()
-  const referenceImages = Array.isArray(data?.image) ? data.image : []
-
-  if (model) formData.append('model', model)
-  if (prompt) formData.append('prompt', prompt)
-  formData.append('n', String(data?.n || 1))
-  if (size) formData.append('size', size)
-  if (quality) formData.append('quality', quality)
-
-  for (let index = 0; index < referenceImages.length; index += 1) {
-    const item = referenceImages[index]
-    const imageValue = typeof item === 'string'
-      ? item.trim()
-      : ''
-    if (!imageValue) continue
-
-    const blob = await fetch(imageValue).then((response) => {
-      if (!response.ok) {
-        throw new Error(`参考图读取失败 (${response.status})`)
-      }
-      return response.blob()
-    })
-    const mimeType = blob.type || resolveImageMimeType(imageValue)
-    const extension = resolveImageFileExtension(mimeType)
-    formData.append('image', blob, `workflow-reference-${index + 1}.${extension}`)
-  }
-
-  return formData
+const toImageEditFormData = async (data: WorkflowImageGeneratePayload) => {
+  return buildImageEditRequestFormData({
+    modelKey: String(data?.model || '').trim(),
+    prompt: String(data?.prompt || '').trim(),
+    size: String(data?.size || '').trim(),
+    quality: String(data?.quality || '').trim(),
+    count: Number(data?.n || 1),
+    referenceImages: Array.isArray(data?.image) ? data.image : [],
+    fileNamePrefix: 'workflow-reference',
+  })
 }
 
-export const generateImage = async (data: any, options: any = {}) => {
+export const generateImage = async (
+  data: WorkflowImageGeneratePayload,
+  options: WorkflowImageGenerateOptions = {},
+) => {
   const { requestType = 'json', endpoint, signal } = options
   const url = endpoint || DEFAULT_IMAGE_ENDPOINT
   const referenceImages = Array.isArray(data?.image)
@@ -105,21 +84,18 @@ export const generateImage = async (data: any, options: any = {}) => {
  * 通过 chat completions 接口生成图片
  * 从 SSE 流中提取图片 URL 或 base64
  */
-async function generateImageViaChat(data: any, signal?: AbortSignal) {
+async function generateImageViaChat(data: WorkflowImageGeneratePayload, signal?: AbortSignal) {
   const body = {
     model: data.model,
     messages: [{ role: 'user', content: data.prompt }],
     stream: true
   }
+  const gatewayPayload = await createGatewayPayload('image', {
+    method: 'POST',
+    data: body,
+  })
 
-  await loadPublicModelCatalog()
-  const providerId = resolveRequestProviderId(String(data.model || '').trim(), 'IMAGE')
-  const requestModelKey = resolveRequestModelKey(String(data.model || '').trim(), 'IMAGE')
-  if (!providerId) {
-    throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
-  }
-
-  const response = await fetch(AI_GATEWAY_REQUEST_PATH, {
+  const response = await fetch(buildApiUrl(AI_GATEWAY_REQUEST_PATH), {
     method: 'POST',
     // 图片生成走同源网关时也要携带会话 Cookie，否则会被后端判未登录。
     credentials: 'include',
@@ -127,31 +103,15 @@ async function generateImageViaChat(data: any, signal?: AbortSignal) {
     headers: {
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      upstream: {
-        providerId,
-        endpointType: 'image',
-        modelKey: requestModelKey,
-      },
-      request: {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: {
-          ...body,
-          model: requestModelKey,
-        },
-      },
-    }),
+    body: JSON.stringify(gatewayPayload),
   })
 
   notifyMarketingPointsUpdated(response)
 
   if (!response.ok) {
     handleUnauthorizedResponse(response.status, 'image-chat-generation')
-    const err = await response.json().catch(() => ({}))
-    throw new Error(err?.error?.message || '请求失败')
+    const { message } = await readApiErrorMessage(response)
+    throw new Error(message)
   }
 
   // 解析 SSE 流，收集完整内容
@@ -162,7 +122,8 @@ async function generateImageViaChat(data: any, signal?: AbortSignal) {
   const imageUrls: string[] = []
 
   while (true) {
-    let done, value
+    let done: boolean | undefined
+    let value: Uint8Array<ArrayBufferLike> | undefined
     try {
       ({ done, value } = await reader.read())
     } catch {
@@ -185,23 +146,13 @@ async function generateImageViaChat(data: any, signal?: AbortSignal) {
         const chunk = trimmed.slice(5).trim()
         if (chunk === '[DONE]') continue
 
-        try {
-          const parsed = JSON.parse(chunk)
-          const delta = parsed.choices?.[0]?.delta
-          if (delta?.content) fullContent += delta.content
-          // delta.images 格式（Gemini 等）
-          if (delta?.images) {
-            for (const img of delta.images) {
-              const url = img?.image_url?.url
-              if (url) imageUrls.push(url)
-            }
-          }
-          // inline_data 格式
-          if (delta?.inline_data) {
-            const d = delta.inline_data
-            imageUrls.push(`data:${d.mime_type};base64,${d.data}`)
-          }
-        } catch {}
+        const parsedChunk = parseUpstreamStreamChunk(chunk)
+        if (parsedChunk.text) {
+          fullContent += parsedChunk.text
+        }
+        if (parsedChunk.imageUrls.length) {
+          imageUrls.push(...parsedChunk.imageUrls)
+        }
       }
     }
   }
@@ -213,32 +164,17 @@ async function generateImageViaChat(data: any, signal?: AbortSignal) {
       if (!trimmed || !trimmed.startsWith('data:')) continue
       const chunk = trimmed.slice(5).trim()
       if (chunk === '[DONE]') continue
-      try {
-        const parsed = JSON.parse(chunk)
-        const delta = parsed.choices?.[0]?.delta
-        if (delta?.content) fullContent += delta.content
-        if (delta?.images) {
-          for (const img of delta.images) {
-            const url = img?.image_url?.url
-            if (url) imageUrls.push(url)
-          }
-        }
-      } catch {}
+      const parsedChunk = parseUpstreamStreamChunk(chunk)
+      if (parsedChunk.text) {
+        fullContent += parsedChunk.text
+      }
+      if (parsedChunk.imageUrls.length) {
+        imageUrls.push(...parsedChunk.imageUrls)
+      }
     }
   }
 
-  // 从内容中提取图片 URL（markdown 格式）
-  const mdImages = fullContent.match(/!\[.*?\]\((https?:\/\/[^\s)]+)\)/g)
-  if (mdImages) {
-    for (const m of mdImages) {
-      const urlMatch = m.match(/\((https?:\/\/[^\s)]+)\)/)
-      if (urlMatch) imageUrls.push(urlMatch[1])
-    }
-  }
-
-  // 提取 base64 图片
-  const b64Match = fullContent.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/)
-  if (b64Match) imageUrls.push(b64Match[0])
+  imageUrls.push(...extractImageUrlsFromText(fullContent))
 
   if (imageUrls.length) {
     return { data: imageUrls.map((url: string) => ({ url })) }

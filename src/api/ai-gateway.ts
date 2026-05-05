@@ -37,40 +37,66 @@ export interface GatewayRequestOptions {
 
 export const normalizeGatewayMethod = (method?: string) => (method || 'GET').toUpperCase()
 
+export interface ResolvedGatewayUpstream {
+  providerId: string
+  modelKey: string
+  modelValue: string
+}
+
+// 统一解析前端请求要命中的厂商与模型。
+export const resolveGatewayUpstream = async (
+  type: AiEndpointType,
+  options: Pick<GatewayRequestOptions, 'providerId' | 'modelKey' | 'data'> & {
+    modelValue?: string
+  },
+): Promise<ResolvedGatewayUpstream> => {
+  await loadPublicModelCatalog()
+
+  const rawBody = options.data
+  const modelValue = String(
+    options.modelValue
+    || (
+      rawBody
+      && typeof rawBody === 'object'
+      && !Array.isArray(rawBody)
+      ? (rawBody as Record<string, unknown>).model || ''
+      : ''
+    ),
+  ).trim()
+  const modelCategory = resolveEndpointModelCategory(type)
+  const providerId = String(options.providerId || '').trim()
+    || resolveRequestProviderId(modelValue, modelCategory)
+  const modelKey = String(options.modelKey || '').trim()
+    || resolveRequestModelKey(modelValue, modelCategory)
+
+  if (!providerId) {
+    throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
+  }
+
+  return {
+    providerId,
+    modelKey,
+    modelValue,
+  }
+}
+
 export const createGatewayPayload = async (
   type: AiEndpointType,
   options: GatewayRequestOptions,
 ): Promise<GatewayRequestPayload> => {
   const method = normalizeGatewayMethod(options.method)
   const headers = { ...(options.headers || {}) }
-
-  await loadPublicModelCatalog()
-
   const rawBody = options.data
-  const modelValue = rawBody && typeof rawBody === 'object' && !Array.isArray(rawBody)
-    ? String((rawBody as Record<string, unknown>).model || '').trim()
-    : ''
-  const modelCategory = resolveEndpointModelCategory(type)
-  const providerId = String(options.providerId || '').trim()
-    || resolveRequestProviderId(modelValue, modelCategory)
-  const modelKey = String(options.modelKey || '').trim()
-    || resolveRequestModelKey(modelValue, modelCategory)
-  const upstream = providerId
-    ? {
-        // 命中后台模型目录时，只把最小识别信息发给同源网关。
-        // 真实厂商地址、密钥和具体接口路径统一在后端解析，避免暴露到浏览器请求体。
-        providerId,
-        endpointType: type,
-        modelKey,
-      }
-    : null
-
-  if (!upstream) {
-    throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
-  }
+  const { providerId, modelKey, modelValue } = await resolveGatewayUpstream(type, options)
 
   const payload: GatewayRequestPayload = {
-    upstream,
+    upstream: {
+      // 命中后台模型目录时，只把最小识别信息发给同源网关。
+      // 真实厂商地址、密钥和具体接口路径统一在后端解析，避免暴露到浏览器请求体。
+      providerId,
+      endpointType: type,
+      modelKey,
+    },
     request: {
       method,
     },

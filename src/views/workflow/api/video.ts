@@ -3,21 +3,30 @@
  */
 
 import { request } from './request'
-import { resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 
 const DEFAULT_VIDEO_ENDPOINT = '/videos'
 
-export const createVideoTask = (data: any, options: any = {}) => {
+export interface WorkflowVideoTaskOptions {
+  endpoint?: string
+}
+
+export interface WorkflowVideoTaskStatusResult {
+  status?: string
+  data?: Array<{ url?: string }> | Record<string, unknown> | null
+  url?: string
+  task_id?: string
+  id?: string
+  error?: {
+    message?: string
+  } | null
+}
+
+export const createVideoTask = (data: FormData, options: WorkflowVideoTaskOptions = {}) => {
   const { endpoint } = options
-  const originalModel = String(data instanceof FormData ? data.get('model') || '' : data?.model || '').trim()
-  const providerId = resolveRequestProviderId(originalModel, 'VIDEO')
-  const modelKey = resolveRequestModelKey(originalModel, 'VIDEO')
   return request({
     url: endpoint || DEFAULT_VIDEO_ENDPOINT,
     method: 'post',
     data,
-    providerId,
-    modelKey,
     headers: { 'Content-Type': 'multipart/form-data' }
   }, 'video')
 }
@@ -25,14 +34,19 @@ export const createVideoTask = (data: any, options: any = {}) => {
 export const getVideoTaskStatus = (taskId: string, providerId: string) =>
   request({ url: `/videos/${taskId}`, method: 'get', providerId }, 'video')
 
-export const pollVideoTask = async (taskId: string, providerId: string, maxAttempts: number = 120, interval: number = 5000) => {
+export const pollVideoTask = async (
+  taskId: string,
+  providerId: string,
+  maxAttempts: number = 120,
+  interval: number = 5000,
+): Promise<WorkflowVideoTaskStatusResult> => {
   for (let i = 0; i < maxAttempts; i++) {
-    const result = await getVideoTaskStatus(taskId, providerId)
+    const result = await getVideoTaskStatus(taskId, providerId) as WorkflowVideoTaskStatusResult
     if (result.status === 'completed' || result.data) return result
     if (result.status === 'failed') {
       throw new Error(result.error?.message || '视频生成失败')
     }
-    await new Promise((resolve: any) => setTimeout(resolve, interval))
+    await new Promise<void>((resolve) => setTimeout(resolve, interval))
   }
   throw new Error('视频生成超时')
 }

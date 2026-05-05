@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 /**
  * 图片顺序边 - 显示序号标签，点击可切换顺序
  */
@@ -8,12 +8,20 @@ import { edges } from '../../composables/useWorkflowCanvas'
 
 const { updateEdgeData } = useVueFlow()
 
-const props = defineProps({
-  id: String, source: String, target: String,
-  sourceX: Number, sourceY: Number, targetX: Number, targetY: Number,
-  sourcePosition: String, targetPosition: String,
-  data: Object, markerEnd: String, style: Object
-})
+const props = defineProps<{
+  id: string
+  source?: string
+  target?: string
+  sourceX: number
+  sourceY: number
+  targetX: number
+  targetY: number
+  sourcePosition: any
+  targetPosition: any
+  data?: { imageOrder?: number }
+  markerEnd?: string
+  style?: Record<string, unknown>
+}>()
 
 const showMenu = ref(false)
 
@@ -41,9 +49,13 @@ const labelX = computed(() => (props.sourceX + props.targetX) / 2)
 const labelY = computed(() => (props.sourceY + props.targetY) / 2)
 const edgeStyle = computed(() => ({ stroke: '#3b82f6', strokeWidth: 2, ...props.style }))
 
-const handleSelect = (newOrder) => {
+const readImageOrder = (data: unknown) => (data && typeof data === 'object' && 'imageOrder' in data
+  ? Number((data as { imageOrder?: number }).imageOrder) || 1
+  : 1)
+
+const handleSelect = (newOrder: number) => {
   const sameEdges = edges.value.filter(e => e.target === props.target && e.type === 'imageOrder')
-  const conflict = sameEdges.find(e => e.id !== props.id && e.data?.imageOrder === newOrder)
+  const conflict = sameEdges.find(e => e.id !== props.id && readImageOrder(e.data) === newOrder)
   if (conflict) updateEdgeData(conflict.id, { imageOrder: currentOrder.value })
   updateEdgeData(props.id, { imageOrder: newOrder })
   showMenu.value = false

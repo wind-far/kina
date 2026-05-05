@@ -8,17 +8,13 @@ import { forwardGatewayPayload, forwardMultipartRequest } from './forward'
 import { resolveGatewayProviderUpstream } from '../provider-config/service'
 import { requireCurrentSessionUser } from '../auth/session'
 import { consumeGenerationPoints, refundGenerationPoints, resolveGenerationPointCost } from '../marketing-center/service'
+import { normalizeChargeableEndpointType, type AiEndpointType } from '../../src/shared/provider-endpoint-strategy'
 
 const shouldExposeGatewayDebug = () => String(process.env.AI_GATEWAY_DEBUG_HEADERS || '').trim() === 'true'
 
-const normalizeChargeableEndpointType = (endpointType?: 'chat' | 'image' | 'image-edit' | 'video') => {
-  if (endpointType === 'image-edit') return 'image'
-  return endpointType
-}
-
 const isChargeableGenerationRequest = (input: {
   providerId: string
-  endpointType?: 'chat' | 'image' | 'image-edit' | 'video'
+  endpointType?: AiEndpointType
   method: string
 }) => {
   const chargeableEndpointType = normalizeChargeableEndpointType(input.endpointType)
@@ -45,7 +41,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
     const headerEndpoint = String(req.headers['x-upstream-endpoint'] || '').trim()
     const headerApiKey = String(req.headers['x-upstream-api-key'] || '').trim()
     const headerProviderId = String(req.headers['x-upstream-provider-id'] || '').trim()
-    const headerEndpointType = String(req.headers['x-upstream-endpoint-type'] || '').trim() as 'chat' | 'image' | 'image-edit' | 'video'
+    const headerEndpointType = String(req.headers['x-upstream-endpoint-type'] || '').trim() as AiEndpointType
     const headerModelKey = String(req.headers['x-upstream-model-key'] || '').trim()
     const headerMethod = String(req.headers['x-upstream-method'] || 'POST').trim().toUpperCase()
     const billedHeaderEndpointType = normalizeChargeableEndpointType(headerEndpointType)

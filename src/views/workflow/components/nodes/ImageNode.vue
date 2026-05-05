@@ -1,13 +1,24 @@
-<script setup>
+<script setup lang="ts">
 /**
  * 图片节点组件
  * 展示生成的图片，支持上传、URL输入和预览
  */
 import { ref, watch } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
-import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes } from '../../composables/useWorkflowCanvas'
+import {
+  updateNode,
+  removeNode,
+  duplicateNode,
+  addNode,
+  addEdge,
+  nodes,
+  type WorkflowImageNodeData,
+} from '../../composables/useWorkflowCanvas'
 
-const props = defineProps({ id: String, data: Object })
+const props = defineProps<{
+  id: string
+  data: WorkflowImageNodeData & { selected?: boolean }
+}>()
 const { updateNodeInternals } = useVueFlow()
 
 const showActions = ref(false)
@@ -29,12 +40,14 @@ const handleUpload = () => {
   input.type = 'file'
   input.accept = 'image/*'
   input.onchange = (e) => {
-    const file = e.target.files?.[0]
+    const target = e.target as HTMLInputElement | null
+    const file = target?.files?.[0]
     if (!file) return
     const reader = new FileReader()
     reader.onload = (ev) => {
-      imageUrl.value = ev.target.result
-      updateNode(props.id, { url: ev.target.result, base64: ev.target.result })
+      const result = typeof ev.target?.result === 'string' ? ev.target.result : ''
+      imageUrl.value = result
+      updateNode(props.id, { url: result, base64: result })
     }
     reader.readAsDataURL(file)
   }
@@ -95,7 +108,7 @@ const createImageConfig = () => {
     type: 'imageOrder',
     data: { imageOrder: 1 }
   })
-  setTimeout(() => updateNodeInternals(newId), 50)
+  setTimeout(() => updateNodeInternals([newId]), 50)
 }
 
 // 快捷创建视频生成
@@ -107,13 +120,13 @@ const createVideoConfig = () => {
   const configId = addNode('videoConfig', { x: x + 600, y }, { label: '视频生成' })
   addEdge({ source: props.id, target: configId, sourceHandle: 'right', targetHandle: 'left', type: 'imageRole', data: { imageRole: 'first_frame_image' } })
   addEdge({ source: textId, target: configId, sourceHandle: 'right', targetHandle: 'left', type: 'promptOrder', data: { promptOrder: 1 } })
-  setTimeout(() => { updateNodeInternals(textId); updateNodeInternals(configId) }, 50)
+  setTimeout(() => { updateNodeInternals([textId]); updateNodeInternals([configId]) }, 50)
 }
 
 const handleDelete = () => removeNode(props.id)
 const handleDuplicate = () => {
   const newId = duplicateNode(props.id)
-  if (newId) setTimeout(() => updateNodeInternals(newId), 50)
+  if (newId) setTimeout(() => updateNodeInternals([newId]), 50)
 }
 </script>
 

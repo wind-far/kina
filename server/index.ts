@@ -37,6 +37,7 @@ import { getUploadsDir } from './storage/service'
 import { isSkillConfigPath } from './skill-config/constants'
 import { handleSkillConfigRequest } from './skill-config/request-handler'
 import { REDIS_CONFIG, isRedisEnabled } from './redis'
+import { writeScopedLog } from './shared/logging'
 
 // 后端服务默认监听端口。
 const DEFAULT_SERVER_PORT = 5409
@@ -319,6 +320,170 @@ const handleHealthRequest = (res: any) => {
   })
 }
 
+interface RequestRouteStrategy {
+  key: string
+  match: (requestPath: string) => boolean
+  handle: (req: any, res: any, requestPath: string) => Promise<boolean | void> | boolean | void
+}
+
+// 服务端请求分发策略注册表。
+const REQUEST_ROUTE_STRATEGIES: RequestRouteStrategy[] = [
+  {
+    key: 'health',
+    match: requestPath => requestPath === '/api/health',
+    handle: async (_req, res) => {
+      handleHealthRequest(res)
+      return true
+    },
+  },
+  {
+    key: 'ai-gateway',
+    match: isAiGatewayPath,
+    handle: async (req, res) => {
+      await handleAiGatewayRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'auth',
+    match: isAuthPath,
+    handle: async (req, res) => {
+      await handleAuthRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'provider-config',
+    match: isProviderConfigPath,
+    handle: async (req, res) => {
+      await handleProviderConfigRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'skill-config',
+    match: isSkillConfigPath,
+    handle: async (req, res) => {
+      await handleSkillConfigRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'storage-upload',
+    match: isStorageUploadPath,
+    handle: async (req, res) => {
+      await handleStorageUploadRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'storage-config',
+    match: isStorageConfigsPath,
+    handle: async (req, res) => {
+      await handleStorageConfigRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'generation-records',
+    match: isGenerationRecordsPath,
+    handle: async (req, res) => {
+      await handleGenerationRecordsRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'generation-sessions',
+    match: isGenerationSessionsPath,
+    handle: async (req, res) => {
+      await handleGenerationSessionsRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'generation-tasks',
+    match: isGenerationTasksPath,
+    handle: async (req, res) => {
+      await handleGenerationTasksRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'asset-items',
+    match: isAssetItemsPath,
+    handle: async (req, res) => {
+      await handleAssetItemsRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'admin-dashboard',
+    match: isAdminDashboardPath,
+    handle: async (req, res) => {
+      await handleAdminDashboardRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'admin-users',
+    match: isAdminUsersPath,
+    handle: async (req, res) => {
+      await handleAdminUsersRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'admin-generation-sessions',
+    match: isAdminGenerationSessionsPath,
+    handle: async (req, res) => {
+      await handleAdminGenerationSessionsRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'admin-conversation-settings',
+    match: isAdminConversationSettingsPath,
+    handle: async (req, res) => {
+      await handleAdminConversationSettingsRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'admin-marketing',
+    match: isAdminMarketingPath,
+    handle: async (req, res) => {
+      await handleAdminMarketingRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'marketing-center',
+    match: isMarketingCenterPath,
+    handle: async (req, res) => {
+      await handleMarketingCenterRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'system-config',
+    match: isSystemConfigPath,
+    handle: async (req, res) => {
+      await handleSystemConfigRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'uploads-static',
+    match: requestPath => requestPath.startsWith(UPLOADS_PUBLIC_PATH_PREFIX),
+    handle: (req, res, requestPath) => handleUploadsRequest(req, res, requestPath),
+  },
+  {
+    key: 'frontend-static',
+    match: () => true,
+    handle: (req, res, requestPath) => handleStaticRequest(req, res, requestPath),
+  },
+]
+
 // 将请求分发给对应的业务处理器。
 const dispatchRequest = async (req: any, res: any) => {
   // 读取当前请求路径。
@@ -327,119 +492,16 @@ const dispatchRequest = async (req: any, res: any) => {
   // 截取不带查询参数的路径部分。
   const requestPath = requestUrl.split('?')[0]
 
-  // 健康检查接口直接返回。
-  if (requestPath === '/api/health') {
-    handleHealthRequest(res)
-    return
-  }
-
-  // 命中 AI 网关时走网关转发逻辑。
-  if (isAiGatewayPath(requestPath)) {
-    await handleAiGatewayRequest(req, res)
-    return
-  }
-
-  // 命中认证接口时走登录逻辑。
-  if (isAuthPath(requestPath)) {
-    await handleAuthRequest(req, res)
-    return
-  }
-
-  // 命中厂商配置接口时走配置逻辑。
-    if (isProviderConfigPath(requestPath)) {
-      await handleProviderConfigRequest(req, res)
-      return
+  // 按注册顺序执行路由策略，保证原有优先级不变。
+  for (const strategy of REQUEST_ROUTE_STRATEGIES) {
+    if (!strategy.match(requestPath)) {
+      continue
     }
 
-    if (isSkillConfigPath(requestPath)) {
-      await handleSkillConfigRequest(req, res)
+    const handled = await strategy.handle(req, res, requestPath)
+    if (handled !== false) {
       return
     }
-
-  // 命中文件上传接口时走本地存储逻辑。
-  if (isStorageUploadPath(requestPath)) {
-    await handleStorageUploadRequest(req, res)
-    return
-  }
-
-  // 命中对象存储配置接口时走对象存储配置逻辑。
-  if (isStorageConfigsPath(requestPath)) {
-    await handleStorageConfigRequest(req, res)
-    return
-  }
-
-  // 命中生成记录接口时走生成记录逻辑。
-    if (isGenerationRecordsPath(requestPath)) {
-      await handleGenerationRecordsRequest(req, res)
-      return
-    }
-
-    if (isGenerationSessionsPath(requestPath)) {
-      await handleGenerationSessionsRequest(req, res)
-      return
-    }
-
-  // 命中生成任务接口时走服务端任务逻辑。
-  if (isGenerationTasksPath(requestPath)) {
-    await handleGenerationTasksRequest(req, res)
-    return
-  }
-
-  // 命中资源接口时走资源逻辑。
-  if (isAssetItemsPath(requestPath)) {
-    await handleAssetItemsRequest(req, res)
-    return
-  }
-
-  // 命中后台仪表盘接口时返回统计数据。
-  if (isAdminDashboardPath(requestPath)) {
-    await handleAdminDashboardRequest(req, res)
-    return
-  }
-
-  // 命中后台用户管理接口时返回用户与角色数据。
-  if (isAdminUsersPath(requestPath)) {
-    await handleAdminUsersRequest(req, res)
-    return
-  }
-
-  // 命中后台会话管理接口时返回全站会话与会话明细。
-  if (isAdminGenerationSessionsPath(requestPath)) {
-    await handleAdminGenerationSessionsRequest(req, res)
-    return
-  }
-
-  // 命中后台会话配置接口时返回会话配置数据。
-  if (isAdminConversationSettingsPath(requestPath)) {
-    await handleAdminConversationSettingsRequest(req, res)
-    return
-  }
-
-  // 命中营销中心接口时返回营销工具配置与数据。
-  if (isAdminMarketingPath(requestPath)) {
-    await handleAdminMarketingRequest(req, res)
-    return
-  }
-
-  if (isMarketingCenterPath(requestPath)) {
-    await handleMarketingCenterRequest(req, res)
-    return
-  }
-
-  // 命中系统设置接口时返回系统配置数据。
-  if (isSystemConfigPath(requestPath)) {
-    await handleSystemConfigRequest(req, res)
-    return
-  }
-
-  // 命中上传文件公开访问路径时直接返回文件。
-  if (await handleUploadsRequest(req, res, requestPath)) {
-    return
-  }
-
-  // 非接口请求尝试交给静态前端资源处理。
-  if (await handleStaticRequest(req, res, requestPath)) {
-    return
   }
 
   // 其余路径统一返回未找到。
@@ -469,7 +531,7 @@ const server = createServer(async (req, res) => {
     await dispatchRequest(req, res)
   } catch (error: any) {
     // 打印未捕获异常，便于排查服务端问题。
-    console.error('[server] 请求处理失败', error)
+    writeScopedLog('error', '服务端', '请求处理失败', error)
 
     // 返回统一异常响应。
     sendJson(res, 500, {
@@ -492,10 +554,10 @@ server.listen(serverPort, '0.0.0.0', () => {
   const allowedOrigins = readAllowedOrigins()
 
   // 输出启动概览，避免部署时只能看到一个端口日志。
-  console.info('[server] 启动完成')
-  console.info(`[server] 服务地址: http://0.0.0.0:${serverPort}`)
-  console.info(`[server] 静态目录: ${staticDistDir}`)
-  console.info(`[server] 上传目录: ${uploadsDir}`)
-  console.info(`[server] CORS 来源: ${allowedOrigins.join(', ')}`)
-  console.info(`[server] Redis: ${resolveRedisStartupSummary()}`)
+  writeScopedLog('info', '服务端', '启动完成')
+  writeScopedLog('info', '服务端', `服务地址: http://0.0.0.0:${serverPort}`)
+  writeScopedLog('info', '服务端', `静态目录: ${staticDistDir}`)
+  writeScopedLog('info', '服务端', `上传目录: ${uploadsDir}`)
+  writeScopedLog('info', '服务端', `CORS 来源: ${allowedOrigins.join(', ')}`)
+  writeScopedLog('info', '服务端', `Redis: ${resolveRedisStartupSummary()}`)
 })

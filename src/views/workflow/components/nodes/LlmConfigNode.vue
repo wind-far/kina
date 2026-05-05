@@ -1,15 +1,26 @@
-<script setup>
+<script setup lang="ts">
 /**
  * LLM 配置节点 - 文本生成（故事拆分等）
  */
 import { ref, computed, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
-import { updateNode, removeNode, duplicateNode, nodes, edges } from '../../composables/useWorkflowCanvas'
+import {
+  updateNode,
+  removeNode,
+  duplicateNode,
+  nodes,
+  edges,
+  type WorkflowCanvasNode,
+  type WorkflowLlmConfigNodeData,
+} from '../../composables/useWorkflowCanvas'
 import { streamChatCompletions } from '../../api/chat'
 import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
 import WfSelect from '@/components/common/WfSelect.vue'
 
-const props = defineProps({ id: String, data: Object })
+const props = defineProps<{
+  id: string
+  data: WorkflowLlmConfigNodeData & { selected?: boolean }
+}>()
 const { updateNodeInternals } = useVueFlow()
 
 const showActions = ref(false)
@@ -26,6 +37,8 @@ const outputFormatOptions = [
 ]
 
 const modelOptions = computed(() => getAllChatModels().map(m => ({ label: m.label, value: m.key })))
+const isTextNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'text'> => node?.type === 'text'
+const isLlmNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'llmConfig'> => node?.type === 'llmConfig'
 
 watch(
   modelOptions,
@@ -60,8 +73,8 @@ const getInput = () => {
     .filter(e => e.target === props.id)
     .map(e => {
       const src = nodes.value.find(n => n.id === e.source)
-      if (src?.type === 'text') return src.data?.content
-      if (src?.type === 'llmConfig') return src.data?.outputContent
+      if (isTextNode(src)) return src.data.content
+      if (isLlmNode(src)) return src.data.outputContent
       return ''
     })
     .filter(Boolean)
@@ -76,7 +89,7 @@ const handleGenerate = async () => {
   outputContent.value = ''
 
   try {
-    const messages = []
+    const messages: Array<{ role: 'system' | 'user'; content: string }> = []
     let sysContent = systemPrompt.value || ''
     if (outputFormat.value === 'json') sysContent += '\n\n请以合法的 JSON 格式输出结果，不要包含其他内容。'
     else if (outputFormat.value === 'markdown') sysContent += '\n\n请以 Markdown 格式输出结果。'
@@ -102,7 +115,7 @@ const handleCopy = async () => {
 const handleDelete = () => removeNode(props.id)
 const handleDuplicate = () => {
   const newId = duplicateNode(props.id)
-  if (newId) setTimeout(() => updateNodeInternals(newId), 50)
+  if (newId) setTimeout(() => updateNodeInternals([newId]), 50)
 }
 </script>
 

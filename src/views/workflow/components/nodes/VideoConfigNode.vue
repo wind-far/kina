@@ -1,32 +1,63 @@
-<script setup>
+<script setup lang="ts">
 /**
  * 视频配置节点 - 模型/比例/时长选择 + 生成
  */
 import { ref, computed, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
-import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes, edges } from '../../composables/useWorkflowCanvas'
-import { VIDEO_RATIO_LIST, getAllVideoModels, getDefaultVideoModelKey, getModelByName, loadPublicModelCatalog, resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
+import {
+  updateNode,
+  removeNode,
+  duplicateNode,
+  addNode,
+  addEdge,
+  nodes,
+  edges,
+  type WorkflowCanvasNode,
+  type WorkflowVideoConfigNodeData,
+} from '../../composables/useWorkflowCanvas'
+import { VIDEO_RATIO_LIST, getAllVideoModels, getDefaultVideoModelKey, getModelByName, loadPublicModelCatalog } from '@/config/models'
+import { resolveGatewayUpstream } from '@/api/ai-gateway'
 import { createVideoTask, pollVideoTask } from '../../api/video'
 import WfSelect from '@/components/common/WfSelect.vue'
 
-const props = defineProps({ id: String, data: Object })
+const props = defineProps<{
+  id: string
+  data: WorkflowVideoConfigNodeData & { selected?: boolean }
+}>()
 const { updateNodeInternals } = useVueFlow()
 
 const showActions = ref(false)
 const isGenerating = ref(false)
 const progress = ref(0)
 
+interface WorkflowVideoModelLike {
+  ratios?: string[]
+  durs?: Array<{ label: string; key: number | string }>
+}
+
+const isTextNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'text'> => node?.type === 'text'
+const isImageNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'image'> => node?.type === 'image'
+const readImageRole = (data: unknown) => (data && typeof data === 'object' && 'imageRole' in data
+  ? String((data as { imageRole?: string }).imageRole || 'input_reference')
+  : 'input_reference')
+const readVideoResultUrl = (result: { data?: Array<{ url?: string }> | Record<string, unknown> | null; url?: string }) => {
+  if (Array.isArray(result.data)) {
+    return result.data[0]?.url || result.url
+  }
+  return result.url
+}
+
 const model = ref(props.data?.model || getDefaultVideoModelKey())
 const ratio = ref(props.data?.ratio || '16x9')
 const duration = ref(props.data?.duration || 5)
 
-const currentModel = computed(() => getModelByName(model.value))
+const currentModel = computed<WorkflowVideoModelLike | null>(() => getModelByName(model.value) as WorkflowVideoModelLike | null)
 const modelOptions = computed(() => getAllVideoModels().map(m => ({ label: m.label, value: m.key })))
-const ratioOptions = computed(() => (currentModel.value?.ratios || []).map(r => {
+const ratioOptions = computed(() => (currentModel.value?.ratios || []).map((r) => {
   const item = VIDEO_RATIO_LIST.find(v => v.key === r)
   return { label: item?.label || r, value: r }
 }))
-const durationOptions = computed(() => (currentModel.value?.durs || []).map(d => ({ label: d.label, value: d.key })))
+const durationOptions = computed(() => (currentModel.value?.durs || []).map((d) => ({ label: d.label, value: d.key })))
 
 // 连接的输入
 const promptCount = computed(() => edges.value.filter(e => e.target === props.id && (e.type === 'promptOrder' || !e.type)).length)
@@ -37,6 +68,10 @@ watch(() => props.data, (d) => {
   if (d?.duration !== undefined) duration.value = d.duration
 }, { deep: true })
 
+onMounted(() => {
+  void loadPublicModelCatalog()
+})
+
 const updateConfig = () => {
   updateNode(props.id, { model: model.value, ratio: ratio.value, duration: duration.value })
 }
@@ -45,14 +80,14 @@ const updateConfig = () => {
 const collectInputs = () => {
   const incoming = edges.value.filter(e => e.target === props.id)
   let prompt = ''
-  const images = []
+  const images: Array<{ url: string; role: string }> = []
 
   for (const edge of incoming) {
     const src = nodes.value.find(n => n.id === edge.source)
     if (!src) continue
-    if (src.type === 'text' && src.data?.content) prompt = src.data.content
-    if (src.type === 'image' && src.data?.url) {
-      images.push({ url: src.data.url, role: edge.data?.imageRole || 'input_reference' })
+    if (isTextNode(src) && src.data.content) prompt = src.data.content
+    if (isImageNode(src) && src.data.url) {
+      images.push({ url: src.data.url, role: readImageRole(edge.data) })
     }
   }
   return { prompt, images }
@@ -64,11 +99,14 @@ const handleGenerate = async () => {
 
   isGenerating.value = true
   progress.value = 0
-  let outputNodeId = null
+  let outputNodeId: string | null = null
 
   try {
+    const { providerId, modelKey } = await resolveGatewayUpstream('video', {
+      modelValue: model.value,
+    })
     const formData = new FormData()
-    formData.append('model', resolveRequestModelKey(model.value, 'VIDEO'))
+    formData.append('model', modelKey)
     if (prompt) formData.append('prompt', prompt)
     formData.append('ratio', ratio.value)
     formData.append('duration', String(duration.value))
@@ -90,19 +128,19 @@ const handleGenerate = async () => {
       y: node?.position?.y || 0
     }, { url: '', label: '视频生成中...', loading: true })
     addEdge({ source: props.id, target: outputNodeId, sourceHandle: 'right', targetHandle: 'left' })
-    setTimeout(() => updateNodeInternals(outputNodeId), 50)
+    const createdOutputNodeId = outputNodeId
+    setTimeout(() => updateNodeInternals([createdOutputNodeId]), 50)
 
     const task = await createVideoTask(formData)
     const taskId = task?.id || task?.task_id
-    const providerId = resolveRequestProviderId(model.value, 'VIDEO')
 
     if (taskId && providerId) {
       const result = await pollVideoTask(taskId, providerId)
-      const videoUrl = result?.data?.[0]?.url || result?.url
+      const videoUrl = readVideoResultUrl(result)
 
       if (videoUrl) {
         updateNode(outputNodeId, { url: videoUrl, label: '生成视频', loading: false })
-        updateNode(props.id, { executed: true, outputNodeId })
+        updateNode(props.id, { executed: true, outputNodeId: outputNodeId || undefined })
       } else {
         updateNode(outputNodeId, { label: '生成失败', loading: false, error: '未返回视频' })
         updateNode(props.id, { error: '未返回视频' })
@@ -114,9 +152,9 @@ const handleGenerate = async () => {
       updateNode(outputNodeId, { label: '生成失败', loading: false, error: '任务创建失败' })
       updateNode(props.id, { error: '任务创建失败' })
     }
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('视频生成失败:', err)
-    const msg = err.message || '视频生成失败'
+    const msg = err instanceof Error ? err.message : '视频生成失败'
     if (outputNodeId) updateNode(outputNodeId, { label: '生成失败', loading: false, error: msg })
     updateNode(props.id, { error: msg })
   } finally {
@@ -127,7 +165,7 @@ const handleGenerate = async () => {
 const handleDelete = () => removeNode(props.id)
 const handleDuplicate = () => {
   const newId = duplicateNode(props.id)
-  if (newId) setTimeout(() => updateNodeInternals(newId), 50)
+  if (newId) setTimeout(() => updateNodeInternals([newId]), 50)
 }
 
 // 监听自动执行标志

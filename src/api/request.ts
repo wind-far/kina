@@ -5,16 +5,15 @@
 
 import {
   type AiEndpointType,
-  resolveEndpointModelCategory,
 } from './provider-config'
 import {
   AI_GATEWAY_REQUEST_PATH,
   createGatewayPayload,
   normalizeGatewayMethod,
+  resolveGatewayUpstream,
 } from './ai-gateway'
-import { loadPublicModelCatalog, resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 import { buildApiUrl } from './http'
-import { handleUnauthorizedResponse } from './response'
+import { handleUnauthorizedResponse, readApiErrorMessage } from './response'
 import { MARKETING_POINTS_UPDATED_EVENT } from '@/stores/marketing-center'
 
 interface RequestOptions {
@@ -43,20 +42,17 @@ export const request = async (
   type: AiEndpointType = 'video',
 ) => {
   if (isFormData(options.data)) {
-    await loadPublicModelCatalog()
     const formData = new FormData()
     options.data.forEach((value, key) => {
       formData.append(key, value)
     })
     const originalModel = String(formData.get('model') || '').trim()
-    const modelCategory = resolveEndpointModelCategory(type)
-    const providerId = String(options.providerId || '').trim()
-      || resolveRequestProviderId(originalModel, modelCategory)
-    const modelKey = String(options.modelKey || '').trim()
-      || resolveRequestModelKey(originalModel, modelCategory)
-    if (!providerId) {
-      throw new Error('未匹配到后台模型配置，请先在后台配置可用模型')
-    }
+    const { providerId, modelKey } = await resolveGatewayUpstream(type, {
+      providerId: options.providerId,
+      modelKey: options.modelKey,
+      modelValue: originalModel,
+    })
+
     if (modelKey) {
       formData.set('model', modelKey)
     }
@@ -78,8 +74,7 @@ export const request = async (
 
     if (!response.ok) {
       handleUnauthorizedResponse(response.status, 'gateway-form-request')
-      const err = await response.json().catch(() => ({}))
-      const msg = err?.error?.message || err?.message || `请求失败 (${response.status})`
+      const { message: msg } = await readApiErrorMessage(response)
       throw new Error(msg)
     }
 
@@ -101,8 +96,7 @@ export const request = async (
 
   if (!response.ok) {
     handleUnauthorizedResponse(response.status, 'gateway-json-request')
-    const err = await response.json().catch(() => ({}))
-    const msg = err?.error?.message || err?.message || `请求失败 (${response.status})`
+    const { message: msg } = await readApiErrorMessage(response)
     throw new Error(msg)
   }
 

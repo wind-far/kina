@@ -1,12 +1,20 @@
-<script setup>
+<script setup lang="ts">
 /**
  * 视频节点组件 - 展示生成的视频
  */
 import { ref, watch } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
-import { updateNode, removeNode, duplicateNode } from '../../composables/useWorkflowCanvas'
+import {
+  updateNode,
+  removeNode,
+  duplicateNode,
+  type WorkflowVideoNodeData,
+} from '../../composables/useWorkflowCanvas'
 
-const props = defineProps({ id: String, data: Object })
+const props = defineProps<{
+  id: string
+  data: WorkflowVideoNodeData & { selected?: boolean }
+}>()
 const { updateNodeInternals } = useVueFlow()
 
 const showActions = ref(false)
@@ -25,7 +33,8 @@ const handleUpload = () => {
   input.type = 'file'
   input.accept = 'video/*'
   input.onchange = (e) => {
-    const file = e.target.files?.[0]
+    const target = e.target as HTMLInputElement | null
+    const file = target?.files?.[0]
     if (!file) return
     const url = URL.createObjectURL(file)
     videoUrl.value = url
@@ -45,7 +54,7 @@ const handleDownload = () => {
 const handleDelete = () => removeNode(props.id)
 const handleDuplicate = () => {
   const newId = duplicateNode(props.id)
-  if (newId) setTimeout(() => updateNodeInternals(newId), 50)
+  if (newId) setTimeout(() => updateNodeInternals([newId]), 50)
 }
 </script>
 

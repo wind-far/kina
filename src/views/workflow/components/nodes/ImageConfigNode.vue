@@ -1,17 +1,31 @@
-<script setup>
+<script setup lang="ts">
 /**
  * 图片配置节点组件
  * 收集连接的提示词和参考图，调用图片生成 API
  */
 import { ref, computed, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
-import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes, edges } from '../../composables/useWorkflowCanvas'
-import { BANANA_SIZE_OPTIONS, SEEDREAM_SIZE_OPTIONS, SEEDREAM_4K_SIZE_OPTIONS, SEEDREAM_QUALITY_OPTIONS, getAllImageModels, loadPublicModelCatalog, getDefaultImageModelKey, getModelByName, resolveRequestModelKey } from '@/config/models'
+import {
+  updateNode,
+  removeNode,
+  duplicateNode,
+  addNode,
+  addEdge,
+  nodes,
+  edges,
+  type WorkflowCanvasNode,
+  type WorkflowImageConfigNodeData,
+} from '../../composables/useWorkflowCanvas'
+import { BANANA_SIZE_OPTIONS, SEEDREAM_SIZE_OPTIONS, getAllImageModels, loadPublicModelCatalog, getDefaultImageModelKey, getModelByName } from '@/config/models'
+import { resolveGatewayUpstream } from '@/api/ai-gateway'
 import { generateImage } from '../../api/image'
 import WfSelect from '@/components/common/WfSelect.vue'
 import { collectOrderedImageReferences } from '@/shared/image-generation-request'
 
-const props = defineProps({ id: String, data: Object })
+const props = defineProps<{
+  id: string
+  data: WorkflowImageConfigNodeData & { selected?: boolean }
+}>()
 const { updateNodeInternals } = useVueFlow()
 
 const showActions = ref(false)
@@ -22,18 +36,34 @@ const model = ref(props.data?.model || getDefaultImageModelKey())
 const size = ref(props.data?.size || '1x1')
 const quality = ref(props.data?.quality || 'standard')
 
+interface WorkflowImageModelLike {
+  key?: string
+  sizes?: Array<{ label: string; key: string }>
+  qualities?: Array<{ label: string; key: string }>
+  getSizesByQuality?: (quality: string) => Array<{ label: string; key: string }>
+}
+
+const isTextNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'text'> => node?.type === 'text'
+const isImageNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'image'> => node?.type === 'image'
+const readPromptOrder = (data: unknown) => (data && typeof data === 'object' && 'promptOrder' in data
+  ? Number((data as { promptOrder?: number }).promptOrder) || 1
+  : 1)
+const readImageOrder = (data: unknown) => (data && typeof data === 'object' && 'imageOrder' in data
+  ? Number((data as { imageOrder?: number }).imageOrder) || 1
+  : 1)
+
 // 模型选项（包含自定义模型）
 const modelOptions = computed(() => getAllImageModels().map(m => ({ label: m.label, value: m.key })))
 
 // 当前模型配置
-const currentModel = computed(() => getModelByName(model.value))
+const currentModel = computed<WorkflowImageModelLike | null>(() => getModelByName(model.value) as WorkflowImageModelLike | null)
 
 // 尺寸选项（根据模型和画质动态变化）
 const sizeOptions = computed(() => {
   const m = currentModel.value
   if (!m || !m.sizes?.length) return []
   if (m.getSizesByQuality) {
-    return m.getSizesByQuality(quality.value).map(s => ({ label: s.label, value: s.key }))
+    return m.getSizesByQuality(quality.value).map((s) => ({ label: s.label, value: s.key }))
   }
   if (m.key === 'nano-banana-pro' || m.key === 'nano-banana') {
     return BANANA_SIZE_OPTIONS.map(s => ({ label: s.label, value: s.key }))
@@ -45,7 +75,7 @@ const sizeOptions = computed(() => {
 const qualityOptions = computed(() => {
   const m = currentModel.value
   if (!m?.qualities) return []
-  return m.qualities.map(q => ({ label: q.label, value: q.key }))
+  return m.qualities.map((q) => ({ label: q.label, value: q.key }))
 })
 
 // 连接的提示词数量
@@ -65,6 +95,10 @@ watch(() => props.data, (d) => {
   if (d?.quality !== undefined) quality.value = d.quality
 }, { deep: true })
 
+onMounted(() => {
+  void loadPublicModelCatalog()
+})
+
 const updateConfig = () => {
   updateNode(props.id, { model: model.value, size: size.value, quality: quality.value })
 }
@@ -72,19 +106,19 @@ const updateConfig = () => {
 // 收集连接的提示词和参考图
 const collectInputs = () => {
   const connectedEdges = edges.value.filter(e => e.target === props.id)
-  const prompts = []
-  const refImages = []
+  const prompts: Array<{ order: number; content: string }> = []
+  const refImages: Array<{ order: number; imageData: string }> = []
 
   for (const edge of connectedEdges) {
     const src = nodes.value.find(n => n.id === edge.source)
     if (!src) continue
 
-    if (src.type === 'text') {
-      const content = src.data?.content || ''
-      if (content) prompts.push({ order: edge.data?.promptOrder || 1, content })
-    } else if (src.type === 'image') {
-      const imageData = src.data?.base64 || src.data?.url
-      if (imageData) refImages.push({ order: edge.data?.imageOrder || 1, imageData })
+    if (isTextNode(src)) {
+      const content = src.data.content || ''
+      if (content) prompts.push({ order: readPromptOrder(edge.data), content })
+    } else if (isImageNode(src)) {
+      const imageData = src.data.base64 || src.data.url
+      if (imageData) refImages.push({ order: readImageOrder(edge.data), imageData })
     }
   }
 
@@ -101,9 +135,19 @@ const handleGenerate = async () => {
   if (!prompt && !refImages.length) return
 
   isGenerating.value = true
-  let outputNodeId = null
+  let outputNodeId: string | null = null
   try {
-    let params = { model: resolveRequestModelKey(model.value, 'IMAGE'), prompt: prompt || '', n: 1 }
+    const { modelKey } = await resolveGatewayUpstream('image', {
+      modelValue: model.value,
+    })
+    const params: {
+      model: string
+      prompt: string
+      n: number
+      size?: string
+      quality?: string
+      image?: string[]
+    } = { model: modelKey, prompt: prompt || '', n: 1 }
     if (size.value && currentModel.value?.sizes?.length) params.size = size.value
     if (quality.value) params.quality = quality.value
     if (refImages.length) params.image = refImages
@@ -115,21 +159,22 @@ const handleGenerate = async () => {
       y: node?.position?.y || 0
     }, { url: '', label: '生成中...', loading: true })
     addEdge({ source: props.id, target: outputNodeId, sourceHandle: 'right', targetHandle: 'left' })
-    setTimeout(() => updateNodeInternals(outputNodeId), 50)
+    const createdOutputNodeId = outputNodeId
+    setTimeout(() => updateNodeInternals([createdOutputNodeId]), 50)
 
     const result = await generateImage(params)
     const url = result?.data?.[0]?.url || result?.data?.[0]?.b64_json
 
     if (url) {
       updateNode(outputNodeId, { url, label: '生成结果', loading: false })
-      updateNode(props.id, { executed: true, outputNodeId })
+      updateNode(props.id, { executed: true, outputNodeId: outputNodeId || undefined })
     } else {
       updateNode(outputNodeId, { label: '生成失败', loading: false, error: '未返回图片' })
       updateNode(props.id, { error: '未返回图片' })
     }
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('图片生成失败:', err)
-    const msg = err.message || '图片生成失败'
+    const msg = err instanceof Error ? err.message : '图片生成失败'
     if (outputNodeId) updateNode(outputNodeId, { label: '生成失败', loading: false, error: msg })
     updateNode(props.id, { error: msg })
   } finally {
@@ -140,7 +185,7 @@ const handleGenerate = async () => {
 const handleDelete = () => removeNode(props.id)
 const handleDuplicate = () => {
   const newId = duplicateNode(props.id)
-  if (newId) setTimeout(() => updateNodeInternals(newId), 50)
+  if (newId) setTimeout(() => updateNodeInternals([newId]), 50)
 }
 
 // 监听自动执行标志

@@ -3,6 +3,7 @@ import { readApiData } from './response'
 import type { PersistedGenerationRecord } from './generation-records'
 import { consumeSseStream, type SseMessage } from '@/utils/sse'
 import type { AgentWorkspaceEvent } from '@/shared/agent-workspace'
+import { resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 
 export interface GenerationTaskStartPayload {
   sessionId?: string
@@ -24,6 +25,19 @@ interface RequestOptions {
   signal?: AbortSignal
 }
 
+export interface ResolvedGenerationTaskModelInput {
+  modelKey?: string
+  fallbackModelKey?: string
+  category: 'CHAT' | 'IMAGE'
+  missingProviderMessage?: string
+  missingModelMessage?: string
+}
+
+export interface ResolvedGenerationTaskModelResult {
+  providerId: string
+  modelKey: string
+}
+
 export interface GenerationTaskStreamEvent {
   type: 'connected' | 'snapshot' | 'progress' | 'content_delta' | 'agent_event' | 'completed' | 'failed' | 'stopped'
   recordId: string
@@ -38,6 +52,28 @@ export interface GenerationTaskStreamEvent {
 }
 
 const GENERATION_TASKS_API_PATH = '/api/generation-tasks'
+
+// 统一解析生成任务提交前要使用的厂商与模型。
+export const resolveGenerationTaskModel = (
+  input: ResolvedGenerationTaskModelInput,
+): ResolvedGenerationTaskModelResult => {
+  const sourceModelKey = String(input.modelKey || input.fallbackModelKey || '').trim()
+  const resolvedModelKey = resolveRequestModelKey(sourceModelKey, input.category)
+  const providerId = resolveRequestProviderId(sourceModelKey || resolvedModelKey, input.category)
+
+  if (!providerId) {
+    throw new Error(input.missingProviderMessage || '未匹配到后台模型配置，请先在后台配置可用模型')
+  }
+
+  if (!resolvedModelKey) {
+    throw new Error(input.missingModelMessage || '缺少模型标识')
+  }
+
+  return {
+    providerId,
+    modelKey: resolvedModelKey,
+  }
+}
 
 // 创建服务端生成任务，由后端继续运行并持续写回生成记录。
 export const createGenerationTask = async (payload: GenerationTaskStartPayload, options: RequestOptions = {}) => {

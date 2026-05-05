@@ -1,5 +1,6 @@
 import { getRedisPublisher, getRedisSubscriber } from './client'
 import { isRedisEnabled } from './config'
+import { writeScopedLog } from '../shared/logging'
 
 const channelHandlers = new Map<string, Set<(payload: string) => void>>()
 let subscriberBound = false
@@ -24,7 +25,7 @@ const bindSubscriberMessageListener = async () => {
       try {
         handler(payload)
       } catch (error) {
-        console.error('[redis][pubsub] handler_error', channel, error)
+        writeScopedLog('error', 'Redis 订阅', `消息处理器执行失败 ${channel}`, error)
       }
     }
   })

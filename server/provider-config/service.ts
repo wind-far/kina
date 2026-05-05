@@ -1,6 +1,12 @@
 import { prisma } from '../db/prisma'
 import { decryptProviderApiKey, encryptProviderApiKey, maskApiKey } from './crypto'
 import { getOrSetJsonCache, invalidateRedisCaches, redisKeys } from '../redis'
+import {
+  type AiEndpointType,
+  isAiEndpointType,
+  resolveEndpointModelCategory,
+  resolveProviderEndpointField,
+} from '../../src/shared/provider-endpoint-strategy'
 
 const DEFAULT_PROVIDER_CODE = 'default-generate-provider'
 const DEFAULT_PROVIDER_NAME = '默认生成厂商'
@@ -568,7 +574,7 @@ export const getPublicModelCatalog = async (): Promise<PublicModelCatalogResult>
 
 export const resolveGatewayProviderUpstream = async (input: {
   providerId?: string
-  endpointType?: 'chat' | 'image' | 'image-edit' | 'video'
+  endpointType?: AiEndpointType
   modelKey?: string
 }) => {
   const providerId = String(input.providerId || '').trim()
@@ -579,7 +585,7 @@ export const resolveGatewayProviderUpstream = async (input: {
     throw new Error('缺少厂商 ID')
   }
 
-  if (endpointType !== 'chat' && endpointType !== 'image' && endpointType !== 'image-edit' && endpointType !== 'video') {
+  if (!isAiEndpointType(endpointType)) {
     throw new Error('缺少有效的上游接口类型')
   }
 
@@ -592,13 +598,12 @@ export const resolveGatewayProviderUpstream = async (input: {
   }
 
   if (modelKey) {
-    const category = endpointType === 'image-edit' ? 'IMAGE' : endpointType.toUpperCase()
     const model = await prisma.aiModel.findFirst({
       where: {
         providerId,
         isEnabled: true,
         modelKey,
-        category: category as any,
+        category: resolveEndpointModelCategory(endpointType),
       },
       select: { id: true },
     })
@@ -608,13 +613,7 @@ export const resolveGatewayProviderUpstream = async (input: {
     }
   }
 
-  const endpoint = endpointType === 'chat'
-    ? provider.chatEndpoint
-    : endpointType === 'image'
-      ? provider.imageEndpoint
-      : endpointType === 'image-edit'
-        ? provider.imageEditEndpoint
-      : provider.videoEndpoint
+  const endpoint = provider[resolveProviderEndpointField(endpointType)]
 
   return {
     baseUrl: provider.baseUrl,

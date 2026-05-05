@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 /**
  * 图片角色边 - 首帧/尾帧/参考图选择
  */
@@ -8,12 +8,20 @@ import { edges } from '../../composables/useWorkflowCanvas'
 
 const { updateEdgeData } = useVueFlow()
 
-const props = defineProps({
-  id: String, source: String, target: String,
-  sourceX: Number, sourceY: Number, targetX: Number, targetY: Number,
-  sourcePosition: String, targetPosition: String,
-  data: Object, markerEnd: String, style: Object
-})
+const props = defineProps<{
+  id: string
+  source?: string
+  target?: string
+  sourceX: number
+  sourceY: number
+  targetX: number
+  targetY: number
+  sourcePosition: any
+  targetPosition: any
+  data?: { imageRole?: string }
+  markerEnd?: string
+  style?: Record<string, unknown>
+}>()
 
 const showMenu = ref(false)
 
@@ -35,10 +43,14 @@ const labelX = computed(() => (props.sourceX + props.targetX) / 2)
 const labelY = computed(() => (props.sourceY + props.targetY) / 2)
 const edgeStyle = computed(() => ({ stroke: '#6366f1', strokeWidth: 2, ...props.style }))
 
-const handleSelect = (role) => {
+const readImageRole = (data: unknown) => (data && typeof data === 'object' && 'imageRole' in data
+  ? String((data as { imageRole?: string }).imageRole || 'first_frame_image')
+  : 'first_frame_image')
+
+const handleSelect = (role: string) => {
   if (role === 'first_frame_image' || role === 'last_frame_image') {
     edges.value
-      .filter(e => e.target === props.target && e.id !== props.id && e.data?.imageRole === role)
+      .filter(e => e.target === props.target && e.id !== props.id && readImageRole(e.data) === role)
       .forEach(e => {
         updateEdgeData(e.id, { imageRole: role === 'first_frame_image' ? 'last_frame_image' : 'first_frame_image' })
       })

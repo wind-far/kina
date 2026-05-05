@@ -1,15 +1,26 @@
-<script setup>
+<script setup lang="ts">
 /**
  * 文本节点组件
  */
 import { ref, computed, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
-import { updateNode, removeNode, duplicateNode, addNode, addEdge, nodes } from '../../composables/useWorkflowCanvas'
+import {
+  updateNode,
+  removeNode,
+  duplicateNode,
+  addNode,
+  addEdge,
+  nodes,
+  type WorkflowTextNodeData,
+} from '../../composables/useWorkflowCanvas'
 import { streamChatCompletions } from '../../api/chat'
 import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
 import WfSelect from '@/components/common/WfSelect.vue'
 
-const props = defineProps({ id: String, data: Object })
+const props = defineProps<{
+  id: string
+  data: WorkflowTextNodeData & { selected?: boolean }
+}>()
 const { updateNodeInternals } = useVueFlow()
 
 const content = ref(props.data?.content || '')
@@ -47,7 +58,7 @@ const handleDelete = () => removeNode(props.id)
 
 const handleDuplicate = () => {
   const newId = duplicateNode(props.id)
-  if (newId) setTimeout(() => updateNodeInternals(newId), 50)
+  if (newId) setTimeout(() => updateNodeInternals([newId]), 50)
 }
 
 // AI 润色提示词
@@ -94,7 +105,7 @@ const createImageConfig = () => {
     type: 'promptOrder',
     data: { promptOrder: 1 }
   })
-  setTimeout(() => updateNodeInternals(newId), 50)
+  setTimeout(() => updateNodeInternals([newId]), 50)
 }
 
 // 快捷创建视频配置节点
@@ -113,7 +124,7 @@ const createVideoConfig = () => {
     type: 'promptOrder',
     data: { promptOrder: 1 }
   })
-  setTimeout(() => updateNodeInternals(newId), 50)
+  setTimeout(() => updateNodeInternals([newId]), 50)
 }
 </script>
 
@@ -153,7 +164,7 @@ const createVideoConfig = () => {
         <WfSelect
           v-model="polishModel"
           :options="chatModelOptions"
-          @change="updateNode(id, { polishModel: polishModel })"
+          @change="updateNode(id, { polishModel })"
           style="margin-top: 6px;"
         />
 

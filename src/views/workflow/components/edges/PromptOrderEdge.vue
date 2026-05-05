@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 /**
  * 提示词顺序边 - 显示序号标签，点击可切换顺序
  */
@@ -8,12 +8,20 @@ import { edges } from '../../composables/useWorkflowCanvas'
 
 const { updateEdgeData } = useVueFlow()
 
-const props = defineProps({
-  id: String, source: String, target: String,
-  sourceX: Number, sourceY: Number, targetX: Number, targetY: Number,
-  sourcePosition: String, targetPosition: String,
-  data: Object, markerEnd: String, style: Object
-})
+const props = defineProps<{
+  id: string
+  source?: string
+  target?: string
+  sourceX: number
+  sourceY: number
+  targetX: number
+  targetY: number
+  sourcePosition: any
+  targetPosition: any
+  data?: { promptOrder?: number }
+  markerEnd?: string
+  style?: Record<string, unknown>
+}>()
 
 const showMenu = ref(false)
 
@@ -41,9 +49,13 @@ const labelX = computed(() => (props.sourceX + props.targetX) / 2)
 const labelY = computed(() => (props.sourceY + props.targetY) / 2)
 const edgeStyle = computed(() => ({ stroke: '#10b981', strokeWidth: 2, ...props.style }))
 
-const handleSelect = (newOrder) => {
+const readPromptOrder = (data: unknown) => (data && typeof data === 'object' && 'promptOrder' in data
+  ? Number((data as { promptOrder?: number }).promptOrder) || 1
+  : 1)
+
+const handleSelect = (newOrder: number) => {
   const sameEdges = edges.value.filter(e => e.target === props.target && e.type === 'promptOrder')
-  const conflict = sameEdges.find(e => e.id !== props.id && e.data?.promptOrder === newOrder)
+  const conflict = sameEdges.find(e => e.id !== props.id && readPromptOrder(e.data) === newOrder)
   if (conflict) updateEdgeData(conflict.id, { promptOrder: currentOrder.value })
   updateEdgeData(props.id, { promptOrder: newOrder })
   showMenu.value = false

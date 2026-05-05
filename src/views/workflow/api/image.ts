@@ -19,7 +19,22 @@ const notifyMarketingPointsUpdated = (response: Response) => {
 
 const DEFAULT_IMAGE_ENDPOINT = '/images/generations'
 
-const toImageEditFormData = async (data: any) => {
+export interface WorkflowImageGeneratePayload {
+  model?: string
+  prompt?: string
+  size?: string
+  quality?: string
+  n?: number
+  image?: string[]
+}
+
+export interface WorkflowImageGenerateOptions {
+  requestType?: 'json' | 'formdata'
+  endpoint?: string
+  signal?: AbortSignal
+}
+
+const toImageEditFormData = async (data: WorkflowImageGeneratePayload) => {
   return buildImageEditRequestFormData({
     modelKey: String(data?.model || '').trim(),
     prompt: String(data?.prompt || '').trim(),
@@ -31,7 +46,10 @@ const toImageEditFormData = async (data: any) => {
   })
 }
 
-export const generateImage = async (data: any, options: any = {}) => {
+export const generateImage = async (
+  data: WorkflowImageGeneratePayload,
+  options: WorkflowImageGenerateOptions = {},
+) => {
   const { requestType = 'json', endpoint, signal } = options
   const url = endpoint || DEFAULT_IMAGE_ENDPOINT
   const referenceImages = Array.isArray(data?.image)
@@ -66,7 +84,7 @@ export const generateImage = async (data: any, options: any = {}) => {
  * 通过 chat completions 接口生成图片
  * 从 SSE 流中提取图片 URL 或 base64
  */
-async function generateImageViaChat(data: any, signal?: AbortSignal) {
+async function generateImageViaChat(data: WorkflowImageGeneratePayload, signal?: AbortSignal) {
   const body = {
     model: data.model,
     messages: [{ role: 'user', content: data.prompt }],
@@ -104,7 +122,8 @@ async function generateImageViaChat(data: any, signal?: AbortSignal) {
   const imageUrls: string[] = []
 
   while (true) {
-    let done, value
+    let done: boolean | undefined
+    let value: Uint8Array<ArrayBufferLike> | undefined
     try {
       ({ done, value } = await reader.read())
     } catch {

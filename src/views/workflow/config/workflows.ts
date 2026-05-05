@@ -3,6 +3,30 @@
  * 预设工作流模板，支持一键添加到画布
  */
 
+import type {
+  WorkflowCanvasEdge,
+  WorkflowNodeType,
+} from '../composables/useWorkflowCanvas'
+import type { WorkflowCanvasPosition } from '../composables/workflow-orchestrator-types'
+
+interface WorkflowTemplateNode {
+  id: string
+  type: WorkflowNodeType
+  position: WorkflowCanvasPosition
+  data: Record<string, unknown>
+}
+
+interface WorkflowTemplateDefinition {
+  id: string
+  name: string
+  description: string
+  category: string
+  createNodes: (startPosition: WorkflowCanvasPosition) => {
+    nodes: WorkflowTemplateNode[]
+    edges: WorkflowCanvasEdge[]
+  }
+}
+
 // 多角度提示词模板
 export const MULTI_ANGLE_PROMPTS: Record<string, { label: string; english: string; prompt: (character: string) => string }> = {
   front: {
@@ -33,18 +57,18 @@ const getId = () => `wf_${Date.now()}_${_counter++}`
 /**
  * 工作流模板列表
  */
-export const WORKFLOW_TEMPLATES = [
+export const WORKFLOW_TEMPLATES: WorkflowTemplateDefinition[] = [
   // ========== 1. 多角度分镜 ==========
   {
     id: 'multi-angle-storyboard',
     name: '多角度分镜',
     description: '生成角色的正视、侧视、后视、俯视四宫格分镜图',
     category: 'storyboard',
-    createNodes: (startPosition: any) => {
+    createNodes: (startPosition: WorkflowCanvasPosition) => {
       _counter = 0
       const sp = 400, rsp = 420
       const angles = ['front', 'side', 'back', 'top']
-      const nodes: any[] = [], edges: any[] = []
+      const nodes: WorkflowTemplateNode[] = [], edges: WorkflowCanvasEdge[] = []
 
       // 角色提示词
       const txtId = getId()
@@ -87,10 +111,10 @@ export const WORKFLOW_TEMPLATES = [
     name: '通用产品全套电商图',
     description: '根据产品信息和图片，生成模特图、侧面图、俯瞰图、拆解图',
     category: 'ecommerce',
-    createNodes: (startPosition: any) => {
+    createNodes: (startPosition: WorkflowCanvasPosition) => {
       _counter = 0
       const col = 500, row = 480
-      const nodes: any[] = [], edges: any[] = []
+      const nodes: WorkflowTemplateNode[] = [], edges: WorkflowCanvasEdge[] = []
 
       // 输入：产品信息
       const infoId = getId()
@@ -133,9 +157,9 @@ export const WORKFLOW_TEMPLATES = [
     name: '文生图基础',
     description: '最简单的文本到图片生成工作流',
     category: 'basic',
-    createNodes: (startPosition: any) => {
+    createNodes: (startPosition: WorkflowCanvasPosition) => {
       _counter = 0
-      const nodes: any[] = [], edges: any[] = []
+      const nodes: WorkflowTemplateNode[] = [], edges: WorkflowCanvasEdge[] = []
 
       const tId = getId()
       nodes.push({ id: tId, type: 'text', position: { x: startPosition.x, y: startPosition.y }, data: { content: '', label: '提示词' } })
@@ -155,9 +179,9 @@ export const WORKFLOW_TEMPLATES = [
     name: '图生视频',
     description: '从文本生成图片，再从图片生成视频',
     category: 'video',
-    createNodes: (startPosition: any) => {
+    createNodes: (startPosition: WorkflowCanvasPosition) => {
       _counter = 0
-      const nodes: any[] = [], edges: any[] = []
+      const nodes: WorkflowTemplateNode[] = [], edges: WorkflowCanvasEdge[] = []
 
       const tId = getId()
       nodes.push({ id: tId, type: 'text', position: { x: startPosition.x, y: startPosition.y }, data: { content: '', label: '提示词' } })
@@ -185,10 +209,10 @@ export const WORKFLOW_TEMPLATES = [
     name: '短剧角色设计',
     description: '根据角色描述生成一致性角色形象，多角度图依赖正面图保持一致性',
     category: 'drama',
-    createNodes: (startPosition: any) => {
+    createNodes: (startPosition: WorkflowCanvasPosition) => {
       _counter = 0
       const col = 400, row = 420
-      const nodes: any[] = [], edges: any[] = []
+      const nodes: WorkflowTemplateNode[] = [], edges: WorkflowCanvasEdge[] = []
 
       // 第一阶段：生成正面角色图
       const descId = getId()
@@ -241,10 +265,10 @@ export const WORKFLOW_TEMPLATES = [
     name: '多时段场景背景',
     description: '先生成基础场景，再基于基础场景生成多时段变体，保持场景一致性',
     category: 'drama',
-    createNodes: (startPosition: any) => {
+    createNodes: (startPosition: WorkflowCanvasPosition) => {
       _counter = 0
       const col = 400, row = 420
-      const nodes: any[] = [], edges: any[] = []
+      const nodes: WorkflowTemplateNode[] = [], edges: WorkflowCanvasEdge[] = []
 
       // 第一阶段：生成基础场景
       const sceneDescId = getId()
@@ -292,10 +316,10 @@ export const WORKFLOW_TEMPLATES = [
     name: '绘本生成器',
     description: '根据故事大纲生成绘本，包含角色设计、剧情拆分和图文生成',
     category: 'creative',
-    createNodes: (startPosition: any) => {
+    createNodes: (startPosition: WorkflowCanvasPosition) => {
       _counter = 0
       const col = 420, row = 420, pageRow = 350
-      const nodes: any[] = [], edges: any[] = []
+      const nodes: WorkflowTemplateNode[] = [], edges: WorkflowCanvasEdge[] = []
 
       // 第一阶段：故事输入与角色设计
       const storyId = getId()

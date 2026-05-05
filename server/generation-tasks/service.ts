@@ -90,24 +90,48 @@ import {
   resolveWorkspaceImageModel,
   requestAgentWorkspaceModelPlan,
 } from './upstream-helpers'
+import { writeScopedLog } from '../shared/logging'
 
 type RunningGenerationTask = LocalRunningGenerationTask & {
   strategyKey: GenerationTaskStrategyKey
 }
 
+const GENERATION_TASK_STAGE_LABELS: Record<string, string> = {
+  task_created: '任务已创建',
+  'agent_task:request_start': '智能体对话任务开始请求',
+  'agent_task:response_headers': '智能体对话任务收到响应头',
+  'agent_task:request_success': '智能体对话任务请求成功',
+  'image_task:request_start': '图片任务开始请求',
+  'image_task:request_upstream': '图片任务请求上游',
+  'image_task:request_success': '图片任务请求成功',
+  'image_task:stopped': '图片任务已停止',
+  'image_task:failed': '图片任务执行失败',
+  'agent_task:failed': '智能体对话任务执行失败',
+  'agent_workspace_task:failed': '智能体工作台任务执行失败',
+  task_execution_lock_renew_failed: '任务执行锁续约失败',
+  task_snapshot_cache_failed: '任务快照缓存失败',
+  task_recent_event_cache_failed: '最近事件缓存失败',
+  'agent_workspace:model_plan_success': '工作台模型规划成功',
+  'agent_workspace:model_plan_failed': '工作台模型规划失败',
+}
+
+const translateGenerationTaskStage = (stage: string) => {
+  return GENERATION_TASK_STAGE_LABELS[stage] || stage
+}
+
 // 统一输出生成任务日志，方便排查离页后任务是否仍在服务端继续执行。
 const logGenerationTask = (stage: string, detail: Record<string, unknown>) => {
-  console.log('[generation-tasks]', stage, JSON.stringify(detail))
+  writeScopedLog('log', '生成任务', translateGenerationTaskStage(stage), detail)
 }
 
 // 统一输出生成任务异常日志。
 const logGenerationTaskError = (stage: string, error: unknown, detail: Record<string, unknown>) => {
   const err = error as { message?: string; stack?: string }
-  console.error('[generation-tasks][service-error]', stage, JSON.stringify({
+  writeScopedLog('error', '生成任务', `异常 ${translateGenerationTaskStage(stage)}`, {
     ...detail,
     errorMessage: err?.message || '未知异常',
     errorStack: err?.stack || null,
-  }))
+  })
 }
 
 const taskEventEmitterContext = {
@@ -253,6 +277,35 @@ const persistAgentWorkspaceRecord = async (input: {
   const agentRunImages: AgentImageResult[] = Array.isArray(input.agentRun.result?.images)
     ? input.agentRun.result.images
     : []
+  const currentRecord = await getGenerationRecordById(input.task.recordId, input.task.userId)
+  const existingImageOutputs = Array.isArray(currentRecord.outputs)
+    ? currentRecord.outputs.filter(output => output.outputType === 'image')
+    : []
+
+  // 已转存到本地的输出地址优先复用，避免工作台中间态与完成态反复下载同一张远程图。
+  const resolvePersistedImageUrl = (image: AgentImageResult, index: number) => {
+    const rawImageUrl = String(image.imageSrc || '').trim()
+    if (!rawImageUrl) {
+      return ''
+    }
+
+    const matchedByOriginalUrl = existingImageOutputs.find((output) => (
+      String((output.metaJson as Record<string, unknown> | null)?.originalUrl || '').trim() === rawImageUrl
+    ))
+    if (String(matchedByOriginalUrl?.url || '').trim()) {
+      return String(matchedByOriginalUrl?.url || '').trim()
+    }
+
+    const sameIndexOutput = existingImageOutputs[index]
+    const sameIndexUrl = String(sameIndexOutput?.url || '').trim()
+    const sameIndexPromptText = String((sameIndexOutput?.metaJson as Record<string, unknown> | null)?.promptText || '').trim()
+    const currentPromptText = String(image.promptText || '').trim()
+    if (sameIndexUrl.startsWith('/uploads/') && sameIndexPromptText === currentPromptText) {
+      return sameIndexUrl
+    }
+
+    return rawImageUrl
+  }
 
   await updateGenerationRecord(input.task.recordId, {
     ...buildInitialRecordPayload(input.payload),
@@ -263,7 +316,7 @@ const persistAgentWorkspaceRecord = async (input: {
       .filter((image) => String(image?.imageSrc || '').trim())
       .map((image, index) => ({
         outputType: 'image' as const,
-        url: String(image.imageSrc || '').trim(),
+        url: resolvePersistedImageUrl(image, index),
         sortOrder: index,
         metaJson: {
           promptText: String(image.promptText || '').trim(),

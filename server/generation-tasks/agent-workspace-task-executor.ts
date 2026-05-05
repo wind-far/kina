@@ -396,7 +396,6 @@ export const executeAgentWorkspaceTaskFlow = async (
           planItemCount: modelPlan.planItems?.length || 0,
           imageTaskCount: modelPlan.imageTasks?.length || 0,
           workflowLabel: modelPlan.workflowLabel || '',
-          rawTextPreview: modelPlan.rawTextPreview || '',
         })
 
         if (modelPlan.workflowLabel || modelPlan.workflowParams || modelPlan.planItems?.length || modelPlan.imageTasks?.length) {

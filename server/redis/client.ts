@@ -1,5 +1,6 @@
 import Redis from 'ioredis'
 import { REDIS_CONFIG, isRedisEnabled } from './config'
+import { writeScopedLog } from '../shared/logging'
 
 let commandClient: Redis | null = null
 let publisherClient: Redis | null = null
@@ -40,7 +41,7 @@ export const getRedisClient = async () => {
     )
     return commandClient
   } catch (error) {
-    console.error('[redis] command_client_connect_failed', error)
+    writeScopedLog('error', 'Redis', '命令客户端连接失败', error)
     return null
   }
 }
@@ -58,7 +59,7 @@ export const getRedisPublisher = async () => {
     )
     return publisherClient
   } catch (error) {
-    console.error('[redis] publisher_client_connect_failed', error)
+    writeScopedLog('error', 'Redis', '发布客户端连接失败', error)
     return null
   }
 }
@@ -76,7 +77,7 @@ export const getRedisSubscriber = async () => {
     )
     return subscriberClient
   } catch (error) {
-    console.error('[redis] subscriber_client_connect_failed', error)
+    writeScopedLog('error', 'Redis', '订阅客户端连接失败', error)
     return null
   }
 }

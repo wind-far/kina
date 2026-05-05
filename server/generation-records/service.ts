@@ -13,12 +13,95 @@ import {
   refreshGenerationSessionLastRecordAt,
   resolveGenerationSessionForUser,
 } from '../generation-sessions/service'
+import { writeScopedLog } from '../shared/logging'
 import type { GenerationRecordPayload, GenerationOutputPayload } from './shared'
 
 const GENERATION_RECORDS_LIST_SCOPE = 'generation-records-list'
 const GENERATION_RECORDS_LIST_CACHE_PATTERN = redisKeys.cache(GENERATION_RECORDS_LIST_SCOPE, '*')
 const buildGenerationRecordsListCacheKey = (currentUserId: string) => {
   return redisKeys.cache(GENERATION_RECORDS_LIST_SCOPE, currentUserId)
+}
+
+const GENERATION_RECORD_STAGE_LABELS: Record<string, string> = {
+  'download_remote_asset:start': '开始下载远程资源',
+  'download_remote_asset:error': '下载远程资源失败',
+  'download_remote_asset:success': '下载远程资源成功',
+  'materialize_output_asset:start': '开始落盘输出资源',
+  'materialize_output_asset:skip': '跳过落盘输出资源',
+  'materialize_output_asset:uploaded': '输出资源落盘成功',
+  'normalize_outputs:start': '开始整理输出结果',
+  'normalize_outputs:success': '整理输出结果成功',
+  'sync_asset_items:start': '开始同步资产项',
+  'sync_asset_items:skip': '跳过同步资产项',
+  'sync_asset_items:success': '同步资产项成功',
+  'create_generation_record:start': '开始创建生成记录',
+  'create_generation_record:success': '创建生成记录成功',
+  'update_generation_record:start': '开始更新生成记录',
+  'update_generation_record:success': '更新生成记录成功',
+  'create_generation_record:normalize_assets': '创建记录时整理资源',
+  'create_generation_record:create_output_invalid': '创建记录时写入输出结果',
+  'create_generation_record:sync_asset_items': '创建记录时同步资产项',
+  'create_generation_record:agent_run': '创建记录时写入智能体运行态',
+  'create_generation_record:transaction': '创建记录事务执行',
+  'create_generation_record:reload_record': '创建记录后重新读取记录',
+  'update_generation_record:normalize_assets': '更新记录时整理资源',
+  'update_generation_record:create_output_invalid': '更新记录时写入输出结果',
+  'update_generation_record:sync_asset_items': '更新记录时同步资产项',
+  'update_generation_record:delete_agent_run': '更新记录时删除旧运行态',
+  'update_generation_record:agent_run': '更新记录时写入智能体运行态',
+  'update_generation_record:transaction': '更新记录事务执行',
+  'update_generation_record:reload_record': '更新记录后重新读取记录',
+}
+
+const translateGenerationRecordStage = (stage: string) => {
+  return GENERATION_RECORD_STAGE_LABELS[stage] || stage
+}
+
+const shouldSkipGenerationRecordLog = (stage: string, detail: Record<string, unknown>) => {
+  if (
+    (stage === 'normalize_outputs:start' || stage === 'normalize_outputs:success')
+    && Number(detail.outputCount || 0) === 0
+    && Number(detail.imageCount || 0) === 0
+    && Number(detail.explicitOutputCount || 0) === 0
+  ) {
+    return true
+  }
+
+  if (stage === 'sync_asset_items:start' && Number(detail.outputRecordCount || 0) === 0) {
+    return true
+  }
+
+  if (stage === 'sync_asset_items:skip' && String(detail.reason || '') === 'no_displayable_outputs') {
+    return true
+  }
+
+  if (
+    (stage === 'materialize_output_asset:start' || stage === 'materialize_output_asset:skip')
+    && String(detail.outputType || '') === 'text'
+  ) {
+    return true
+  }
+
+  if (
+    stage === 'update_generation_record:start'
+    && String(detail.type || '') === 'agent'
+    && Boolean(detail.done) === false
+    && Boolean(detail.hasAgentRun) === true
+  ) {
+    return true
+  }
+
+  if (
+    stage === 'update_generation_record:success'
+    && String(detail.type || '') === 'agent'
+    && Boolean(detail.done) === false
+    && Boolean(detail.hasAgentRun) === true
+    && Number(detail.outputCount || 0) === 0
+  ) {
+    return true
+  }
+
+  return false
 }
 
 // 前端创建类型映射到数据库枚举
@@ -130,17 +213,21 @@ const isLocalManagedAssetUrl = (value?: string | null) => {
 
 // 统一输出生成记录上传链路日志，便于线上排查资源落盘与入库问题。
 const logGenerationRecord = (stage: string, detail: Record<string, unknown>) => {
-  console.log('[generation-records]', stage, JSON.stringify(detail))
+  if (shouldSkipGenerationRecordLog(stage, detail)) {
+    return
+  }
+
+  writeScopedLog('log', '生成记录', translateGenerationRecordStage(stage), detail)
 }
 
 // 统一输出生成记录服务层异常日志，补充具体失败阶段与堆栈。
 const logGenerationRecordError = (stage: string, error: unknown, detail: Record<string, unknown>) => {
   const err = error as { message?: string; stack?: string }
-  console.error('[generation-records][service-error]', stage, JSON.stringify({
+  writeScopedLog('error', '生成记录', `异常 ${translateGenerationRecordStage(stage)}`, {
     ...detail,
     errorMessage: err?.message || '未知异常',
     errorStack: err?.stack || null,
-  }))
+  })
 }
 
 // 从 Data URL 中解析 MIME 类型与二进制内容。
@@ -344,6 +431,17 @@ const syncAssetItemsForRecord = async (
     durationSeconds?: number | null
   }>,
 ) => {
+  const assetOutputs = outputRecords.filter(output => (
+    isDisplayableAssetOutput(output.outputType) && output.url
+  ))
+
+  if (!assetOutputs.length) {
+    await tx.assetItem.deleteMany({
+      where: { generationRecordId },
+    })
+    return
+  }
+
   logGenerationRecord('sync_asset_items:start', {
     generationRecordId,
     currentUserId,
@@ -353,18 +451,6 @@ const syncAssetItemsForRecord = async (
   await tx.assetItem.deleteMany({
     where: { generationRecordId },
   })
-
-  const assetOutputs = outputRecords.filter(output => (
-    isDisplayableAssetOutput(output.outputType) && output.url
-  ))
-
-  if (!assetOutputs.length) {
-    logGenerationRecord('sync_asset_items:skip', {
-      generationRecordId,
-      reason: 'no_displayable_outputs',
-    })
-    return
-  }
 
   await tx.assetItem.createMany({
     data: assetOutputs.map((output) => ({
@@ -1195,6 +1281,9 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
   logGenerationRecord('update_generation_record:success', {
     currentUserId,
     generationRecordId: id,
+    type: payload.type,
+    done: Boolean(payload.done),
+    hasAgentRun: Boolean(payload.agentRun),
     outputCount: outputs.length,
   })
 

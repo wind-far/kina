@@ -37,6 +37,7 @@ import { getUploadsDir } from './storage/service'
 import { isSkillConfigPath } from './skill-config/constants'
 import { handleSkillConfigRequest } from './skill-config/request-handler'
 import { REDIS_CONFIG, isRedisEnabled } from './redis'
+import { writeScopedLog } from './shared/logging'
 
 // 后端服务默认监听端口。
 const DEFAULT_SERVER_PORT = 5409
@@ -530,7 +531,7 @@ const server = createServer(async (req, res) => {
     await dispatchRequest(req, res)
   } catch (error: any) {
     // 打印未捕获异常，便于排查服务端问题。
-    console.error('[server] 请求处理失败', error)
+    writeScopedLog('error', '服务端', '请求处理失败', error)
 
     // 返回统一异常响应。
     sendJson(res, 500, {
@@ -553,10 +554,10 @@ server.listen(serverPort, '0.0.0.0', () => {
   const allowedOrigins = readAllowedOrigins()
 
   // 输出启动概览，避免部署时只能看到一个端口日志。
-  console.info('[server] 启动完成')
-  console.info(`[server] 服务地址: http://0.0.0.0:${serverPort}`)
-  console.info(`[server] 静态目录: ${staticDistDir}`)
-  console.info(`[server] 上传目录: ${uploadsDir}`)
-  console.info(`[server] CORS 来源: ${allowedOrigins.join(', ')}`)
-  console.info(`[server] Redis: ${resolveRedisStartupSummary()}`)
+  writeScopedLog('info', '服务端', '启动完成')
+  writeScopedLog('info', '服务端', `服务地址: http://0.0.0.0:${serverPort}`)
+  writeScopedLog('info', '服务端', `静态目录: ${staticDistDir}`)
+  writeScopedLog('info', '服务端', `上传目录: ${uploadsDir}`)
+  writeScopedLog('info', '服务端', `CORS 来源: ${allowedOrigins.join(', ')}`)
+  writeScopedLog('info', '服务端', `Redis: ${resolveRedisStartupSummary()}`)
 })

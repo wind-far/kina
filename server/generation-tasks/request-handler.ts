@@ -2,13 +2,14 @@ import { requireCurrentSessionUser } from '../auth/session'
 import { sendJson } from '../ai-gateway/shared'
 import { isPrismaConfigured } from '../db/prisma'
 import { REDIS_CONFIG, consumeFixedWindowRateLimit, getRedisRuntimeSettings } from '../redis'
+import { writeScopedLog } from '../shared/logging'
 import { GENERATION_TASKS_BASE_PATH } from './constants'
 import { getGenerationTaskRecord, startGenerationTask, stopGenerationTask, subscribeGenerationTaskStream } from './service'
 import { GenerationTaskRequestError, readGenerationTaskBody, sendGenerationTaskError } from './shared'
 
 // 统一输出生成任务请求异常，便于排查启动、轮询和停止链路。
 const logGenerationTaskRequestError = (detail: Record<string, unknown>) => {
-  console.error('[generation-tasks][request-error]', JSON.stringify(detail))
+  writeScopedLog('error', '生成任务', '请求异常', detail)
 }
 
 // 处理生成任务的创建、查询与停止请求。

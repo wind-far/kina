@@ -19,19 +19,19 @@
           </div>
         </div>
 
-        <div class="flex items-center gap-3">
-          <el-dropdown trigger="click" placement="bottom-end">
-            <el-button plain size="small">
-              简体中文
-              <span class="ml-2 text-[10px] text-[var(--text-tertiary)]">CN</span>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item>简体中文</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
+<!--        <div class="flex items-center gap-3">-->
+<!--          <el-dropdown trigger="click" placement="bottom-end">-->
+<!--            <el-button plain size="small">-->
+<!--              简体中文-->
+<!--              <span class="ml-2 text-[10px] text-[var(&#45;&#45;text-tertiary)]">CN</span>-->
+<!--            </el-button>-->
+<!--            <template #dropdown>-->
+<!--              <el-dropdown-menu>-->
+<!--                <el-dropdown-item>简体中文</el-dropdown-item>-->
+<!--              </el-dropdown-menu>-->
+<!--            </template>-->
+<!--          </el-dropdown>-->
+<!--        </div>-->
       </div>
 
       <div

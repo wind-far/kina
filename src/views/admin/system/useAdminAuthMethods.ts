@@ -57,8 +57,8 @@ const AUTH_METHOD_TEMPLATES: AuthMethodTemplate[] = [
   {
     methodType: 'ADMIN_PASSWORD',
     category: 'PASSWORD',
-    displayName: '管理员账号登录',
-    description: '使用管理员账号和密码登录',
+    displayName: '账号登录',
+    description: '使用账号和密码登录',
     iconType: 'admin',
     iconUrl: '',
     isEnabled: true,
@@ -67,8 +67,8 @@ const AUTH_METHOD_TEMPLATES: AuthMethodTemplate[] = [
     allowAutoFill: false,
     allowSignUp: false,
     config: {
-      targetLabel: '管理员账号',
-      placeholder: '请输入管理员账号',
+      targetLabel: '账号',
+      placeholder: '请输入账号',
       passwordPlaceholder: '请输入登录密码',
     },
   },

@@ -4,7 +4,7 @@
       <div class="admin-dialog__header">
         <div>
           <h3 class="admin-dialog__title">{{ editingMethodType ? '编辑登录方式' : '新增登录方式' }}</h3>
-          <div class="admin-dialog__desc">{{ editingMethodType ? '调整当前登录入口的展示文案和参数配置。' : '从预设模板中新增一项登录方式，并在弹窗内完成参数配置。' }}</div>
+          <div class="admin-dialog__desc">{{ editingMethodType ? '调整当前登录入口的展示文案和参数配置，提交后会立即保存。' : '从预设模板中新增一项登录方式，并在弹窗内完成参数配置，提交后会立即保存。' }}</div>
         </div>
         <button class="admin-dialog__close" type="button" @click="closeMethodDialog">×</button>
       </div>
@@ -48,6 +48,22 @@
           <div v-if="methodForm.category === 'CODE'" class="admin-form__field admin-form__field--full">
             <label class="admin-form__label">验证码登录配置</label>
             <div class="admin-form__hint">配置前台输入框文案，以及短信或邮件验证码发送参数。</div>
+          </div>
+          <div v-if="methodForm.category === 'PASSWORD'" class="admin-form__field admin-form__field--full">
+            <label class="admin-form__label">密码登录配置</label>
+            <div class="admin-form__hint">配置管理员账号登录的输入标签、占位文案和密码占位文案。</div>
+          </div>
+          <div v-if="methodForm.category === 'PASSWORD'" class="admin-form__field">
+            <label class="admin-form__label">账号标签</label>
+            <input v-model.trim="methodForm.targetLabel" class="admin-input" type="text" placeholder="管理员账号">
+          </div>
+          <div v-if="methodForm.category === 'PASSWORD'" class="admin-form__field">
+            <label class="admin-form__label">账号占位文案</label>
+            <input v-model.trim="methodForm.placeholder" class="admin-input" type="text" placeholder="请输入管理员账号">
+          </div>
+          <div v-if="methodForm.category === 'PASSWORD'" class="admin-form__field admin-form__field--full">
+            <label class="admin-form__label">密码占位文案</label>
+            <input v-model.trim="methodForm.passwordPlaceholder" class="admin-input" type="text" placeholder="请输入登录密码">
           </div>
           <div v-if="methodForm.category === 'CODE'" class="admin-form__field">
             <label class="admin-form__label">账号标签</label>
@@ -181,7 +197,7 @@
 
         <div class="admin-form__footer">
           <button class="admin-button admin-button--secondary" type="button" @click="closeMethodDialog">取消</button>
-          <button class="admin-button admin-button--primary" type="submit">{{ editingMethodType ? '更新到列表' : '加入列表' }}</button>
+          <button class="admin-button admin-button--primary" type="submit">{{ editingMethodType ? '保存修改' : '创建并保存' }}</button>
         </div>
       </form>
     </div>
@@ -203,6 +219,7 @@ interface EditableAuthMethodFormLike {
   targetLabel: string
   placeholder: string
   codePlaceholder: string
+  passwordPlaceholder: string
   providerCode: string
   accessKeyId: string
   accessKeySecret: string

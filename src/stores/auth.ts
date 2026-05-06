@@ -100,7 +100,8 @@ export const useAuthStore = () => {
   const login = async (payload: {
     methodType: AuthMethodType
     target: string
-    code: string
+    code?: string
+    password?: string
   }) => {
     const result = await loginByVerificationCode(payload)
     sessionInitialized.value = true

@@ -186,6 +186,7 @@ export const handleAuthRequest = async (req: any, res: any) => {
         methodType,
         target: loginTarget,
         code: String(payload.code || '').trim(),
+        password: String(payload.password || ''),
         requesterIp: readRequesterIp(req),
         userAgent: String(req.headers['user-agent'] || '').trim(),
         methodConfig,

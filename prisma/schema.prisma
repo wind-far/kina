@@ -15,6 +15,8 @@ enum UserRole {
 /// 作为登录、资源、生成、配置等模块的统一用户实体。
 model AppUser {
   id                 String                 @id @default(cuid()) @db.VarChar(36)
+  username           String?                @unique(map: "uk_app_users_username") @db.VarChar(100)
+  passwordHash       String?                @map("password_hash") @db.VarChar(255)
   name               String?                @db.VarChar(100)
   avatarUrl          String?                @map("avatar_url") @db.Text
   email              String?                @unique(map: "uk_app_users_email") @db.VarChar(191)
@@ -967,6 +969,7 @@ enum UserStatus {
 }
 
 enum AuthMethodType {
+  ADMIN_PASSWORD
   PHONE_CODE
   EMAIL_CODE
   WECHAT_OAUTH
@@ -976,6 +979,7 @@ enum AuthMethodType {
 }
 
 enum AuthMethodCategory {
+  PASSWORD
   CODE
   OAUTH
 }

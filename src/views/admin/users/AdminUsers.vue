@@ -942,6 +942,7 @@ const getStatusLabel = (status: string) => {
 }
 
 const getAuthMethodLabel = (methodType: string) => {
+  if (methodType === 'ADMIN_PASSWORD') return '管理员账号密码'
   if (methodType === 'PHONE_CODE') return '手机验证码'
   if (methodType === 'EMAIL_CODE') return '邮箱验证码'
   if (methodType === 'WECHAT_OAUTH') return '微信登录'

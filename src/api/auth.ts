@@ -3,6 +3,7 @@ import { readApiData } from './response'
 
 // 登录方式类型。
 export type AuthMethodType =
+  | 'ADMIN_PASSWORD'
   | 'PHONE_CODE'
   | 'EMAIL_CODE'
   | 'WECHAT_OAUTH'
@@ -11,7 +12,7 @@ export type AuthMethodType =
   | 'CUSTOM_OAUTH'
 
 // 登录方式分类。
-export type AuthMethodCategory = 'CODE' | 'OAUTH'
+export type AuthMethodCategory = 'PASSWORD' | 'CODE' | 'OAUTH'
 
 // 登录用户信息。
 export interface AuthUserProfile {
@@ -127,7 +128,8 @@ export const requestAuthVerificationCode = async (payload: { methodType: AuthMet
 export const loginByVerificationCode = async (payload: {
   methodType: AuthMethodType
   target: string
-  code: string
+  code?: string
+  password?: string
 }) => {
   const response = await fetch(buildApiUrl(`${AUTH_BASE_PATH}/login`), {
     method: 'POST',

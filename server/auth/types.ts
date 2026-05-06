@@ -68,6 +68,7 @@ export interface LoginContext {
   methodType: AuthMethodType
   target?: string
   code?: string
+  password?: string
   requesterIp?: string
   userAgent?: string
   methodConfig: PublicAuthMethod

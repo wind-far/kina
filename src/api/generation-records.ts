@@ -8,6 +8,7 @@ export interface PersistedGenerationRecord {
   id: string
   sessionId: string
   sessionTitle?: string
+  source?: string
   type: CreationType
   prompt: string
   content: string
@@ -37,6 +38,7 @@ export interface PersistedGenerationRecord {
 // 前端提交给后端的生成记录写入结构
 export interface GenerationRecordUpsertPayload {
   sessionId?: string
+  source?: string
   type: CreationType
   prompt: string
   content: string

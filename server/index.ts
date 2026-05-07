@@ -288,11 +288,30 @@ const applyCorsHeaders = (req: any, res: any) => {
   // 声明允许携带的请求方法。
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
 
-  // 声明允许的请求头。
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'Content-Type,Authorization,x-upstream-base-url,x-upstream-endpoint,x-upstream-api-key,x-upstream-provider-id,x-upstream-endpoint-type,x-upstream-model-key,x-upstream-method',
+  // 合并静态白名单与浏览器预检里声明的自定义请求头，避免上传等场景被预检拦截。
+  const allowHeaderSet = new Set(
+    [
+      'Content-Type',
+      'Authorization',
+      'x-upstream-base-url',
+      'x-upstream-endpoint',
+      'x-upstream-api-key',
+      'x-upstream-provider-id',
+      'x-upstream-endpoint-type',
+      'x-upstream-model-key',
+      'x-upstream-method',
+      'x-upload-filename',
+      'x-upload-category',
+    ].map((header) => header.toLowerCase()),
   )
+  const requestedHeaders = String(req.headers['access-control-request-headers'] || '')
+    .split(',')
+    .map((header) => header.trim().toLowerCase())
+    .filter(Boolean)
+  requestedHeaders.forEach((header) => {
+    allowHeaderSet.add(header)
+  })
+  res.setHeader('Access-Control-Allow-Headers', Array.from(allowHeaderSet).join(','))
 
   // 允许跨域请求携带 Cookie。
   res.setHeader('Access-Control-Allow-Credentials', 'true')

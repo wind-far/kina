@@ -20,6 +20,7 @@ const logGenerationRecordsRequestAbort = (detail: Record<string, unknown>) => {
 // 把记录请求体摘要统一收敛，避免日志里散落一堆 any 判断。
 const buildPayloadSummary = (payload: GenerationRecordPayload) => ({
   sessionId: payload.sessionId || null,
+  source: payload.source || null,
   type: payload.type,
   done: Boolean(payload.done),
   imageCount: Array.isArray(payload.images) ? payload.images.length : 0,

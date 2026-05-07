@@ -626,11 +626,21 @@ const resolveReferenceImagesFromMeta = (metaJson: unknown) => {
     .filter(Boolean)
 }
 
+// 统一从记录元信息中恢复来源，未显式标记时按 generate 兜底。
+const resolveGenerationRecordSource = (metaJson: unknown) => {
+  const source = String((metaJson as any)?.source || '').trim().toLowerCase()
+  if (source === 'workflow') {
+    return 'workflow'
+  }
+  return 'generate'
+}
+
 // 将数据库记录序列化为前端可直接消费的结构
 const serializeGenerationRecord = (record: any) => ({
   id: record.id,
   sessionId: record.sessionId,
   sessionTitle: record.session?.title || '',
+  source: resolveGenerationRecordSource(record.metaJson),
   type: String(record.type || '').toLowerCase().replace('_', '-'),
   prompt: record.prompt,
   content: record.content || '',
@@ -767,6 +777,7 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
 
   logGenerationRecord('create_generation_record:start', {
     currentUserId,
+    source: String(payload.source || 'generate').trim() || 'generate',
     type: payload.type,
     done: Boolean(payload.done),
     hasAgentRun: Boolean(payload.agentRun),
@@ -813,6 +824,7 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
           skill: String(payload.skill || '').trim() || 'general',
           agentTaskId: String(payload.agentTaskId || '').trim() || null,
           metaJson: {
+            source: String(payload.source || 'generate').trim() || 'generate',
             referenceImages: normalizedReferenceImages,
           },
           startedAt: new Date(),
@@ -995,6 +1007,7 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
   logGenerationRecord('update_generation_record:start', {
     currentUserId,
     generationRecordId: id,
+    source: String(payload.source || '').trim() || null,
     type: payload.type,
     done: Boolean(payload.done),
     hasAgentRun: Boolean(payload.agentRun),
@@ -1060,6 +1073,7 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
           agentTaskId: String(payload.agentTaskId || '').trim() || null,
           metaJson: {
             ...(((existingRecord.metaJson as Record<string, unknown> | null) || {})),
+            source: String(payload.source || (existingRecord.metaJson as any)?.source || 'generate').trim() || 'generate',
             ...(shouldOverwriteReferenceImages
               ? { referenceImages: normalizedReferenceImages }
               : {}),

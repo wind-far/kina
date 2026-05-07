@@ -7,6 +7,7 @@ import { resolveRequestModelKey, resolveRequestProviderId } from '@/config/model
 
 export interface GenerationTaskStartPayload {
   sessionId?: string
+  source?: string
   type: 'image' | 'agent'
   requestMode?: 'image-generation' | 'image-edit'
   prompt: string

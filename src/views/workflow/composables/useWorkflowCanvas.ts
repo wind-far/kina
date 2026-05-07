@@ -14,6 +14,7 @@ export interface WorkflowNodeDataBase {
   updatedAt?: number
   loading?: boolean
   error?: string
+  taskRecordId?: string
   autoExecute?: boolean
   executed?: boolean
   outputNodeId?: string
@@ -202,7 +203,7 @@ const getDefaultNodeData = <T extends WorkflowNodeType>(type: T): WorkflowNodeDa
       const model = getModelByName(getDefaultVideoModelKey())
       return {
         prompt: '',
-        ratio: model?.defaultParams?.ratio || '16:9',
+        ratio: model?.defaultParams?.ratio || '16x9',
         duration: model?.defaultParams?.duration || 5,
         model: getDefaultVideoModelKey(),
         label: '图生视频'

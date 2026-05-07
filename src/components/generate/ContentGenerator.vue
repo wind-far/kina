@@ -1207,7 +1207,7 @@ onUnmounted(() => {
   margin: 0 auto;
   max-width: 924px;
   min-width: 622px;
-  position: sticky;
+  /*position: sticky;*/
   width: 100%;
 }
 
@@ -1291,11 +1291,10 @@ onUnmounted(() => {
   align-items: center;
   display: flex;
   gap: 12px;
-  height: auto;
+  height: 36px;
   justify-content: space-between;
   margin-top: 0;
   max-width: 100%;
-  min-height: 36px;
   transition: margin-top var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function),
     opacity var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function),
     transform var(--content-generator-collapse-transition-duration) var(--content-generator-collapse-transition-timing-function);

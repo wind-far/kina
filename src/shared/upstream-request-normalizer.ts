@@ -85,6 +85,7 @@ export const buildImageEditRequestFormData = async (input: {
   count?: number
   referenceImages: string[]
   fileNamePrefix?: string
+  resolveReferenceImageBlob?: (imageValue: string) => Promise<Blob>
 }) => {
   const formData = new FormData()
   const modelKey = normalizeStringValue(input.modelKey)
@@ -93,6 +94,7 @@ export const buildImageEditRequestFormData = async (input: {
   const quality = normalizeStringValue(input.quality)
   const referenceImages = normalizeReferenceImageList(input.referenceImages)
   const fileNamePrefix = normalizeStringValue(input.fileNamePrefix) || 'reference-image'
+  const resolveReferenceImageBlob = input.resolveReferenceImageBlob
 
   if (modelKey) formData.append('model', modelKey)
   if (prompt) formData.append('prompt', prompt)
@@ -102,12 +104,15 @@ export const buildImageEditRequestFormData = async (input: {
 
   for (let index = 0; index < referenceImages.length; index += 1) {
     const imageValue = referenceImages[index]
-    const response = await fetch(imageValue)
-    if (!response.ok) {
-      throw new Error(`参考图读取失败 (${response.status})`)
-    }
+    const blob = resolveReferenceImageBlob
+      ? await resolveReferenceImageBlob(imageValue)
+      : await fetch(imageValue).then(async (response) => {
+          if (!response.ok) {
+            throw new Error(`参考图读取失败 (${response.status})`)
+          }
 
-    const blob = await response.blob()
+          return response.blob()
+        })
     const mimeType = blob.type || resolveImageMimeType(imageValue)
     const extension = resolveImageFileExtension(mimeType)
     formData.append('image', blob, `${fileNamePrefix}-${index + 1}.${extension}`)

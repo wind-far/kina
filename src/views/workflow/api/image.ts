@@ -4,18 +4,9 @@
  */
 
 import { request } from './request'
-import { AI_GATEWAY_REQUEST_PATH, createGatewayPayload } from '@/api/ai-gateway'
-import { buildApiUrl } from '@/api/http'
-import { handleUnauthorizedResponse, readApiErrorMessage } from '@/api/response'
-import { MARKETING_POINTS_UPDATED_EVENT } from '@/stores/marketing-center'
-import { extractImageUrlsFromText, parseUpstreamStreamChunk } from '@/shared/upstream-stream-parser'
+import { iterateGatewaySseMessages } from '@/api/gateway-sse'
+import { collectGatewaySseWithStrategy, createImageUrlCollectStrategy } from '@/api/gateway-sse-strategies'
 import { buildImageEditRequestFormData } from '@/shared/upstream-request-normalizer'
-
-const notifyMarketingPointsUpdated = (response: Response) => {
-  if (typeof window === 'undefined') return
-  if (response.headers.get('x-marketing-points-updated') !== '1') return
-  window.dispatchEvent(new CustomEvent(MARKETING_POINTS_UPDATED_EVENT))
-}
 
 const DEFAULT_IMAGE_ENDPOINT = '/images/generations'
 
@@ -88,97 +79,15 @@ async function generateImageViaChat(data: WorkflowImageGeneratePayload, signal?:
   const body = {
     model: data.model,
     messages: [{ role: 'user', content: data.prompt }],
-    stream: true
   }
-  const gatewayPayload = await createGatewayPayload('image', {
-    method: 'POST',
+
+  const messages = iterateGatewaySseMessages({
+    endpointType: 'image',
     data: body,
-  })
-
-  const response = await fetch(buildApiUrl(AI_GATEWAY_REQUEST_PATH), {
-    method: 'POST',
-    // 图片生成走同源网关时也要携带会话 Cookie，否则会被后端判未登录。
-    credentials: 'include',
     signal,
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(gatewayPayload),
+    requestTag: 'image-chat-generation',
+    ignoreReadError: true,
   })
 
-  notifyMarketingPointsUpdated(response)
-
-  if (!response.ok) {
-    handleUnauthorizedResponse(response.status, 'image-chat-generation')
-    const { message } = await readApiErrorMessage(response)
-    throw new Error(message)
-  }
-
-  // 解析 SSE 流，收集完整内容
-  const reader = response.body!.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let fullContent = ''
-  const imageUrls: string[] = []
-
-  while (true) {
-    let done: boolean | undefined
-    let value: Uint8Array<ArrayBufferLike> | undefined
-    try {
-      ({ done, value } = await reader.read())
-    } catch {
-      // 网络中断，用已收到的数据继续处理
-      break
-    }
-    if (done) break
-
-    buffer += decoder.decode(value, { stream: true })
-
-    // SSE 消息以双换行分隔
-    let boundary
-    while ((boundary = buffer.indexOf('\n\n')) !== -1) {
-      const message = buffer.slice(0, boundary)
-      buffer = buffer.slice(boundary + 2)
-
-      for (const line of message.split('\n')) {
-        const trimmed = line.trim()
-        if (!trimmed || !trimmed.startsWith('data:')) continue
-        const chunk = trimmed.slice(5).trim()
-        if (chunk === '[DONE]') continue
-
-        const parsedChunk = parseUpstreamStreamChunk(chunk)
-        if (parsedChunk.text) {
-          fullContent += parsedChunk.text
-        }
-        if (parsedChunk.imageUrls.length) {
-          imageUrls.push(...parsedChunk.imageUrls)
-        }
-      }
-    }
-  }
-
-  // 处理 buffer 中剩余数据
-  if (buffer.trim()) {
-    for (const line of buffer.split('\n')) {
-      const trimmed = line.trim()
-      if (!trimmed || !trimmed.startsWith('data:')) continue
-      const chunk = trimmed.slice(5).trim()
-      if (chunk === '[DONE]') continue
-      const parsedChunk = parseUpstreamStreamChunk(chunk)
-      if (parsedChunk.text) {
-        fullContent += parsedChunk.text
-      }
-      if (parsedChunk.imageUrls.length) {
-        imageUrls.push(...parsedChunk.imageUrls)
-      }
-    }
-  }
-
-  imageUrls.push(...extractImageUrlsFromText(fullContent))
-
-  if (imageUrls.length) {
-    return { data: imageUrls.map((url: string) => ({ url })) }
-  }
-
-  throw new Error('未能从响应中提取到图片')
+  return collectGatewaySseWithStrategy(messages, createImageUrlCollectStrategy())
 }

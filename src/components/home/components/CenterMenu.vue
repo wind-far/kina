@@ -77,6 +77,14 @@ const { sideMenuSettings, centerItems } = useHomeSideMenuConfig({
 
 const currentPath = computed(() => props.activePathOverride || route.path)
 
+const resolveMenuRoutePath = (item: { key: string; actionType: string; actionValue: string }) => {
+  if (item.key === 'workflow' && item.actionType === 'route') {
+    return '/agentic-assets-canvas'
+  }
+
+  return item.actionValue
+}
+
 const resolveMenuItemId = (key: string) => {
   const idMap: Record<string, string> = {
     home: 'Home',
@@ -102,7 +110,7 @@ const isItemActive = (item: { key: string; actionType: string; actionValue: stri
   if (item.key === 'account') {
     return currentPath.value === '/account'
   }
-  return item.actionType === 'route' && currentPath.value === item.actionValue
+  return item.actionType === 'route' && currentPath.value === resolveMenuRoutePath(item)
 }
 
 const handleMenuClick = (item: { key: string; actionType: string; actionValue: string }) => {
@@ -124,6 +132,6 @@ const handleMenuClick = (item: { key: string; actionType: string; actionValue: s
     return
   }
 
-  router.push(item.actionValue || '/')
+  router.push(resolveMenuRoutePath(item) || '/')
 }
 </script>

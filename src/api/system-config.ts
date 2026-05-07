@@ -547,7 +547,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       badgeText: '',
       badgeTone: 'default',
       actionType: 'route',
-      actionValue: '/workflow',
+      actionValue: '/agentic-assets-canvas',
       sortOrder: 50,
     },
     {
@@ -1105,9 +1105,18 @@ const normalizeHomeSideMenuSettings = (value?: SystemHomeSideMenuSettingsConfig 
 
   const normalizedItems = defaults.items.map(defaultItem => {
     const matchedItem = incomingItems.find(item => item.key === defaultItem.key)
-    return {
+    const nextItem = {
       ...defaultItem,
       ...(matchedItem || {}),
+    }
+
+    // 工作流入口统一接入新的画布工作台页面，兼容旧配置里残留的 /workflow。
+    if (nextItem.key === 'workflow' && nextItem.actionType === 'route') {
+      nextItem.actionValue = '/agentic-assets-canvas'
+    }
+
+    return {
+      ...nextItem,
     }
   })
 

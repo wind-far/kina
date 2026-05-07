@@ -3,11 +3,11 @@
     <div class="record-header-content-dS6EmO">
       <div
         v-if="visibleReferenceImages.length"
-        class="record-reference-KuhQDS"
+        class="record-reference"
         :style="referenceStyleVars"
       >
-        <div class="reference-background-nHgWXF"></div>
-        <div class="reference-content-ezAn8u single-group-Y0duzP">
+        <div class="reference-background"></div>
+        <div class="reference-content single-group">
           <div class="reference-group-GL7NtT" :style="referenceGroupStyle">
             <div
               v-for="(item, index) in visibleReferenceImages"
@@ -16,7 +16,7 @@
               :style="buildReferenceItemStyle(index)"
             >
               <div
-                class="reference-Vrle9Y reference-image-FbuFFj"
+                class="reference reference-image-FbuFFj"
                 :style="buildReferenceCardStyle(index)"
               >
                 <img
@@ -29,9 +29,9 @@
               </div>
             </div>
           </div>
-          <div class="quote-icon-container-igbRzx visible-IS5Is5">
+          <div class="quote-icon-container visible-IS5Is5">
             <svg
-              class="quote-icon-qSY5ij"
+              class="quote-icon"
               fill="none"
               height="1em"
               preserveAspectRatio="xMidYMid meet"
@@ -162,7 +162,7 @@ const handleReferenceImageError = (src: string, index: number) => {
   width: 100%;
 }
 
-.record-reference-KuhQDS {
+.record-reference {
   flex: 0 0 auto;
   height: 48px;
   padding: 4px 8px 8px;
@@ -171,7 +171,7 @@ const handleReferenceImageError = (src: string, index: number) => {
   z-index: 6;
 }
 
-.reference-background-nHgWXF {
+.reference-background {
   background: linear-gradient(90deg, var(--bg-body) 82.41%, rgba(15, 15, 18, 0) 98.03%);
   filter: blur(12px);
   height: 76px;
@@ -185,7 +185,7 @@ const handleReferenceImageError = (src: string, index: number) => {
   will-change: width, opacity, transform;
 }
 
-.reference-content-ezAn8u {
+.reference-content {
   box-sizing: border-box;
   display: flex;
   height: 100%;
@@ -214,7 +214,7 @@ const handleReferenceImageError = (src: string, index: number) => {
   width: 48px;
 }
 
-.reference-Vrle9Y.reference-image-FbuFFj {
+.reference.reference-image-FbuFFj {
   background-color: var(--bg-surface);
   border-radius: 4px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
@@ -225,7 +225,7 @@ const handleReferenceImageError = (src: string, index: number) => {
   width: 100%;
 }
 
-.reference-Vrle9Y.reference-image-FbuFFj::before {
+.reference.reference-image-FbuFFj::before {
   background: var(--bg-black);
   content: "";
   height: 100%;
@@ -244,7 +244,7 @@ const handleReferenceImageError = (src: string, index: number) => {
   width: 100%;
 }
 
-.quote-icon-container-igbRzx {
+.quote-icon-container {
   align-items: center;
   background-color: var(--bg-float);
   border: 1px solid var(--stroke-tertiary);
@@ -259,12 +259,12 @@ const handleReferenceImageError = (src: string, index: number) => {
   width: 20px;
 }
 
-.quote-icon-container-igbRzx.visible-IS5Is5 {
+.quote-icon-container.visible-IS5Is5 {
   opacity: 1;
   visibility: visible;
 }
 
-.quote-icon-qSY5ij {
+.quote-icon {
   color: var(--text-tertiary);
   height: 12px;
   opacity: .35;

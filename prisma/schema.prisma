@@ -44,6 +44,8 @@ model AppUser {
   checkinRecords     UserCheckinRecord[]
   usedCardCodes      CardCode[]             @relation("CardCodeUsedByUser")
   cardRedeemRecords  CardRedeemRecord[]
+  workflowDefinitions        WorkflowDefinition[]
+  workflowDefinitionVersions WorkflowDefinitionVersion[]
 
   @@map("app_users")
 }
@@ -371,6 +373,64 @@ model AiSkillStageTemplate {
   @@unique([skillId, stageKey], map: "uk_ai_skill_stage_templates_skill_stage_key")
   @@index([skillId, sortOrder], map: "idx_ai_skill_stage_templates_skill_sort")
   @@map("ai_skill_stage_templates")
+}
+
+/// 工作流定义主表。
+/// 用于保存可视化工作流的基础信息、当前版本与归属信息。
+model WorkflowDefinition {
+  id              String                    @id @default(cuid()) @db.VarChar(36)
+  userId          String?                   @map("user_id") @db.VarChar(36)
+  code            String                    @unique(map: "uk_workflow_definitions_code") @db.VarChar(100)
+  name            String                    @db.VarChar(100)
+  description     String?                   @db.VarChar(255)
+  category        String?                   @db.VarChar(50)
+  scene           WorkflowScene             @default(WORKFLOW_CANVAS)
+  sourceType      WorkflowSourceType        @default(VISUAL) @map("source_type")
+  status          WorkflowDefinitionStatus  @default(DRAFT)
+  currentVersionId String?                  @map("current_version_id") @db.VarChar(36)
+  latestVersionNo Int                       @default(0) @map("latest_version_no")
+  isBuiltIn       Boolean                   @default(false) @map("is_built_in")
+  isEnabled       Boolean                   @default(true) @map("is_enabled")
+  sortOrder       Int                       @default(0) @map("sort_order")
+  tagsJson        Json?                     @map("tags_json")
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  user            AppUser?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  currentVersion  WorkflowDefinitionVersion? @relation("WorkflowDefinitionCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  versions        WorkflowDefinitionVersion[] @relation("WorkflowDefinitionVersions")
+
+  @@index([userId, scene, status], map: "idx_workflow_definitions_user_scene_status")
+  @@index([isEnabled, sortOrder], map: "idx_workflow_definitions_enabled_sort")
+  @@map("workflow_definitions")
+}
+
+/// 工作流版本表。
+/// 每次保存工作流时生成一个完整快照，为执行与发布提供稳定输入。
+model WorkflowDefinitionVersion {
+  id                String                @id @default(cuid()) @db.VarChar(36)
+  workflowId        String                @map("workflow_id") @db.VarChar(36)
+  createdBy         String?               @map("created_by") @db.VarChar(36)
+  versionNo         Int                   @map("version_no")
+  versionName       String?               @map("version_name") @db.VarChar(100)
+  changeSummary     String?               @map("change_summary") @db.VarChar(255)
+  status            WorkflowVersionStatus @default(DRAFT)
+  definitionJson    Json?                 @map("definition_json")
+  nodesJson         Json?                 @map("nodes_json")
+  edgesJson         Json?                 @map("edges_json")
+  viewportJson      Json?                 @map("viewport_json")
+  inputSchemaJson   Json?                 @map("input_schema_json")
+  outputSchemaJson  Json?                 @map("output_schema_json")
+  runtimeConfigJson Json?                 @map("runtime_config_json")
+  publishedAt       DateTime?             @map("published_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+  workflow          WorkflowDefinition    @relation("WorkflowDefinitionVersions", fields: [workflowId], references: [id], onDelete: Cascade)
+  creator           AppUser?              @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  currentOf         WorkflowDefinition[]  @relation("WorkflowDefinitionCurrentVersion")
+
+  @@unique([workflowId, versionNo], map: "uk_workflow_definition_versions_workflow_version")
+  @@index([workflowId, status, createdAt], map: "idx_workflow_definition_versions_workflow_status_created_at")
+  @@map("workflow_definition_versions")
 }
 
 /// 对象存储配置表。
@@ -1030,6 +1090,30 @@ enum AiSkillPlannerModelCategory {
 enum AiSkillPromptScene {
   CHAT
   PLANNER
+}
+
+enum WorkflowScene {
+  WORKFLOW_CANVAS
+  AGENT_WORKSPACE
+  GENERATION_PIPELINE
+}
+
+enum WorkflowSourceType {
+  VISUAL
+  SKILL_TEMPLATE
+  SYSTEM_BUILTIN
+}
+
+enum WorkflowDefinitionStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum WorkflowVersionStatus {
+  DRAFT
+  PUBLISHED
+  DEPRECATED
 }
 
 enum GenerationType {

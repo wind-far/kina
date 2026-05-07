@@ -15,6 +15,7 @@ export interface GenerationOutputPayload {
 
 export interface GenerationRecordPayload {
   sessionId?: string
+  source?: string
   type: string
   prompt: string
   content?: string

@@ -1,5 +1,5 @@
 import { ElMessage } from 'element-plus'
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import {
   listAuthMethodConfigs,
   saveAuthMethodConfigs,
@@ -57,8 +57,8 @@ const AUTH_METHOD_TEMPLATES: AuthMethodTemplate[] = [
   {
     methodType: 'ADMIN_PASSWORD',
     category: 'PASSWORD',
-    displayName: '管理员账号登录',
-    description: '使用管理员账号和密码登录',
+    displayName: '账号登录',
+    description: '使用账号和密码登录',
     iconType: 'admin',
     iconUrl: '',
     isEnabled: true,
@@ -67,8 +67,8 @@ const AUTH_METHOD_TEMPLATES: AuthMethodTemplate[] = [
     allowAutoFill: false,
     allowSignUp: false,
     config: {
-      targetLabel: '管理员账号',
-      placeholder: '请输入管理员账号',
+      targetLabel: '账号',
+      placeholder: '请输入账号',
       passwordPlaceholder: '请输入登录密码',
     },
   },
@@ -311,6 +311,103 @@ function cloneEditableMethod(source: EditableAuthMethod): EditableAuthMethod {
   }
 }
 
+const normalizeConfigText = (config: Record<string, any>) => JSON.stringify(config || {}, null, 2)
+
+const syncStructuredFieldsFromConfig = (target: EditableAuthMethod, config: Record<string, any>) => {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return
+  }
+
+  if (target.category === 'CODE') {
+    target.targetLabel = String(config.targetLabel || '').trim()
+    target.placeholder = String(config.placeholder || '').trim()
+    target.codePlaceholder = String(config.codePlaceholder || '').trim()
+    target.providerCode = String(config.providerCode || '').trim()
+    target.senderName = String(config.senderName || '').trim()
+    target.senderAddress = String(config.senderAddress || '').trim()
+    target.accessKeyId = String(config.accessKeyId || '').trim()
+    target.accessKeySecret = String(config.accessKeySecret || '').trim()
+    target.signName = String(config.signName || '').trim()
+    target.templateCode = String(config.templateCode || '').trim()
+    target.smtpHost = String(config.smtpHost || '').trim()
+    target.smtpPort = String(config.smtpPort || '').trim()
+    target.smtpSecure = config.smtpSecure === true
+    target.smtpUser = String(config.smtpUser || '').trim()
+    target.smtpPassword = String(config.smtpPassword || '').trim()
+  }
+
+  if (target.category === 'PASSWORD') {
+    target.targetLabel = String(config.targetLabel || '').trim()
+    target.placeholder = String(config.placeholder || '').trim()
+    target.passwordPlaceholder = String(config.passwordPlaceholder || '').trim()
+  }
+
+  if (target.category === 'OAUTH') {
+    target.authorizeUrl = String(config.authorizeUrl || '').trim()
+    target.tokenUrl = String(config.tokenUrl || '').trim()
+    target.userInfoUrl = String(config.userInfoUrl || '').trim()
+    target.clientId = String(config.clientId || '').trim()
+    target.clientSecret = String(config.clientSecret || '').trim()
+    target.redirectUri = String(config.redirectUri || '').trim()
+    target.responseType = String(config.responseType || 'code').trim()
+    target.scope = String(config.scope || '').trim()
+  }
+}
+
+const parseMethodConfigText = (configText: string) => {
+  if (!String(configText || '').trim()) {
+    return {}
+  }
+
+  const parsed = JSON.parse(configText)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('扩展配置 JSON 必须是对象')
+  }
+
+  return parsed as Record<string, any>
+}
+
+const buildConfigFromStructuredFields = (method: EditableAuthMethod, baseConfig: Record<string, any>) => {
+  const nextConfig: Record<string, any> = { ...baseConfig }
+
+  if (method.category === 'CODE') {
+    nextConfig.targetLabel = method.targetLabel
+    nextConfig.placeholder = method.placeholder
+    nextConfig.codePlaceholder = method.codePlaceholder
+    nextConfig.providerCode = method.providerCode
+    nextConfig.senderName = method.senderName
+    nextConfig.senderAddress = method.senderAddress
+    nextConfig.accessKeyId = method.accessKeyId
+    nextConfig.accessKeySecret = method.accessKeySecret
+    nextConfig.signName = method.signName
+    nextConfig.templateCode = method.templateCode
+    nextConfig.smtpHost = method.smtpHost
+    nextConfig.smtpPort = method.smtpPort
+    nextConfig.smtpSecure = method.smtpSecure
+    nextConfig.smtpUser = method.smtpUser
+    nextConfig.smtpPassword = method.smtpPassword
+  }
+
+  if (method.category === 'PASSWORD') {
+    nextConfig.targetLabel = method.targetLabel
+    nextConfig.placeholder = method.placeholder
+    nextConfig.passwordPlaceholder = method.passwordPlaceholder
+  }
+
+  if (method.category === 'OAUTH') {
+    nextConfig.authorizeUrl = method.authorizeUrl
+    nextConfig.tokenUrl = method.tokenUrl
+    nextConfig.userInfoUrl = method.userInfoUrl
+    nextConfig.clientId = method.clientId
+    nextConfig.clientSecret = method.clientSecret
+    nextConfig.redirectUri = method.redirectUri
+    nextConfig.responseType = method.responseType || 'code'
+    nextConfig.scope = method.scope
+  }
+
+  return nextConfig
+}
+
 function sortEditableAuthMethods(methods: EditableAuthMethod[]) {
   return [...methods].sort((left, right) => {
     if (left.sortOrder !== right.sortOrder) {
@@ -332,6 +429,8 @@ export function useAdminAuthMethods() {
   const editingMethodType = ref<AuthMethodType | ''>('')
   const authMethods = ref<EditableAuthMethod[]>([])
   const methodForm = reactive<EditableAuthMethod>(createEditableAuthMethod(AUTH_METHOD_TEMPLATES[0]))
+  const syncingMethodFormFromJson = ref(false)
+  const syncingMethodFormToJson = ref(false)
 
   const enabledMethodCount = computed(() => authMethods.value.filter(item => item.isEnabled && item.isVisible).length)
   const sortedAuthMethods = computed(() => sortEditableAuthMethods(authMethods.value))
@@ -462,20 +561,23 @@ export function useAdminAuthMethods() {
       throw new Error('请先填写登录方式显示名称')
     }
 
+    const originalConfigText = normalizeConfigText(source.config || {})
     let normalizedConfigText = ''
+    let parsedConfig: Record<string, any> = {}
     if (String(source.configText || '').trim()) {
       try {
         const parsed = JSON.parse(source.configText)
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
           throw new Error('扩展配置 JSON 必须是对象')
         }
+        parsedConfig = parsed as Record<string, any>
         normalizedConfigText = JSON.stringify(parsed, null, 2)
       } catch (error: any) {
         throw new Error(error?.message || '扩展配置 JSON 格式不正确')
       }
     }
 
-    return cloneEditableMethod({
+    const snapshot = cloneEditableMethod({
       ...source,
       displayName: source.displayName.trim(),
       description: source.description.trim(),
@@ -506,6 +608,15 @@ export function useAdminAuthMethods() {
       responseType: source.responseType.trim() || 'code',
       scope: source.scope.trim(),
     })
+
+    // 当扩展配置 JSON 被直接修改时，以 JSON 中的结构化字段为准，
+    // 回填到当前快照，避免后续保存时又被旧表单值覆盖回去。
+    if (normalizedConfigText && normalizedConfigText !== originalConfigText) {
+      snapshot.config = { ...parsedConfig }
+      syncStructuredFieldsFromConfig(snapshot, parsedConfig)
+    }
+
+    return snapshot
   }
 
   const buildAuthMethodPayload = (): AuthMethodConfigPayload[] => {
@@ -573,6 +684,23 @@ export function useAdminAuthMethods() {
     })
   }
 
+  // 持久化当前登录方式列表，并用服务端返回结果回填本地状态。
+  const persistAuthMethods = async (methods: EditableAuthMethod[], successMessage: string) => {
+    methodSaving.value = true
+    try {
+      authMethods.value = sortEditableAuthMethods(methods)
+      const saved = await saveAuthMethodConfigs(buildAuthMethodPayload())
+      setAuthMethods(Array.isArray(saved) ? saved : [])
+      ElMessage.success(successMessage)
+      return true
+    } catch (error: any) {
+      ElMessage.error(error?.message || '保存登录方式失败')
+      return false
+    } finally {
+      methodSaving.value = false
+    }
+  }
+
   const openCreateMethodDialog = () => {
     const [firstTemplate] = creatableMethodTemplates.value
     if (!firstTemplate) {
@@ -591,6 +719,88 @@ export function useAdminAuthMethods() {
     editingMethodType.value = ''
   }
 
+  watch(
+    () => methodForm.configText,
+    (value) => {
+      if (syncingMethodFormToJson.value) {
+        return
+      }
+
+      const normalizedValue = String(value || '').trim()
+      if (!normalizedValue) {
+        return
+      }
+
+      try {
+        const parsedConfig = parseMethodConfigText(normalizedValue)
+        syncingMethodFormFromJson.value = true
+        methodForm.config = { ...parsedConfig }
+        syncStructuredFieldsFromConfig(methodForm, parsedConfig)
+      } catch {
+        // 输入中的 JSON 允许临时不完整，提交时再统一校验。
+      } finally {
+        syncingMethodFormFromJson.value = false
+      }
+    },
+  )
+
+  watch(
+    () => [
+      methodForm.category,
+      methodForm.targetLabel,
+      methodForm.placeholder,
+      methodForm.codePlaceholder,
+      methodForm.passwordPlaceholder,
+      methodForm.providerCode,
+      methodForm.senderName,
+      methodForm.senderAddress,
+      methodForm.accessKeyId,
+      methodForm.accessKeySecret,
+      methodForm.signName,
+      methodForm.templateCode,
+      methodForm.smtpHost,
+      methodForm.smtpPort,
+      methodForm.smtpSecure,
+      methodForm.smtpUser,
+      methodForm.smtpPassword,
+      methodForm.authorizeUrl,
+      methodForm.tokenUrl,
+      methodForm.userInfoUrl,
+      methodForm.clientId,
+      methodForm.clientSecret,
+      methodForm.redirectUri,
+      methodForm.responseType,
+      methodForm.scope,
+    ],
+    () => {
+      if (syncingMethodFormFromJson.value) {
+        return
+      }
+
+      try {
+        const baseConfig = parseMethodConfigText(methodForm.configText)
+        const nextConfig = buildConfigFromStructuredFields(methodForm, baseConfig)
+        const nextConfigText = normalizeConfigText(nextConfig)
+        if (nextConfigText === methodForm.configText) {
+          methodForm.config = { ...nextConfig }
+          return
+        }
+
+        syncingMethodFormToJson.value = true
+        methodForm.config = { ...nextConfig }
+        methodForm.configText = nextConfigText
+      } catch {
+        const nextConfig = buildConfigFromStructuredFields(methodForm, {})
+        syncingMethodFormToJson.value = true
+        methodForm.config = { ...nextConfig }
+        methodForm.configText = normalizeConfigText(nextConfig)
+      } finally {
+        syncingMethodFormToJson.value = false
+      }
+    },
+    { deep: false },
+  )
+
   const handleCreateMethodTypeChange = (methodType: string) => {
     const currentTemplate = creatableMethodTemplates.value.find(item => item.methodType === methodType)
     if (!currentTemplate) {
@@ -600,25 +810,30 @@ export function useAdminAuthMethods() {
     applyEditableMethod(methodForm, createEditableAuthMethod(currentTemplate))
   }
 
-  const handleSubmitMethodDialog = () => {
+  const handleSubmitMethodDialog = async () => {
     try {
       const snapshot = createEditableMethodSnapshot(methodForm)
+      let nextMethods: EditableAuthMethod[] = []
+      let successMessage = ''
 
       if (editingMethodType.value) {
-        authMethods.value = sortEditableAuthMethods(
+        nextMethods = sortEditableAuthMethods(
           authMethods.value.map(item => item.methodType === editingMethodType.value ? snapshot : item),
         )
-        ElMessage.success('登录方式已更新到待保存列表')
+        successMessage = '登录方式已更新'
       } else {
         if (authMethods.value.some(item => item.methodType === snapshot.methodType)) {
           ElMessage.warning('该登录方式已存在，无需重复添加')
           return
         }
-        authMethods.value = sortEditableAuthMethods([...authMethods.value, snapshot])
-        ElMessage.success('登录方式已加入待保存列表')
+        nextMethods = sortEditableAuthMethods([...authMethods.value, snapshot])
+        successMessage = '登录方式已新增'
       }
 
-      closeMethodDialog()
+      const saved = await persistAuthMethods(nextMethods, successMessage)
+      if (saved) {
+        closeMethodDialog()
+      }
     } catch (error: any) {
       ElMessage.error(error?.message || '登录方式配置保存失败')
     }
@@ -630,16 +845,7 @@ export function useAdminAuthMethods() {
   }
 
   const handleSaveAuthMethods = async () => {
-    methodSaving.value = true
-    try {
-      const saved = await saveAuthMethodConfigs(buildAuthMethodPayload())
-      setAuthMethods(Array.isArray(saved) ? saved : [])
-      ElMessage.success('登录方式已更新')
-    } catch (error: any) {
-      ElMessage.error(error?.message || '保存登录方式失败')
-    } finally {
-      methodSaving.value = false
-    }
+    await persistAuthMethods(authMethods.value, '登录方式已更新')
   }
 
   return {

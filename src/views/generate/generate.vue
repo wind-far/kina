@@ -65,6 +65,7 @@ interface GeneratingRecord {
   dbId?: string
   sessionId?: string
   sessionTitle?: string
+  source?: string
   type: CreationType
   prompt: string
   time: string
@@ -590,6 +591,7 @@ const buildAgentRequestMessages = (record: GeneratingRecord) => {
 // 将页面内的记录结构转换为后端持久化结构。
 const toGenerationRecordPayload = (record: GeneratingRecord): GenerationRecordUpsertPayload => ({
   sessionId: record.sessionId,
+  source: record.source || 'generate',
   type: record.type,
   prompt: record.prompt,
   content: record.content,
@@ -632,6 +634,7 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
     dbId: record.id,
     sessionId: record.sessionId,
     sessionTitle: record.sessionTitle || '',
+    source: record.source || 'generate',
     type: record.type,
     prompt: record.prompt,
     time: formatGroupLabel(new Date(record.createdAt)),
@@ -674,6 +677,7 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   record.dbId = saved.id
   record.sessionId = saved.sessionId
   record.sessionTitle = saved.sessionTitle || record.sessionTitle || ''
+  record.source = saved.source || record.source || 'generate'
   record.content = saved.content || record.content
   record.error = saved.done || saved.stopped ? saved.error : ''
   record.done = saved.done
@@ -965,6 +969,7 @@ const loadPersistedGeneratingRecords = async () => {
     )
 
     const nextRecords = records
+      .filter(record => (record.source || 'generate') === 'generate')
       .filter(record => !existingDbIds.has(record.id))
       .map(createRecordFromPersisted)
 
@@ -1069,6 +1074,7 @@ const handleSend = async (message: string, type: CreationType, options?: { model
     id: recordId,
     sessionId: activeSession.id,
     sessionTitle: activeSession.title,
+    source: 'generate',
     type,
     prompt: message,
     time: formatGroupLabel(new Date()),
@@ -1125,6 +1131,7 @@ const startWorkspaceAgentTask = async (record: GeneratingRecord) => {
 
     const saved = await createGenerationTask({
       sessionId: record.sessionId,
+      source: 'generate',
       type: 'agent',
       prompt: record.prompt,
       model: record.model,
@@ -1161,6 +1168,7 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
 
     const saved = await createGenerationTask({
       sessionId: record.sessionId,
+      source: 'generate',
       type: 'agent',
       prompt: record.prompt,
       model: record.model,
@@ -1214,6 +1222,7 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
 
     const saved = await createGenerationTask({
       sessionId: record.sessionId,
+      source: 'generate',
       type: 'image',
       requestMode: hasReferenceImages ? 'image-edit' : 'image-generation',
       prompt: record.prompt,

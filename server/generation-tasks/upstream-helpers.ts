@@ -1,4 +1,7 @@
+import fs from 'node:fs/promises'
+import path from 'node:path'
 import { getPublicModelCatalog, resolveGatewayProviderUpstream } from '../provider-config/service'
+import { getUploadsDir } from '../storage/service'
 import { buildAgentChatMessages } from '../../src/shared/agent-skills-core'
 import { normalizeGenerationErrorMessage } from '../../src/shared/generation-error'
 import {
@@ -24,6 +27,7 @@ export {
 } from '../../src/shared/upstream-stream-parser'
 
 const BURST_RATE_RETRY_DELAYS = [1200, 2600, 5200]
+const UPLOADS_PUBLIC_PATH_PREFIX = '/uploads/'
 
 type RetryState = {
   attempt: number
@@ -63,6 +67,39 @@ type RequestImageEditInput = {
   referenceImages: string[]
   onRetry?: (retryState: RetryState) => Promise<void> | void
   fetchWithBurstRateRetry: (input: Omit<FetchWithBurstRateRetryInput, 'logGenerationTask'>) => Promise<Response>
+}
+
+const resolveServerReferenceImageBlob = async (imageValue: string) => {
+  const normalizedValue = String(imageValue || '').trim()
+  if (normalizedValue.startsWith(UPLOADS_PUBLIC_PATH_PREFIX)) {
+    const uploadsDir = getUploadsDir()
+    const relativePath = decodeURIComponent(normalizedValue.slice(UPLOADS_PUBLIC_PATH_PREFIX.length))
+    const filePath = path.resolve(uploadsDir, relativePath)
+    if (!filePath.startsWith(uploadsDir)) {
+      throw new Error('参考图路径非法')
+    }
+
+    const fileBuffer = await fs.readFile(filePath)
+    const mimeType = normalizedValue.toLowerCase().includes('.webp')
+      ? 'image/webp'
+      : normalizedValue.toLowerCase().includes('.gif')
+        ? 'image/gif'
+        : normalizedValue.toLowerCase().includes('.bmp')
+          ? 'image/bmp'
+          : normalizedValue.toLowerCase().includes('.svg')
+            ? 'image/svg+xml'
+            : normalizedValue.toLowerCase().includes('.jpg') || normalizedValue.toLowerCase().includes('.jpeg')
+              ? 'image/jpeg'
+              : 'image/png'
+    return new Blob([fileBuffer], { type: mimeType })
+  }
+
+  const response = await fetch(normalizedValue)
+  if (!response.ok) {
+    throw new Error(`参考图读取失败 (${response.status})`)
+  }
+
+  return response.blob()
 }
 
 export interface AgentWorkspaceModelPlanResult {
@@ -312,6 +349,7 @@ export const requestImageEdit = async (input: RequestImageEditInput) => {
     size: input.size,
     referenceImages: input.referenceImages,
     fileNamePrefix: 'reference',
+    resolveReferenceImageBlob: resolveServerReferenceImageBlob,
   })
 
   const headers = new Headers()

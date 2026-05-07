@@ -695,12 +695,12 @@ onUnmounted(() => {
                   style="transition:none;opacity:1;width:100%;height:100%"
                 >
                   <div
-                    class="reference-Vrle9Y generator-reference-card"
+                    class="reference generator-reference-card"
                     :style="{ '--rotate': getImageReferenceCardRotate(imageIndex) }"
                   >
                     <img :src="imageUrl" alt="参考图" class="image-iZ3_fA reference-image-FbuFFj generator-reference-preview-image" crossorigin="anonymous" draggable="false">
-                    <div class="remove-button-container-vl4baz">
-                      <button type="button" class="remove-button-rcX2TE generator-reference-clear-btn" @click.stop="removeImageReference(imageIndex)">
+                    <div class="remove-button-container">
+                      <button type="button" class="remove-button generator-reference-clear-btn" @click.stop="removeImageReference(imageIndex)">
                         <svg width="8" height="8" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M19.579 6.119a1.2 1.2 0 0 0-1.697-1.698L12 10.303 6.12 4.422a1.2 1.2 0 1 0-1.697 1.697L10.303 12l-5.881 5.882a1.2 1.2 0 0 0 1.697 1.697L12 13.698l5.882 5.882a1.2 1.2 0 1 0 1.697-1.697L13.697 12l5.882-5.882Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"></path>
                         </svg>
@@ -1207,7 +1207,7 @@ onUnmounted(() => {
   margin: 0 auto;
   max-width: 924px;
   min-width: 622px;
-  position: sticky;
+  /*position: sticky;*/
   width: 100%;
 }
 
@@ -1629,7 +1629,7 @@ onUnmounted(() => {
   z-index: 2;
 }
 
-.dimension-layout-FUl4Nj .reference-Vrle9Y.active-vsfmXd:not(:hover):not(:active) {
+.dimension-layout-FUl4Nj .reference.active-vsfmXd:not(:hover):not(:active) {
   transform: translateY(-8px) scale(1.125) rotate(var(--rotate));
 }
 
@@ -1666,7 +1666,7 @@ onUnmounted(() => {
   transform-origin: left center;
 }
 
-.dimension-layout-FUl4Nj .reference-Vrle9Y.generator-reference-card {
+.dimension-layout-FUl4Nj .reference.generator-reference-card {
   align-items: center;
   box-sizing: border-box;
   color: var(--text-placeholder);
@@ -1685,12 +1685,12 @@ onUnmounted(() => {
   will-change: opacity, transform;
 }
 
-.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:hover .reference-Vrle9Y.generator-reference-card,
-.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:focus-within .reference-Vrle9Y.generator-reference-card {
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:hover .reference.generator-reference-card,
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:focus-within .reference.generator-reference-card {
   background: var(--bg-block-primary-hover);
 }
 
-.dimension-layout-FUl4Nj .reference-Vrle9Y.generator-reference-card::after {
+.dimension-layout-FUl4Nj .reference.generator-reference-card::after {
   content: "";
   position: absolute;
   top: -450%;
@@ -1707,8 +1707,8 @@ onUnmounted(() => {
   transition: opacity 0.25s ease;
 }
 
-.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:hover .reference-Vrle9Y.generator-reference-card::after,
-.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:focus-within .reference-Vrle9Y.generator-reference-card::after {
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:hover .reference.generator-reference-card::after,
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:focus-within .reference.generator-reference-card::after {
   opacity: 1;
 }
 
@@ -1756,7 +1756,7 @@ onUnmounted(() => {
   transform: scale(0.75);
 }
 
-.dimension-layout-FUl4Nj .remove-button-container-vl4baz {
+.dimension-layout-FUl4Nj .remove-button-container {
   align-items: center;
   cursor: pointer;
   display: flex;
@@ -1774,7 +1774,7 @@ onUnmounted(() => {
   will-change: transform, opacity;
 }
 
-.dimension-layout-FUl4Nj .remove-button-rcX2TE.generator-reference-clear-btn {
+.dimension-layout-FUl4Nj .remove-button.generator-reference-clear-btn {
   align-items: center;
   box-sizing: border-box;
   display: flex;
@@ -1792,24 +1792,24 @@ onUnmounted(() => {
   transition: background-color 0.22s ease;
 }
 
-.dimension-layout-FUl4Nj .reference-Vrle9Y.generator-reference-card:hover .remove-button-container-vl4baz,
-.dimension-layout-FUl4Nj .reference-Vrle9Y.generator-reference-card:focus-within .remove-button-container-vl4baz,
-.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:active .remove-button-container-vl4baz {
+.dimension-layout-FUl4Nj .reference.generator-reference-card:hover .remove-button-container,
+.dimension-layout-FUl4Nj .reference.generator-reference-card:focus-within .remove-button-container,
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:active .remove-button-container {
   opacity: 1;
   pointer-events: auto;
 }
 
-.dimension-layout-FUl4Nj .reference-Vrle9Y.generator-reference-card:hover .remove-button-rcX2TE.generator-reference-clear-btn,
-.dimension-layout-FUl4Nj .reference-Vrle9Y.generator-reference-card:focus-within .remove-button-rcX2TE.generator-reference-clear-btn,
-.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:active .remove-button-rcX2TE.generator-reference-clear-btn {
+.dimension-layout-FUl4Nj .reference.generator-reference-card:hover .remove-button.generator-reference-clear-btn,
+.dimension-layout-FUl4Nj .reference.generator-reference-card:focus-within .remove-button.generator-reference-clear-btn,
+.dimension-layout-FUl4Nj .reference-item-aI97LK.generator-reference-item-card:active .remove-button.generator-reference-clear-btn {
   transform: none;
 }
 
-.dimension-layout-FUl4Nj .remove-button-container-vl4baz:hover .remove-button-rcX2TE.generator-reference-clear-btn {
+.dimension-layout-FUl4Nj .remove-button-container:hover .remove-button.generator-reference-clear-btn {
   background: var(--component-reference-remove-hover, rgba(15, 23, 42, 0.92));
 }
 
-.dimension-layout-FUl4Nj .remove-button-container-vl4baz:active .remove-button-rcX2TE.generator-reference-clear-btn {
+.dimension-layout-FUl4Nj .remove-button-container:active .remove-button.generator-reference-clear-btn {
   background: var(--component-reference-remove-pressed, rgba(15, 23, 42, 0.98));
 }
 </style>

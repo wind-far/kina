@@ -10,6 +10,7 @@ import { useSystemInitStore } from '../stores/system-init'
 const Workflow = () => import('../views/workflow/index.vue')
 const Install = () => import('../views/install/InstallView.vue')
 const PolicyDetail = () => import('../views/policies/PolicyDetail.vue')
+const AgenticAssetsCanvasView = () => import('../views/agentic-assets-canvas/AgenticAssetsCanvasView.vue')
 const AdminLayout = () => import('../components/admin/layout/AdminLayout.vue')
 const AdminDashboard = () => import('../views/admin/dashboard/AdminDashboard.vue')
 const AdminAssets = () => import('../views/admin/assets/AdminAssets.vue')
@@ -69,6 +70,11 @@ const routes: RouteRecordRaw[] = [
     path: '/workflow',
     name: 'Workflow',
     component: Workflow,
+  },
+  {
+    path: '/agentic-assets-canvas',
+    name: 'AgenticAssetsCanvas',
+    component: AgenticAssetsCanvasView,
   },
   {
     path: '/policies/:type',

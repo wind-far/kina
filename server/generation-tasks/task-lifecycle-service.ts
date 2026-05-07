@@ -119,6 +119,7 @@ interface TaskLifecycleContext {
 
 export const buildInitialRecordPayload = (payload: GenerationTaskStartPayload): GenerationRecordPayload => ({
   sessionId: String(payload.sessionId || '').trim() || undefined,
+  source: String(payload.source || 'generate').trim() || 'generate',
   type: payload.type,
   prompt: String(payload.prompt || '').trim(),
   content: '',

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
  * LLM 配置节点 - 文本生成（故事拆分等）
+ * 通过服务端任务统一执行，复用 generate 页的任务事件 SSE
  */
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import {
   updateNode,
@@ -13,8 +14,8 @@ import {
   type WorkflowCanvasNode,
   type WorkflowLlmConfigNodeData,
 } from '../../composables/useWorkflowCanvas'
-import { streamChatCompletions } from '../../api/chat'
 import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
+import { createGenerationTask, resolveGenerationTaskModel, subscribeGenerationTaskEvents } from '@/api/generation-tasks'
 import WfSelect from '@/components/common/WfSelect.vue'
 
 const props = defineProps<{
@@ -25,6 +26,7 @@ const { updateNodeInternals } = useVueFlow()
 
 const showActions = ref(false)
 const isGenerating = ref(false)
+const taskStreamController = ref<AbortController | null>(null)
 const systemPrompt = ref(props.data?.systemPrompt || '')
 const model = ref(props.data?.model || getDefaultChatModelKey())
 const outputContent = ref(props.data?.outputContent || '')
@@ -57,6 +59,11 @@ onMounted(() => {
   void loadPublicModelCatalog()
 })
 
+onUnmounted(() => {
+  taskStreamController.value?.abort()
+  taskStreamController.value = null
+})
+
 watch(() => props.data, (d) => {
   if (d?.systemPrompt !== undefined) systemPrompt.value = d.systemPrompt
   if (d?.model !== undefined) model.value = d.model
@@ -81,12 +88,18 @@ const getInput = () => {
     .join('\n\n')
 }
 
+const cleanupTaskStream = () => {
+  taskStreamController.value?.abort()
+  taskStreamController.value = null
+}
+
 const handleGenerate = async () => {
   const input = getInput()
   if (!input && !systemPrompt.value) return
 
   isGenerating.value = true
   outputContent.value = ''
+  cleanupTaskStream()
 
   try {
     const messages: Array<{ role: 'system' | 'user'; content: string }> = []
@@ -96,13 +109,116 @@ const handleGenerate = async () => {
     if (sysContent) messages.push({ role: 'system', content: sysContent })
     messages.push({ role: 'user', content: input || '请根据系统提示词生成内容' })
 
-    for await (const chunk of streamChatCompletions({ model: model.value, messages })) {
-      outputContent.value += chunk
+    const { providerId, modelKey } = resolveGenerationTaskModel({
+      modelKey: model.value,
+      category: 'CHAT',
+      missingModelMessage: '缺少对话模型标识',
+    })
+
+    updateNode(props.id, {
+      loading: true,
+      error: '',
+      outputContent: '',
+      taskRecordId: '',
+    })
+
+    const saved = await createGenerationTask({
+      source: 'workflow',
+      type: 'agent',
+      prompt: input || '请根据系统提示词生成内容',
+      model: model.value,
+      modelKey,
+      skill: 'general',
+      requestBody: {
+        providerId,
+        model: modelKey,
+        messages,
+        stream: true,
+      },
+    })
+
+    const taskRecordId = String(saved.id || '').trim()
+    if (!taskRecordId) {
+      throw new Error('LLM 任务创建失败')
     }
-    updateNode(props.id, { outputContent: outputContent.value })
+
+    updateNode(props.id, {
+      loading: true,
+      error: '',
+      taskRecordId,
+    })
+
+    const controller = new AbortController()
+    taskStreamController.value = controller
+
+    void subscribeGenerationTaskEvents(taskRecordId, {
+      signal: controller.signal,
+      onEvent: (event) => {
+        if (event.type === 'content_delta') {
+          const nextContent = typeof event.content === 'string'
+            ? event.content
+            : `${outputContent.value}${String(event.delta || '')}`
+          outputContent.value = nextContent
+          updateNode(props.id, {
+            loading: true,
+            error: '',
+            outputContent: nextContent,
+          })
+          return
+        }
+
+        if (event.type === 'snapshot' || event.type === 'completed') {
+          const nextContent = typeof event.record?.content === 'string'
+            ? event.record.content
+            : outputContent.value
+          outputContent.value = nextContent
+          updateNode(props.id, {
+            loading: !event.done,
+            error: '',
+            outputContent: nextContent,
+          })
+        }
+
+        if (event.type === 'failed') {
+          const message = String(event.message || event.record?.error || 'LLM 生成失败').trim() || 'LLM 生成失败'
+          updateNode(props.id, {
+            loading: false,
+            error: message,
+          })
+        }
+
+        if (event.type === 'stopped') {
+          updateNode(props.id, {
+            loading: false,
+            error: '任务已停止',
+          })
+        }
+
+        if (event.done) {
+          isGenerating.value = false
+          cleanupTaskStream()
+        }
+      },
+    }).catch((err: unknown) => {
+      if (controller.signal.aborted) {
+        return
+      }
+
+      const message = err instanceof Error ? err.message : 'LLM 任务订阅失败'
+      updateNode(props.id, {
+        loading: false,
+        error: message,
+      })
+      isGenerating.value = false
+      cleanupTaskStream()
+    })
   } catch (err) {
     console.error('LLM 生成失败:', err)
-  } finally {
+    const message = err instanceof Error ? err.message : 'LLM 生成失败'
+    updateNode(props.id, {
+      loading: false,
+      error: message,
+    })
     isGenerating.value = false
   }
 }

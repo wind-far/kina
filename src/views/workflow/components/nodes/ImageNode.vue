@@ -14,6 +14,7 @@ import {
   nodes,
   type WorkflowImageNodeData,
 } from '../../composables/useWorkflowCanvas'
+import { uploadStorageFile } from '@/api/storage'
 
 const props = defineProps<{
   id: string
@@ -39,17 +40,30 @@ const handleUpload = () => {
   const input = document.createElement('input')
   input.type = 'file'
   input.accept = 'image/*'
-  input.onchange = (e) => {
+  input.onchange = async (e) => {
     const target = e.target as HTMLInputElement | null
     const file = target?.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const result = typeof ev.target?.result === 'string' ? ev.target.result : ''
-      imageUrl.value = result
-      updateNode(props.id, { url: result, base64: result })
+    urlLoading.value = true
+    errorMsg.value = ''
+    try {
+      // 工作流参考图优先转成托管地址，避免后续链路继续传递超长 base64。
+      const uploaded = await uploadStorageFile(file, 'reference', {
+        showSuccessMessage: false,
+      })
+      const nextUrl = String(uploaded.publicUrl || uploaded.filePath || '').trim()
+      if (!nextUrl) {
+        throw new Error('上传后未返回可用图片地址')
+      }
+      imageUrl.value = nextUrl
+      updateNode(props.id, { url: nextUrl, base64: '', error: '' })
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '图片上传失败'
+      errorMsg.value = message
+      updateNode(props.id, { error: message })
+    } finally {
+      urlLoading.value = false
     }
-    reader.readAsDataURL(file)
   }
   input.click()
 }
@@ -160,7 +174,13 @@ const handleDuplicate = () => {
             <span class="wf-generating-text">创作中</span>
           </div>
           <!-- 错误状态 -->
-          <div v-else-if="errorMsg" class="wf-media-error">
+          <div
+            v-else-if="errorMsg"
+            class="wf-media-error"
+            style="cursor: pointer;"
+            title="点击重新上传"
+            @click="handleUpload"
+          >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#ef4444" stroke-width="2"/><path d="M15 9l-6 6M9 9l6 6" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/></svg>
             <span>{{ errorMsg }}</span>
           </div>

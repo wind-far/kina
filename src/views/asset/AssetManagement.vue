@@ -12,10 +12,8 @@
               <div class="content-wrapper-cF1zaN">
                 <div class="main-container-nXfW_A">
                   <div class="content-TZbgMr">
-                    <div class="scroll-container-Jsws2j">
-                      <div class="scroll-content-DaYLnh">
                         <!-- 资产管理容器 -->
-                        <div class="entryContainer-fe9" style>
+                        <div class="entryContainer-fe9">
                           <div class="header-2ov">
                             <div class="container-c5d">
                               <div class="tabs-y6n">
@@ -699,8 +697,6 @@
                             </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>

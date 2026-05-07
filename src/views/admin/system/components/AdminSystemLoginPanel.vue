@@ -29,7 +29,7 @@
       <div class="admin-card__header">
         <div>
           <h4 class="admin-card__title">登录方式</h4>
-          <div class="admin-card__desc">按卡片管理登录入口，弹窗内完成新增、编辑和参数配置，最后统一保存到后端。</div>
+          <div class="admin-card__desc">按卡片管理登录入口，弹窗内完成新增、编辑和参数配置，提交时会立即保存到后端。</div>
         </div>
         <div class="admin-page__actions">
           <button class="admin-button admin-button--secondary" type="button" @click="openCreateMethodDialog" :disabled="loading || methodSaving || !creatableMethodTemplates.length">

@@ -14,6 +14,7 @@ export interface WorkflowNodeDataBase {
   updatedAt?: number
   loading?: boolean
   error?: string
+  taskRecordId?: string
   autoExecute?: boolean
   executed?: boolean
   outputNodeId?: string
@@ -112,6 +113,12 @@ export interface WorkflowCanvasStateSnapshot {
   edges: WorkflowCanvasEdge[]
 }
 
+export interface WorkflowCanvasViewportSnapshot {
+  x: number
+  y: number
+  zoom: number
+}
+
 type WorkflowNodeUpdatePayload = Partial<WorkflowNodeData> & {
   position?: WorkflowCanvasPosition
   zIndex?: number
@@ -196,7 +203,7 @@ const getDefaultNodeData = <T extends WorkflowNodeType>(type: T): WorkflowNodeDa
       const model = getModelByName(getDefaultVideoModelKey())
       return {
         prompt: '',
-        ratio: model?.defaultParams?.ratio || '16:9',
+        ratio: model?.defaultParams?.ratio || '16x9',
         duration: model?.defaultParams?.duration || 5,
         model: getDefaultVideoModelKey(),
         label: '图生视频'
@@ -348,6 +355,41 @@ const restoreState = (state: WorkflowCanvasStateSnapshot) => {
   nodes.value = nextState.nodes
   edges.value = nextState.edges
   setTimeout(() => { isRestoring = false }, 100)
+}
+
+const syncNodeIdCounter = (canvasNodes: WorkflowCanvasNode[]) => {
+  const maxNodeIndex = canvasNodes.reduce((maxValue, node) => {
+    const matched = String(node.id || '').match(/^node_(\d+)$/)
+    if (!matched) {
+      return maxValue
+    }
+
+    const nextValue = Number(matched[1])
+    return Number.isFinite(nextValue) ? Math.max(maxValue, nextValue) : maxValue
+  }, -1)
+
+  nodeId = maxNodeIndex + 1
+}
+
+// 直接应用外部读取到的画布快照，供工作流持久化加载使用。
+export const applyCanvasSnapshot = (
+  state: WorkflowCanvasStateSnapshot,
+  viewportState?: WorkflowCanvasViewportSnapshot | null,
+) => {
+  const nextState = cloneCanvasState(state)
+  nodes.value = nextState.nodes
+  edges.value = nextState.edges
+  syncNodeIdCounter(nextState.nodes)
+
+  if (viewportState) {
+    canvasViewport.value = {
+      x: Number(viewportState.x || 0),
+      y: Number(viewportState.y || 0),
+      zoom: Number(viewportState.zoom || 1) || 1,
+    }
+  }
+
+  initHistory()
 }
 
 export const canUndo = () => historyIndex.value > 0

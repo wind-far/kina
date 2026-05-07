@@ -57,6 +57,7 @@ export const handleGenerationTasksRequest = async (req: any, res: any) => {
       const payload = await readGenerationTaskBody(req)
       payloadSummary = {
         sessionId: payload?.sessionId || null,
+        source: payload?.source || null,
         type: payload?.type || null,
         requestMode: payload?.requestMode || null,
         referenceImageCount: Array.isArray(payload?.referenceImages) ? payload.referenceImages.length : 0,

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
  * 图片配置节点组件
- * 收集连接的提示词和参考图，调用图片生成 API
+ * 收集连接的提示词和参考图，通过服务端任务统一执行图片生成
  */
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import {
   updateNode,
@@ -17,10 +17,9 @@ import {
   type WorkflowImageConfigNodeData,
 } from '../../composables/useWorkflowCanvas'
 import { BANANA_SIZE_OPTIONS, SEEDREAM_SIZE_OPTIONS, getAllImageModels, loadPublicModelCatalog, getDefaultImageModelKey, getModelByName } from '@/config/models'
-import { resolveGatewayUpstream } from '@/api/ai-gateway'
-import { generateImage } from '../../api/image'
+import { createGenerationTask, resolveGenerationTaskModel, subscribeGenerationTaskEvents } from '@/api/generation-tasks'
 import WfSelect from '@/components/common/WfSelect.vue'
-import { collectOrderedImageReferences } from '@/shared/image-generation-request'
+import { appendImageReferencesToRequestBody, collectOrderedImageReferences } from '@/shared/image-generation-request'
 
 const props = defineProps<{
   id: string
@@ -30,6 +29,7 @@ const { updateNodeInternals } = useVueFlow()
 
 const showActions = ref(false)
 const isGenerating = ref(false)
+const taskStreamController = ref<AbortController | null>(null)
 
 // 本地状态
 const model = ref(props.data?.model || getDefaultImageModelKey())
@@ -99,6 +99,11 @@ onMounted(() => {
   void loadPublicModelCatalog()
 })
 
+onUnmounted(() => {
+  taskStreamController.value?.abort()
+  taskStreamController.value = null
+})
+
 const updateConfig = () => {
   updateNode(props.id, { model: model.value, size: size.value, quality: quality.value })
 }
@@ -117,7 +122,7 @@ const collectInputs = () => {
       const content = src.data.content || ''
       if (content) prompts.push({ order: readPromptOrder(edge.data), content })
     } else if (isImageNode(src)) {
-      const imageData = src.data.base64 || src.data.url
+      const imageData = src.data.url || src.data.base64
       if (imageData) refImages.push({ order: readImageOrder(edge.data), imageData })
     }
   }
@@ -129,28 +134,130 @@ const collectInputs = () => {
   }
 }
 
+const cleanupTaskStream = () => {
+  taskStreamController.value?.abort()
+  taskStreamController.value = null
+}
+
+const readRecordImageUrl = (record: {
+  images?: string[]
+  outputs?: Array<{ url?: string }>
+} | null | undefined) => {
+  if (Array.isArray(record?.images) && record.images.length) {
+    return String(record.images[0] || '').trim()
+  }
+
+  if (Array.isArray(record?.outputs)) {
+    const matched = record.outputs.find(item => typeof item?.url === 'string' && String(item.url || '').trim())
+    if (matched?.url) {
+      return String(matched.url).trim()
+    }
+  }
+
+  return ''
+}
+
+const bindTaskStream = (taskRecordId: string, outputNodeId: string) => {
+  cleanupTaskStream()
+  const controller = new AbortController()
+  taskStreamController.value = controller
+
+  void subscribeGenerationTaskEvents(taskRecordId, {
+    signal: controller.signal,
+    onEvent: (event) => {
+      if (event.type === 'progress') {
+        updateNode(props.id, {
+          loading: true,
+          error: '',
+        })
+        return
+      }
+
+      if (event.type === 'snapshot' || event.type === 'completed') {
+        const url = readRecordImageUrl(event.record)
+        if (url) {
+          updateNode(outputNodeId, { url, label: '生成结果', loading: false, error: '' })
+          updateNode(props.id, {
+            loading: false,
+            error: '',
+            executed: true,
+            outputNodeId,
+          })
+        }
+      }
+
+      if (event.type === 'failed') {
+        const message = String(event.message || event.record?.error || '图片生成失败').trim() || '图片生成失败'
+        updateNode(outputNodeId, { label: '生成失败', loading: false, error: message })
+        updateNode(props.id, {
+          loading: false,
+          error: message,
+        })
+      }
+
+      if (event.type === 'stopped') {
+        updateNode(outputNodeId, { label: '已停止', loading: false, error: '任务已停止' })
+        updateNode(props.id, {
+          loading: false,
+          error: '任务已停止',
+        })
+      }
+
+      if (event.done) {
+        isGenerating.value = false
+        cleanupTaskStream()
+      }
+    },
+  }).catch((error: unknown) => {
+    if (controller.signal.aborted) {
+      return
+    }
+
+    const message = error instanceof Error ? error.message : '订阅图片任务失败'
+    updateNode(outputNodeId, { label: '生成失败', loading: false, error: message })
+    updateNode(props.id, {
+      loading: false,
+      error: message,
+    })
+    isGenerating.value = false
+    cleanupTaskStream()
+  })
+}
+
 // 生成图片
 const handleGenerate = async () => {
   const { prompt, refImages } = collectInputs()
   if (!prompt && !refImages.length) return
 
   isGenerating.value = true
+  cleanupTaskStream()
   let outputNodeId: string | null = null
   try {
-    const { modelKey } = await resolveGatewayUpstream('image', {
-      modelValue: model.value,
+    const { providerId, modelKey } = resolveGenerationTaskModel({
+      modelKey: model.value,
+      category: 'IMAGE',
+      missingModelMessage: '未匹配到有效图片模型，请先检查后台模型配置',
     })
-    const params: {
+    const requestBody: {
       model: string
       prompt: string
       n: number
+      providerId: string
       size?: string
       quality?: string
       image?: string[]
-    } = { model: modelKey, prompt: prompt || '', n: 1 }
-    if (size.value && currentModel.value?.sizes?.length) params.size = size.value
-    if (quality.value) params.quality = quality.value
-    if (refImages.length) params.image = refImages
+    } = {
+      model: modelKey,
+      prompt: prompt || '',
+      n: 1,
+      providerId,
+    }
+    if (size.value && currentModel.value?.sizes?.length) requestBody.size = size.value
+    if (quality.value) requestBody.quality = quality.value
+    const hasReferenceImages = refImages.length > 0
+    const normalizedRequestBody = hasReferenceImages
+      ? appendImageReferencesToRequestBody(requestBody, refImages)
+      : requestBody
 
     // 先创建带 loading 状态的输出节点
     const node = nodes.value.find(n => n.id === props.id)
@@ -162,22 +269,41 @@ const handleGenerate = async () => {
     const createdOutputNodeId = outputNodeId
     setTimeout(() => updateNodeInternals([createdOutputNodeId]), 50)
 
-    const result = await generateImage(params)
-    const url = result?.data?.[0]?.url || result?.data?.[0]?.b64_json
+    updateNode(props.id, {
+      loading: true,
+      error: '',
+      executed: false,
+      outputNodeId: undefined,
+      taskRecordId: '',
+    })
 
-    if (url) {
-      updateNode(outputNodeId, { url, label: '生成结果', loading: false })
-      updateNode(props.id, { executed: true, outputNodeId: outputNodeId || undefined })
-    } else {
-      updateNode(outputNodeId, { label: '生成失败', loading: false, error: '未返回图片' })
-      updateNode(props.id, { error: '未返回图片' })
+    const saved = await createGenerationTask({
+      source: 'workflow',
+      type: 'image',
+      requestMode: hasReferenceImages ? 'image-edit' : 'image-generation',
+      prompt,
+      model: model.value,
+      modelKey,
+      referenceImages: [...refImages],
+      requestBody: normalizedRequestBody,
+    })
+
+    const taskRecordId = String(saved.id || '').trim()
+    if (!taskRecordId) {
+      throw new Error('图片任务创建失败')
     }
+
+    updateNode(props.id, {
+      taskRecordId,
+      loading: true,
+      error: '',
+    })
+    bindTaskStream(taskRecordId, createdOutputNodeId)
   } catch (err: unknown) {
     console.error('图片生成失败:', err)
     const msg = err instanceof Error ? err.message : '图片生成失败'
     if (outputNodeId) updateNode(outputNodeId, { label: '生成失败', loading: false, error: msg })
-    updateNode(props.id, { error: msg })
-  } finally {
+    updateNode(props.id, { loading: false, error: msg })
     isGenerating.value = false
   }
 }

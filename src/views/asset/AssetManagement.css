@@ -3,9 +3,11 @@
     box-sizing: border-box; 
     display: flex; 
     flex-direction: column; 
-    height: 100%; 
+    flex: 1 1 auto;
+    height: 100%;
     min-height: 100vh; 
     padding-top: 20px; 
+    width: 100%;
     position: relative;
 } 
 
@@ -14,7 +16,11 @@
 } 
 
 .content-1rx { 
-    height: 100%; 
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
     width: 100%;
 } 
 
@@ -33,8 +39,9 @@
 /* Tab Styles */
 .tab-entry-mxq { 
     box-sizing: border-box; 
+    height: 100%;
     padding: 8px 0 0 0;
-    height: 100%; 
+    min-height: 0; 
     width: 100%;
 } 
 
@@ -42,6 +49,7 @@
     align-items: center; 
     display: flex; 
     gap: 8px;
+    width: max-content;
 } 
 
 .entryContainer-fe9 .tabItem-mls  { 
@@ -49,12 +57,14 @@
     box-sizing: border-box; 
     color: var(--text-secondary,rgba(224,245,255,.6)); 
     cursor: pointer; 
+    flex-shrink: 0;
     font-family: PingFang SC; 
     font-size: 13px; 
     font-weight: 500; 
     height: 36px; 
     line-height: 22px; 
     padding: 7px 20px;
+    white-space: nowrap;
 } 
 
 .entryContainer-fe9 .tabItem-mls.active-2nk, .entryContainer-fe9 .tabItem-mls:hover { 
@@ -64,18 +74,42 @@
 
 /* Image Tab */
 .image-yhz { 
+    display: flex;
     height: 100%; 
+    min-height: 0;
     width: 100%;
 } 
 
 .image-s9z { 
+    flex: 1 1 auto;
     height: 100%; 
+    min-height: 0;
     overflow: hidden;
 } 
 
 .image-s9z .vList-q9n  { 
+    contain: strict;
+    display: block;
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: scroll;
     scrollbar-width: auto;
+    width: 100%;
 } 
+
+/* 参考 HTML 里的虚拟列表外壳，这里只复用可稳定复用的容器属性 */
+.style-MK2n3 {
+    flex: 0 0 auto;
+    overflow-anchor: none;
+    position: relative;
+    width: 100%;
+}
+
+/* 参考 HTML 中实际承载可见内容的层 */
+.style-TK4rG {
+    visibility: visible;
+    width: 100%;
+}
 
 .image-s9z .vList-q9n::-webkit-scrollbar { 
     width: 16px;
@@ -104,25 +138,36 @@
     margin-top: 0;
 } 
 
-.image-s9z .row-zep .image-qvw  { 
+.entryContainer-fe9 .image-s9z .row-zep .image-qvw  { 
     display: grid;
     grid-template-columns: repeat(10, 1fr);
     gap: 2px;
     height: 100%; 
     margin: 0 auto; 
-    width: 100%;
+    width: min(1568px, 100%);
 } 
 
-.image-bqm { 
+.entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm { 
     box-sizing: border-box; 
+    margin-bottom: 2px;
     position: relative;
     width: 100%;
     aspect-ratio: 1 / 1;
 } 
 
+.entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm,
+.entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm > div,
+.entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm > div > .container-pm3 {
+    height: 100% !important;
+    min-width: 0;
+    width: 100% !important;
+}
+
 .container-pm3 { 
+    border-radius: 2px;
     box-sizing: border-box;
     height: 100%; 
+    overflow: hidden;
     position: relative; 
     width: 100%;
 } 
@@ -134,8 +179,20 @@
     height: 100%; 
     object-fit: cover; 
     position: relative; 
+    transition: transform .2s cubic-bezier(.4,0,.2,1);
     width: 100%;
 } 
+
+.entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm .image-w9g {
+    display: block;
+    height: 100% !important;
+    object-fit: cover !important;
+    width: 100% !important;
+}
+
+.image-bqm:hover .image-w9g {
+    transform: scale(1.02);
+}
 
 img { 
     border-style: none;
@@ -229,14 +286,18 @@ img {
     flex-direction: column; 
     height: 100%; 
     margin: 0 auto;
+    min-height: 0;
+    width: 100%;
 } 
 
 .video-cv8 { 
     box-sizing: border-box; 
     flex: 1 1; 
+    min-height: 0;
     overflow: auto; 
     padding-bottom: 12px; 
     scrollbar-width: auto;
+    width: 100%;
 } 
 
 .video-cv8:-webkit-scrollbar { 
@@ -261,6 +322,8 @@ img {
     display: flex; 
     flex-direction: column; 
     margin: auto;
+    min-height: 0;
+    width: 100%;
 } 
 
 @media (min-width: 1921px) and (max-width: 2560px){ 
@@ -272,7 +335,8 @@ img {
 .canvasEntryContainer-dp8 .canvasWrapper-ysg  { 
     box-sizing: border-box; 
     flex: 1 1; 
-    overflow-y: scroll; 
+    min-height: 0;
+    overflow-y: auto; 
     padding-bottom: 12px; 
     scrollbar-width: auto!important;
 } 
@@ -377,12 +441,15 @@ img {
     flex-direction: column; 
     height: 100%; 
     margin: auto;
+    min-height: 0;
+    width: 100%;
 } 
 
 .storyWrapper-shp { 
     box-sizing: border-box; 
     flex: 1 1; 
-    overflow-y: scroll; 
+    min-height: 0;
+    overflow-y: auto; 
     scrollbar-width: auto!important;
 } 
 
@@ -407,6 +474,8 @@ img {
     flex-direction: column; 
     height: 100%; 
     margin: 0 auto;
+    min-height: 0;
+    width: 100%;
 } 
 
 /* Empty State */
@@ -1232,6 +1301,7 @@ button {
     flex-direction: column; 
     height: 100%; 
     margin: 0 auto; 
+    min-height: 0;
     width: 100%;
 } 
 
@@ -1375,20 +1445,24 @@ button {
 
 /* 选中状态的资产项 - 完全复用 zichan.html 样式 */
 .image-bqm.select-1kz {
-  border: 2px solid var(--text-primary) !important;
-  border-radius: 4px !important;
-  border-style: inset;
   box-sizing: border-box;
-  padding: 1px;
+}
+
+.image-bqm.select-1kz::before {
+  border: 2px solid var(--text-primary);
+  border-radius: 11px;
+  content: "";
+  height: 100%;
+  left: -2px;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  top: -2px;
+  width: 100%;
+  z-index: 10;
 }
 
 .image-bqm {
   cursor: pointer;
   position: relative;
-  transition: outline 0.2s;
-}
-
-.image-bqm:hover {
-  outline: 2px solid var(--stroke-primary, rgba(204,221,255,.16));
-  outline-offset: -2px;
 }

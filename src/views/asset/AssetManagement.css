@@ -156,8 +156,8 @@
 } 
 
 .entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm,
-.entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm > div,
-.entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm > div > .container-pm3 {
+.entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm > div:first-child,
+.entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm > div:first-child > .container-pm3 {
     height: 100% !important;
     min-width: 0;
     width: 100% !important;

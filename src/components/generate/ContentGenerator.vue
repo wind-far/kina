@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted, watch } from 'vue'
+import { ref, computed, nextTick, onUnmounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
 import { useSystemSettingsStore } from '@/stores/system-settings'
@@ -51,6 +51,34 @@ interface GeneratorSendOptions {
   feature?: string
   skill?: string
   referenceImages?: string[]
+}
+
+interface GeneratorDraftPayload {
+  type?: CreationType
+  prompt?: string
+  modelKey?: string
+  ratio?: string
+  resolution?: string
+  duration?: string
+  feature?: string
+  skill?: string
+  referenceImages?: string[]
+}
+
+interface ExposedImageToolbarInstance {
+  currentModelVersion: string
+  currentSize: string
+}
+
+interface ExposedVideoToolbarInstance {
+  currentModelVersion: string
+  currentSize: string
+  currentDuration: string
+  currentFeature: string
+}
+
+interface ExposedAgentToolbarInstance {
+  currentSkill: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -307,6 +335,81 @@ const handleSubmit = () => {
 // 是否禁用提交按钮
 const isSubmitDisabled = computed(() => !inputValue.value.trim())
 
+const getActiveAgentToolbar = () =>
+  (agentToolbarExpandRef.value || agentToolbarRef.value) as ExposedAgentToolbarInstance | null
+
+// 将外部记录草稿回填到生成器，供重新编辑和再次生成复用。
+const applyDraft = async (payload: GeneratorDraftPayload) => {
+  const nextType = payload.type || currentType.value
+  currentType.value = nextType
+  expand()
+
+  inputValue.value = String(payload.prompt || '')
+
+  if (nextType === 'image' || nextType === 'agent') {
+    imageReferenceImages.value = Array.isArray(payload.referenceImages)
+      ? payload.referenceImages.filter(Boolean).slice(0, IMAGE_REFERENCE_LIMIT)
+      : []
+    videoFirstFrameImage.value = ''
+    videoLastFrameImage.value = ''
+  } else if (nextType === 'video') {
+    imageReferenceImages.value = []
+    videoFirstFrameImage.value = String(payload.referenceImages?.[0] || '')
+    videoLastFrameImage.value = String(payload.referenceImages?.[1] || '')
+  } else {
+    imageReferenceImages.value = []
+    videoFirstFrameImage.value = ''
+    videoLastFrameImage.value = ''
+  }
+
+  await nextTick()
+
+  if (nextType === 'image') {
+    const toolbar = imageToolbarRef.value as ExposedImageToolbarInstance | null
+    if (toolbar) {
+      if (payload.modelKey) {
+        toolbar.currentModelVersion = payload.modelKey
+      }
+      if (payload.ratio) {
+        toolbar.currentSize = payload.ratio
+      }
+    }
+    return
+  }
+
+  if (nextType === 'video') {
+    const toolbar = videoToolbarRef.value as ExposedVideoToolbarInstance | null
+    if (toolbar) {
+      if (payload.modelKey) {
+        toolbar.currentModelVersion = payload.modelKey
+      }
+      if (payload.ratio) {
+        toolbar.currentSize = payload.ratio
+      }
+      if (payload.duration) {
+        toolbar.currentDuration = payload.duration
+      }
+      if (payload.feature) {
+        toolbar.currentFeature = payload.feature
+      }
+    }
+    return
+  }
+
+  if (nextType === 'agent' && payload.skill) {
+    const toolbar = getActiveAgentToolbar()
+    if (toolbar) {
+      toolbar.currentSkill = payload.skill
+    }
+  }
+}
+
+// 直接提交外部草稿，保持走组件内部已有发送装配逻辑。
+const submitDraft = async (payload: GeneratorDraftPayload) => {
+  await applyDraft(payload)
+  handleSubmit()
+}
+
 // 暴露方法供父组件调用
 defineExpose({
   expand,
@@ -315,7 +418,9 @@ defineExpose({
   isCollapsed,
   currentType,
   inputValue,
-  handleSubmit
+  handleSubmit,
+  applyDraft,
+  submitDraft,
 })
 
 // 根据创作类型返回不同的 placeholder

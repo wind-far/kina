@@ -96,6 +96,16 @@ interface GeneratePreviewImageItem {
   resolutionLabel?: string
   featureLabel?: string
   createDate?: string
+  sourceRecordId?: number
+  type?: CreationType
+  model?: string
+  modelKey?: string
+  ratio?: string
+  resolution?: string
+  duration?: string
+  feature?: string
+  skill?: string
+  referenceImages?: string[]
 }
 
 interface GenerateSessionScrollState {
@@ -284,10 +294,29 @@ const buildPreviewImagesFromRecord = (record: GeneratingRecord): GeneratePreview
     resolutionLabel: record.resolution,
     featureLabel: record.feature,
     createDate: record.time,
+    sourceRecordId: record.id,
+    type: record.type,
+    model: record.model,
+    modelKey: record.modelKey,
+    ratio: record.ratio,
+    resolution: record.resolution,
+    duration: record.duration,
+    feature: record.feature,
+    skill: record.skill,
+    referenceImages: [...(record.referenceImages || [])],
   }))
 }
 
-const handlePreviewRecordImage = (record: GeneratingRecord, index: number) => {
+const buildDraftReferenceImages = (generatedImage?: string, referenceImages?: string[]) => {
+  const merged = [String(generatedImage || '').trim(), ...(referenceImages || []).map(item => String(item || '').trim())]
+    .filter(Boolean)
+  return Array.from(new Set(merged)).slice(0, 9)
+}
+
+const findGeneratingRecordById = (recordId?: number) =>
+  generatingRecords.value.find(record => record.id === recordId)
+
+const openRecordPreview = (record: GeneratingRecord, index = 0) => {
   if (!record.done || !record.images.length) {
     return
   }
@@ -295,6 +324,43 @@ const handlePreviewRecordImage = (record: GeneratingRecord, index: number) => {
   previewImages.value = buildPreviewImagesFromRecord(record)
   previewIndex.value = Math.min(Math.max(0, index), Math.max(0, previewImages.value.length - 1))
   previewVisible.value = true
+}
+
+const handlePreviewRecordImage = (record: GeneratingRecord, index: number) => {
+  openRecordPreview(record, index)
+}
+
+const handleEditImageRecord = async (record: GeneratingRecord, imageUrl?: string) => {
+  const draftReferenceImages = buildDraftReferenceImages(imageUrl || record.images[0], record.referenceImages)
+  previewVisible.value = false
+  await contentGeneratorRef.value?.applyDraft({
+    type: record.type,
+    prompt: record.prompt,
+    modelKey: record.modelKey,
+    ratio: record.ratio,
+    resolution: record.resolution,
+    duration: record.duration,
+    feature: record.feature,
+    skill: record.skill,
+    referenceImages: draftReferenceImages,
+  })
+}
+
+const handleRegenerateImageRecord = async (record: GeneratingRecord) => {
+  await handleSend(record.prompt, record.type, {
+    model: record.model,
+    modelKey: record.modelKey,
+    ratio: record.ratio,
+    resolution: record.resolution,
+    duration: record.duration,
+    feature: record.feature,
+    skill: record.skill,
+    referenceImages: [...(record.referenceImages || [])],
+  })
+}
+
+const handleOpenImageRecordMore = (record: GeneratingRecord) => {
+  openRecordPreview(record, 0)
 }
 
 const handlePreviewDownload = async (image: GeneratePreviewImageItem) => {
@@ -319,6 +385,27 @@ const handlePreviewGenerateVideo = () => {
 
 const handlePreviewEditInCanvas = () => {
   ElMessage.success('请前往画布页继续编辑')
+}
+
+const handlePreviewEdit = async (image: GeneratePreviewImageItem) => {
+  const record = findGeneratingRecordById(image.sourceRecordId)
+  if (!record) {
+    ElMessage.warning('未找到对应生成记录，暂时无法重新编辑')
+    return
+  }
+
+  await handleEditImageRecord(record, image.src)
+}
+
+const handlePreviewRegenerate = async (image: GeneratePreviewImageItem) => {
+  const record = findGeneratingRecordById(image.sourceRecordId)
+  if (!record) {
+    ElMessage.warning('未找到对应生成记录，暂时无法再次生成')
+    return
+  }
+
+  previewVisible.value = false
+  await handleRegenerateImageRecord(record)
 }
 
 // 当前会话列表先支持关键词搜索，便于快速定位提示词和结果文本。
@@ -1455,6 +1542,9 @@ onUnmounted(() => {
                     :conversation-entries="getRecordConversationEntries(record)"
                     :error="record.error ? formatGenerationError(record.error, '图片生成失败') : ''"
                     @preview="handlePreviewRecordImage(record, $event)"
+                    @edit="handleEditImageRecord(record)"
+                    @regenerate="handleRegenerateImageRecord(record)"
+                    @more="handleOpenImageRecordMore(record)"
                     @stop="handleStopImageGeneration(record)"
                 />
               </div>
@@ -1508,6 +1598,8 @@ onUnmounted(() => {
           v-model:currentIndex="previewIndex"
           :images="previewImages"
           @download="handlePreviewDownload"
+          @edit="handlePreviewEdit"
+          @regenerate="handlePreviewRegenerate"
           @favorite="handlePreviewFavorite"
           @publish="handlePreviewPublish"
           @generate-video="handlePreviewGenerateVideo"

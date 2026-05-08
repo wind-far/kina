@@ -435,7 +435,7 @@
               <div class="group">
                 <div>
                   <div class="detail-button-view-container">
-                    <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button">
+                    <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button" @click="handleEdit">
                       <div class="icon-f2nkjH">
                         <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                           <g>
@@ -459,7 +459,7 @@
                   <div>
                     <div class="tooltip-container-BTcBzf">
                       <div class="detail-button-view-container">
-                        <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button">
+                        <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square detail-button-view" type="button" @click="handleRegenerate">
                           <div class="icon-f2nkjH">
                             <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                               <g>
@@ -523,6 +523,8 @@ const emit = defineEmits<{
   'publish': [image: ImageItem]
   'generateVideo': [image: ImageItem]
   'editInCanvas': [image: ImageItem]
+  'edit': [image: ImageItem]
+  'regenerate': [image: ImageItem]
 }>()
 
 const internalIndex = ref(props.currentIndex)
@@ -586,6 +588,18 @@ const handlePublish = () => {
 const handleGenerateVideo = () => {
   if (currentImage.value) {
     emit('generateVideo', currentImage.value)
+  }
+}
+
+const handleEdit = () => {
+  if (currentImage.value) {
+    emit('edit', currentImage.value)
+  }
+}
+
+const handleRegenerate = () => {
+  if (currentImage.value) {
+    emit('regenerate', currentImage.value)
   }
 }
 

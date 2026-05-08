@@ -226,6 +226,7 @@ export interface SystemHomeSideMenuGroupConfig {
 
 export interface SystemHomeSideMenuSettingsConfig {
   enabled: boolean
+  layoutMode: 'side' | 'top'
   collapsedWidth: number
   drawerWidth: number
   drawerFloatLimitWidth: number
@@ -425,6 +426,7 @@ export const createDefaultGlobalThemeSettings = (): SystemGlobalThemeSettingsCon
 
 export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsConfig => ({
   enabled: true,
+  layoutMode: 'side',
   collapsedWidth: 76,
   drawerWidth: 440,
   drawerFloatLimitWidth: 1280,
@@ -1125,6 +1127,7 @@ const normalizeHomeSideMenuSettings = (value?: SystemHomeSideMenuSettingsConfig 
   return {
     ...defaults,
     ...(value || {}),
+    layoutMode: value?.layoutMode === 'top' ? 'top' : 'side',
     groups: [...normalizedGroups, ...extraGroups].sort((left, right) => left.sortOrder - right.sortOrder),
     items: [...normalizedItems, ...extraItems].sort((left, right) => left.sortOrder - right.sortOrder),
   }

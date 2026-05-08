@@ -26,10 +26,11 @@ export const useHomeSideMenuConfig = (options?: {
   const topItems = computed(() => sortedItems.value.filter(item => item.section === 'top' && shouldIncludeItem(item.visible)))
   const centerItems = computed(() => sortedItems.value.filter(item => item.section === 'center' && shouldIncludeItem(item.visible)))
   const bottomItems = computed(() => sortedItems.value.filter(item => item.section === 'bottom' && shouldIncludeItem(item.visible)))
+  const layoutMode = computed(() => sideMenuSettings.value.layoutMode === 'top' ? 'top' : 'side')
 
   const sideMenuStyleVars = computed(() => {
     const settings = sideMenuSettings.value
-    const width = settings.enabled === false ? 0 : settings.collapsedWidth
+    const width = settings.enabled === false || layoutMode.value === 'top' ? 0 : settings.collapsedWidth
 
     return {
       '--side-menu-width': `${width}px`,
@@ -40,6 +41,7 @@ export const useHomeSideMenuConfig = (options?: {
 
   return {
     sideMenuSettings,
+    layoutMode,
     topItems,
     centerItems,
     bottomItems,

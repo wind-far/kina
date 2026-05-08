@@ -53,6 +53,14 @@
                     <div class="admin-layout-inline-hint">关闭后，前台首页与创作入口将不再显示左侧菜单骨架。</div>
                   </div>
                   <div class="admin-layout-setting-card">
+                    <label class="admin-form__label">导航布局</label>
+                    <select v-model="form.homeSideMenuSettings.layoutMode" class="admin-input">
+                      <option value="side">左侧纵向</option>
+                      <option value="top">顶部横向</option>
+                    </select>
+                    <div class="admin-layout-inline-hint">切换后，前台导航会在左侧竖排和顶部横向之间切换。</div>
+                  </div>
+                  <div class="admin-layout-setting-card">
                     <label class="admin-form__label">区块显示</label>
                     <div class="admin-layout-toggle-list">
                       <label class="admin-layout-toggle-item">

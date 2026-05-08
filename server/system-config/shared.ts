@@ -206,6 +206,7 @@ export interface SystemHomeSideMenuItemPayload {
 
 export interface SystemHomeSideMenuSettingsPayload {
   enabled?: boolean
+  layoutMode?: 'side' | 'top' | string
   collapsedWidth?: number
   drawerWidth?: number
   drawerFloatLimitWidth?: number

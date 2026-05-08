@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-theme-front-menu-preview" :style="styleVars">
+  <div class="admin-theme-front-menu-preview" :class="{ 'is-top-layout': isTopLayout }" :style="styleVars">
     <div
       class="admin-theme-front-menu-preview__frame sideMenu dreamina-side-menu-container side-menu visible-DXQYqc"
       :class="{
@@ -7,7 +7,7 @@
         'is-background-linked': activeThemeFieldId === 'sideMenuBackground',
       }"
     >
-      <div class="admin-theme-front-menu-preview__visual-layer">
+      <div v-if="!isTopLayout" class="admin-theme-front-menu-preview__visual-layer">
         <SideMenu
           :system-settings-override="previewSystemSettings"
           :active-menu-key-override="activeMenuKey"
@@ -19,7 +19,160 @@
         />
       </div>
 
-      <div class="admin-theme-front-menu-preview__overlay-layer">
+      <div v-if="isTopLayout" class="admin-theme-front-menu-preview__top-layout-layer">
+        <div class="admin-theme-front-menu-preview__topbar">
+          <div
+            v-if="showTopMenu && topItem"
+            class="admin-theme-front-menu-preview__topbar-brand admin-theme-front-menu-preview__top-item-shell"
+            :class="buildTopShellClass(topItem)"
+            :data-menu-key="topItem.key"
+            :data-menu-section="topItem.section"
+            :data-menu-group-key="topItem.groupKey || ''"
+            @pointerdown="handlePointerStart($event, topItem)"
+          >
+            <div class="admin-theme-front-menu-preview__top-item-main">
+              <img
+                v-if="resolvedSiteLogoUrl"
+                :src="resolvedSiteLogoUrl"
+                class="top-menu-bar__brand-logo"
+                :alt="resolvedSiteName"
+              >
+              <div v-else class="top-menu-bar__brand-fallback">
+                <HomeSideMenuIcon
+                  :icon-key="topItem.icon"
+                  :icon-source="topItem.iconSource"
+                  :inactive-icon-url="topItem.inactiveIconUrl"
+                  :active-icon-url="topItem.activeIconUrl"
+                  :active="topItem.key === activeMenuKey"
+                />
+              </div>
+              <span v-if="!topItem.visible" class="admin-theme-front-menu-preview__hidden-badge">已隐藏</span>
+            </div>
+            <div class="admin-theme-front-menu-preview__top-item-actions">
+              <AdminThemeWorkbenchItemActions
+                :visible="topItem.visible"
+                :sort-armed="dragArmedMenuKey === topItem.key"
+                @sort-press="handleSortPress($event, topItem)"
+                @action="handleAction($event, topItem.key, topItem)"
+              />
+            </div>
+          </div>
+
+          <div v-if="showCenterMenu" class="admin-theme-front-menu-preview__topbar-center">
+            <div
+              v-for="item in topLayoutCenterItems"
+              :key="item.key"
+              class="admin-theme-front-menu-preview__top-nav-item admin-theme-front-menu-preview__top-item-shell"
+              :class="[buildTopShellClass(item), { 'is-active': item.key === activeMenuKey }]"
+              :data-menu-key="item.key"
+              :data-menu-section="item.section"
+              :data-menu-group-key="item.groupKey || ''"
+              @pointerdown="handlePointerStart($event, item)"
+            >
+              <div class="admin-theme-front-menu-preview__top-item-main">
+                <HomeSideMenuIcon
+                  :icon-key="item.icon"
+                  :icon-source="item.iconSource"
+                  :inactive-icon-url="item.inactiveIconUrl"
+                  :active-icon-url="item.activeIconUrl"
+                  :active="item.key === activeMenuKey"
+                />
+                <span>{{ item.title }}</span>
+                <span v-if="!item.visible" class="admin-theme-front-menu-preview__hidden-badge">已隐藏</span>
+              </div>
+              <div class="admin-theme-front-menu-preview__top-item-actions">
+                <AdminThemeWorkbenchItemActions
+                  :visible="item.visible"
+                  :sort-armed="dragArmedMenuKey === item.key"
+                  @sort-press="handleSortPress($event, item)"
+                  @action="handleAction($event, item.key, item)"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div v-if="showBottomMenu" class="admin-theme-front-menu-preview__topbar-actions">
+            <div
+              v-if="topLayoutMarketingItem"
+              class="admin-theme-front-menu-preview__top-action-chip admin-theme-front-menu-preview__top-item-shell"
+              :class="buildTopShellClass(topLayoutMarketingItem)"
+              :data-menu-key="topLayoutMarketingItem.key"
+              :data-menu-section="topLayoutMarketingItem.section"
+              :data-menu-group-key="topLayoutMarketingItem.groupKey || ''"
+              @pointerdown="handlePointerStart($event, topLayoutMarketingItem)"
+            >
+              <div class="admin-theme-front-menu-preview__top-item-main">
+                <span class="top-menu-bar__action-kicker">{{ topLayoutMarketingItem.title || '会员中心' }}</span>
+                <span class="top-menu-bar__action-value">105</span>
+                <span v-if="!topLayoutMarketingItem.visible" class="admin-theme-front-menu-preview__hidden-badge">已隐藏</span>
+              </div>
+              <div class="admin-theme-front-menu-preview__top-item-actions">
+                <AdminThemeWorkbenchItemActions
+                  :visible="topLayoutMarketingItem.visible"
+                  :sort-armed="dragArmedMenuKey === topLayoutMarketingItem.key"
+                  @sort-press="handleSortPress($event, topLayoutMarketingItem)"
+                  @action="handleAction($event, topLayoutMarketingItem.key, topLayoutMarketingItem)"
+                />
+              </div>
+            </div>
+
+            <div
+              v-if="topLayoutAccountEntryItem"
+              class="admin-theme-front-menu-preview__top-action-chip admin-theme-front-menu-preview__top-item-shell"
+              :class="buildTopShellClass(topLayoutAccountEntryItem)"
+              :data-menu-key="topLayoutAccountEntryItem.key"
+              :data-menu-section="topLayoutAccountEntryItem.section"
+              :data-menu-group-key="topLayoutAccountEntryItem.groupKey || ''"
+              @pointerdown="handlePointerStart($event, topLayoutAccountEntryItem)"
+            >
+              <div class="admin-theme-front-menu-preview__top-item-main">
+                <span>{{ topLayoutAccountEntryItem.title || '登录' }}</span>
+                <span v-if="!topLayoutAccountEntryItem.visible" class="admin-theme-front-menu-preview__hidden-badge">已隐藏</span>
+              </div>
+              <div class="admin-theme-front-menu-preview__top-item-actions">
+                <AdminThemeWorkbenchItemActions
+                  :visible="topLayoutAccountEntryItem.visible"
+                  :sort-armed="dragArmedMenuKey === topLayoutAccountEntryItem.key"
+                  @sort-press="handleSortPress($event, topLayoutAccountEntryItem)"
+                  @action="handleAction($event, topLayoutAccountEntryItem.key, topLayoutAccountEntryItem)"
+                />
+              </div>
+            </div>
+
+            <div
+              v-for="item in topLayoutActionItems"
+              :key="item.key"
+              class="admin-theme-front-menu-preview__top-icon-item admin-theme-front-menu-preview__top-item-shell"
+              :class="[buildTopShellClass(item), { 'is-active': item.key === activeMenuKey }]"
+              :data-menu-key="item.key"
+              :data-menu-section="item.section"
+              :data-menu-group-key="item.groupKey || ''"
+              @pointerdown="handlePointerStart($event, item)"
+            >
+              <div class="admin-theme-front-menu-preview__top-item-main">
+                <HomeSideMenuIcon
+                  :icon-key="item.icon"
+                  :icon-source="item.iconSource"
+                  :inactive-icon-url="item.inactiveIconUrl"
+                  :active-icon-url="item.activeIconUrl"
+                  :active="item.key === activeMenuKey"
+                />
+                <span v-if="!item.visible" class="admin-theme-front-menu-preview__hidden-badge">已隐藏</span>
+              </div>
+              <div class="admin-theme-front-menu-preview__top-item-actions">
+                <AdminThemeWorkbenchItemActions
+                  :visible="item.visible"
+                  :sort-armed="dragArmedMenuKey === item.key"
+                  @sort-press="handleSortPress($event, item)"
+                  @action="handleAction($event, item.key, item)"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="admin-theme-front-menu-preview__overlay-layer">
       <div v-if="showTopMenu && topItem" role="menu" class="lv-menu lv-menu-light lv-menu-vertical topMenu">
         <div class="lv-menu-inner">
         <div
@@ -387,6 +540,7 @@ const resolvedSiteName = computed(() => String(props.siteInfo.siteName || 'Canan
 const showTopMenu = computed(() => props.settings.showTopMenu)
 const showCenterMenu = computed(() => props.settings.showCenterMenu)
 const showBottomMenu = computed(() => props.settings.showBottomMenu)
+const isTopLayout = computed(() => props.settings.layoutMode === 'top')
 const dragArmedMenuKey = ref('')
 const draggingMenuKey = ref('')
 const dropTargetMenuKey = ref('')
@@ -404,7 +558,7 @@ let pointerSession: {
 const POINTER_DRAG_THRESHOLD = 6
 
 const styleVars = computed(() => ({
-  '--side-menu-width': `${Math.min(Math.max(props.settings.collapsedWidth, 76), 96)}px`,
+  '--side-menu-width': isTopLayout.value ? '100%' : `${Math.min(Math.max(props.settings.collapsedWidth, 76), 96)}px`,
 }))
 
 const resolveBottomContainerClass = (key: string) => {
@@ -474,6 +628,23 @@ const allPreviewItems = computed(() => {
   const centerItems = props.centerGroups.flatMap(group => group.items)
   const bottomItems = props.bottomGroups.flatMap(group => group.items)
   return [...topItems, ...centerItems, ...bottomItems]
+})
+
+const topLayoutCenterItems = computed(() => props.centerGroups.flatMap(group => group.items))
+const topLayoutBottomItems = computed(() => props.bottomGroups.flatMap(group => group.items))
+const topLayoutMarketingItem = computed(() => topLayoutBottomItems.value.find(item => item.key === 'marketing') || null)
+const topLayoutAccountEntryItem = computed(() => topLayoutBottomItems.value.find(item => item.key === 'account-entry') || null)
+const topLayoutActionItems = computed(() =>
+  topLayoutBottomItems.value.filter(item => !['marketing', 'account-entry', 'account'].includes(item.key)),
+)
+
+const buildTopShellClass = (item: SystemHomeSideMenuItemConfig) => ({
+  'is-hidden-item': !item.visible,
+  'is-dragging': draggingMenuKey.value === item.key,
+  'is-drop-target': dropTargetMenuKey.value === item.key,
+  'is-drop-before': dropTargetMenuKey.value === item.key && dropPosition.value === 'before',
+  'is-drop-after': dropTargetMenuKey.value === item.key && dropPosition.value === 'after',
+  'is-settling': settlingMenuKey.value === item.key,
 })
 
 const previewSystemSettings = computed(() => ({
@@ -754,6 +925,12 @@ onBeforeUnmount(() => {
   overflow: visible;
 }
 
+.admin-theme-front-menu-preview.is-top-layout {
+  width: 100%;
+  height: 96px;
+  min-height: 96px;
+}
+
 .admin-theme-front-menu-preview__frame {
   position: relative;
   width: var(--side-menu-width);
@@ -763,6 +940,12 @@ onBeforeUnmount(() => {
   border-radius: 24px;
   overflow: visible;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.admin-theme-front-menu-preview.is-top-layout .admin-theme-front-menu-preview__frame {
+  width: 100%;
+  height: 96px;
+  min-height: 96px;
 }
 
 .admin-theme-front-menu-preview__visual-layer,
@@ -778,6 +961,106 @@ onBeforeUnmount(() => {
 .admin-theme-front-menu-preview__overlay-layer {
   z-index: 2;
   pointer-events: none;
+}
+
+.admin-theme-front-menu-preview__top-layout-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+}
+
+.admin-theme-front-menu-preview__topbar {
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  border-radius: 20px;
+  background: var(--theme-side-menu-background, #111218);
+  border: 1px solid var(--stroke-primary, rgba(255, 255, 255, 0.08));
+}
+
+.admin-theme-front-menu-preview__topbar-center,
+.admin-theme-front-menu-preview__topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-theme-front-menu-preview__topbar-center {
+  justify-content: center;
+}
+
+.admin-theme-front-menu-preview__topbar-actions {
+  justify-content: flex-end;
+}
+
+.admin-theme-front-menu-preview__top-item-shell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  border-radius: 14px;
+  transition: opacity 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+
+.admin-theme-front-menu-preview__top-item-shell.is-active,
+.admin-theme-front-menu-preview__top-item-shell:hover {
+  background: var(--bg-block-primary-default, rgba(255, 255, 255, 0.08));
+}
+
+.admin-theme-front-menu-preview__topbar-brand {
+  width: 44px;
+  height: 44px;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.admin-theme-front-menu-preview__top-nav-item {
+  padding: 0 14px;
+}
+
+.admin-theme-front-menu-preview__top-action-chip {
+  padding: 0 12px;
+  border-radius: 12px;
+}
+
+.admin-theme-front-menu-preview__top-icon-item {
+  width: 40px;
+  height: 40px;
+  justify-content: center;
+  border-radius: 12px;
+}
+
+.admin-theme-front-menu-preview__top-item-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  position: relative;
+}
+
+.admin-theme-front-menu-preview__top-item-actions {
+  position: absolute;
+  left: 50%;
+  bottom: -34px;
+  transform: translateX(-50%);
+  display: flex;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  z-index: 12;
+}
+
+.admin-theme-front-menu-preview__top-item-shell:hover .admin-theme-front-menu-preview__top-item-actions,
+.admin-theme-front-menu-preview__top-item-shell:focus-within .admin-theme-front-menu-preview__top-item-actions,
+.admin-theme-front-menu-preview__top-item-shell:has(.admin-theme-workbench-item-actions__button.is-drag-armed) .admin-theme-front-menu-preview__top-item-actions,
+.admin-theme-front-menu-preview__top-item-actions:hover,
+.admin-theme-front-menu-preview__top-item-actions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%);
 }
 
 .admin-theme-front-menu-preview__overlay-layer :deep(.lv-menu-item),
@@ -814,6 +1097,12 @@ onBeforeUnmount(() => {
   z-index: 8;
 }
 
+.admin-theme-front-menu-preview.is-top-layout :deep(.topMenu) {
+  top: 14px;
+  left: 16px;
+  right: auto;
+}
+
 .admin-theme-front-menu-preview :deep(.centerMenu) {
   position: absolute;
   top: 50%;
@@ -822,6 +1111,13 @@ onBeforeUnmount(() => {
   transform: translateY(-50%);
   margin-top: 0;
   z-index: 18;
+}
+
+.admin-theme-front-menu-preview.is-top-layout :deep(.centerMenu) {
+  top: 50%;
+  left: 120px;
+  right: 240px;
+  transform: translateY(-50%);
 }
 
 .admin-theme-front-menu-preview :deep(.bottomMenu) {
@@ -833,11 +1129,25 @@ onBeforeUnmount(() => {
   z-index: 8;
 }
 
+.admin-theme-front-menu-preview.is-top-layout :deep(.bottomMenu) {
+  top: 50%;
+  right: 16px;
+  left: auto;
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
 .admin-theme-front-menu-preview :deep(.lv-menu-inner) {
   display: flex;
   flex-direction: column;
   align-items: center;
   overflow: visible !important;
+}
+
+.admin-theme-front-menu-preview.is-top-layout :deep(.centerMenu .lv-menu-inner),
+.admin-theme-front-menu-preview.is-top-layout :deep(.bottomMenu .lv-menu-inner) {
+  flex-direction: row;
+  align-items: center;
 }
 
 
@@ -860,6 +1170,19 @@ onBeforeUnmount(() => {
 .admin-theme-front-menu-preview :deep(.centerMenu .lv-menu-item:last-child),
 .admin-theme-front-menu-preview :deep(.topMenu .lv-menu-item:last-child) {
   margin-bottom: 0;
+}
+
+.admin-theme-front-menu-preview.is-top-layout :deep(.topMenu .lv-menu-item),
+.admin-theme-front-menu-preview.is-top-layout :deep(.centerMenu .lv-menu-item),
+.admin-theme-front-menu-preview.is-top-layout :deep(.bottomMenu .lv-menu-item) {
+  margin-bottom: 0;
+  margin-right: 10px;
+}
+
+.admin-theme-front-menu-preview.is-top-layout :deep(.topMenu .lv-menu-item:last-child),
+.admin-theme-front-menu-preview.is-top-layout :deep(.centerMenu .lv-menu-item:last-child),
+.admin-theme-front-menu-preview.is-top-layout :deep(.bottomMenu .lv-menu-item:last-child) {
+  margin-right: 0;
 }
 
 .admin-theme-front-menu-preview :deep(.centerMenu .lv-menu-item.lv-menu-selected),
@@ -924,6 +1247,14 @@ onBeforeUnmount(() => {
   gap: 0;
 }
 
+.admin-theme-front-menu-preview.is-top-layout .center-menu-groups,
+.admin-theme-front-menu-preview.is-top-layout .bottom-menu-groups,
+.admin-theme-front-menu-preview.is-top-layout .center-menu-group,
+.admin-theme-front-menu-preview.is-top-layout .bottom-menu-group {
+  flex-direction: row;
+  align-items: center;
+}
+
 .center-menu-group,
 .bottom-menu-group {
   display: flex;
@@ -948,6 +1279,10 @@ onBeforeUnmount(() => {
   margin-bottom: 14px;
 }
 
+.admin-theme-front-menu-preview.is-top-layout :deep(.credit-display-menu-container) {
+  margin-bottom: 0;
+}
+
 .admin-theme-front-menu-preview__item-shell {
   position: relative;
   display: flex !important;
@@ -957,6 +1292,11 @@ onBeforeUnmount(() => {
   padding-right: 132px;
   box-sizing: content-box;
   transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.admin-theme-front-menu-preview.is-top-layout .admin-theme-front-menu-preview__item-shell {
+  width: auto !important;
+  padding-right: 0;
 }
 
 .admin-theme-front-menu-preview__item-shell:has(.admin-theme-workbench-item-actions__button.is-drag-armed) {
@@ -1040,7 +1380,12 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-.admin-theme-front-menu-preview__overlay-layer .admin-theme-front-menu-preview__item-main > :not(.admin-theme-front-menu-preview__hidden-badge) {
+.admin-theme-front-menu-preview.is-top-layout .admin-theme-front-menu-preview__item-main {
+  width: auto;
+  min-width: 0;
+}
+
+.admin-theme-front-menu-preview:not(.is-top-layout) .admin-theme-front-menu-preview__overlay-layer .admin-theme-front-menu-preview__item-main > :not(.admin-theme-front-menu-preview__hidden-badge) {
   opacity: 0;
 }
 
@@ -1072,6 +1417,13 @@ onBeforeUnmount(() => {
   z-index: 12;
 }
 
+.admin-theme-front-menu-preview.is-top-layout .admin-theme-front-menu-preview__row-actions {
+  top: auto;
+  left: 50%;
+  bottom: -34px;
+  transform: translateX(-50%);
+}
+
 .admin-theme-front-menu-preview__item-shell:hover .admin-theme-front-menu-preview__row-actions,
 .admin-theme-front-menu-preview__item-shell:focus-within .admin-theme-front-menu-preview__row-actions,
 .admin-theme-front-menu-preview__item-shell:has(.admin-theme-workbench-item-actions__button.is-drag-armed) .admin-theme-front-menu-preview__row-actions,
@@ -1080,6 +1432,14 @@ onBeforeUnmount(() => {
   opacity: 1;
   pointer-events: auto;
   transform: translate(0, -50%);
+}
+
+.admin-theme-front-menu-preview.is-top-layout .admin-theme-front-menu-preview__item-shell:hover .admin-theme-front-menu-preview__row-actions,
+.admin-theme-front-menu-preview.is-top-layout .admin-theme-front-menu-preview__item-shell:focus-within .admin-theme-front-menu-preview__row-actions,
+.admin-theme-front-menu-preview.is-top-layout .admin-theme-front-menu-preview__item-shell:has(.admin-theme-workbench-item-actions__button.is-drag-armed) .admin-theme-front-menu-preview__row-actions,
+.admin-theme-front-menu-preview.is-top-layout .admin-theme-front-menu-preview__row-actions:hover,
+.admin-theme-front-menu-preview.is-top-layout .admin-theme-front-menu-preview__row-actions:focus-within {
+  transform: translateX(-50%);
 }
 
 @keyframes admin-theme-front-menu-preview-settle {

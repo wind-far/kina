@@ -279,16 +279,26 @@ const previewSurfaceCardStyle = computed(() => ({
 }))
 
 const previewSidebarWidth = computed(() => {
+  if (systemForm.homeSideMenuSettings.layoutMode === 'top') {
+    return 560
+  }
   const collapsedWidth = Math.max(systemForm.homeSideMenuSettings.collapsedWidth, 0)
   const horizontalPadding = 16
   return Math.min(Math.max(collapsedWidth + horizontalPadding, 92), 120)
 })
 
 const previewSidebarStyle = computed(() => ({
-  width: `${previewSidebarWidth.value}px`,
+  width: systemForm.homeSideMenuSettings.layoutMode === 'top' ? '100%' : `${previewSidebarWidth.value}px`,
+  height: systemForm.homeSideMenuSettings.layoutMode === 'top' ? '112px' : '100%',
 }))
 
 const previewFrontstageBodyStyle = computed(() => {
+  if (systemForm.homeSideMenuSettings.layoutMode === 'top') {
+    return {
+      gridTemplateColumns: 'minmax(0, 1fr)',
+      gridTemplateRows: systemForm.homeSideMenuSettings.enabled ? '128px minmax(0, 1fr)' : 'minmax(0, 1fr)',
+    }
+  }
   return {
     gridTemplateColumns: systemForm.homeSideMenuSettings.enabled
       ? `${previewSidebarWidth.value}px minmax(0, 1fr)`

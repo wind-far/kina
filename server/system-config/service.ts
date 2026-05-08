@@ -249,6 +249,7 @@ const createDefaultSystemConfig = () => ({
   },
   homeSideMenuSettings: {
     enabled: true,
+    layoutMode: 'side',
     collapsedWidth: 76,
     drawerWidth: 440,
     drawerFloatLimitWidth: 1280,
@@ -714,6 +715,7 @@ const normalizeSystemConfig = (input?: SystemConfigPayload | null) => {
     },
     homeSideMenuSettings: {
       enabled: homeSideMenuSettings.enabled !== false,
+      layoutMode: String(homeSideMenuSettings.layoutMode || '').trim() === 'top' ? 'top' : 'side',
       collapsedWidth: Number.isFinite(Number(homeSideMenuSettings.collapsedWidth))
         ? Math.max(48, Math.min(180, Number(homeSideMenuSettings.collapsedWidth)))
         : defaults.homeSideMenuSettings.collapsedWidth,

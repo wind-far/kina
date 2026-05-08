@@ -16,7 +16,10 @@
             <aside
               v-if="systemForm.homeSideMenuSettings.enabled"
               class="admin-theme-frontstage__sidebar admin-theme-frontstage__sidebar--real"
-              :class="{ 'is-theme-field-active': activeThemeFieldId === 'sideMenuBackground' }"
+              :class="{
+                'is-theme-field-active': activeThemeFieldId === 'sideMenuBackground',
+                'is-top-layout': systemForm.homeSideMenuSettings.layoutMode === 'top',
+              }"
               :style="previewSidebarStyle"
             >
               <AdminThemeFrontSideMenuPreview
@@ -209,6 +212,11 @@ const previewBannerItems = computed(() => {
   display: flex;
   align-items: stretch;
   overflow: visible;
+}
+
+.admin-theme-frontstage__sidebar.is-top-layout {
+  min-height: 112px;
+  padding: 16px;
 }
 
 .admin-theme-frontstage__sidebar.is-theme-field-active {
@@ -443,6 +451,7 @@ const previewBannerItems = computed(() => {
 @media (max-width: 1280px) {
   .admin-theme-frontstage__body { grid-template-columns: 1fr; }
   .admin-theme-frontstage__sidebar { border-right: none; border-bottom: 1px solid rgba(148, 163, 184, 0.14); grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .admin-theme-frontstage__sidebar.is-top-layout { grid-template-columns: none; }
 }
 
 @media (max-width: 980px) {

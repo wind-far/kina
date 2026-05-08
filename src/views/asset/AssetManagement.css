@@ -141,9 +141,9 @@
 .entryContainer-fe9 .image-s9z .row-zep .image-qvw  { 
     display: grid;
     grid-template-columns: repeat(10, 1fr);
-    gap: 2px;
+    gap: 3px;
     height: 100%; 
-    margin: 0 auto; 
+    /*margin: 0 auto; */
     width: min(1568px, 100%);
 } 
 
@@ -156,8 +156,8 @@
 } 
 
 .entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm,
-.entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm > div,
-.entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm > div > .container-pm3 {
+.entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm > div:first-child,
+.entryContainer-fe9 .image-s9z .row-zep .image-qvw > .image-bqm > div:first-child > .container-pm3 {
     height: 100% !important;
     min-width: 0;
     width: 100% !important;

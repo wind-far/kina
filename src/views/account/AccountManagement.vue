@@ -1,241 +1,229 @@
 <template>
-  <div class="jimeng-home-container">
-    <div id="csr-root">
-      <div class="global-dreamina-container">
-        <div id="dreamina" class="root_bf55f">
-          <div class="top-down-layer">
-            <div class="container-moSF_y" :style="sideMenuStyleVars">
-              <SideMenu />
+  <FrontstagePageShell layout="raw">
+    <div class="content-wrapper-OzVFU5">
+      <div id="dreamina-ui-configuration-content-wrapper" class="main-container-TrGK7G">
+        <div class="content-V2NaRy">
+          <div class="container-xPaqsy">
+            <div class="container-VHHcGs">
+              <div class="back-button-Na1aul sf-hidden">
+                <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                  <g>
+                    <path data-follow-fill="currentColor" d="M4.533 12.844a1.2 1.2 0 0 1 0-1.687l7.655-7.747a1.2 1.2 0 0 1 1.708 1.687l-6.822 6.904 6.822 6.903a1.2 1.2 0 1 1-1.708 1.686l-7.655-7.746Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
+                  </g>
+                </svg>
+              </div>
 
-              <div class="content-wrapper-OzVFU5">
-                <div id="dreamina-ui-configuration-content-wrapper" class="main-container-TrGK7G">
-                  <div class="content-V2NaRy">
-                    <div class="container-xPaqsy">
-                      <div class="container-VHHcGs">
-                        <div class="back-button-Na1aul sf-hidden">
-                          <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
-                            <g>
-                              <path data-follow-fill="currentColor" d="M4.533 12.844a1.2 1.2 0 0 1 0-1.687l7.655-7.747a1.2 1.2 0 0 1 1.708 1.687l-6.822 6.904 6.822 6.903a1.2 1.2 0 1 1-1.708 1.686l-7.655-7.746Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
-                            </g>
-                          </svg>
-                        </div>
+              <div class="profile-info">
+                <div class="avatar-wrapper">
+                  <img
+                      :src="resolvedProfileAvatar"
+                      class="dreamina-component-avatar avatar-qnfikn account-profile-avatar"
+                      :alt="displayUserName"
+                  >
+                </div>
 
-                        <div class="profile-info">
-                          <div class="avatar-wrapper">
-                            <img
-                              :src="resolvedProfileAvatar"
-                              class="dreamina-component-avatar avatar-qnfikn account-profile-avatar"
-                              :alt="displayUserName"
-                            >
-                          </div>
+                <div class="user-container">
+                  <div class="user-name-ZcwgIM">{{ displayUserName }}</div>
+                </div>
+              </div>
 
-                          <div class="user-container">
-                            <div class="user-name-ZcwgIM">{{ displayUserName }}</div>
-                          </div>
-                        </div>
+              <div class="statics">
+                <div class="line-x9qriG">
+                  <div class="item-mNzHRl clickable-KAXO1W">
+                    <span class="count-_olHcJ">{{ followerCount }}</span>
+                    <span class="desc-j1T6yQ">粉丝</span>
+                  </div>
+                  <div class="item-mNzHRl clickable-KAXO1W">
+                    <span class="count-_olHcJ">{{ followingCount }}</span>
+                    <span class="desc-j1T6yQ">关注</span>
+                  </div>
+                </div>
+              </div>
 
-                        <div class="statics">
-                          <div class="line-x9qriG">
-                            <div class="item-mNzHRl clickable-KAXO1W">
-                              <span class="count-_olHcJ">{{ followerCount }}</span>
-                              <span class="desc-j1T6yQ">粉丝</span>
+              <div class="actions-vUPE88 is-myself">
+                <button class="share-btn" type="button" @click="handleShareProfile">
+                  <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                    <g>
+                      <path data-follow-fill="currentColor" d="M11.78 4.534a.942.942 0 0 1 1.572-.7l7.852 7.067a.895.895 0 0 1 0 1.33l-7.852 7.067a.942.942 0 0 1-1.572-.7v-3.173a9.328 9.328 0 0 0-7.384 3.115c-.519.581-1.555.27-1.562-.586v-.097c0-5.286 3.879-9.666 8.946-10.449V4.534Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
+                    </g>
+                  </svg>
+                  <div class="share-btn-text">分享主页</div>
+                </button>
+
+                <button
+                    class="share-btn account-logout-btn"
+                    type="button"
+                    :disabled="isLoggingOut"
+                    @click="handleLogout"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                    <g>
+                      <path data-follow-fill="currentColor" d="M10 4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4h-5a1 1 0 1 1 0-2h5a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-5a1 1 0 0 1-1-1Zm1.707 3.293a1 1 0 0 1 0 1.414L9.414 11H16a1 1 0 1 1 0 2H9.414l2.293 2.293a1 1 0 1 1-1.414 1.414l-4-4a1 1 0 0 1 0-1.414l4-4a1 1 0 0 1 1.414 0Z" fill="currentColor"></path>
+                    </g>
+                  </svg>
+                  <div class="share-btn-text">{{ isLoggingOut ? '退出中...' : '退出登录' }}</div>
+                </button>
+              </div>
+
+              <div class="profile-description">
+                <div class="description-wrapper">
+                  <span>{{ profileDescription }}</span>
+                  <span style="margin-left:8px"></span>
+                  <div class="edit-button hide-ODTLCX">
+                    <svg width="14" height="14" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                      <g>
+                        <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M9.024 20.055a1 1 0 0 0 .465-.263L19.906 9.375a3.735 3.735 0 1 0-5.282-5.281L4.207 14.51a1 1 0 0 0-.263.464l-1.289 5.157a1 1 0 0 0 1.213 1.212l5.156-1.289Zm7.014-14.547L5.818 15.73 5 19l3.27-.818 10.222-10.22a1.733 1.733 0 0 0-.563-2.83 1.735 1.735 0 0 0-1.89.376Zm3.878 15.242a1.083 1.083 0 0 0 0-2.167h-5.342a.17.17 0 0 0-.124.055l-1.623 1.758a.211.211 0 0 0 .155.354h6.934Z" fill="currentColor"></path>
+                      </g>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="scroll-container-AhepyD">
+              <div>
+                <div class="right-container-VcENyg">
+                  <div class="scroll-container-AhepyD scroll-container-B4jFKc">
+                    <div>
+                      <div class="scroll-content-Hn6N56">
+                        <div class="tab-group">
+                          <div class="left-tabs">
+                            <div class="tab-wrapper-aoGILw">
+                              <button
+                                  class="item-vuuM4N"
+                                  :class="{ 'active-n4SQx9': primaryTab === 'published' }"
+                                  type="button"
+                                  @click="primaryTab = 'published'"
+                              >
+                                <div>已发布</div>
+                              </button>
+                              <button
+                                  class="item-vuuM4N account-tab-locked"
+                                  type="button"
+                                  @click="handleLockedTab"
+                              >
+                                <div>赞过</div>
+                                <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-dNLP6Z">
+                                  <g>
+                                    <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M12 2a6 6 0 0 0-6 6v1.29A4.001 4.001 0 0 0 3.5 13v5a4 4 0 0 0 4 4h9a4 4 0 0 0 4-4v-5A4.001 4.001 0 0 0 18 9.29V8a6 6 0 0 0-6-6Zm4 6v1H8V8a4 4 0 1 1 8 0Zm-8.5 3a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-5a2 2 0 0 0-2-2h-9Zm4.5 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" fill="currentColor"></path>
+                                  </g>
+                                </svg>
+                              </button>
                             </div>
-                            <div class="item-mNzHRl clickable-KAXO1W">
-                              <span class="count-_olHcJ">{{ followingCount }}</span>
-                              <span class="desc-j1T6yQ">关注</span>
+
+                            <div class="tab-divider"></div>
+
+                            <div class="tab-wrapper-eJkl7m">
+                              <button
+                                  class="item-oLZMRc"
+                                  :class="{ 'active-PqJ0p3': secondaryTab === 'inspiration' }"
+                                  type="button"
+                                  @click="secondaryTab = 'inspiration'"
+                              >
+                                <div>灵感</div>
+                              </button>
+                              <button
+                                  class="item-oLZMRc"
+                                  :class="{ 'active-PqJ0p3': secondaryTab === 'short-video' }"
+                                  type="button"
+                                  @click="secondaryTab = 'short-video'"
+                              >
+                                <div>AI短片</div>
+                              </button>
                             </div>
                           </div>
                         </div>
 
-                        <div class="actions-vUPE88 is-myself">
-                          <button class="share-btn" type="button" @click="handleShareProfile">
-                            <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
-                              <g>
-                                <path data-follow-fill="currentColor" d="M11.78 4.534a.942.942 0 0 1 1.572-.7l7.852 7.067a.895.895 0 0 1 0 1.33l-7.852 7.067a.942.942 0 0 1-1.572-.7v-3.173a9.328 9.328 0 0 0-7.384 3.115c-.519.581-1.555.27-1.562-.586v-.097c0-5.286 3.879-9.666 8.946-10.449V4.534Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
-                              </g>
-                            </svg>
-                            <div class="share-btn-text">分享主页</div>
-                          </button>
-
-                          <button
-                            class="share-btn account-logout-btn"
-                            type="button"
-                            :disabled="isLoggingOut"
-                            @click="handleLogout"
+                        <div class="feed-list" style="display:block">
+                          <div
+                              v-if="visibleGalleryItems.length"
+                              ref="masonryContainerRef"
+                              class="masonry-layout-UFZlSA masonry-layout account-masonry-layout"
+                              :style="masonryViewportStyle"
                           >
-                            <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
-                              <g>
-                                <path data-follow-fill="currentColor" d="M10 4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4h-5a1 1 0 1 1 0-2h5a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-5a1 1 0 0 1-1-1Zm1.707 3.293a1 1 0 0 1 0 1.414L9.414 11H16a1 1 0 1 1 0 2H9.414l2.293 2.293a1 1 0 1 1-1.414 1.414l-4-4a1 1 0 0 1 0-1.414l4-4a1 1 0 0 1 1.414 0Z" fill="currentColor"></path>
-                              </g>
-                            </svg>
-                            <div class="share-btn-text">{{ isLoggingOut ? '退出中...' : '退出登录' }}</div>
-                          </button>
-                        </div>
+                            <div
+                                class="masonry-layout-scroll-content-_Gm3oO account-masonry-grid"
+                                :style="masonryViewportStyle"
+                            >
+                              <div
+                                  v-for="(item, index) in visibleGalleryItems"
+                                  :key="item.id"
+                                  class="masonry-layout-item-Uj6_im masonry-layout-item account-masonry-item"
+                                  :style="getMasonryItemStyle(index)"
+                              >
+                                <div class="feed-item-WyLpPh feed-item-image-kx3bnF cover-container-d6w2vX" @click="openWorkDetail(item.id)">
+                                  <div class="content-B9Vipz">
+                                    <div class="container-bbbsvQ account-feed-card-shell">
+                                      <img
 
-                        <div class="profile-description">
-                          <div class="description-wrapper">
-                            <span>{{ profileDescription }}</span>
-                            <span style="margin-left:8px"></span>
-                            <div class="edit-button hide-ODTLCX">
-                              <svg width="14" height="14" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
-                                <g>
-                                  <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M9.024 20.055a1 1 0 0 0 .465-.263L19.906 9.375a3.735 3.735 0 1 0-5.282-5.281L4.207 14.51a1 1 0 0 0-.263.464l-1.289 5.157a1 1 0 0 0 1.213 1.212l5.156-1.289Zm7.014-14.547L5.818 15.73 5 19l3.27-.818 10.222-10.22a1.733 1.733 0 0 0-.563-2.83 1.735 1.735 0 0 0-1.89.376Zm3.878 15.242a1.083 1.083 0 0 0 0-2.167h-5.342a.17.17 0 0 0-.124.055l-1.623 1.758a.211.211 0 0 0 .155.354h6.934Z" fill="currentColor"></path>
-                                </g>
-                              </svg>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                                          loading="lazy"
+                                          class="cover-Qo4B2U"
+                                          :src="item.imageSrc"
+                                          :alt="item.id"
+                                          @load="onFeedImageLoad($event, index)"
+                                          @error="onFeedImageError(index)"
+                                      >
+                                    </div>
 
-                      <div class="scroll-container-AhepyD">
-                        <div>
-                          <div class="right-container-VcENyg">
-                            <div class="scroll-container-AhepyD scroll-container-B4jFKc">
-                              <div>
-                                <div class="scroll-content-Hn6N56">
-                                  <div class="tab-group">
-                                    <div class="left-tabs">
-                                      <div class="tab-wrapper-aoGILw">
-                                        <button
-                                          class="item-vuuM4N"
-                                          :class="{ 'active-n4SQx9': primaryTab === 'published' }"
-                                          type="button"
-                                          @click="primaryTab = 'published'"
-                                        >
-                                          <div>已发布</div>
-                                        </button>
-                                        <button
-                                          class="item-vuuM4N account-tab-locked"
-                                          type="button"
-                                          @click="handleLockedTab"
-                                        >
-                                          <div>赞过</div>
-                                          <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-dNLP6Z">
-                                            <g>
-                                              <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M12 2a6 6 0 0 0-6 6v1.29A4.001 4.001 0 0 0 3.5 13v5a4 4 0 0 0 4 4h9a4 4 0 0 0 4-4v-5A4.001 4.001 0 0 0 18 9.29V8a6 6 0 0 0-6-6Zm4 6v1H8V8a4 4 0 1 1 8 0Zm-8.5 3a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-5a2 2 0 0 0-2-2h-9Zm4.5 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" fill="currentColor"></path>
-                                            </g>
-                                          </svg>
-                                        </button>
-                                      </div>
-
-                                      <div class="tab-divider"></div>
-
-                                      <div class="tab-wrapper-eJkl7m">
-                                        <button
-                                          class="item-oLZMRc"
-                                          :class="{ 'active-PqJ0p3': secondaryTab === 'inspiration' }"
-                                          type="button"
-                                          @click="secondaryTab = 'inspiration'"
-                                        >
-                                          <div>灵感</div>
-                                        </button>
-                                        <button
-                                          class="item-oLZMRc"
-                                          :class="{ 'active-PqJ0p3': secondaryTab === 'short-video' }"
-                                          type="button"
-                                          @click="secondaryTab = 'short-video'"
-                                        >
-                                          <div>AI短片</div>
-                                        </button>
+                                    <div class="top-overlay">
+                                      <div>
+                                        <div v-if="item.badgeText" class="badge-inhDJv">{{ item.badgeText }}</div>
                                       </div>
                                     </div>
-                                  </div>
 
-                                  <div class="feed-list" style="display:block">
-                                    <div
-                                      v-if="visibleGalleryItems.length"
-                                      ref="masonryContainerRef"
-                                      class="masonry-layout-UFZlSA masonry-layout account-masonry-layout"
-                                      :style="masonryViewportStyle"
-                                    >
-                                      <div
-                                        class="masonry-layout-scroll-content-_Gm3oO account-masonry-grid"
-                                        :style="masonryViewportStyle"
-                                      >
-                                        <div
-                                          v-for="(item, index) in visibleGalleryItems"
-                                          :key="item.id"
-                                          class="masonry-layout-item-Uj6_im masonry-layout-item account-masonry-item"
-                                          :style="getMasonryItemStyle(index)"
-                                        >
-                                          <div class="feed-item-WyLpPh feed-item-image-kx3bnF cover-container-d6w2vX" @click="openWorkDetail(item.id)">
-                                            <div class="content-B9Vipz">
-                                              <div class="container-bbbsvQ account-feed-card-shell">
-                                                <img
+                                    <div class="overlay-WWIpyU">
+                                      <div class="head-wYUoMC">
+                                        <div class="author-g6lhbl">
+                                          <div class="dreamina-component-avatar-container avatar-LRSR55">
+                                            <img :src="item.authorAvatarSrc" class="dreamina-component-avatar" :alt="item.authorName">
+                                          </div>
+                                          <span class="username">{{ item.authorName }}</span>
+                                        </div>
+                                      </div>
 
-                                                  loading="lazy"
-                                                  class="cover-Qo4B2U"
-                                                  :src="item.imageSrc"
-                                                  :alt="item.id"
-                                                  @load="onFeedImageLoad($event, index)"
-                                                  @error="onFeedImageError(index)"
-                                                >
-                                              </div>
-
-                                              <div class="top-overlay">
-                                                <div>
-                                                  <div v-if="item.badgeText" class="badge-inhDJv">{{ item.badgeText }}</div>
-                                                </div>
-                                              </div>
-
-                                              <div class="overlay-WWIpyU">
-                                                <div class="head-wYUoMC">
-                                                  <div class="author-g6lhbl">
-                                                    <div class="dreamina-component-avatar-container avatar-LRSR55">
-                                                      <img :src="item.authorAvatarSrc" class="dreamina-component-avatar" :alt="item.authorName">
-                                                    </div>
-                                                    <span class="username">{{ item.authorName }}</span>
-                                                  </div>
-                                                </div>
-
-                                                <div class="tail">
-                                                  <div class="operation">
-                                                    <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-yH97ZW">
-                                                      <g>
-                                                        <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M4.92 3.537a4 4 0 0 0-2.83 4.899l2.585 9.645a4 4 0 0 0 4.899 2.829l2.737-.733a3.403 3.403 0 0 1-.874-1.837l-2.381.638a2 2 0 0 1-2.45-1.414L4.023 7.918a2 2 0 0 1 1.414-2.45l3.288-.88a2 2 0 0 1 2.45 1.414l2.318 8.654.553-.246a.683.683 0 0 0 .345-.368l.214-.516a3.56 3.56 0 0 1 .445-.784l-1.944-7.257a4 4 0 0 0-4.899-2.829l-3.287.881ZM21.6 9.766l-.885 3.303a3.332 3.332 0 0 0-1.687-1.433l.64-2.388a1.5 1.5 0 0 0-1.061-1.837l-2.437-.653a1.492 1.492 0 0 0-.659-.026l-.473-1.765c-.01-.039-.022-.077-.034-.115l-.016-.055a3.485 3.485 0 0 1 1.7.03l2.436.652A3.5 3.5 0 0 1 21.6 9.766Zm-3.433 11.127.208-.477a3.68 3.68 0 0 1 1.871-1.899l.64-.285a.447.447 0 0 0 0-.812l-.604-.269a3.682 3.682 0 0 1-1.898-1.961l-.214-.516a.427.427 0 0 0-.794 0l-.213.516a3.681 3.681 0 0 1-1.898 1.961l-.605.27a.447.447 0 0 0 0 .811l.64.285a3.68 3.68 0 0 1 1.872 1.899l.207.477a.427.427 0 0 0 .788 0Z" fill="currentColor"></path>
-                                                      </g>
-                                                    </svg>
-                                                  </div>
-                                                  <div class="operation">
-                                                    <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-yH97ZW">
-                                                      <g>
-                                                        <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M16.326 4.72H7.674A2.954 2.954 0 0 0 4.72 7.674v8.652c0 .054.001.108.004.162l3.509-3.508a2.954 2.954 0 0 1 4.03-.138l6.262 5.457c.47-.523.755-1.215.755-1.973V7.674a2.954 2.954 0 0 0-2.954-2.954Zm2.798 15.658a4.919 4.919 0 0 0 2.126-4.052V7.674a4.924 4.924 0 0 0-4.924-4.924H7.674A4.924 4.924 0 0 0 2.75 7.674v8.652a4.924 4.924 0 0 0 4.924 4.924h8.652a4.901 4.901 0 0 0 2.798-.872Zm-2.489-1.114-5.666-4.937a.985.985 0 0 0-1.344.046l-4.041 4.04a2.945 2.945 0 0 0 2.09.867h8.652c.104 0 .208-.005.31-.016ZM14.078 8.401a1.532 1.532 0 1 1 3.064 0 1.532 1.532 0 0 1-3.064 0Z" fill="currentColor"></path>
-                                                      </g>
-                                                    </svg>
-                                                  </div>
-                                                  <div>
-                                                    <div class="favorite-RlC8dW">
-                                                      <div class="lottie-icon-container icon-QlNaEG">
-                                                        <div class="lottie-icon-content">
-                                                          <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-QlNaEG">
-                                                            <g>
-                                                              <path data-follow-fill="currentColor" d="M8.538 3.513a6.077 6.077 0 0 0-6.085 6.07c0 2.819 1.639 5.278 3.37 7.025 1.75 1.764 3.914 3.13 5.588 3.685a1.87 1.87 0 0 0 1.174 0c1.675-.556 3.84-1.92 5.588-3.685 1.732-1.747 3.37-4.206 3.37-7.025a6.077 6.077 0 0 0-6.084-6.07c-1.381 0-2.572.717-3.46 1.432-.889-.715-2.08-1.432-3.461-1.432Zm0 2a4.077 4.077 0 0 0-4.085 4.07c0 2.05 1.215 4.028 2.79 5.617 1.557 1.57 3.436 2.73 4.755 3.18 1.32-.45 3.2-1.61 4.755-3.18 1.575-1.59 2.79-3.568 2.79-5.617 0-2.24-1.82-4.07-4.084-4.07-.929 0-1.877.652-2.78 1.49a1 1 0 0 1-1.36 0c-.904-.838-1.853-1.49-2.781-1.49Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
-                                                            </g>
-                                                          </svg>
-                                                        </div>
-                                                      </div>
-                                                      <span class="account-feed-favorite-count">{{ item.favoriteCount }}</span>
-                                                    </div>
-                                                  </div>
-                                                </div>
+                                      <div class="tail">
+                                        <div class="operation">
+                                          <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-yH97ZW">
+                                            <g>
+                                              <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M4.92 3.537a4 4 0 0 0-2.83 4.899l2.585 9.645a4 4 0 0 0 4.899 2.829l2.737-.733a3.403 3.403 0 0 1-.874-1.837l-2.381.638a2 2 0 0 1-2.45-1.414L4.023 7.918a2 2 0 0 1 1.414-2.45l3.288-.88a2 2 0 0 1 2.45 1.414l2.318 8.654.553-.246a.683.683 0 0 0 .345-.368l.214-.516a3.56 3.56 0 0 1 .445-.784l-1.944-7.257a4 4 0 0 0-4.899-2.829l-3.287.881ZM21.6 9.766l-.885 3.303a3.332 3.332 0 0 0-1.687-1.433l.64-2.388a1.5 1.5 0 0 0-1.061-1.837l-2.437-.653a1.492 1.492 0 0 0-.659-.026l-.473-1.765c-.01-.039-.022-.077-.034-.115l-.016-.055a3.485 3.485 0 0 1 1.7.03l2.436.652A3.5 3.5 0 0 1 21.6 9.766Zm-3.433 11.127.208-.477a3.68 3.68 0 0 1 1.871-1.899l.64-.285a.447.447 0 0 0 0-.812l-.604-.269a3.682 3.682 0 0 1-1.898-1.961l-.214-.516a.427.427 0 0 0-.794 0l-.213.516a3.681 3.681 0 0 1-1.898 1.961l-.605.27a.447.447 0 0 0 0 .811l.64.285a3.68 3.68 0 0 1 1.872 1.899l.207.477a.427.427 0 0 0 .788 0Z" fill="currentColor"></path>
+                                            </g>
+                                          </svg>
+                                        </div>
+                                        <div class="operation">
+                                          <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-yH97ZW">
+                                            <g>
+                                              <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M16.326 4.72H7.674A2.954 2.954 0 0 0 4.72 7.674v8.652c0 .054.001.108.004.162l3.509-3.508a2.954 2.954 0 0 1 4.03-.138l6.262 5.457c.47-.523.755-1.215.755-1.973V7.674a2.954 2.954 0 0 0-2.954-2.954Zm2.798 15.658a4.919 4.919 0 0 0 2.126-4.052V7.674a4.924 4.924 0 0 0-4.924-4.924H7.674A4.924 4.924 0 0 0 2.75 7.674v8.652a4.924 4.924 0 0 0 4.924 4.924h8.652a4.901 4.901 0 0 0 2.798-.872Zm-2.489-1.114-5.666-4.937a.985.985 0 0 0-1.344.046l-4.041 4.04a2.945 2.945 0 0 0 2.09.867h8.652c.104 0 .208-.005.31-.016ZM14.078 8.401a1.532 1.532 0 1 1 3.064 0 1.532 1.532 0 0 1-3.064 0Z" fill="currentColor"></path>
+                                            </g>
+                                          </svg>
+                                        </div>
+                                        <div>
+                                          <div class="favorite-RlC8dW">
+                                            <div class="lottie-icon-container icon-QlNaEG">
+                                              <div class="lottie-icon-content">
+                                                <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="icon-QlNaEG">
+                                                  <g>
+                                                    <path data-follow-fill="currentColor" d="M8.538 3.513a6.077 6.077 0 0 0-6.085 6.07c0 2.819 1.639 5.278 3.37 7.025 1.75 1.764 3.914 3.13 5.588 3.685a1.87 1.87 0 0 0 1.174 0c1.675-.556 3.84-1.92 5.588-3.685 1.732-1.747 3.37-4.206 3.37-7.025a6.077 6.077 0 0 0-6.084-6.07c-1.381 0-2.572.717-3.46 1.432-.889-.715-2.08-1.432-3.461-1.432Zm0 2a4.077 4.077 0 0 0-4.085 4.07c0 2.05 1.215 4.028 2.79 5.617 1.557 1.57 3.436 2.73 4.755 3.18 1.32-.45 3.2-1.61 4.755-3.18 1.575-1.59 2.79-3.568 2.79-5.617 0-2.24-1.82-4.07-4.084-4.07-.929 0-1.877.652-2.78 1.49a1 1 0 0 1-1.36 0c-.904-.838-1.853-1.49-2.781-1.49Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
+                                                  </g>
+                                                </svg>
                                               </div>
                                             </div>
+                                            <span class="account-feed-favorite-count">{{ item.favoriteCount }}</span>
                                           </div>
                                         </div>
                                       </div>
                                     </div>
-
-                                    <div v-else class="account-empty-state">
-                                      <div class="account-empty-title">{{ emptyTitle }}</div>
-                                      <div class="account-empty-description">{{ emptyDescription }}</div>
-                                    </div>
-
-                                    <div class="feed-list-no-more">没有更多了</div>
                                   </div>
                                 </div>
                               </div>
                             </div>
                           </div>
+
+                          <div v-else class="account-empty-state">
+                            <div class="account-empty-title">{{ emptyTitle }}</div>
+                            <div class="account-empty-description">{{ emptyDescription }}</div>
+                          </div>
+
+                          <div class="feed-list-no-more">没有更多了</div>
                         </div>
                       </div>
                     </div>
@@ -248,34 +236,35 @@
       </div>
     </div>
 
-    <HomeDetailModalFrom
-      v-model="workDetailOpen"
-      :image-src="workDetailImageSrc"
-      :owner-id="currentWorkDetailItem?.ownerId || ''"
-      :prompt-text="workDetailPromptText"
-      :author-name="workDetailAuthorName"
-      :author-avatar-src="workDetailAuthorAvatarSrc"
-      :like-count="workDetailLikeCount"
-      :create-date="workDetailCreateDate"
-      :ai-generated-text="workDetailAiGeneratedText"
-      :prompt-tip-label="workDetailPromptTipLabel"
-      :model-label="workDetailModelLabel"
-      :aspect-ratio-label="workDetailAspectRatioLabel"
-      :gallery-length="workDetailGallery.length"
-      @gallery-nav="handleGalleryNav"
-      @favorite="handleWorkDetailFavorite"
-      @delete="handleWorkDetailDelete"
-      @report="handleWorkDetailReport"
-    />
-  </div>
+    <template #after>
+      <HomeDetailModalFrom
+          v-model="workDetailOpen"
+          :image-src="workDetailImageSrc"
+          :owner-id="currentWorkDetailItem?.ownerId || ''"
+          :prompt-text="workDetailPromptText"
+          :author-name="workDetailAuthorName"
+          :author-avatar-src="workDetailAuthorAvatarSrc"
+          :like-count="workDetailLikeCount"
+          :create-date="workDetailCreateDate"
+          :ai-generated-text="workDetailAiGeneratedText"
+          :prompt-tip-label="workDetailPromptTipLabel"
+          :model-label="workDetailModelLabel"
+          :aspect-ratio-label="workDetailAspectRatioLabel"
+          :gallery-length="workDetailGallery.length"
+          @gallery-nav="handleGalleryNav"
+          @favorite="handleWorkDetailFavorite"
+          @delete="handleWorkDetailDelete"
+          @report="handleWorkDetailReport"
+      />
+    </template>
+  </FrontstagePageShell>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import SideMenu from '@/components/home/components/SideMenu.vue'
+import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
 import HomeDetailModalFrom from '@/components/home/components/HomeDetailModalFrom.vue'
-import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
 import { applyAssetAction, listAssetItems, type PersistedAssetItem } from '@/api/asset-items'
 import { buildAssetUrl } from '@/api/http'
 import {
@@ -286,8 +275,6 @@ import {
 } from '@/components/home/discoverMasonryLayout'
 import { AUTH_LOGIN_SUCCESS_EVENT, useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
-
-const { sideMenuStyleVars } = useHomeSideMenuConfig()
 
 interface AccountFeedItem {
   id: string
@@ -383,11 +370,11 @@ const visibleGalleryItems = computed(() => {
 
 // 图片列表变化时，重置自然尺寸缓存。
 watch(
-  () => visibleGalleryItems.value.map(item => item.imageSrc),
-  (urls) => {
-    feedNaturalSizes.value = urls.map(() => null)
-  },
-  { immediate: true },
+    () => visibleGalleryItems.value.map(item => item.imageSrc),
+    (urls) => {
+      feedNaturalSizes.value = urls.map(() => null)
+    },
+    { immediate: true },
 )
 
 // 作品区内容层行内样式，收敛到和参考页一致的绝对定位布局。
@@ -406,8 +393,8 @@ const emptyTitle = computed(() => {
 // 空态补充文案。
 const emptyDescription = computed(() => {
   return secondaryTab.value === 'short-video'
-    ? '完成视频生成后，会按参考页布局展示在这里。'
-    : '完成图片生成并发布后，会按参考页布局展示在这里。'
+      ? '完成视频生成后，会按参考页布局展示在这里。'
+      : '完成图片生成并发布后，会按参考页布局展示在这里。'
 })
 
 // 当前详情项。
@@ -651,7 +638,7 @@ const masonryMetrics = computed(() => computePlainMasonryMetrics({
 
 // 生成与 HTML 一致的绝对定位瀑布流布局。
 const masonryLayouts = computed<MasonryRect[]>(() => (
-  buildPlainMasonryLayoutsFromSizes(feedNaturalSizes.value, masonryMetrics.value)
+    buildPlainMasonryLayoutsFromSizes(feedNaturalSizes.value, masonryMetrics.value)
 ))
 
 // 作品区滚动高度。
@@ -696,23 +683,23 @@ onMounted(async () => {
 
 // 只有在登录态初始化完成且确认未登录后，才回首页显示登录入口。
 watch(
-  [
-    () => authStore.isLoggedIn.value,
-    () => authStore.sessionInitialized.value,
-    () => authStore.sessionLoading.value,
-  ],
-  ([isLoggedIn, sessionInitialized, sessionLoading]) => {
-    if (isLoggedIn || !sessionInitialized || sessionLoading) {
-      return
-    }
+    [
+      () => authStore.isLoggedIn.value,
+      () => authStore.sessionInitialized.value,
+      () => authStore.sessionLoading.value,
+    ],
+    ([isLoggedIn, sessionInitialized, sessionLoading]) => {
+      if (isLoggedIn || !sessionInitialized || sessionLoading) {
+        return
+      }
 
-    void router.replace({
-      path: '/',
-      query: {
-        login: '1',
-      },
-    })
-  },
+      void router.replace({
+        path: '/',
+        query: {
+          login: '1',
+        },
+      })
+    },
 )
 
 // 切换到不同内容类型时，重新拉取对应资源。

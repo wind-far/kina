@@ -1,55 +1,43 @@
 <template>
-  <div class="jimeng-home-container">
-    <div id="csr-root">
-      <div class="global-dreamina-container">
-        <div id="dreamina" class="root_bf55f">
-          <div class="top-down-layer">
-            <div class="container-moSF_y" :style="sideMenuStyleVars">
-              <SideMenu />
-              <div class="agentic-assets-canvas-shell" :style="sideMenuStyleVars">
-                <div class="agentic-assets-canvas-page">
-                  <div
-                    ref="scrollContainerRef"
-                    class="agentic-assets-canvas-scroll"
-                    @scroll="handleScroll"
-                  >
-                    <div class="agentic-assets-canvas-inner">
-                      <h1 class="title-n0ETJC">灵感不设限，创作无边界</h1>
+  <FrontstagePageShell layout="raw">
+    <div class="agentic-assets-canvas-shell">
+      <div class="agentic-assets-canvas-page">
+        <div
+          ref="scrollContainerRef"
+          class="agentic-assets-canvas-scroll"
+          @scroll="handleScroll"
+        >
+          <div class="agentic-assets-canvas-inner">
+            <h1 class="title-n0ETJC">灵感不设限，创作无边界</h1>
 
-                      <div class="content-generator-wrapper">
-                        <ContentGenerator
-                          :default-expanded="true"
-                          @send="handleSend"
-                        />
-                      </div>
-
-                      <AssetsGridSection
-                        :workflows="workflowList"
-                        @create="handleCreateWorkflow"
-                        @delete="handleDeleteWorkflow"
-                        @open="handleOpenWorkflow"
-                        @rename="handleRenameWorkflow"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div class="content-generator-wrapper">
+              <ContentGenerator
+                :default-expanded="true"
+                @send="handleSend"
+              />
             </div>
+
+            <AssetsGridSection
+              :workflows="workflowList"
+              @create="handleCreateWorkflow"
+              @delete="handleDeleteWorkflow"
+              @open="handleOpenWorkflow"
+              @rename="handleRenameWorkflow"
+            />
           </div>
         </div>
       </div>
     </div>
-  </div>
+  </FrontstagePageShell>
 </template>
 
 <script setup lang="ts">
 import { ElMessageBox } from 'element-plus'
 import { nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import SideMenu from '@/components/home/components/SideMenu.vue'
+import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
 import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import AssetsGridSection from '@/views/agentic-assets-canvas/components/AssetsGridSection.vue'
-import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
 import type { CreationType } from '@/components/generate/selectors'
 import {
   deleteWorkflowDefinition,
@@ -72,7 +60,6 @@ interface GeneratorSendOptions {
 
 const router = useRouter()
 const route = useRoute()
-const { sideMenuStyleVars } = useHomeSideMenuConfig()
 const scrollContainerRef = ref<HTMLElement | null>(null)
 const workflowList = ref<WorkflowDefinitionSummary[]>([])
 const workflowListLoading = ref(false)

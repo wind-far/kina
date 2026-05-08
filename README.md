@@ -15,37 +15,46 @@
 
 当前项目重点覆盖：
 
-- AI 创作入口与多模式生成体验
+- AI 创作入口与多模式生成体验（Agent / 图片 / 视频）
+- 基于 Vue Flow 的可视化工作流画布与版本化入库
 - 会话系统、生成记录、资源管理
 - 技能、模型、厂商、存储等后台配置能力
-- 营销中心、用户管理、登录方式管理
+- 营销中心（会员、积分、卡密、签到奖励）
+- 用户管理、登录方式管理（验证码 + 多平台 OAuth）
 - Prisma + MySQL 的可落库服务端结构
+- 可选 Redis 集成（限流、并发控制、跨实例 SSE 广播、缓存）
 
 ## 🎯 当前项目定位
 
 ### 前台创作端
 
 - 对话式 AI 创作入口
-- 多创作模式切换：`Agent / 图片生成 / 视频生成 / 数字人 / 动作模仿`
+- 多创作模式切换：`Agent / 图片生成 / 视频生成`
 - 会话列表、会话切换、重命名、删除
-- 生成过程状态展示与结果流转
-- 无限画布 / 创作区 / 工作流等页面能力
+- 生成过程状态展示与结果流转（基于 SSE 实时推送）
+- 无限画布、创作区
+- 可视化工作流：节点拖拽、连线、撤销/重做、模板插入、版本回滚
 
 ### 后台运营端
 
 - 仪表盘与运营工作台
-- 资源管理（全站资源、服务端分页、筛选）
-- 会话管理、会话配置
-- 技能管理、模型厂商配置、对象存储配置
-- 用户管理、营销中心、系统设置
+- 资源管理（全站资源、服务端分页、筛选、批量操作）
+- 生成记录管理（任务状态、模型、用户维度筛选）
+- 会话管理、会话配置（生成进度文案、入口展示、列表字段）
+- 技能管理、厂商配置、模型管理、对象存储配置
+- 用户管理、营销中心（会员/积分/卡密/奖励）、系统设置
 - 登录方式配置（验证码 / OAuth）
+- Redis 健康监控、主题色配置
 
 ### 服务端能力
 
-- 独立 Node 服务承载 `/api/...`
-- Prisma 管理数据库结构与迁移
+- 独立 Node 服务承载 `/api/...`（基于策略模式的轻量分发，未引入 Express/Koa）
+- Prisma 管理数据库结构与迁移（50+ 数据模型）
+- 生成任务统一调度（图片 / Agent 对话 / Agent 工作台 三类策略）
+- AI 网关统一转发上游 OpenAI 兼容厂商
 - 系统设置、会话配置、积分/营销/资源等数据接口
 - 本地存储与 S3 兼容对象存储双通道
+- 任务级 SSE 事件总线（本地 EventEmitter + Redis Pub/Sub 双通道）
 
 ## ✨ 当前已实现的核心能力
 
@@ -56,28 +65,35 @@
 - 会话管理后台
 - 会话配置中心
 - 生成进度文案配置与前台联动
+- 任务级 SSE 流式订阅（`connected / snapshot / progress / content_delta / agent_event / completed / failed / stopped`）
+
+### 可视化工作流
+
+- 基于 Vue Flow 的画布交互（节点 / 边 / 视口 / 撤销重做 / 小地图）
+- 6 类自定义节点：`text / imageConfig / image / videoConfig / video / llmConfig`
+- 3 类自定义边：`imageRole / promptOrder / imageOrder`
+- 4 类内置工作流模板：`text_to_image / text_to_image_to_video / storyboard / multi_angle_storyboard`
+- 工作流定义入库与版本快照（`WorkflowDefinition + WorkflowDefinitionVersion`）
+- 节点生成统一通过任务事件订阅获取进度
 
 ### 管理后台
 
 - 后台统一布局、主题色与筛选区风格
 - 通用分页能力与服务端分页接入
-- 用户管理
-- 资源管理
-- 会话管理
-- 会话配置
-- 技能管理
-- 厂商配置
-- 存储配置
-- 系统设置
-- 营销中心
+- 用户管理、资源管理
+- 会话管理、会话配置
+- 生成记录管理
+- 技能管理、厂商配置、存储配置
+- 营销中心、系统设置、Redis 监控、主题色配置
 
 ### 基础设施
 
-- Prisma 数据库模型与迁移
-- 本地上传与对象存储上传
+- Prisma 数据库模型与迁移（9 个迁移版本）
+- 本地上传与对象存储上传（含路径穿越保护）
 - 管理员权限路由守卫
-- 登录方式配置与后台管理
-- Docker 部署链路
+- 登录方式配置与后台管理（验证码 + 多平台 OAuth）
+- 任务限流（固定窗口）与并发控制（用户 / 厂商 / 技能三维）
+- Docker 单容器统一部署链路
 
 ## 🚀 快速开始
 
@@ -281,53 +297,83 @@ npm run prisma:migrate:deploy
 
 ```text
 canana-vue/
-├── src/
-│   ├── api/                         # 前端 API 封装
-│   ├── components/                  # 公共组件与业务组件
-│   ├── composables/                 # 通用组合式函数
-│   ├── router/                      # 路由配置（含后台路由）
-│   ├── stores/                      # 全局状态
-│   ├── views/
-│   │   ├── generate/                # 创作与生成页面
-│   │   ├── workflow/                # 工作流页面
-│   │   └── admin/                   # 后台页面
-│   │       ├── assets/              # 资源管理
-│   │       ├── conversations/       # 会话管理 / 会话配置
-│   │       ├── dashboard/           # 后台首页
-│   │       ├── generations/         # 生成记录管理
-│   │       ├── marketing/           # 营销中心
-│   │       ├── models/              # 模型相关视图
-│   │       ├── providers/           # 厂商配置
-│   │       ├── skills/              # 技能管理
-│   │       ├── storage/             # 存储配置
-│   │       ├── system/              # 系统设置
-│   │       └── users/               # 用户管理
-│   └── utils/
-├── server/
-│   ├── admin-dashboard/             # 后台仪表盘接口
-│   ├── admin-generation-sessions/   # 会话/生成后台接口
-│   ├── admin-marketing/             # 营销中心接口
-│   ├── admin-users/                 # 用户后台接口
-│   ├── auth/                        # 登录认证与策略
-│   ├── conversation-settings/       # 会话配置接口
-│   ├── generation-records/          # 生成记录
-│   ├── generation-sessions/         # 会话数据
-│   ├── generation-tasks/            # 生成任务
-│   ├── marketing-center/            # 营销配置
-│   ├── provider-config/             # 厂商配置
-│   ├── skill-config/                # 技能配置
-│   ├── storage/                     # 上传与存储能力
-│   ├── storage-config/              # 对象存储配置
-│   └── system-config/               # 系统设置
+├── src/                              # Vue 3 前端
+│   ├── api/                          # 前端 API 封装（含 admin/ai-gateway/storage/...）
+│   ├── components/                   # 公共组件 + 业务组件
+│   ├── composables/                  # 通用组合式函数（分页、画布、视口、拖拽等）
+│   ├── config/                       # 模型与技能配置常量
+│   ├── router/                       # 路由配置（含管理后台守卫）
+│   ├── shared/                       # 前后端共享类型与协议
+│   ├── stores/                       # 全局状态（轻量 Composable Store）
+│   ├── styles/                       # 全局样式
+│   ├── utils/                        # 通用工具（请求、SSE、错误处理）
+│   └── views/
+│       ├── generate/                 # 创作与生成页面
+│       ├── workflow/                 # 可视化工作流（components/composables/config/api）
+│       ├── canana/                   # 无限画布
+│       ├── home/                     # 首页
+│       ├── account/                  # 账户中心
+│       ├── publish/                  # 发布中心
+│       ├── asset/                    # 资源管理
+│       ├── install/                  # 系统初始化引导
+│       ├── policies/                 # 政策协议页
+│       └── admin/                    # 管理后台
+│           ├── assets/               # 资源管理
+│           ├── conversations/        # 会话管理 / 会话配置
+│           ├── dashboard/            # 后台首页
+│           ├── generations/          # 生成记录管理
+│           ├── marketing/            # 营销中心
+│           ├── models/               # 模型管理（重定向至 providers）
+│           ├── providers/            # 厂商配置
+│           ├── redis/                # Redis 健康监控
+│           ├── skills/               # 技能管理
+│           ├── storage/              # 存储配置
+│           ├── system/               # 系统设置
+│           ├── theme/                # 主题色配置
+│           └── users/                # 用户管理
+├── server/                           # 独立 Node 后端（无 Express/Koa）
+│   ├── ai-gateway/                   # AI 上游网关转发
+│   ├── auth/                         # 认证（含 5 种登录策略）
+│   ├── admin-dashboard/              # 后台仪表盘接口
+│   ├── admin-generation-sessions/    # 后台会话/生成接口
+│   ├── admin-marketing/              # 营销中心后台接口
+│   ├── admin-users/                  # 用户后台接口
+│   ├── asset-items/                  # 资源中心接口
+│   ├── conversation-settings/        # 会话配置接口
+│   ├── generation-records/           # 生成记录
+│   ├── generation-sessions/          # 会话数据
+│   ├── generation-tasks/             # 生成任务调度（核心，含 SSE 事件总线）
+│   ├── marketing-center/             # 营销中心前台接口
+│   ├── provider-config/              # 厂商配置
+│   ├── skill-config/                 # 技能配置
+│   ├── storage/                      # 上传服务
+│   ├── storage-config/               # 对象存储配置
+│   ├── system-config/                # 系统设置
+│   ├── system-init/                  # 首次初始化
+│   ├── workflow-definitions/         # 工作流定义与版本
+│   ├── redis/                        # Redis 全套能力（缓存/锁/限流/Pub-Sub）
+│   ├── db/                           # Prisma 客户端单例
+│   └── shared/                       # 共享日志
 ├── prisma/
-│   ├── schema.prisma                # Prisma 模型定义
-│   └── migrations/                  # 数据库迁移
-├── docs/
-├── scripts/
+│   ├── schema.prisma                 # 50+ 数据模型 / 40+ 枚举
+│   └── migrations/                   # 数据库迁移
+├── scripts/                          # 构建、生产启动、类清理脚本
+├── public/                           # 公共静态资源
+├── uploads/                          # 本地上传根目录（运行时）
+├── dist/                             # 前端构建产物
+├── dist-service/                     # 后端独立打包产物
+├── Dockerfile
+├── docker-compose.yml
 └── README.md
 ```
 
 ## 🧠 后台模块说明
+
+### `仪表盘`
+
+- 总览统计（用户、会话、生成、资源等）
+- 最近若干天的逐日趋势统计
+- 当前默认厂商概览
 
 ### `会话管理`
 
@@ -344,6 +390,11 @@ canana-vue/
 - 管理策略
 - 生成进度文案配置
 
+### `生成记录管理`
+
+- 任务状态、模型、用户维度筛选
+- 服务端分页与详情联查
+
 ### `资源管理`
 
 - 我的资源 / 全站资源切换
@@ -359,9 +410,14 @@ canana-vue/
 
 ### `技能 / 厂商 / 存储`
 
-- 技能启用、状态管理
-- 厂商模型与服务配置
+- 技能启用、状态管理、提示词模板
+- 厂商模型与服务配置（含图编辑端点）
 - 对象存储配置与本地回退
+
+### `Redis 监控 / 主题配置`
+
+- Redis 健康状态、运行时配置查看
+- 主题色与布局配置
 
 
 
@@ -414,16 +470,25 @@ canana-vue/
 
 ## 📦 技术栈
 
-- `Vue 3`
-- `Vite`
-- `TypeScript`
+### 前端
+
+- `Vue 3`（`<script setup>` + Composition API）
+- `Vue Router 4`
+- `Vite 7`
+- `TypeScript 5`
 - `Element Plus`
-- `Vue Router`
-- `Vue Flow`
-- `Prisma`
+- `Vue Flow`（`@vue-flow/core / background / minimap`）— 可视化工作流画布
+- `Tailwind CSS 4`（通过 `@tailwindcss/vite`）
+
+### 后端
+
+- `Node.js >= 20.19.0`
+- 原生 `node:http`（基于策略表的轻量路由分发）
+- `Prisma 7` + `@prisma/adapter-mariadb`
 - `MySQL / MariaDB`
-- `Node.js`
-- `Tailwind CSS`
+- `ioredis`（可选，用于限流、锁、Pub/Sub、缓存）
+- `@aws-sdk/client-s3`（S3 兼容对象存储）
+- `tsx`（开发态热更新）+ `esbuild`（生产打包）
 ## 💬 交流群
 微信: 加群洽谈，过期请备注 进群
 
@@ -444,6 +509,7 @@ MIT
 - [Vue Flow 文档](https://vueflow.dev/)
 - [Element Plus 文档](https://element-plus.org/)
 - [Tailwind CSS 文档](https://tailwindcss.com/)
+- [Prisma 文档](https://www.prisma.io/docs)
 - [即梦AI](https://jimeng.jianying.com/) - 字节跳动AI创作平台
 - [Dreamina](https://www.capcut.com/ai-tool/platform) - 剪映AI创作工具
 ---

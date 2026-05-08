@@ -1,78 +1,56 @@
 <template>
-  <div class="jimeng-home-container">
-    <div id="csr-root">
-      <div class="global-dreamina-container">
-        <div id="dreamina" class="root_bf55f">
-          <div class="top-down-layer">
-            <div class="container-moSF_y" :style="sideMenuStyleVars">
-              <!-- 侧边菜单 -->
-              <SideMenu/>
-
-              <!-- 主内容区 -->
-              <div class="content-wrapper-cF1zaN">
-                <div id="dreamina-ui-configuration-content-wrapper" class="main-container-nXfW_A">
-                  <div class="content-TZbgMr">
-                    <div class="scroll-container-Jsws2j scroll-container-QnV2C9">
-                      <div>
-                        <div class="scroll-content-DaYLnh scroll-content">
-                          <div class="section-generator">
-                            <!-- 首页头部 -->
-                            <HomeHeader/>
-                          </div>
-                          
-                          <!-- Tabs 区域 -->
-                          <TabsSection
-                            @tab-change="handleTabChange"
-                            @search="handleSearch"
-                            @open-work-detail="handleOpenWorkDetail"
-                          />
-
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+  <FrontstagePageShell main-container-id="dreamina-ui-configuration-content-wrapper">
+    <div class="scroll-container-Jsws2j scroll-container-QnV2C9">
+      <div>
+        <div class="scroll-content-DaYLnh scroll-content">
+          <div class="section-generator">
+            <!-- 首页头部 -->
+            <HomeHeader/>
           </div>
+
+          <!-- Tabs 区域 -->
+          <TabsSection
+            @tab-change="handleTabChange"
+            @search="handleSearch"
+            @open-work-detail="handleOpenWorkDetail"
+          />
         </div>
       </div>
     </div>
 
-    <HomeDetailModalFrom
-      v-model="workDetailOpen"
-      :image-src="workDetailImageSrc"
-      :owner-id="workDetailOwnerId"
-      :prompt-text="workDetailPromptText"
-      :author-name="workDetailAuthorName"
-      :author-avatar-src="workDetailAuthorAvatarSrc"
-      :like-count="workDetailLikeCount"
-      :create-date="workDetailCreateDate"
-      :ai-generated-text="workDetailAiGeneratedText"
-      :prompt-tip-label="workDetailPromptTipLabel"
-      :model-label="workDetailModelLabel"
-      :aspect-ratio-label="workDetailAspectRatioLabel"
-      :gallery-length="workDetailGallery.length"
-      @gallery-nav="handleGalleryNav"
-      @favorite="handleWorkDetailFavorite"
-      @delete="handleWorkDetailDelete"
-      @report="handleWorkDetailReport"
-    />
-  </div>
+    <template #after>
+      <HomeDetailModalFrom
+        v-model="workDetailOpen"
+        :image-src="workDetailImageSrc"
+        :owner-id="workDetailOwnerId"
+        :prompt-text="workDetailPromptText"
+        :author-name="workDetailAuthorName"
+        :author-avatar-src="workDetailAuthorAvatarSrc"
+        :like-count="workDetailLikeCount"
+        :create-date="workDetailCreateDate"
+        :ai-generated-text="workDetailAiGeneratedText"
+        :prompt-tip-label="workDetailPromptTipLabel"
+        :model-label="workDetailModelLabel"
+        :aspect-ratio-label="workDetailAspectRatioLabel"
+        :gallery-length="workDetailGallery.length"
+        @gallery-nav="handleGalleryNav"
+        @favorite="handleWorkDetailFavorite"
+        @delete="handleWorkDetailDelete"
+        @report="handleWorkDetailReport"
+      />
+    </template>
+  </FrontstagePageShell>
 </template>
 
 <script setup>
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, ref, watch } from 'vue'
-import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
-import SideMenu from '../../components/home/components/SideMenu.vue'
+import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
 import HomeHeader from '../../components/home/components/HomeHeader.vue'
 import TabsSection from '@components/home/components/TabsSection.vue'
 import HomeDetailModalFrom from '@components/home/components/HomeDetailModalFrom.vue'
 import HomeFooter from '@components/home/components/HomeFooter.vue'
 import { applyAssetAction } from '@/api/asset-items'
-
-const { sideMenuStyleVars } = useHomeSideMenuConfig()
 
 const handleTabChange = (index) => {
   console.log('Tab changed to:', index)

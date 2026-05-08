@@ -1,565 +1,544 @@
 <template>
-  <div class="jimeng-home-container">
-    <div id="csr-root">
-      <div class="global-dreamina-container">
-        <div id="dreamina" class="root_bf55f">
-          <div class="top-down-layer">
-            <div class="container-moSF_y" :style="sideMenuStyleVars">
-              <!-- 侧边菜单 -->
-              <SideMenu/>
+  <FrontstagePageShell>
+    <div class="scroll-container-Jsws2j">
+      <div class="scroll-content-DaYLnh">
+        <!-- 网络状态监控 -->
+        <NetworkStatus />
 
-              <!-- 主内容区 -->
-              <div class="content-wrapper-cF1zaN">
-                <div class="main-container-nXfW_A">
-                  <div class="content-TZbgMr">
-                    <div class="scroll-container-Jsws2j">
-                      <div class="scroll-content-DaYLnh">
-                        <!-- 网络状态监控 -->
-                        <NetworkStatus />
-                        
-                        <div class="publish-center">
-                          <!-- Tab 管理区域 -->
-                          <div class="tab-management">
-                            <div class="tab-header">
-                              <div class="tab-list">
-                                <div
-                                    v-for="tab in tabs"
-                                    :key="tab.name"
-                                    :class="['tab-item', { active: activeTab === tab.name }]"
-                                    @click="activeTab = tab.name"
-                                >
-                                  <span>{{ tab.label }}</span>
-                                  <button
-                                      v-if="tabs.length > 1"
-                                      class="tab-close"
-                                      @click.stop="removeTab(tab.name)"
-                                  >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                      <line x1="18" y1="6" x2="6" y2="18"/>
-                                      <line x1="6" y1="6" x2="18" y2="18"/>
-                                    </svg>
-                                  </button>
-                                </div>
-                              </div>
-                              <div class="tab-actions">
-                                <button 
-                                  v-if="failedTasksCount > 0"
-                                  class="btn-warning" 
-                                  @click="failedTasksVisible = true"
-                                >
-                                  <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <circle cx="12" cy="12" r="10"/>
-                                    <line x1="12" y1="8" x2="12" y2="12"/>
-                                    <line x1="12" y1="16" x2="12.01" y2="16"/>
-                                  </svg>
-                                  失败任务 ({{ failedTasksCount }})
-                                </button>
-                                <button class="btn-secondary" @click="addTab">
-                                  <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                       stroke-width="2">
-                                    <line x1="12" y1="5" x2="12" y2="19"/>
-                                    <line x1="5" y1="12" x2="19" y2="12"/>
-                                  </svg>
-                                  添加Tab
-                                </button>
-                                <button 
-                                  class="btn-primary" 
-                                  @click="batchPublish" 
-                                  :disabled="batchPublishing || !isOnline"
-                                >
-                                  批量发布
-                                </button>
-                              </div>
-                            </div>
+        <div class="publish-center">
+          <!-- Tab 管理区域 -->
+          <div class="tab-management">
+            <div class="tab-header">
+              <div class="tab-list">
+                <div
+                    v-for="tab in tabs"
+                    :key="tab.name"
+                    :class="['tab-item', { active: activeTab === tab.name }]"
+                    @click="activeTab = tab.name"
+                >
+                  <span>{{ tab.label }}</span>
+                  <button
+                      v-if="tabs.length > 1"
+                      class="tab-close"
+                      @click.stop="removeTab(tab.name)"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="tab-actions">
+                <button
+                    v-if="failedTasksCount > 0"
+                    class="btn-warning"
+                    @click="failedTasksVisible = true"
+                >
+                  <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  失败任务 ({{ failedTasksCount }})
+                </button>
+                <button class="btn-secondary" @click="addTab">
+                  <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  添加Tab
+                </button>
+                <button
+                    class="btn-primary"
+                    @click="batchPublish"
+                    :disabled="batchPublishing || !isOnline"
+                >
+                  批量发布
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 内容区域 -->
+          <div class="publish-content">
+            <div
+                v-for="tab in tabs"
+                :key="tab.name"
+                v-show="activeTab === tab.name"
+                class="tab-content"
+            >
+              <!-- 两栏布局 -->
+              <div class="content-layout">
+                <!-- 左侧：视频预览区 -->
+                <div class="left-panel">
+                  <div class="section">
+                    <h3 class="section-title">视频</h3>
+
+                    <!-- 视频上传区域 -->
+                    <div
+                        v-if="tab.fileList.length === 0"
+                        class="video-upload-placeholder"
+                        :class="{ 'drag-over': isDragging }"
+                        @click="showUploadOptions(tab)"
+                        @dragover.prevent="handleDragOver"
+                        @dragleave.prevent="handleDragLeave"
+                        @drop.prevent="handleMainDrop($event, tab)"
+                    >
+                      <svg class="upload-icon-large" viewBox="0 0 24 24" fill="none"
+                           stroke="currentColor" stroke-width="1.5">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                      </svg>
+                      <p class="upload-text">{{ isDragging ? '松开鼠标上传文件' : '上传视频' }}</p>
+                      <p class="upload-hint">点击选择文件或从素材库选择，也可直接拖拽文件到此处</p>
+                    </div>
+
+                    <!-- 已上传文件列表 -->
+                    <div v-else class="video-preview-area">
+                      <div class="video-list">
+                        <div v-for="(file, index) in tab.fileList" :key="index" class="video-item">
+                          <div class="video-thumbnail">
+                            <svg class="video-icon" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2">
+                              <polygon points="5 3 19 12 5 21 5 3"/>
+                            </svg>
                           </div>
-
-                          <!-- 内容区域 -->
-                          <div class="publish-content">
-                            <div
-                                v-for="tab in tabs"
-                                :key="tab.name"
-                                v-show="activeTab === tab.name"
-                                class="tab-content"
-                            >
-                              <!-- 两栏布局 -->
-                              <div class="content-layout">
-                                <!-- 左侧：视频预览区 -->
-                                <div class="left-panel">
-                                  <div class="section">
-                                    <h3 class="section-title">视频</h3>
-
-                                    <!-- 视频上传区域 -->
-                                    <div
-                                        v-if="tab.fileList.length === 0"
-                                        class="video-upload-placeholder"
-                                        :class="{ 'drag-over': isDragging }"
-                                        @click="showUploadOptions(tab)"
-                                        @dragover.prevent="handleDragOver"
-                                        @dragleave.prevent="handleDragLeave"
-                                        @drop.prevent="handleMainDrop($event, tab)"
-                                    >
-                                      <svg class="upload-icon-large" viewBox="0 0 24 24" fill="none"
-                                           stroke="currentColor" stroke-width="1.5">
-                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                        <polyline points="17 8 12 3 7 8"/>
-                                        <line x1="12" y1="3" x2="12" y2="15"/>
-                                      </svg>
-                                      <p class="upload-text">{{ isDragging ? '松开鼠标上传文件' : '上传视频' }}</p>
-                                      <p class="upload-hint">点击选择文件或从素材库选择，也可直接拖拽文件到此处</p>
-                                    </div>
-
-                                    <!-- 已上传文件列表 -->
-                                    <div v-else class="video-preview-area">
-                                      <div class="video-list">
-                                        <div v-for="(file, index) in tab.fileList" :key="index" class="video-item">
-                                          <div class="video-thumbnail">
-                                            <svg class="video-icon" viewBox="0 0 24 24" fill="none"
-                                                 stroke="currentColor" stroke-width="2">
-                                              <polygon points="5 3 19 12 5 21 5 3"/>
-                                            </svg>
-                                          </div>
-                                          <div class="video-info">
-                                            <div class="video-name">{{ file.name }}</div>
-                                            <div class="video-size">{{ formatFileSize(file.size) }}</div>
-                                          </div>
-                                          <button class="video-remove" @click="removeFile(tab, index)">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                              <line x1="18" y1="6" x2="6" y2="18"/>
-                                              <line x1="6" y1="6" x2="18" y2="18"/>
-                                            </svg>
-                                          </button>
-                                        </div>
-                                      </div>
-                                      <button class="btn-add-more" @click="showUploadOptions(tab)">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                          <line x1="12" y1="5" x2="12" y2="19"/>
-                                          <line x1="5" y1="12" x2="19" y2="12"/>
-                                        </svg>
-                                        添加更多视频
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <!-- 右侧：表单区 -->
-                                <div class="right-panel">
-
-                                  <!-- 账号选择 -->
-                                  <div class="section">
-                                    <h3 class="section-title">账号</h3>
-                                    <div class="account-selector">
-                                      <div v-if="tab.selectedAccounts.length > 0" class="selected-items">
-                                        <div
-                                            v-for="(accountId, index) in tab.selectedAccounts"
-                                            :key="accountId"
-                                            class="selected-tag"
-                                        >
-                                          {{ getAccountName(accountId) }}
-                                          <button class="tag-remove" @click="removeAccount(tab, index)">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                              <line x1="18" y1="6" x2="6" y2="18"/>
-                                              <line x1="6" y1="6" x2="18" y2="18"/>
-                                            </svg>
-                                          </button>
-                                        </div>
-                                      </div>
-                                      <button class="btn-select" @click="openAccountDialog(tab)">
-                                        {{ tab.selectedAccounts.length > 0 ? '修改账号' : '选择账号' }}
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  <!-- 平台选择 -->
-                                  <div class="section">
-                                    <h3 class="section-title">平台</h3>
-                                    <div class="platform-selector">
-                                      <label
-                                          v-for="platform in platforms"
-                                          :key="platform.key"
-                                          class="platform-option"
-                                      >
-                                        <input
-                                            type="radio"
-                                            :value="platform.key"
-                                            v-model="tab.selectedPlatform"
-                                            class="platform-radio"
-                                        />
-                                        <span class="platform-label">{{ platform.name }}</span>
-                                      </label>
-                                    </div>
-                                  </div>
-
-                                  <!-- 草稿选项（仅视频号） -->
-                                  <div v-if="tab.selectedPlatform === 2" class="section">
-                                    <label class="checkbox-label">
-                                      <input type="checkbox" v-model="tab.isDraft" class="checkbox-input"/>
-                                      <span>视频号仅保存草稿（用手机发布）</span>
-                                    </label>
-                                  </div>
-
-                                  <!-- 标题输入 -->
-                                  <div class="section">
-                                    <h3 class="section-title">标题</h3>
-                                    <textarea
-                                        v-model="tab.title"
-                                        class="textarea-input"
-                                        placeholder="请输入标题..."
-                                        maxlength="100"
-                                        rows="3"
-                                    ></textarea>
-                                    <div class="char-count">{{ tab.title.length }}/100</div>
-                                  </div>
-
-                                  <!-- 话题输入 -->
-                                  <div class="section">
-                                    <h3 class="section-title">话题</h3>
-                                    <div class="topic-selector">
-                                      <div v-if="tab.selectedTopics.length > 0" class="selected-items">
-                                        <div
-                                            v-for="(topic, index) in tab.selectedTopics"
-                                            :key="index"
-                                            class="selected-tag"
-                                        >
-                                          #{{ topic }}
-                                          <button class="tag-remove" @click="removeTopic(tab, index)">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                              <line x1="18" y1="6" x2="6" y2="18"/>
-                                              <line x1="6" y1="6" x2="18" y2="18"/>
-                                            </svg>
-                                          </button>
-                                        </div>
-                                      </div>
-                                      <button class="btn-select" @click="openTopicDialog(tab)">
-                                        {{ tab.selectedTopics.length > 0 ? '修改话题' : '添加话题' }}
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  <!-- 商品链接（仅抖音） -->
-                                  <div v-if="tab.selectedPlatform === 3" class="section">
-                                    <h3 class="section-title">商品链接</h3>
-                                    <div class="product-inputs">
-                                      <input
-                                          v-model="tab.productTitle"
-                                          type="text"
-                                          class="text-input"
-                                          placeholder="请输入商品名称"
-                                          maxlength="200"
-                                      />
-                                      <input
-                                          v-model="tab.productLink"
-                                          type="text"
-                                          class="text-input"
-                                          placeholder="请输入商品链接"
-                                          maxlength="200"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <!-- 定时发布 -->
-                                  <div class="section">
-                                    <h3 class="section-title">定时发布</h3>
-                                    <label class="switch-label">
-                                      <input
-                                          type="checkbox"
-                                          v-model="tab.scheduleEnabled"
-                                          class="switch-input"
-                                      />
-                                      <span class="switch-slider"></span>
-                                      <span class="switch-text">{{
-                                          tab.scheduleEnabled ? '定时发布' : '立即发布'
-                                        }}</span>
-                                    </label>
-
-                                    <div v-if="tab.scheduleEnabled" class="schedule-settings">
-                                      <div class="form-row">
-                                        <label class="form-label">每天发布视频数：</label>
-                                        <select v-model="tab.videosPerDay" class="form-select">
-                                          <option v-for="num in 55" :key="num" :value="num">{{ num }}</option>
-                                        </select>
-                                      </div>
-
-                                      <div class="form-row">
-                                        <label class="form-label">发布时间：</label>
-                                        <div class="time-list">
-                                          <input
-                                              v-for="(time, index) in tab.dailyTimes"
-                                              :key="index"
-                                              v-model="tab.dailyTimes[index]"
-                                              type="time"
-                                              class="time-input"
-                                          />
-                                          <button
-                                              v-if="tab.dailyTimes.length < tab.videosPerDay"
-                                              class="btn-add-time"
-                                              @click="tab.dailyTimes.push('10:00')"
-                                          >
-                                            +
-                                          </button>
-                                        </div>
-                                      </div>
-
-                                      <div class="form-row">
-                                        <label class="form-label">开始天数：</label>
-                                        <select v-model="tab.startDays" class="form-select">
-                                          <option :value="0">明天</option>
-                                          <option :value="1">后天</option>
-                                        </select>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <!-- 操作按钮 -->
-                                  <div class="action-buttons">
-                                    <button class="btn-secondary" @click="cancelPublish(tab)">
-                                      取消
-                                    </button>
-                                    <button
-                                        class="btn-primary"
-                                        @click="confirmPublish(tab)"
-                                        :disabled="tab.publishing || !isOnline"
-                                    >
-                                      {{ tab.publishing ? '发布中...' : '发布' }}
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
+                          <div class="video-info">
+                            <div class="video-name">{{ file.name }}</div>
+                            <div class="video-size">{{ formatFileSize(file.size) }}</div>
                           </div>
-
-                          <!-- 上传选项对话框 -->
-                          <div v-if="uploadOptionsVisible" class="modal-overlay"
-                               @click.self="uploadOptionsVisible = false">
-                            <div class="modal-content modal-small">
-                              <div class="modal-header">
-                                <h2>选择上传方式</h2>
-                                <button class="close-btn" @click="uploadOptionsVisible = false">
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="18" y1="6" x2="6" y2="18"/>
-                                    <line x1="6" y1="6" x2="18" y2="18"/>
-                                  </svg>
-                                </button>
-                              </div>
-                              <div class="modal-body">
-                                <button class="option-btn" @click="selectLocalUpload">
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                    <polyline points="17 8 12 3 7 8"/>
-                                    <line x1="12" y1="3" x2="12" y2="15"/>
-                                  </svg>
-                                  本地上传
-                                </button>
-                                <button class="option-btn" @click="selectMaterialLibrary">
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path
-                                        d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                                  </svg>
-                                  素材库
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-
-                          <!-- 本地上传对话框 -->
-                          <div v-if="localUploadVisible" class="modal-overlay" @click.self="localUploadVisible = false">
-                            <div class="modal-content">
-                              <div class="modal-header">
-                                <h2>本地上传</h2>
-                                <button class="close-btn" @click="localUploadVisible = false">
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="18" y1="6" x2="6" y2="18"/>
-                                    <line x1="6" y1="6" x2="18" y2="18"/>
-                                  </svg>
-                                </button>
-                              </div>
-                              <div class="modal-body">
-                                <div
-                                    class="upload-dropzone"
-                                    :class="{ 'drag-over': isDragging }"
-                                    @click="triggerFileInput"
-                                    @dragover.prevent="handleDragOver"
-                                    @dragleave.prevent="handleDragLeave"
-                                    @drop.prevent="handleDrop"
-                                >
-                                  <input
-                                      ref="fileInput"
-                                      type="file"
-                                      accept="video/*"
-                                      multiple
-                                      style="display: none"
-                                      @change="handleFileSelect"
-                                  />
-                                  <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                       stroke-width="2">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                    <polyline points="17 8 12 3 7 8"/>
-                                    <line x1="12" y1="3" x2="12" y2="15"/>
-                                  </svg>
-                                  <p>{{ isDragging ? '松开鼠标上传文件' : '将视频文件拖到此处，或点击上传' }}</p>
-                                  <p class="upload-tip">支持 MP4、AVI 等视频格式</p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <!-- 素材库对话框 -->
-                          <div v-if="materialLibraryVisible" class="modal-overlay"
-                               @click.self="materialLibraryVisible = false">
-                            <div class="modal-content modal-large">
-                              <div class="modal-header">
-                                <h2>选择素材</h2>
-                                <button class="close-btn" @click="materialLibraryVisible = false">
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="18" y1="6" x2="6" y2="18"/>
-                                    <line x1="6" y1="6" x2="18" y2="18"/>
-                                  </svg>
-                                </button>
-                              </div>
-                              <div class="modal-body">
-                                <div class="material-list">
-                                  <label
-                                      v-for="material in materials"
-                                      :key="material.id"
-                                      class="material-item"
-                                  >
-                                    <input
-                                        type="checkbox"
-                                        :value="material.id"
-                                        v-model="selectedMaterials"
-                                        class="material-checkbox"
-                                    />
-                                    <div class="material-info">
-                                      <div class="material-name">{{ material.filename }}</div>
-                                      <div class="material-meta">
-                                        <span>{{ material.filesize }}MB</span>
-                                        <span>{{ material.upload_time }}</span>
-                                      </div>
-                                    </div>
-                                  </label>
-                                </div>
-                              </div>
-                              <div class="modal-footer">
-                                <button class="btn-secondary" @click="materialLibraryVisible = false">
-                                  取消
-                                </button>
-                                <button class="btn-primary" @click="confirmMaterialSelection">
-                                  确定
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-
-                          <!-- 账号选择对话框 -->
-                          <div v-if="accountDialogVisible" class="modal-overlay"
-                               @click.self="accountDialogVisible = false">
-                            <div class="modal-content">
-                              <div class="modal-header">
-                                <h2>选择账号</h2>
-                                <button class="close-btn" @click="accountDialogVisible = false">
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="18" y1="6" x2="6" y2="18"/>
-                                    <line x1="6" y1="6" x2="18" y2="18"/>
-                                  </svg>
-                                </button>
-                              </div>
-                              <div class="modal-body">
-                                <div class="account-list">
-                                  <label
-                                      v-for="account in availableAccounts"
-                                      :key="account.id"
-                                      class="account-item"
-                                  >
-                                    <input
-                                        type="checkbox"
-                                        :value="account.id"
-                                        v-model="tempSelectedAccounts"
-                                        class="account-checkbox"
-                                    />
-                                    <div class="account-info">
-                                      <span class="account-name">{{ account.name }}</span>
-                                      <span class="account-platform">{{ account.platform }}</span>
-                                    </div>
-                                  </label>
-                                </div>
-                              </div>
-                              <div class="modal-footer">
-                                <button class="btn-secondary" @click="accountDialogVisible = false">
-                                  取消
-                                </button>
-                                <button class="btn-primary" @click="confirmAccountSelection">
-                                  确定
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-
-                          <!-- 话题选择对话框 -->
-                          <div v-if="topicDialogVisible" class="modal-overlay" @click.self="topicDialogVisible = false">
-                            <div class="modal-content">
-                              <div class="modal-header">
-                                <h2>添加话题</h2>
-                                <button class="close-btn" @click="topicDialogVisible = false">
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="18" y1="6" x2="6" y2="18"/>
-                                    <line x1="6" y1="6" x2="18" y2="18"/>
-                                  </svg>
-                                </button>
-                              </div>
-                              <div class="modal-body">
-                                <div class="custom-topic-input">
-                                  <input
-                                      v-model="customTopic"
-                                      type="text"
-                                      class="text-input"
-                                      placeholder="输入自定义话题"
-                                  />
-                                  <button class="btn-primary" @click="addCustomTopic">添加</button>
-                                </div>
-
-                                <h4 class="recommended-title">推荐话题</h4>
-                                <div class="topic-grid">
-                                  <button
-                                      v-for="topic in recommendedTopics"
-                                      :key="topic"
-                                      :class="['topic-btn', { active: currentTab?.selectedTopics?.includes(topic) }]"
-                                      @click="toggleRecommendedTopic(topic)"
-                                  >
-                                    {{ topic }}
-                                  </button>
-                                </div>
-                              </div>
-                              <div class="modal-footer">
-                                <button class="btn-secondary" @click="topicDialogVisible = false">
-                                  取消
-                                </button>
-                                <button class="btn-primary" @click="confirmTopicSelection">
-                                  确定
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <!-- 失败任务抽屉 -->
-                          <FailedTasksDrawer v-model:visible="failedTasksVisible" />
+                          <button class="video-remove" @click="removeFile(tab, index)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <line x1="18" y1="6" x2="6" y2="18"/>
+                              <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                          </button>
                         </div>
                       </div>
+                      <button class="btn-add-more" @click="showUploadOptions(tab)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <line x1="12" y1="5" x2="12" y2="19"/>
+                          <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        添加更多视频
+                      </button>
                     </div>
+                  </div>
+                </div>
+
+                <!-- 右侧：表单区 -->
+                <div class="right-panel">
+
+                  <!-- 账号选择 -->
+                  <div class="section">
+                    <h3 class="section-title">账号</h3>
+                    <div class="account-selector">
+                      <div v-if="tab.selectedAccounts.length > 0" class="selected-items">
+                        <div
+                            v-for="(accountId, index) in tab.selectedAccounts"
+                            :key="accountId"
+                            class="selected-tag"
+                        >
+                          {{ getAccountName(accountId) }}
+                          <button class="tag-remove" @click="removeAccount(tab, index)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <line x1="18" y1="6" x2="6" y2="18"/>
+                              <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <button class="btn-select" @click="openAccountDialog(tab)">
+                        {{ tab.selectedAccounts.length > 0 ? '修改账号' : '选择账号' }}
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- 平台选择 -->
+                  <div class="section">
+                    <h3 class="section-title">平台</h3>
+                    <div class="platform-selector">
+                      <label
+                          v-for="platform in platforms"
+                          :key="platform.key"
+                          class="platform-option"
+                      >
+                        <input
+                            type="radio"
+                            :value="platform.key"
+                            v-model="tab.selectedPlatform"
+                            class="platform-radio"
+                        />
+                        <span class="platform-label">{{ platform.name }}</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <!-- 草稿选项（仅视频号） -->
+                  <div v-if="tab.selectedPlatform === 2" class="section">
+                    <label class="checkbox-label">
+                      <input type="checkbox" v-model="tab.isDraft" class="checkbox-input"/>
+                      <span>视频号仅保存草稿（用手机发布）</span>
+                    </label>
+                  </div>
+
+                  <!-- 标题输入 -->
+                  <div class="section">
+                    <h3 class="section-title">标题</h3>
+                    <textarea
+                        v-model="tab.title"
+                        class="textarea-input"
+                        placeholder="请输入标题..."
+                        maxlength="100"
+                        rows="3"
+                    ></textarea>
+                    <div class="char-count">{{ tab.title.length }}/100</div>
+                  </div>
+
+                  <!-- 话题输入 -->
+                  <div class="section">
+                    <h3 class="section-title">话题</h3>
+                    <div class="topic-selector">
+                      <div v-if="tab.selectedTopics.length > 0" class="selected-items">
+                        <div
+                            v-for="(topic, index) in tab.selectedTopics"
+                            :key="index"
+                            class="selected-tag"
+                        >
+                          #{{ topic }}
+                          <button class="tag-remove" @click="removeTopic(tab, index)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <line x1="18" y1="6" x2="6" y2="18"/>
+                              <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <button class="btn-select" @click="openTopicDialog(tab)">
+                        {{ tab.selectedTopics.length > 0 ? '修改话题' : '添加话题' }}
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- 商品链接（仅抖音） -->
+                  <div v-if="tab.selectedPlatform === 3" class="section">
+                    <h3 class="section-title">商品链接</h3>
+                    <div class="product-inputs">
+                      <input
+                          v-model="tab.productTitle"
+                          type="text"
+                          class="text-input"
+                          placeholder="请输入商品名称"
+                          maxlength="200"
+                      />
+                      <input
+                          v-model="tab.productLink"
+                          type="text"
+                          class="text-input"
+                          placeholder="请输入商品链接"
+                          maxlength="200"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- 定时发布 -->
+                  <div class="section">
+                    <h3 class="section-title">定时发布</h3>
+                    <label class="switch-label">
+                      <input
+                          type="checkbox"
+                          v-model="tab.scheduleEnabled"
+                          class="switch-input"
+                      />
+                      <span class="switch-slider"></span>
+                      <span class="switch-text">{{
+                          tab.scheduleEnabled ? '定时发布' : '立即发布'
+                        }}</span>
+                    </label>
+
+                    <div v-if="tab.scheduleEnabled" class="schedule-settings">
+                      <div class="form-row">
+                        <label class="form-label">每天发布视频数：</label>
+                        <select v-model="tab.videosPerDay" class="form-select">
+                          <option v-for="num in 55" :key="num" :value="num">{{ num }}</option>
+                        </select>
+                      </div>
+
+                      <div class="form-row">
+                        <label class="form-label">发布时间：</label>
+                        <div class="time-list">
+                          <input
+                              v-for="(time, index) in tab.dailyTimes"
+                              :key="index"
+                              v-model="tab.dailyTimes[index]"
+                              type="time"
+                              class="time-input"
+                          />
+                          <button
+                              v-if="tab.dailyTimes.length < tab.videosPerDay"
+                              class="btn-add-time"
+                              @click="tab.dailyTimes.push('10:00')"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="form-row">
+                        <label class="form-label">开始天数：</label>
+                        <select v-model="tab.startDays" class="form-select">
+                          <option :value="0">明天</option>
+                          <option :value="1">后天</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 操作按钮 -->
+                  <div class="action-buttons">
+                    <button class="btn-secondary" @click="cancelPublish(tab)">
+                      取消
+                    </button>
+                    <button
+                        class="btn-primary"
+                        @click="confirmPublish(tab)"
+                        :disabled="tab.publishing || !isOnline"
+                    >
+                      {{ tab.publishing ? '发布中...' : '发布' }}
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+
+          <!-- 上传选项对话框 -->
+          <div v-if="uploadOptionsVisible" class="modal-overlay"
+               @click.self="uploadOptionsVisible = false">
+            <div class="modal-content modal-small">
+              <div class="modal-header">
+                <h2>选择上传方式</h2>
+                <button class="close-btn" @click="uploadOptionsVisible = false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="modal-body">
+                <button class="option-btn" @click="selectLocalUpload">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  本地上传
+                </button>
+                <button class="option-btn" @click="selectMaterialLibrary">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  素材库
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 本地上传对话框 -->
+          <div v-if="localUploadVisible" class="modal-overlay" @click.self="localUploadVisible = false">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h2>本地上传</h2>
+                <button class="close-btn" @click="localUploadVisible = false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="modal-body">
+                <div
+                    class="upload-dropzone"
+                    :class="{ 'drag-over': isDragging }"
+                    @click="triggerFileInput"
+                    @dragover.prevent="handleDragOver"
+                    @dragleave.prevent="handleDragLeave"
+                    @drop.prevent="handleDrop"
+                >
+                  <input
+                      ref="fileInput"
+                      type="file"
+                      accept="video/*"
+                      multiple
+                      style="display: none"
+                      @change="handleFileSelect"
+                  />
+                  <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  <p>{{ isDragging ? '松开鼠标上传文件' : '将视频文件拖到此处，或点击上传' }}</p>
+                  <p class="upload-tip">支持 MP4、AVI 等视频格式</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 素材库对话框 -->
+          <div v-if="materialLibraryVisible" class="modal-overlay"
+               @click.self="materialLibraryVisible = false">
+            <div class="modal-content modal-large">
+              <div class="modal-header">
+                <h2>选择素材</h2>
+                <button class="close-btn" @click="materialLibraryVisible = false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="modal-body">
+                <div class="material-list">
+                  <label
+                      v-for="material in materials"
+                      :key="material.id"
+                      class="material-item"
+                  >
+                    <input
+                        type="checkbox"
+                        :value="material.id"
+                        v-model="selectedMaterials"
+                        class="material-checkbox"
+                    />
+                    <div class="material-info">
+                      <div class="material-name">{{ material.filename }}</div>
+                      <div class="material-meta">
+                        <span>{{ material.filesize }}MB</span>
+                        <span>{{ material.upload_time }}</span>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button class="btn-secondary" @click="materialLibraryVisible = false">
+                  取消
+                </button>
+                <button class="btn-primary" @click="confirmMaterialSelection">
+                  确定
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 账号选择对话框 -->
+          <div v-if="accountDialogVisible" class="modal-overlay"
+               @click.self="accountDialogVisible = false">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h2>选择账号</h2>
+                <button class="close-btn" @click="accountDialogVisible = false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="modal-body">
+                <div class="account-list">
+                  <label
+                      v-for="account in availableAccounts"
+                      :key="account.id"
+                      class="account-item"
+                  >
+                    <input
+                        type="checkbox"
+                        :value="account.id"
+                        v-model="tempSelectedAccounts"
+                        class="account-checkbox"
+                    />
+                    <div class="account-info">
+                      <span class="account-name">{{ account.name }}</span>
+                      <span class="account-platform">{{ account.platform }}</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button class="btn-secondary" @click="accountDialogVisible = false">
+                  取消
+                </button>
+                <button class="btn-primary" @click="confirmAccountSelection">
+                  确定
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 话题选择对话框 -->
+          <div v-if="topicDialogVisible" class="modal-overlay" @click.self="topicDialogVisible = false">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h2>添加话题</h2>
+                <button class="close-btn" @click="topicDialogVisible = false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="modal-body">
+                <div class="custom-topic-input">
+                  <input
+                      v-model="customTopic"
+                      type="text"
+                      class="text-input"
+                      placeholder="输入自定义话题"
+                  />
+                  <button class="btn-primary" @click="addCustomTopic">添加</button>
+                </div>
+
+                <h4 class="recommended-title">推荐话题</h4>
+                <div class="topic-grid">
+                  <button
+                      v-for="topic in recommendedTopics"
+                      :key="topic"
+                      :class="['topic-btn', { active: currentTab?.selectedTopics?.includes(topic) }]"
+                      @click="toggleRecommendedTopic(topic)"
+                  >
+                    {{ topic }}
+                  </button>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button class="btn-secondary" @click="topicDialogVisible = false">
+                  取消
+                </button>
+                <button class="btn-primary" @click="confirmTopicSelection">
+                  确定
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 失败任务抽屉 -->
+          <FailedTasksDrawer v-model:visible="failedTasksVisible" />
         </div>
       </div>
     </div>
-  </div>
+  </FrontstagePageShell>
 </template>
 
 <script setup>
-import SideMenu from '@/components/home/components/SideMenu.vue'
+import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
 import NetworkStatus from '@/components/NetworkStatus.vue'
 import FailedTasksDrawer from '@/components/FailedTasksDrawer.vue'
-import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
 
 import {ref, reactive, computed, onMounted} from 'vue'
 import {materialApi} from '@/api/material'
@@ -568,8 +547,6 @@ import {useAccountStore} from '@/stores/account'
 import {useAppStore} from '@/stores/app'
 import {ErrorHandler} from '@/utils/errorHandler'
 import {ElMessage} from 'element-plus'
-
-const { sideMenuStyleVars } = useHomeSideMenuConfig()
 
 const accountStore = useAccountStore()
 const appStore = useAppStore()
@@ -636,10 +613,10 @@ onMounted(() => {
   const handleOnlineStatus = () => {
     isOnline.value = navigator.onLine
   }
-  
+
   window.addEventListener('online', handleOnlineStatus)
   window.addEventListener('offline', handleOnlineStatus)
-  
+
   // 清理过期日志
   ErrorHandler.cleanOldLogs(30)
 })
@@ -946,7 +923,7 @@ const confirmPublish = async (tab) => {
     }
   } catch (error) {
     console.error('发布失败:', error)
-    
+
     // 使用错误处理器处理错误
     await ErrorHandler.handleError(error, {
       showNotification: true,

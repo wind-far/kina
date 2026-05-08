@@ -1,126 +1,107 @@
 <template>
-  <div class="jimeng-home-container">
-    <div id="csr-root">
-      <div class="global-dreamina-container">
-        <div id="dreamina" class="root_bf55f">
-          <div class="top-down-layer">
-            <div class="container-moSF_y" :style="sideMenuStyleVars">
-              <!-- 侧边菜单 -->
-              <SideMenu />
-              
-              <!-- 主内容区 -->
-              <div class="content-wrapper-cF1zaN">
-                <div class="main-container-nXfW_A">
-                  <div class="content-TZbgMr">
-                        <!-- 资产管理容器 -->
-                        <div class="entryContainer-fe9">
-                          <div class="header-2ov">
-                            <div class="container-c5d">
-                              <div class="tabs-y6n">
-                                <div 
-                                  v-for="tab in tabs" 
-                                  :key="tab.id"
-                                  class="tabItem-mls" 
-                                  :class="{ 'active-2nk': activeTab === tab.id }" 
-                                  @click="switchTab(tab.id)"
-                                >
-                                  {{ tab.label }}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          <AssetImageTab
-                            v-if="activeTab === 'image'"
-                            :image-filter-options="imageFilterOptions"
-                            :image-filter="imageFilter"
-                            :is-batch-mode="isBatchMode"
-                            :selected-count="selectedCount"
-                            :image-groups="imageGroups"
-                            :is-selected="isSelected"
-                            @set-image-filter="setImageFilter"
-                            @batch-delete="handleBatchDelete"
-                            @batch-download="handleBatchDownload"
-                            @batch-publish="handleBatchPublish"
-                            @batch-favorite="handleBatchFavorite"
-                            @edit-in-capcut="handleEditInCapCut"
-                            @enter-batch-mode="enterBatchMode"
-                            @exit-batch-mode="exitBatchMode"
-                            @asset-click="handleAssetClick"
-                          />
-                          <AssetVideoTab
-                            :active="activeTab === 'video'"
-                            :video-filter-options="videoFilterOptions"
-                            :video-filter="videoFilter"
-                            @set-video-filter="setVideoFilter"
-                            @enter-batch-mode="enterBatchMode"
-                            @edit-in-capcut="handleEditInCapCut"
-                          />
-                          <AssetCanvasTab
-                            :active="activeTab === 'canvas'"
-                            :canvas-filter-options="canvasFilterOptions"
-                            :canvas-filter="canvasFilter"
-                            @set-canvas-filter="setCanvasFilter"
-                            @enter-batch-mode="enterBatchMode"
-                          />
-                          <AssetEditorTab
-                            :active="activeTab === 'editor'"
-                            :editor-filter-options="editorFilterOptions"
-                            :editor-filter="editorFilter"
-                            @set-editor-filter="setEditorFilter"
-                            @enter-batch-mode="enterBatchMode"
-                          />
-                          <AssetStoryTab
-                            :active="activeTab === 'story'"
-                            :story-filter-options="storyFilterOptions"
-                            :story-filter="storyFilter"
-                            @set-story-filter="setStoryFilter"
-                            @enter-batch-mode="enterBatchMode"
-                          />
-                          <AssetAudioTab
-                            :active="activeTab === 'audio'"
-                            :audio-filter-options="audioFilterOptions"
-                            :audio-filter="audioFilter"
-                            @set-audio-filter="setAudioFilter"
-                            @enter-batch-mode="enterBatchMode"
-                            @edit-in-capcut="handleEditInCapCut"
-                          />
-                        </div>
-                  </div>
-                </div>
-              </div>
+  <FrontstagePageShell>
+    <!-- 资产管理容器 -->
+    <div class="entryContainer-fe9">
+      <div class="header-2ov">
+        <div class="container-c5d">
+          <div class="tabs-y6n">
+            <div
+                v-for="tab in tabs"
+                :key="tab.id"
+                class="tabItem-mls"
+                :class="{ 'active-2nk': activeTab === tab.id }"
+                @click="switchTab(tab.id)"
+            >
+              {{ tab.label }}
             </div>
           </div>
         </div>
       </div>
+      <AssetImageTab
+          v-if="activeTab === 'image'"
+          :image-filter-options="imageFilterOptions"
+          :image-filter="imageFilter"
+          :is-batch-mode="isBatchMode"
+          :selected-count="selectedCount"
+          :image-groups="imageGroups"
+          :is-selected="isSelected"
+          @set-image-filter="setImageFilter"
+          @batch-delete="handleBatchDelete"
+          @batch-download="handleBatchDownload"
+          @batch-publish="handleBatchPublish"
+          @batch-favorite="handleBatchFavorite"
+          @edit-in-capcut="handleEditInCapCut"
+          @enter-batch-mode="enterBatchMode"
+          @exit-batch-mode="exitBatchMode"
+          @asset-click="handleAssetClick"
+      />
+      <AssetVideoTab
+          :active="activeTab === 'video'"
+          :video-filter-options="videoFilterOptions"
+          :video-filter="videoFilter"
+          @set-video-filter="setVideoFilter"
+          @enter-batch-mode="enterBatchMode"
+          @edit-in-capcut="handleEditInCapCut"
+      />
+      <AssetCanvasTab
+          :active="activeTab === 'canvas'"
+          :canvas-filter-options="canvasFilterOptions"
+          :canvas-filter="canvasFilter"
+          @set-canvas-filter="setCanvasFilter"
+          @enter-batch-mode="enterBatchMode"
+      />
+      <AssetEditorTab
+          :active="activeTab === 'editor'"
+          :editor-filter-options="editorFilterOptions"
+          :editor-filter="editorFilter"
+          @set-editor-filter="setEditorFilter"
+          @enter-batch-mode="enterBatchMode"
+      />
+      <AssetStoryTab
+          :active="activeTab === 'story'"
+          :story-filter-options="storyFilterOptions"
+          :story-filter="storyFilter"
+          @set-story-filter="setStoryFilter"
+          @enter-batch-mode="enterBatchMode"
+      />
+      <AssetAudioTab
+          :active="activeTab === 'audio'"
+          :audio-filter-options="audioFilterOptions"
+          :audio-filter="audioFilter"
+          @set-audio-filter="setAudioFilter"
+          @enter-batch-mode="enterBatchMode"
+          @edit-in-capcut="handleEditInCapCut"
+      />
     </div>
-  </div>
-  
-  <!-- 图片预览组件 -->
-  <ImagePreview
-    v-model:visible="previewVisible"
-    v-model:currentIndex="previewIndex"
-    :images="allImages"
-    @download="handlePreviewDownload"
-    @favorite="handlePreviewFavorite"
-    @publish="handlePreviewPublish"
-    @generate-video="handlePreviewGenerateVideo"
-    @edit-in-canvas="handlePreviewEditInCanvas"
-  />
 
-  <PublishArtworkModal
-    v-model:visible="publishArtworkVisible"
-    :image="publishTargetImage"
-    :submitting="publishSubmitting"
-    @submit="handlePublishArtworkSubmit"
-  />
+    <template #after>
+      <ImagePreview
+          v-model:visible="previewVisible"
+          v-model:currentIndex="previewIndex"
+          :images="allImages"
+          @download="handlePreviewDownload"
+          @favorite="handlePreviewFavorite"
+          @publish="handlePreviewPublish"
+          @generate-video="handlePreviewGenerateVideo"
+          @edit-in-canvas="handlePreviewEditInCanvas"
+      />
+
+      <PublishArtworkModal
+          v-model:visible="publishArtworkVisible"
+          :image="publishTargetImage"
+          :submitting="publishSubmitting"
+          @submit="handlePublishArtworkSubmit"
+      />
+    </template>
+  </FrontstagePageShell>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import SideMenu from '@/components/home/components/SideMenu.vue'
 import ImagePreview from '@/components/ImagePreview.vue'
 import PublishArtworkModal from '@/components/PublishArtworkModal.vue'
+import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
 import AssetImageTab from '@/views/asset/components/AssetImageTab.vue'
 import AssetVideoTab from '@/views/asset/components/AssetVideoTab.vue'
 import AssetCanvasTab from '@/views/asset/components/AssetCanvasTab.vue'
@@ -137,7 +118,6 @@ import {
   storyFilterOptions,
   audioFilterOptions,
 } from '@/views/asset/constants'
-import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
 import { applyAssetAction } from '@/api/asset-items'
 import { AUTH_LOGIN_SUCCESS_EVENT } from '@/stores/auth'
 import type {
@@ -150,8 +130,6 @@ import type {
   TabType,
   VideoFilterType,
 } from '@/views/asset/types'
-
-const { sideMenuStyleVars } = useHomeSideMenuConfig()
 
 // 标签页状态
 const activeTab = ref<TabType>('image')
@@ -185,7 +163,7 @@ const selectedCount = computed(() => selectedItems.value.size)
 // 切换选择状态
 const toggleSelection = (itemId: string) => {
   if (!isBatchMode.value) return
-  
+
   if (selectedItems.value.has(itemId)) {
     selectedItems.value.delete(itemId)
   } else {
@@ -354,8 +332,8 @@ const handlePreviewPublish = (image: ImageItem) => {
 
 // 单张发布走参考页弹窗，确认后再真正执行发布。
 const handlePublishArtworkSubmit = async ({
-  image,
-}: {
+                                            image,
+                                          }: {
   image: ImageItem
   title: string
   description: string

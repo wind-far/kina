@@ -2,7 +2,7 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import SideMenu from '../../components/home/components/SideMenu.vue'
+import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
 import ContentGenerator from '../../components/generate/ContentGenerator.vue'
 import ImageLoadingRecord from '../../components/generate/common/ImageLoadingRecord.vue'
 import AgentLoadingRecord from '../../components/generate/common/AgentLoadingRecord.vue'
@@ -38,7 +38,6 @@ import { normalizeGenerationErrorMessage } from '@/shared/generation-error'
 import { appendImageReferencesToRequestBody } from '@/shared/image-generation-request'
 import { AUTH_LOGIN_SUCCESS_EVENT, useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
-import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
 import { useSystemSettingsStore } from '@/stores/system-settings'
 import GenerateAgentRecord from './components/GenerateAgentRecord.vue'
 import GenerateSessionList from './components/GenerateSessionList.vue'
@@ -47,7 +46,6 @@ import GenerateConversationSidebar, { type GenerateConversationSidebarItem } fro
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
-const { sideMenuStyleVars } = useHomeSideMenuConfig()
 const { openLoginModal } = useLoginModalStore()
 const { publicSystemSettings, loadPublicSettings } = useSystemSettingsStore()
 const conversationHeroSettings = computed(() => publicSystemSettings.value.conversationSettings.entryDisplay.hero)
@@ -163,30 +161,30 @@ interface StageConversationEntry {
 // 用现有 content 字段持久化图片任务阶段对话，避免额外改表。
 const parseStageConversationEntries = (content: string): StageConversationEntry[] => {
   return String(content || '')
-    .split('\n')
-    .map(item => item.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const match = line.match(/^\[\[(.+?)\]\](.+)$/)
-      if (!match) {
-        return {
-          stageKey: '',
-          text: line,
+      .split('\n')
+      .map(item => item.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const match = line.match(/^\[\[(.+?)\]\](.+)$/)
+        if (!match) {
+          return {
+            stageKey: '',
+            text: line,
+          }
         }
-      }
-      return {
-        stageKey: String(match[1] || '').trim(),
-        text: String(match[2] || '').trim(),
-      }
-    })
-    .filter(item => item.text)
+        return {
+          stageKey: String(match[1] || '').trim(),
+          text: String(match[2] || '').trim(),
+        }
+      })
+      .filter(item => item.text)
 }
 
 // 把阶段对话序列化回 content，便于刷新后恢复。
 const stringifyStageConversationEntries = (entries: StageConversationEntry[]) => {
   return entries
-    .map(item => item.stageKey ? `[[${item.stageKey}]]${item.text}` : item.text)
-    .join('\n')
+      .map(item => item.stageKey ? `[[${item.stageKey}]]${item.text}` : item.text)
+      .join('\n')
 }
 
 // 生成当前记录在对话区展示的阶段文案。
@@ -204,8 +202,8 @@ const upsertRecordStageConversation = (record: GeneratingRecord, stageKey: strin
 
   const nextEntries = parseStageConversationEntries(record.content)
   const currentIndex = normalizedStageKey
-    ? nextEntries.findIndex(item => item.stageKey === normalizedStageKey)
-    : -1
+      ? nextEntries.findIndex(item => item.stageKey === normalizedStageKey)
+      : -1
 
   if (currentIndex >= 0) {
     if (nextEntries[currentIndex].text === normalizedText) {
@@ -369,12 +367,12 @@ const mainContentClassName = computed(() => {
 
 const sidebarRecentSessions = computed<GenerateConversationSidebarItem[]>(() => {
   return generationSessions.value
-    .filter(session => !session.isDefault)
-    .map((session) => ({
-      id: session.id,
-      title: String(session.title || '未命名会话').trim(),
-      imageUrl: session.coverImageUrl || '',
-    }))
+      .filter(session => !session.isDefault)
+      .map((session) => ({
+        id: session.id,
+        title: String(session.title || '未命名会话').trim(),
+        imageUrl: session.coverImageUrl || '',
+      }))
 })
 
 const sidebarDefaultSession = computed<GenerateConversationSidebarItem>(() => ({
@@ -401,8 +399,8 @@ const syncCurrentSessionWithSessionList = (sessions: PersistedGenerationSession[
 
   const stored = readStoredCurrentSessionId()
   const matchedStored = stored
-    ? sessions.find(session => session.id === stored)
-    : null
+      ? sessions.find(session => session.id === stored)
+      : null
 
   applyCurrentSessionId(matchedStored?.id || sessions[0].id)
 }
@@ -436,7 +434,7 @@ const handleCreateSession = async () => {
 
   const createdSession = await createGenerationSessionRequest()
   generationSessions.value = generationSessions.value
-    .filter(session => session.id !== createdSession.id)
+      .filter(session => session.id !== createdSession.id)
   generationSessions.value.push(createdSession)
   generationSessions.value = [...generationSessions.value].sort((left, right) => {
     if (left.isDefault !== right.isDefault) {
@@ -527,13 +525,13 @@ const handleDeleteSidebarSession = async (id: string) => {
 
   try {
     await ElMessageBox.confirm(
-      `确定删除会话“${targetSession.title}”吗？该会话下的生成记录也会一并移除。`,
-      '删除会话',
-      {
-        confirmButtonText: '删除',
-        cancelButtonText: '取消',
-        type: 'warning',
-      },
+        `确定删除会话“${targetSession.title}”吗？该会话下的生成记录也会一并移除。`,
+        '删除会话',
+        {
+          confirmButtonText: '删除',
+          cancelButtonText: '取消',
+          type: 'warning',
+        },
     )
 
     const runningRecords = generatingRecords.value.filter(record => record.sessionId === id && !record.done && record.dbId)
@@ -582,9 +580,9 @@ const shouldUseAgentWorkspaceFlow = (skill?: string) => {
 
 const buildAgentRequestMessages = (record: GeneratingRecord) => {
   return buildAgentChatMessages(
-    record.skill || 'general',
-    record.prompt,
-    Array.isArray(record.referenceImages) ? record.referenceImages : [],
+      record.skill || 'general',
+      record.prompt,
+      Array.isArray(record.referenceImages) ? record.referenceImages : [],
   )
 }
 
@@ -640,8 +638,8 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
     time: formatGroupLabel(new Date(record.createdAt)),
     // 后端若返回旧的 model 文本，这里统一按最新后台模型目录重新解析展示名称。
     model: resolveModelLabel(
-      record.modelKey || record.model,
-      record.type === 'image' ? 'IMAGE' : record.type === 'agent' ? 'CHAT' : 'VIDEO',
+        record.modelKey || record.model,
+        record.type === 'image' ? 'IMAGE' : record.type === 'agent' ? 'CHAT' : 'VIDEO',
     ) || record.model,
     modelKey: record.modelKey,
     ratio: record.ratio,
@@ -651,19 +649,19 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
     skill: record.skill,
     referenceImages: Array.isArray(record.referenceImages) ? [...record.referenceImages] : [],
     content: record.type === 'image'
-      ? (record.content || (!record.done ? '[[queued]]任务已创建，等待服务端执行' : ''))
-      : record.content,
+        ? (record.content || (!record.done ? '[[queued]]任务已创建，等待服务端执行' : ''))
+        : record.content,
     images: record.images,
     done: record.done,
     stopped: Boolean(record.stopped),
     progressStage: record.type === 'image'
-      ? (record.done ? (record.stopped ? 'stopped' : 'completed') : 'queued')
-      : undefined,
+        ? (record.done ? (record.stopped ? 'stopped' : 'completed') : 'queued')
+        : undefined,
     progressMessage: record.type === 'image'
-      ? (record.done
-        ? resolveTaskStageLabel(record.stopped ? 'stopped' : 'completed', record.stopped ? '任务已停止' : '任务已完成')
-        : resolveTaskStageLabel('queued', '任务已创建，等待服务端执行'))
-      : undefined,
+        ? (record.done
+            ? resolveTaskStageLabel(record.stopped ? 'stopped' : 'completed', record.stopped ? '任务已停止' : '任务已完成')
+            : resolveTaskStageLabel('queued', '任务已创建，等待服务端执行'))
+        : undefined,
     progressPercent: record.type === 'image' ? (record.done ? 100 : 5) : 0,
     error: record.done || record.stopped ? record.error : '',
     agentTaskId: record.agentTaskId,
@@ -683,25 +681,25 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   record.done = saved.done
   record.stopped = Boolean(saved.stopped)
   const nextRunningStage = record.progressStage === 'stopping'
-    ? 'stopping'
-    : (record.progressStage || 'queued')
+      ? 'stopping'
+      : (record.progressStage || 'queued')
   record.progressStage = saved.done
-    ? (saved.stopped ? 'stopped' : saved.error ? 'failed' : 'completed')
-    : nextRunningStage
+      ? (saved.stopped ? 'stopped' : saved.error ? 'failed' : 'completed')
+      : nextRunningStage
   record.progressMessage = saved.done
-    ? resolveTaskStageLabel(
-      saved.stopped ? 'stopped' : saved.error ? 'failed' : 'completed',
-      saved.stopped ? '任务已停止' : saved.error ? saved.error : '任务已完成',
-    )
-    : resolveTaskStageLabel(
-      nextRunningStage,
-      nextRunningStage === 'stopping'
-        ? '任务已收到停止指令，正在收口状态'
-        : (record.progressMessage || '任务执行中'),
-    )
+      ? resolveTaskStageLabel(
+          saved.stopped ? 'stopped' : saved.error ? 'failed' : 'completed',
+          saved.stopped ? '任务已停止' : saved.error ? saved.error : '任务已完成',
+      )
+      : resolveTaskStageLabel(
+          nextRunningStage,
+          nextRunningStage === 'stopping'
+              ? '任务已收到停止指令，正在收口状态'
+              : (record.progressMessage || '任务执行中'),
+      )
   record.progressPercent = saved.done
-    ? 100
-    : Math.max(record.progressPercent || 0, mapTaskStageToProgressPercent(record.progressStage))
+      ? 100
+      : Math.max(record.progressPercent || 0, mapTaskStageToProgressPercent(record.progressStage))
   record.images = Array.isArray(saved.images) ? [...saved.images] : []
   if (Array.isArray(saved.referenceImages) && saved.referenceImages.length) {
     record.referenceImages = [...saved.referenceImages]
@@ -710,12 +708,12 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   }
   if (saved.agentRun) {
     const nextAgentRunReferenceImages = Array.isArray(saved.agentRun.referenceImages) && saved.agentRun.referenceImages.length
-      ? [...saved.agentRun.referenceImages]
-      : Array.isArray(record.referenceImages) && record.referenceImages.length
-        ? [...record.referenceImages]
-        : Array.isArray(record.agentRun?.referenceImages) && record.agentRun.referenceImages.length
-          ? [...record.agentRun.referenceImages]
-          : []
+        ? [...saved.agentRun.referenceImages]
+        : Array.isArray(record.referenceImages) && record.referenceImages.length
+            ? [...record.referenceImages]
+            : Array.isArray(record.agentRun?.referenceImages) && record.agentRun.referenceImages.length
+                ? [...record.agentRun.referenceImages]
+                : []
 
     record.agentRun = {
       ...saved.agentRun,
@@ -723,17 +721,17 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
       result: {
         ...saved.agentRun.result,
         images: Array.isArray(saved.agentRun.result?.images)
-          ? [...saved.agentRun.result.images]
-          : [],
+            ? [...saved.agentRun.result.images]
+            : [],
       },
       steps: Array.isArray(saved.agentRun.steps) ? [...saved.agentRun.steps] : [],
       processSections: Array.isArray(saved.agentRun.processSections)
-        ? saved.agentRun.processSections.map(section => ({
+          ? saved.agentRun.processSections.map(section => ({
             ...section,
             paragraphs: Array.isArray(section.paragraphs) ? [...section.paragraphs] : [],
             taskItems: Array.isArray(section.taskItems) ? [...section.taskItems] : [],
           }))
-        : [],
+          : [],
     }
     return
   }
@@ -813,14 +811,14 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     targetRecord.progressStage = event.stage || targetRecord.progressStage || 'queued'
     targetRecord.progressMessage = resolveTaskStageLabel(event.stage, event.message)
     targetRecord.progressPercent = Math.max(
-      targetRecord.progressPercent || 0,
-      mapTaskStageToProgressPercent(event.stage),
+        targetRecord.progressPercent || 0,
+        mapTaskStageToProgressPercent(event.stage),
     )
     if (isImageTaskRecord) {
       stageConversationChanged = upsertRecordStageConversation(
-        targetRecord,
-        targetRecord.progressStage || event.stage || 'queued',
-        `${targetRecord.progressMessage}：${event.message}`,
+          targetRecord,
+          targetRecord.progressStage || event.stage || 'queued',
+          `${targetRecord.progressMessage}：${event.message}`,
       ) || stageConversationChanged
     }
   }
@@ -850,14 +848,14 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     targetRecord.progressStage = event.stage || targetRecord.progressStage || 'queued'
     targetRecord.progressMessage = resolveTaskStageLabel(event.stage, '造梦中')
     targetRecord.progressPercent = Math.max(
-      targetRecord.progressPercent || 0,
-      mapTaskStageToProgressPercent(event.stage),
+        targetRecord.progressPercent || 0,
+        mapTaskStageToProgressPercent(event.stage),
     )
     if (isImageTaskRecord) {
       stageConversationChanged = upsertRecordStageConversation(
-        targetRecord,
-        targetRecord.progressStage || event.stage || 'queued',
-        event.message,
+          targetRecord,
+          targetRecord.progressStage || event.stage || 'queued',
+          event.message,
       ) || stageConversationChanged
     }
   }
@@ -868,9 +866,9 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     targetRecord.progressPercent = 100
     if (isImageTaskRecord) {
       stageConversationChanged = upsertRecordStageConversation(
-        targetRecord,
-        'completed',
-        `${targetRecord.progressMessage}：${event.message || '图片生成完成'}`,
+          targetRecord,
+          'completed',
+          `${targetRecord.progressMessage}：${event.message || '图片生成完成'}`,
       ) || stageConversationChanged
     }
   } else if (event.type === 'failed') {
@@ -879,9 +877,9 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     targetRecord.progressPercent = 100
     if (isImageTaskRecord) {
       stageConversationChanged = upsertRecordStageConversation(
-        targetRecord,
-        'failed',
-        `${targetRecord.progressMessage}：${event.message || '任务执行失败'}`,
+          targetRecord,
+          'failed',
+          `${targetRecord.progressMessage}：${event.message || '任务执行失败'}`,
       ) || stageConversationChanged
     }
   } else if (event.type === 'stopped') {
@@ -890,9 +888,9 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     targetRecord.progressPercent = 100
     if (isImageTaskRecord) {
       stageConversationChanged = upsertRecordStageConversation(
-        targetRecord,
-        'stopped',
-        `${targetRecord.progressMessage}：${event.message || '任务已停止'}`,
+          targetRecord,
+          'stopped',
+          `${targetRecord.progressMessage}：${event.message || '任务已停止'}`,
       ) || stageConversationChanged
     }
   }
@@ -963,15 +961,15 @@ const loadPersistedGeneratingRecords = async () => {
     if (!records.length) return
 
     const existingDbIds = new Set(
-      generatingRecords.value
-        .map(item => item.dbId)
-        .filter((id): id is string => Boolean(id)),
+        generatingRecords.value
+            .map(item => item.dbId)
+            .filter((id): id is string => Boolean(id)),
     )
 
     const nextRecords = records
-      .filter(record => (record.source || 'generate') === 'generate')
-      .filter(record => !existingDbIds.has(record.id))
-      .map(createRecordFromPersisted)
+        .filter(record => (record.source || 'generate') === 'generate')
+        .filter(record => !existingDbIds.has(record.id))
+        .map(createRecordFromPersisted)
 
     if (!nextRecords.length) return
 
@@ -1018,23 +1016,23 @@ const ensureCurrentGenerationSession = async () => {
 const touchSessionAfterRecordCreated = (sessionId: string) => {
   const now = new Date().toISOString()
   generationSessions.value = generationSessions.value
-    .map((session) => {
-      if (session.id !== sessionId) {
-        return session
-      }
-      return {
-        ...session,
-        lastRecordAt: now,
-        updatedAt: now,
-        recordCount: Number(session.recordCount || 0) + 1,
-      }
-    })
-    .sort((left, right) => {
-      if (left.isDefault !== right.isDefault) {
-        return left.isDefault ? -1 : 1
-      }
-      return new Date(right.lastRecordAt || right.updatedAt).getTime() - new Date(left.lastRecordAt || left.updatedAt).getTime()
-    })
+      .map((session) => {
+        if (session.id !== sessionId) {
+          return session
+        }
+        return {
+          ...session,
+          lastRecordAt: now,
+          updatedAt: now,
+          recordCount: Number(session.recordCount || 0) + 1,
+        }
+      })
+      .sort((left, right) => {
+        if (left.isDefault !== right.isDefault) {
+          return left.isDefault ? -1 : 1
+        }
+        return new Date(right.lastRecordAt || right.updatedAt).getTime() - new Date(left.lastRecordAt || left.updatedAt).getTime()
+      })
 }
 
 // 生成记录回写后直接更新本地会话元数据，避免再次请求会话列表造成闪动。
@@ -1095,13 +1093,13 @@ const handleSend = async (message: string, type: CreationType, options?: { model
     progressPercent: type === 'image' ? 5 : 0,
     error: '',
     agentRun: type === 'agent' && shouldUseAgentWorkspaceFlow(options?.skill)
-      ? buildAgentPendingRun(
-          recordId,
-          message,
-          options?.skill || 'general',
-          Array.isArray(options?.referenceImages) ? options.referenceImages : [],
+        ? buildAgentPendingRun(
+            recordId,
+            message,
+            options?.skill || 'general',
+            Array.isArray(options?.referenceImages) ? options.referenceImages : [],
         )
-      : undefined,
+        : undefined,
   }
 
   generatingRecords.value.unshift(record)
@@ -1194,7 +1192,7 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
 }
 
 // 图片生成改为提交服务端任务，由后端继续执行并写回生成记录。
-  const startImageGenerationTask = async (record: GeneratingRecord) => {
+const startImageGenerationTask = async (record: GeneratingRecord) => {
   try {
     const { providerId, modelKey: requestModelKey } = resolveGenerationTaskModel({
       modelKey: record.modelKey,
@@ -1204,8 +1202,8 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
 
     const modelConfig = getModelByName(record.modelKey || requestModelKey) as ImageModel | null
     const size = modelConfig?.sizes?.length
-      ? (modelConfig.sizes.find((sizeItem: string) => sizeItem.includes(record.ratio.replace(':', 'x'))) || modelConfig.defaultParams?.size || '')
-      : (record.ratio ? record.ratio.replace(':', 'x') : '')
+        ? (modelConfig.sizes.find((sizeItem: string) => sizeItem.includes(record.ratio.replace(':', 'x'))) || modelConfig.defaultParams?.size || '')
+        : (record.ratio ? record.ratio.replace(':', 'x') : '')
     const hasReferenceImages = Array.isArray(record.referenceImages) && record.referenceImages.length > 0
     let data: any = {
       model: requestModelKey,
@@ -1244,8 +1242,8 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
     record.stopped = false
     record.progressStage = 'failed'
     record.progressMessage = resolveTaskStageLabel(
-      'failed',
-      formatGenerationError(error instanceof Error ? error.message : '', '图片生成失败'),
+        'failed',
+        formatGenerationError(error instanceof Error ? error.message : '', '图片生成失败'),
     )
     record.progressPercent = 100
     record.error = formatGenerationError(error instanceof Error ? error.message : '', '图片生成失败')
@@ -1321,8 +1319,8 @@ onMounted(() => {
   // 检查路由参数（从首页跳转过来的发送请求）
   const { message, type, model, ratio, resolution, skill } = route.query
   const pendingPayloadRaw = typeof window !== 'undefined'
-    ? window.sessionStorage.getItem('canana:home-header:pending-send')
-    : ''
+      ? window.sessionStorage.getItem('canana:home-header:pending-send')
+      : ''
   let pendingPayload: {
     referenceImages?: string[]
     modelKey?: string
@@ -1339,18 +1337,18 @@ onMounted(() => {
   }
   if (message && type) {
     handleSend(
-      message as string,
-      type as CreationType,
-      {
-        model: model as string,
-        modelKey: pendingPayload?.modelKey || '',
-        ratio: ratio as string,
-        resolution: resolution as string,
-        duration: pendingPayload?.duration || '',
-        feature: pendingPayload?.feature || '',
-        skill: skill as string,
-        referenceImages: Array.isArray(pendingPayload?.referenceImages) ? pendingPayload.referenceImages : [],
-      }
+        message as string,
+        type as CreationType,
+        {
+          model: model as string,
+          modelKey: pendingPayload?.modelKey || '',
+          ratio: ratio as string,
+          resolution: resolution as string,
+          duration: pendingPayload?.duration || '',
+          feature: pendingPayload?.feature || '',
+          skill: skill as string,
+          referenceImages: Array.isArray(pendingPayload?.referenceImages) ? pendingPayload.referenceImages : [],
+        }
     )
     router.replace({ path: '/generate' })
   }
@@ -1380,159 +1378,143 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="jimeng-home-container">
-    <div id="csr-root">
-      <div class="global-dreamina-container">
-        <div id="dreamina" class="root_bf55f">
-          <div class="top-down-layer">
-            <div class="container-moSF_y" :style="sideMenuStyleVars">
-              <!-- 侧边菜单 -->
-              <SideMenu/>
-              <div class=content-wrapper-cF1zaN>
-                <div id=dreamina-ui-configuration-content-wrapper class=main-container-nXfW_A>
-                  <div class=content-TZbgMr>
-                    <div class="entry-erESAd">
-                      <GenerateConversationSidebar
-                        :active-session-id="currentSessionId"
-                        :collapsed="conversationSidebarCollapsed"
-                        :loading="isGenerationSessionsLoading"
-                        :default-session="sidebarDefaultSession"
-                        :sessions="sidebarRecentSessions"
-                        @toggle-sidebar="handleToggleConversationSidebar"
-                        @create-session="handleCreateSession"
-                        @select-default="handleSelectSidebarDefault"
-                        @select-session="handleSelectSidebarSession"
-                        @rename-session="handleRenameSidebarSession"
-                        @delete-session="handleDeleteSidebarSession"
-                      />
-                      <div :class="mainContentClassName">
-                        <template v-if="isCurrentSessionEmpty">
-                          <div v-if="conversationHeroSettings.enabled" class="new-conversation-hero-canana">
-                            <h1 class="new-conversation-title" ccfmp-element="true">
-                              {{ conversationHeroSettings.title || '你好，想创作什么？' }}
-                            </h1>
-                            <p v-if="conversationHeroSettings.subtitle" class="new-conversation-subtitle-canana">
-                              {{ conversationHeroSettings.subtitle }}
-                            </p>
-                          </div>
-                          <ContentGenerator
-                            ref="contentGeneratorRef"
-                            :default-expanded="true"
-                            @send="handleSend"
-                          />
-                        </template>
-                        <div v-else class=entry-lav5_s>
-                          <GenerateSessionList
-                            v-model:search-value="sessionSearchKeyword"
-                            scroll-list-id="scroll-list-generate-session"
-                            @create-session="handleCreateSession"
-                            @search="handleSessionSearch"
-                            @time-filter-click="handleSessionTimeFilterClick"
-                            @type-filter-click="handleSessionTypeFilterClick"
-                            @action-filter-click="handleSessionActionFilterClick"
-                            @scroll-state="handleSessionListScrollState"
-                          >
-                            <template v-for="(record, index) in visibleGeneratingRecords" :key="record.id">
-                              <div class="item-Xh64V7" :data-index="index * 2 + 1" style="z-index:1">
-                                <GenerateAgentRecord
-                                  v-if="record.type === 'agent' && record.agentRun"
-                                  :run="record.agentRun"
-                                  :reference-images="record.referenceImages || []"
-                                  :error-text="record.error ? formatGenerationError(record.error, '任务执行失败') : ''"
-                                  @stop="handleStopAgentExecution(record)"
-                                />
-                                <AgentLoadingRecord
-                                  v-else-if="record.type === 'agent'"
-                                  :prompt="record.prompt"
-                                  :content="record.content"
-                                  :done="record.done"
-                                  :reference-images="record.referenceImages || []"
-                                  :error="record.error ? formatGenerationError(record.error, '对话生成失败') : ''"
-                                />
-                                <ImageLoadingRecord
-                                  v-else
-                                  :time="record.time"
-                                  :prompt="record.prompt"
-                                  :model="record.model"
-                                  :ratio="record.ratio"
-                                  :resolution="record.resolution"
-                                  :duration="record.duration"
-                                  :feature="record.feature"
-                                  :reference-images="record.referenceImages || []"
-                                  :progress="record.progressPercent || 0"
-                                  :progress-text="record.progressMessage || ''"
-                                  :done="record.done"
-                                  :stopped="Boolean(record.stopped)"
-                                  :images="record.images"
-                                  :conversation-entries="getRecordConversationEntries(record)"
-                                  :error="record.error ? formatGenerationError(record.error, '图片生成失败') : ''"
-                                  @preview="handlePreviewRecordImage(record, $event)"
-                                  @stop="handleStopImageGeneration(record)"
-                                />
-                              </div>
-                              <div
-                                v-if="record.type === 'agent'"
-                                class="item-Xh64V7"
-                                :data-index="index * 2 + 2"
-                                style="z-index:1"
-                              >
-                                <div class="responsive-container-msS_cP">
-                                  <div class="content-DPogfx ai-generated-record-content-hg5EL8">
-                                    <div class="group-title">{{ record.time }}</div>
-                                  </div>
-                                </div>
-                              </div>
-                            </template>
-                          </GenerateSessionList>
-                          <ContentGenerator
-                            ref="contentGeneratorRef"
-                            :default-expanded="true"
-                            @send="handleSend"
-                          />
-                          <div style=height:1px></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="platform-ui-service-side-drawer-container normal-mode legacy">
-                    <div class=side-drawer-panel></div>
-                  </div>
-                  <div class=container_44d3c style=bottom:20px;right:20px>
-                    <div class=help-center-nTCbew
-                         style=background-color:var(--background-dropdown-menu);color:var(--text-tertiary)>
-                      <div class=trigger-REbHBM>
-                        <svg class=icon-RC7nOi fill=none height=1em
-                             preserveAspectRatio="xMidYMid meet" role=presentation viewBox="0 0 24 24"
-                             width=1em xmlns=http://www.w3.org/2000/svg>
-                          <g>
-                            <path clip-rule=evenodd
-                                  d="M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16ZM2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10S2 17.523 2 12Zm8.825 4.897a1.175 1.175 0 1 1 2.35 0 1.175 1.175 0 0 1-2.35 0ZM12 6.11c-.477 0-.95.09-1.395.263-.443.173-.85.43-1.195.755a3.538 3.538 0 0 0-.813 1.15c-.205.468-.289 1.049-.289 1.481a1 1 0 0 0 2 0c0-.235.055-.527.12-.677.081-.184.2-.354.355-.5a1.72 1.72 0 0 1 .551-.347 1.83 1.83 0 0 1 1.332 0c.21.082.396.2.55.347.155.146.275.316.355.5.08.183.12.377.12.571 0 .439-.108.662-.22.811-.139.185-.339.336-.686.572l-.066.044c-.302.204-.736.496-1.074.912-.403.495-.645 1.12-.645 1.923a1 1 0 0 0 2 0c0-.362.095-.536.196-.66.141-.174.34-.313.711-.564l.008-.005c.325-.22.793-.538 1.156-1.022.393-.524.62-1.178.62-2.01 0-.474-.098-.941-.288-1.375a3.538 3.538 0 0 0-.813-1.15 3.708 3.708 0 0 0-1.195-.756A3.829 3.829 0 0 0 12 6.11Z"
-                                  data-follow-fill=currentColor fill=currentColor
-                                  fill-rule=evenodd></path>
-                          </g>
-                        </svg>
-                      </div>
-                    </div>
+  <FrontstagePageShell main-container-id="dreamina-ui-configuration-content-wrapper">
+    <div class="entry-erESAd">
+      <GenerateConversationSidebar
+          :active-session-id="currentSessionId"
+          :collapsed="conversationSidebarCollapsed"
+          :loading="isGenerationSessionsLoading"
+          :default-session="sidebarDefaultSession"
+          :sessions="sidebarRecentSessions"
+          @toggle-sidebar="handleToggleConversationSidebar"
+          @create-session="handleCreateSession"
+          @select-default="handleSelectSidebarDefault"
+          @select-session="handleSelectSidebarSession"
+          @rename-session="handleRenameSidebarSession"
+          @delete-session="handleDeleteSidebarSession"
+      />
+      <div :class="mainContentClassName">
+        <template v-if="isCurrentSessionEmpty">
+          <div v-if="conversationHeroSettings.enabled" class="new-conversation-hero-canana">
+            <h1 class="new-conversation-title" ccfmp-element="true">
+              {{ conversationHeroSettings.title || '你好，想创作什么？' }}
+            </h1>
+            <p v-if="conversationHeroSettings.subtitle" class="new-conversation-subtitle-canana">
+              {{ conversationHeroSettings.subtitle }}
+            </p>
+          </div>
+          <ContentGenerator
+              ref="contentGeneratorRef"
+              :default-expanded="true"
+              @send="handleSend"
+          />
+        </template>
+        <div v-else class=entry-lav5_s>
+          <GenerateSessionList
+              v-model:search-value="sessionSearchKeyword"
+              scroll-list-id="scroll-list-generate-session"
+              @create-session="handleCreateSession"
+              @search="handleSessionSearch"
+              @time-filter-click="handleSessionTimeFilterClick"
+              @type-filter-click="handleSessionTypeFilterClick"
+              @action-filter-click="handleSessionActionFilterClick"
+              @scroll-state="handleSessionListScrollState"
+          >
+            <template v-for="(record, index) in visibleGeneratingRecords" :key="record.id">
+              <div class="item-Xh64V7" :data-index="index * 2 + 1" style="z-index:1">
+                <GenerateAgentRecord
+                    v-if="record.type === 'agent' && record.agentRun"
+                    :run="record.agentRun"
+                    :reference-images="record.referenceImages || []"
+                    :error-text="record.error ? formatGenerationError(record.error, '任务执行失败') : ''"
+                    @stop="handleStopAgentExecution(record)"
+                />
+                <AgentLoadingRecord
+                    v-else-if="record.type === 'agent'"
+                    :prompt="record.prompt"
+                    :content="record.content"
+                    :done="record.done"
+                    :reference-images="record.referenceImages || []"
+                    :error="record.error ? formatGenerationError(record.error, '对话生成失败') : ''"
+                />
+                <ImageLoadingRecord
+                    v-else
+                    :time="record.time"
+                    :prompt="record.prompt"
+                    :model="record.model"
+                    :ratio="record.ratio"
+                    :resolution="record.resolution"
+                    :duration="record.duration"
+                    :feature="record.feature"
+                    :reference-images="record.referenceImages || []"
+                    :progress="record.progressPercent || 0"
+                    :progress-text="record.progressMessage || ''"
+                    :done="record.done"
+                    :stopped="Boolean(record.stopped)"
+                    :images="record.images"
+                    :conversation-entries="getRecordConversationEntries(record)"
+                    :error="record.error ? formatGenerationError(record.error, '图片生成失败') : ''"
+                    @preview="handlePreviewRecordImage(record, $event)"
+                    @stop="handleStopImageGeneration(record)"
+                />
+              </div>
+              <div
+                  v-if="record.type === 'agent'"
+                  class="item-Xh64V7"
+                  :data-index="index * 2 + 2"
+                  style="z-index:1"
+              >
+                <div class="responsive-container-msS_cP">
+                  <div class="content-DPogfx ai-generated-record-content-hg5EL8">
+                    <div class="group-title">{{ record.time }}</div>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
+            </template>
+          </GenerateSessionList>
+          <ContentGenerator
+              ref="contentGeneratorRef"
+              :default-expanded="true"
+              @send="handleSend"
+          />
+          <div style=height:1px></div>
         </div>
       </div>
     </div>
-  </div>
+    <div class="platform-ui-service-side-drawer-container normal-mode legacy">
+      <div class=side-drawer-panel></div>
+    </div>
+    <div class=container_44d3c style=bottom:20px;right:20px>
+      <div class=help-center-nTCbew
+           style=background-color:var(--background-dropdown-menu);color:var(--text-tertiary)>
+        <div class=trigger-REbHBM>
+          <svg class=icon-RC7nOi fill=none height=1em
+               preserveAspectRatio="xMidYMid meet" role=presentation viewBox="0 0 24 24"
+               width=1em xmlns=http://www.w3.org/2000/svg>
+            <g>
+              <path clip-rule=evenodd
+                    d="M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16ZM2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10S2 17.523 2 12Zm8.825 4.897a1.175 1.175 0 1 1 2.35 0 1.175 1.175 0 0 1-2.35 0ZM12 6.11c-.477 0-.95.09-1.395.263-.443.173-.85.43-1.195.755a3.538 3.538 0 0 0-.813 1.15c-.205.468-.289 1.049-.289 1.481a1 1 0 0 0 2 0c0-.235.055-.527.12-.677.081-.184.2-.354.355-.5a1.72 1.72 0 0 1 .551-.347 1.83 1.83 0 0 1 1.332 0c.21.082.396.2.55.347.155.146.275.316.355.5.08.183.12.377.12.571 0 .439-.108.662-.22.811-.139.185-.339.336-.686.572l-.066.044c-.302.204-.736.496-1.074.912-.403.495-.645 1.12-.645 1.923a1 1 0 0 0 2 0c0-.362.095-.536.196-.66.141-.174.34-.313.711-.564l.008-.005c.325-.22.793-.538 1.156-1.022.393-.524.62-1.178.62-2.01 0-.474-.098-.941-.288-1.375a3.538 3.538 0 0 0-.813-1.15 3.708 3.708 0 0 0-1.195-.756A3.829 3.829 0 0 0 12 6.11Z"
+                    data-follow-fill=currentColor fill=currentColor
+                    fill-rule=evenodd></path>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </div>
 
-  <ImagePreview
-    v-model:visible="previewVisible"
-    v-model:currentIndex="previewIndex"
-    :images="previewImages"
-    @download="handlePreviewDownload"
-    @favorite="handlePreviewFavorite"
-    @publish="handlePreviewPublish"
-    @generate-video="handlePreviewGenerateVideo"
-    @edit-in-canvas="handlePreviewEditInCanvas"
-  />
+    <template #after>
+      <ImagePreview
+          v-model:visible="previewVisible"
+          v-model:currentIndex="previewIndex"
+          :images="previewImages"
+          @download="handlePreviewDownload"
+          @favorite="handlePreviewFavorite"
+          @publish="handlePreviewPublish"
+          @generate-video="handlePreviewGenerateVideo"
+          @edit-in-canvas="handlePreviewEditInCanvas"
+      />
+    </template>
+  </FrontstagePageShell>
 </template>
 
 <style>
@@ -1569,4 +1551,3 @@ onUnmounted(() => {
   text-align: center;
 }
 </style>
-const { sideMenuStyleVars } = useHomeSideMenuConfig()

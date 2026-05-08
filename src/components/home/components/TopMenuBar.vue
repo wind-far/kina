@@ -64,32 +64,39 @@
           {{ accountEntryItem.title || loginButtonText }}
         </button>
 
-        <button
-          v-if="accountItem && isLoggedIn"
-          type="button"
-          class="top-menu-bar__avatar-button"
-          :class="{ 'is-active': isItemActive(accountItem) }"
-          @click="navigateToAccount"
+        <div
+          v-if="accountDisplayItem && isLoggedIn"
+          class="top-menu-bar__account-hover-group"
         >
-          <img :src="resolvedAvatarSrc" class="top-menu-bar__avatar" :alt="loginButtonText">
-        </button>
+          <button
+            type="button"
+            class="top-menu-bar__avatar-button"
+            :class="{ 'is-active': currentPath === '/account' }"
+            @click="navigateToAccount"
+          >
+            <img :src="resolvedAvatarSrc" class="top-menu-bar__avatar" :alt="loginButtonText">
+          </button>
 
-        <button
-          v-for="item in actionItems"
-          :key="item.key"
-          type="button"
-          class="top-menu-bar__icon-button"
-          :class="{ 'is-active': isItemActive(item) }"
-          @click="handleBottomItemClick(item)"
-        >
-          <HomeSideMenuIcon
-            :icon-key="item.icon"
-            :icon-source="item.iconSource"
-            :inactive-icon-url="item.inactiveIconUrl"
-            :active-icon-url="item.activeIconUrl"
-            :active="isItemActive(item)"
-          />
-        </button>
+          <div v-if="actionItems.length" class="top-menu-bar__account-hover-panel">
+            <button
+              v-for="item in actionItems"
+              :key="item.key"
+              type="button"
+              class="top-menu-bar__icon-button"
+              :class="{ 'is-active': isItemActive(item) }"
+              @click="handleBottomItemClick(item)"
+            >
+              <HomeSideMenuIcon
+                :icon-key="item.icon"
+                :icon-source="item.iconSource"
+                :inactive-icon-url="item.inactiveIconUrl"
+                :active-icon-url="item.activeIconUrl"
+                :active="isItemActive(item)"
+              />
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
   </header>
@@ -136,6 +143,7 @@ const marketingPointsText = computed(() => {
 const marketingItem = computed(() => bottomItems.value.find(item => item.key === 'marketing') || null)
 const accountEntryItem = computed(() => bottomItems.value.find(item => item.key === 'account-entry') || null)
 const accountItem = computed(() => centerItems.value.find(item => item.key === 'account') || null)
+const accountDisplayItem = computed(() => accountEntryItem.value || accountItem.value || null)
 const actionItems = computed(() => {
   return bottomItems.value.filter(item => !['marketing', 'account-entry'].includes(item.key))
 })
@@ -243,7 +251,8 @@ onMounted(() => {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
-  border-radius: 20px;
+  padding: 0px 20px;
+  //border-radius: 20px;
   background: var(--theme-side-menu-background, #111218);
   border: 1px solid var(--stroke-primary, rgba(255, 255, 255, 0.08));
 }
@@ -322,6 +331,60 @@ onMounted(() => {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.top-menu-bar__account-hover-group {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 40px;
+  height: 40px;
+}
+
+.top-menu-bar__account-hover-group::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  right: 50%;
+  width: 88px;
+  height: 18px;
+  transform: translateX(50%);
+}
+
+.top-menu-bar__account-hover-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 64px;
+  padding: 10px 8px;
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--theme-side-menu-background, #111218) 94%, transparent);
+  border: 1px solid var(--stroke-primary, rgba(255, 255, 255, 0.08));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(50%, -8px);
+  transition: opacity .18s ease, transform .18s ease;
+  z-index: 2;
+}
+
+.top-menu-bar__account-hover-panel .top-menu-bar__icon-button {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto;
+  border-radius: 14px;
+}
+
+.top-menu-bar__account-hover-group:hover .top-menu-bar__account-hover-panel,
+.top-menu-bar__account-hover-group:focus-within .top-menu-bar__account-hover-panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(50%, 0);
 }
 
 .top-menu-bar__action-chip {

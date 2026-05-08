@@ -3,17 +3,19 @@
     <div class="scroll-container-Jsws2j scroll-container-QnV2C9">
       <div>
         <div class="scroll-content-DaYLnh scroll-content">
-          <div class="section-generator">
-            <!-- 首页头部 -->
-            <HomeHeader/>
-          </div>
+          <div class="home-content-shell">
+            <div class="section-generator">
+              <!-- 首页头部 -->
+              <HomeHeader/>
+            </div>
 
-          <!-- Tabs 区域 -->
-          <TabsSection
-            @tab-change="handleTabChange"
-            @search="handleSearch"
-            @open-work-detail="handleOpenWorkDetail"
-          />
+            <!-- Tabs 区域 -->
+            <TabsSection
+              @tab-change="handleTabChange"
+              @search="handleSearch"
+              @open-work-detail="handleOpenWorkDetail"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -272,5 +274,17 @@ watch(
 </script>
 
 <style scoped>
+.home-content-shell {
+  width: min(100%, 1680px);
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding-inline: 10px;
+}
+
+@media (min-width: 1280px) {
+  .home-content-shell {
+    padding-inline: 10px;
+  }
+}
 
 </style>

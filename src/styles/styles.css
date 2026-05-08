@@ -1804,8 +1804,8 @@ body,html {
         .container-moSF_y .main-container-nXfW_A .content-TZbgMr {
             border-radius: 8px 8px 0 0;
             height: 100%;
-            overflow-x: hidden;
-            overflow-y: auto;
+            /*overflow-x: hidden;*/
+            /*overflow-y: auto;*/
             transition: width .2s cubic-bezier(.4,0,.2,1);
             width: 100%
         }
@@ -6365,8 +6365,8 @@ body,html {
 
         .scroll-container-Jsws2j {
             box-sizing: border-box;
-            overflow-x: hidden;
-            overflow-y: scroll;
+            /*overflow-x: hidden;*/
+            /*overflow-y: scroll;*/
             scrollbar-width: auto;
             width: 100%
         }

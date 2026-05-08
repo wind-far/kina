@@ -446,7 +446,7 @@ const mainContentClassName = computed(() => {
   if (isCurrentSessionEmpty.value) {
     classNames.push('new-conversation')
   }
-  if (!conversationSidebarCollapsed.value) {
+  if (!isConversationSidebarEffectivelyCollapsed.value) {
     classNames.push('with-sidebar')
   }
   return classNames.join(' ')
@@ -467,6 +467,14 @@ const sidebarDefaultSession = computed<GenerateConversationSidebarItem>(() => ({
   title: generationSessions.value.find(session => session.isDefault)?.title || '默认创作',
   imageUrl: generationSessions.value.find(session => session.isDefault)?.coverImageUrl || '',
 }))
+
+// 空会话且没有最近记录时，左侧空栏没有信息价值，直接走折叠态保证主区居中。
+const isConversationSidebarEffectivelyCollapsed = computed(() => {
+  if (conversationSidebarCollapsed.value) {
+    return true
+  }
+  return isCurrentSessionEmpty.value && sidebarRecentSessions.value.length === 0
+})
 
 const applyCurrentSessionId = (sessionId: string) => {
   currentSessionId.value = sessionId
@@ -1465,11 +1473,15 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <FrontstagePageShell main-container-id="dreamina-ui-configuration-content-wrapper">
+  <FrontstagePageShell
+    class="generate-page-shell"
+    main-container-id="dreamina-ui-configuration-content-wrapper"
+    content-scroll-y="hidden"
+  >
     <div class="entry-erESAd">
       <GenerateConversationSidebar
           :active-session-id="currentSessionId"
-          :collapsed="conversationSidebarCollapsed"
+          :collapsed="isConversationSidebarEffectivelyCollapsed"
           :loading="isGenerationSessionsLoading"
           :default-session="sidebarDefaultSession"
           :sessions="sidebarRecentSessions"
@@ -1614,8 +1626,14 @@ onUnmounted(() => {
 
 .main-content-G632JF.new-conversation {
   align-items: center;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  height: 100%;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+  padding: 32px 24px 96px;
 }
 
 .new-conversation-hero-canana {
@@ -1631,7 +1649,7 @@ onUnmounted(() => {
   font-size: 24px;
   font-weight: 600;
   line-height: 32px;
-  margin: calc(40vh - 72px) 0 40px;
+  margin: 0 0 40px;
   text-align: center;
 }
 

@@ -309,22 +309,20 @@ function handleMouseDown(e) {
 function handleMouseMove(e) {
   // 平移
   if (canvasState.isPanning.value) {
-    viewport.updatePan(e.clientX, e.clientY)
+    pendingPanX = e.clientX
+    pendingPanY = e.clientY
+    schedulePanFrame()
     return
   }
-  
+
   // 缩放图片
   if (canvasState.isResizing.value && selectedImage.value) {
-    imageResize.updateResize(
-      canvasState.selectedId.value,
-      e.clientX,
-      e.clientY,
-      canvasState.resizeHandle.value,
-      viewport.viewport.scale
-    )
+    pendingResizeX = e.clientX
+    pendingResizeY = e.clientY
+    scheduleResizeFrame()
     return
   }
-  
+
   // 拖拽图片
   if (canvasState.draggedId.value) {
     // 检查是否超过阈值
@@ -332,11 +330,60 @@ function handleMouseMove(e) {
       canvasState.markMoved()
       canvasState.startDrag(canvasState.draggedId.value)
     }
-    
+
     if (canvasState.isDragging.value) {
-      dragSort.updateDrag(e.clientX, e.clientY, viewport.viewport)
+      pendingDragX = e.clientX
+      pendingDragY = e.clientY
+      scheduleDragFrame()
     }
   }
+}
+
+// 使用 requestAnimationFrame 合并高频指针事件，避免每像素都触发响应式更新与重排
+let panFrameId = 0
+let resizeFrameId = 0
+let dragFrameId = 0
+let pendingPanX = 0
+let pendingPanY = 0
+let pendingResizeX = 0
+let pendingResizeY = 0
+let pendingDragX = 0
+let pendingDragY = 0
+
+function schedulePanFrame() {
+  if (panFrameId) return
+  panFrameId = requestAnimationFrame(() => {
+    panFrameId = 0
+    if (canvasState.isPanning.value) {
+      viewport.updatePan(pendingPanX, pendingPanY)
+    }
+  })
+}
+
+function scheduleResizeFrame() {
+  if (resizeFrameId) return
+  resizeFrameId = requestAnimationFrame(() => {
+    resizeFrameId = 0
+    if (canvasState.isResizing.value && selectedImage.value) {
+      imageResize.updateResize(
+        canvasState.selectedId.value,
+        pendingResizeX,
+        pendingResizeY,
+        canvasState.resizeHandle.value,
+        viewport.viewport.scale,
+      )
+    }
+  })
+}
+
+function scheduleDragFrame() {
+  if (dragFrameId) return
+  dragFrameId = requestAnimationFrame(() => {
+    dragFrameId = 0
+    if (canvasState.isDragging.value) {
+      dragSort.updateDrag(pendingDragX, pendingDragY, viewport.viewport)
+    }
+  })
 }
 
 function handleMouseUp() {
@@ -594,6 +641,9 @@ onUnmounted(() => {
   window.removeEventListener('mouseup', handleMouseUp)
   window.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('keyup', handleKeyUp)
+  if (panFrameId) cancelAnimationFrame(panFrameId)
+  if (resizeFrameId) cancelAnimationFrame(resizeFrameId)
+  if (dragFrameId) cancelAnimationFrame(dragFrameId)
 })
 
 // 获取显示位置的辅助函数

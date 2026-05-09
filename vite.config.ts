@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
+import AutoImport from 'unplugin-auto-import/vite'
+import Components from 'unplugin-vue-components/vite'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import path from 'path'
 import fs from 'node:fs/promises'
 
@@ -61,6 +64,14 @@ export default defineConfig({
   plugins: [
     vue(),
     tailwindcss(),
+    // Element Plus 按需引入：自动注入命名导入（ElMessage/ElMessageBox 等）的样式
+    AutoImport({
+      resolvers: [ElementPlusResolver()],
+    }),
+    // Element Plus 按需引入：自动注册模板中 <el-xxx> 组件
+    Components({
+      resolvers: [ElementPlusResolver()],
+    }),
     // 仅保留前端本地调试所需的 mock 文件服务。
     createMockAgentRawPlugin(),
   ],
@@ -110,11 +121,41 @@ export default defineConfig({
     assetsDir: 'assets',
     sourcemap: false,  // 生产环境不生成 sourcemap
 
-    // 代码分割
+    // 启用 CSS 代码分割，按异步 chunk 拆分样式
+    cssCodeSplit: true,
+
+    // 小于 4KB 的资源内联为 base64，避免过多 HTTP 请求
+    assetsInlineLimit: 4096,
+
+    // 代码分割：按厂商库与业务模块隔离，提升缓存命中率
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vue': ['vue'],
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return
+          }
+          // Vue Flow 仅工作流页用到，单独成 chunk
+          if (id.includes('@vue-flow')) {
+            return 'vue-flow'
+          }
+          // Element Plus 图标
+          if (id.includes('@element-plus/icons-vue')) {
+            return 'el-icons'
+          }
+          // Element Plus 主体
+          if (id.includes('element-plus')) {
+            return 'element-plus'
+          }
+          // Vue Router 单独
+          if (id.includes('vue-router')) {
+            return 'vue-router'
+          }
+          // Vue 核心
+          if (/[\\/]node_modules[\\/]@?vue[\\/]/.test(id) && !id.includes('vue-flow')) {
+            return 'vue'
+          }
+          // 其余第三方依赖统一进 vendor
+          return 'vendor'
         },
       },
     },
@@ -129,6 +170,6 @@ export default defineConfig({
     },
 
     // 块大小警告限制（KB）
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 500,
   },
 })

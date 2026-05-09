@@ -1,20 +1,24 @@
 <template>
-  <div id="app">
-    <router-view />
-    <ThemeToggle />
-    <LoginModal
-      :visible="loginModalVisible"
-      @update:visible="setLoginModalVisible"
-    />
-    <MarketingModal
-      :visible="marketingModalVisible"
-      @update:visible="setMarketingModalVisible"
-    />
-  </div>
+  <ElConfigProvider :locale="zhCn" size="default" :z-index="30000">
+    <div id="app">
+      <router-view />
+      <ThemeToggle />
+      <LoginModal
+        :visible="loginModalVisible"
+        @update:visible="setLoginModalVisible"
+      />
+      <MarketingModal
+        :visible="marketingModalVisible"
+        @update:visible="setMarketingModalVisible"
+      />
+    </div>
+  </ElConfigProvider>
 </template>
 
 <script setup lang="ts">
 import { watch } from 'vue'
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import LoginModal from '@/components/LoginModal.vue'
 import MarketingModal from '@/components/MarketingModal.vue'

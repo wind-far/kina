@@ -1,7 +1,4 @@
 import { createApp } from 'vue'
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
-import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import '@styles/styles.css'
 import App from './App.vue'
 import router from './router'
@@ -11,15 +8,13 @@ import { useSystemSettingsStore } from './stores/system-settings'
 
 const app = createApp(App)
 
-// 全局注册 Element Plus
-app.use(ElementPlus, {
-  locale: zhCn,  // 中文语言包
-  size: 'default', // 默认尺寸
-  zIndex: 30000, // 提高全局浮层层级，避免被图片详情等自定义弹层遮挡
-})
-
+// Element Plus 组件通过 unplugin-vue-components 自动按需注册（含样式），
+// 全局配置（locale / size / zIndex）由 App.vue 中的 ElConfigProvider 统一提供
 app.use(router)
 
+app.mount('#app')
+
+// 应用挂载后再异步加载会话/系统配置，避免阻塞首屏渲染
 const authStore = useAuthStore()
 const systemInitStore = useSystemInitStore()
 const systemSettingsStore = useSystemSettingsStore()
@@ -29,6 +24,4 @@ void Promise.allSettled([
   authStore.loadSession(),
   authStore.loadMethods(),
   systemSettingsStore.loadPublicSettings(),
-]).finally(() => {
-  app.mount('#app')
-})
+])

@@ -1,12 +1,14 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import Home from '../views/home/home.vue'
-import Generate from '../views/generate/generate.vue'
-import Canana from '../views/canana/canana.vue'
-import AccountManagement from '../views/account/AccountManagement.vue'
-import PublishCenter from '../views/publish/PublishCenter.vue'
-import AssetManagement from '../views/asset/AssetManagement.vue'
 import { useAuthStore } from '../stores/auth'
 import { useSystemInitStore } from '../stores/system-init'
+
+// 核心页面懒加载，避免全部进入主 bundle 拖慢首屏
+const Home = () => import('../views/home/home.vue')
+const Generate = () => import('../views/generate/generate.vue')
+const Canana = () => import('../views/canana/canana.vue')
+const AccountManagement = () => import('../views/account/AccountManagement.vue')
+const PublishCenter = () => import('../views/publish/PublishCenter.vue')
+const AssetManagement = () => import('../views/asset/AssetManagement.vue')
 const Workflow = () => import('../views/workflow/index.vue')
 const Install = () => import('../views/install/InstallView.vue')
 const PolicyDetail = () => import('../views/policies/PolicyDetail.vue')

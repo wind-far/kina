@@ -51,7 +51,7 @@
     <g><path data-follow-fill="currentColor" d="M4 5a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H9v2h6v-2h-.5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2H18a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-.5v2.5a1.5 1.5 0 0 1-1.5 1.5H9v2h.5a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h.5V14H9v-2H6.5A1.5 1.5 0 0 1 5 10.5V10h-.5A2 2 0 0 1 2.5 8V5Z" fill="currentColor"></path></g>
   </svg>
   <svg v-else-if="iconKey === 'workflow'" width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
-    <g><path data-follow-fill="currentColor" d="M6 5h3v3H6V5ZM4 5a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H9v2h6v-2h-.5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2H18a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-.5v2.5a1.5 1.5 0 0 1-1.5 1.5H9v2h.5a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h.5V14H9v-2H6.5A1.5 1.5 0 0 1 5 10.5V10H4.5A2 2 0 0 1 2.5 8V5Zm10.5 0h3v3h-3V5ZM6 16h3.5v3H6v-3Z" fill="currentColor"></path></g>
+    <g><path data-follow-fill="currentColor" d="M6 5h3v3H6V5ZM4 5a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H9v2h6v-2h-.5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2H18a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-.5v2.5a1.5 1.5 0 0 1-1.5 1.5H9v2h.5a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h.5V14H9v-2H6.5A1.5 1.5 0 0 1 5 10.5V10H4.5A2 2 0 0 1 2.5 8V5Zm10.5 0h3v3h-3V5ZM6 16h3.5v3H6v-3Z" fill-rule="evenodd" clip-rule="evenodd" fill="currentColor"></path></g>
   </svg>
 
   <svg v-else-if="iconKey === 'account' && active" width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">

@@ -990,7 +990,10 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     }
   }
 
-  if (stageConversationChanged) {
+  // 终止态（completed/failed/stopped，event.done=true）的最终 record 已由 SSE 带回并通过
+  // syncRecordWithPersisted 同步到本地，无需再 PATCH 回写。回写会触发服务端二次
+  // normalizeOutputs + 事务 + outputs 重建 + 资产同步，纯属冗余。仅在中间态持久化阶段对话。
+  if (stageConversationChanged && !event.done) {
     schedulePersistRecord(targetRecord)
   }
 

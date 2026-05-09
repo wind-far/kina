@@ -130,17 +130,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, reactive, ref } from 'vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
-import AdminThemeBannerItemDialog, { type ThemeBannerItemDialogDraft } from '@/views/admin/theme/components/AdminThemeBannerItemDialog.vue'
-import AdminThemeDeleteMenuItemDialog from '@/views/admin/theme/components/AdminThemeDeleteMenuItemDialog.vue'
-import AdminThemeLayoutPanel from '@/views/admin/theme/components/AdminThemeLayoutPanel.vue'
-import AdminThemeMenuItemDialog from '@/views/admin/theme/components/AdminThemeMenuItemDialog.vue'
-import AdminThemeWorkbenchContentDialog, { type WorkbenchContentDialogDraft } from '@/views/admin/theme/components/AdminThemeWorkbenchContentDialog.vue'
 import AdminThemeConfigRail from '@/views/admin/theme/components/AdminThemeConfigRail.vue'
-import AdminThemeThemePanel from '@/views/admin/theme/components/AdminThemeThemePanel.vue'
 import AdminThemeWorkbenchPreview from '@/views/admin/theme/components/AdminThemeWorkbenchPreview.vue'
 import AdminThemeWorkbenchTopbar from '@/views/admin/theme/components/AdminThemeWorkbenchTopbar.vue'
+// Tab 切换显示的 Panel：未激活时不下载
+const AdminThemeThemePanel = defineAsyncComponent(() => import('@/views/admin/theme/components/AdminThemeThemePanel.vue'))
+const AdminThemeLayoutPanel = defineAsyncComponent(() => import('@/views/admin/theme/components/AdminThemeLayoutPanel.vue'))
+// 弹窗：v-model 控制显隐，初始不可见，改为异步组件零成本
+const AdminThemeBannerItemDialog = defineAsyncComponent(() => import('@/views/admin/theme/components/AdminThemeBannerItemDialog.vue'))
+const AdminThemeDeleteMenuItemDialog = defineAsyncComponent(() => import('@/views/admin/theme/components/AdminThemeDeleteMenuItemDialog.vue'))
+const AdminThemeMenuItemDialog = defineAsyncComponent(() => import('@/views/admin/theme/components/AdminThemeMenuItemDialog.vue'))
+const AdminThemeWorkbenchContentDialog = defineAsyncComponent(() => import('@/views/admin/theme/components/AdminThemeWorkbenchContentDialog.vue'))
+import type { ThemeBannerItemDialogDraft } from '@/views/admin/theme/components/AdminThemeBannerItemDialog.vue'
+import type { WorkbenchContentDialogDraft } from '@/views/admin/theme/components/AdminThemeWorkbenchContentDialog.vue'
 import { useAdminThemeMenuEditor } from '@/views/admin/theme/useAdminThemeMenuEditor'
 import { HOME_BANNER_PRESET_OPTIONS, useAdminLayoutConfig } from '@/views/admin/system/useAdminLayoutConfig'
 import {

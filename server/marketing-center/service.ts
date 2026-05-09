@@ -175,6 +175,13 @@ const readCurrentPointBalance = async (userId: string, tx: typeof prisma | any =
   return latestLog?.balanceAfter || 0
 }
 
+// 在事务内对用户主表加行锁，串行化同一用户的积分账本写入。
+// 必须在事务开头调用，且后续的余额读取/写入必须使用同一个 tx。
+// 解决问题：原实现仅靠 prisma.$transaction 的原子性，并发扣点会读到相同 balanceAfter 导致超扣。
+const lockUserBillingRow = async (tx: any, userId: string) => {
+  await tx.$queryRaw`SELECT id FROM app_users WHERE id = ${userId} FOR UPDATE`
+}
+
 const appendPointLog = async (tx: any, input: {
   userId: string
   changeType: any
@@ -293,6 +300,9 @@ export const consumeGenerationPoints = async (input: {
   }
 
   return prisma.$transaction(async (tx) => {
+    // 行锁优先：锁住用户主表行，串行化该用户的积分账本写入。
+    await lockUserBillingRow(tx, input.userId)
+
     const currentBalance = await readCurrentPointBalance(input.userId, tx)
     if (currentBalance < pointCost) {
       const error = new Error(`积分不足，当前剩余 ${currentBalance}，需要 ${pointCost}`) as Error & {
@@ -350,6 +360,9 @@ export const refundGenerationPoints = async (input: {
   }
 
   const result = await prisma.$transaction(async (tx) => {
+    // 退款也走行锁：避免与并发扣点交错，让账本写入按事务严格串行。
+    await lockUserBillingRow(tx, input.userId)
+
     return appendPointLog(tx, {
       userId: input.userId,
       changeType: 'REFUND',

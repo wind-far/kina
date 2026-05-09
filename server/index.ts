@@ -586,6 +586,15 @@ const server = createServer(async (req, res) => {
 // 读取最终监听端口。
 const serverPort = readServerPort()
 
+// 进程级异常兜底：避免后台任务（runTaskInBackground）中嵌套异常冒泡导致进程崩溃，
+// 进而切断所有正在订阅的 SSE 连接。仅记录日志，不退出进程。
+process.on('unhandledRejection', (reason, promise) => {
+  writeScopedLog('error', '服务端', 'unhandledRejection', { reason, promise })
+})
+process.on('uncaughtException', (error) => {
+  writeScopedLog('error', '服务端', 'uncaughtException', error)
+})
+
 // 启动服务并输出日志。
 server.listen(serverPort, '0.0.0.0', () => {
   const staticDistDir = readStaticDistDir()

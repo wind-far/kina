@@ -46,11 +46,12 @@
 
 <script setup>
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
 import HomeHeader from '../../components/home/components/HomeHeader.vue'
 import TabsSection from '@components/home/components/TabsSection.vue'
-import HomeDetailModalFrom from '@components/home/components/HomeDetailModalFrom.vue'
+// 作品详情弹窗：用户点开作品时才需要，首屏不下载（节省 21KB JS + 74KB CSS）
+const HomeDetailModalFrom = defineAsyncComponent(() => import('@components/home/components/HomeDetailModalFrom.vue'))
 import HomeFooter from '@components/home/components/HomeFooter.vue'
 import { applyAssetAction } from '@/api/asset-items'
 

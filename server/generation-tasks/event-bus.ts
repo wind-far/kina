@@ -1,6 +1,7 @@
 import type { GenerationTaskStreamEvent } from './shared'
 import { REDIS_CONFIG, publishJsonMessage, redisKeys, subscribeJsonMessage } from '../redis'
 import { emitLocalTaskStreamEvent, getTaskStreamSubscriberCount } from './local-runtime'
+import { recordReplayEvent } from './task-event-replay'
 
 interface SharedTaskEventEnvelope {
   sourceInstanceId: string
@@ -35,6 +36,11 @@ export const ensureDistributedTaskSubscription = async (recordId: string) => {
         return
       }
 
+      // 跨实例转发的事件已携带源实例分配的 id，目标实例同步写入本地缓存，
+      // 让本实例的订阅者重连时也能从本地缓存重放
+      if (payload.event.id !== undefined) {
+        recordReplayEvent(recordId, { id: payload.event.id, event: payload.event })
+      }
       emitLocalTaskStreamEvent(recordId, payload.event)
     },
   )

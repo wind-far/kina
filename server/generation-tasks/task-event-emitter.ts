@@ -2,6 +2,7 @@ import type { AgentWorkspaceEvent } from '../../src/shared/agent-workspace'
 import type { GenerationTaskStreamEvent } from './shared'
 import { appendSharedTaskRecentEvent, setSharedTaskSnapshot } from './runtime-store'
 import { emitDistributedTaskStreamEvent } from './event-bus'
+import { allocateEventId, recordReplayEvent } from './task-event-replay'
 
 type TaskEventLogger = (stage: string, error: unknown, detail: Record<string, unknown>) => void
 
@@ -15,6 +16,12 @@ export const emitTaskStreamEvent = (
   event: GenerationTaskStreamEvent,
   context: TaskEventEmitterContext,
 ) => {
+  // 同步分配单调 id（用于客户端断线重连时定位重放起点）
+  if (event.id === undefined) {
+    event.id = allocateEventId(recordId)
+    recordReplayEvent(recordId, { id: event.id, event })
+  }
+
   if (event.record) {
     void setSharedTaskSnapshot(recordId, event.record).catch((error) => {
       context.logGenerationTaskError('task_snapshot_cache_failed', error, {

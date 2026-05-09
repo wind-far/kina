@@ -24,5 +24,7 @@ export const redisKeys = {
   taskSkillConcurrency: (skillKey: string) => buildNamespaceKey('task', 'skill-concurrency', skillKey),
   taskProviderConcurrency: (providerKey: string) => buildNamespaceKey('task', 'provider-concurrency', providerKey),
   taskEventChannel: (recordId: string) => buildNamespaceKey('task', 'event', recordId),
+  taskEventReplay: (recordId: string) => buildNamespaceKey('task', 'event-replay', recordId),
+  taskEventCounter: (recordId: string) => buildNamespaceKey('task', 'event-counter', recordId),
   rateLimit: (scope: string, identifier: string) => buildNamespaceKey('rate', scope, identifier),
 }

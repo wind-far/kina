@@ -29,6 +29,8 @@ export interface GenerationTaskStreamEvent {
   delta?: string
   content?: string
   agentEvent?: AgentWorkspaceEvent
+  // 单调递增的事件 id，用于客户端断线重连时通过 lastEventId 定位重放起点
+  id?: number
 }
 
 export class GenerationTaskRequestError extends Error {

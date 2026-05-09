@@ -68,7 +68,9 @@ export const emitLocalTaskStreamEvent = (recordId: string, event: GenerationTask
     return
   }
 
-  const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
+  // 写入 SSE 标准 id 字段，让客户端跟踪 lastEventId 用于断线重连定位
+  const idLine = event.id !== undefined ? `id: ${event.id}\n` : ''
+  const payload = `${idLine}event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
   for (const res of subscribers) {
     try {
       res.write(payload)

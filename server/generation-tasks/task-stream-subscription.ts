@@ -10,6 +10,7 @@ import {
   cleanupDistributedTaskSubscriptionIfIdle,
   ensureDistributedTaskSubscription,
 } from './event-bus'
+import { getReplayEventsAfter } from './task-event-replay'
 
 // 当本地与共享运行态都显示任务已经不再执行，但记录仍停留在未完成态时，
 // 这里统一补收口，避免前端刷新后长时间挂在“生成中”。
@@ -49,7 +50,12 @@ export const resolveTaskRecordSnapshot = async (recordId: string, currentUserId:
 }
 
 // 统一封装任务 SSE 订阅入口，service.ts 只保留任务生命周期编排。
-export const subscribeGenerationTaskStream = async (recordId: string, currentUserId: string, res: any) => {
+export const subscribeGenerationTaskStream = async (
+  recordId: string,
+  currentUserId: string,
+  res: any,
+  options: { lastEventId?: number } = {},
+) => {
   const record = await resolveTaskRecordSnapshot(recordId, currentUserId)
 
   res.statusCode = 200
@@ -81,6 +87,20 @@ export const subscribeGenerationTaskStream = async (recordId: string, currentUse
     stage: record.done ? 'snapshot_completed' : 'snapshot_running',
     message: record.done ? '已返回任务最终快照' : '已返回任务当前快照',
   } satisfies GenerationTaskStreamEvent)}\n\n`)
+
+  // 若客户端带了 lastEventId，按需重放期间错过的事件
+  const lastEventId = options.lastEventId || 0
+  if (lastEventId > 0 && !record.done) {
+    try {
+      const replayEntries = await getReplayEventsAfter(recordId, lastEventId)
+      for (const entry of replayEntries) {
+        const idLine = `id: ${entry.id}\n`
+        res.write(`${idLine}event: ${entry.event.type}\ndata: ${JSON.stringify(entry.event)}\n\n`)
+      }
+    } catch {
+      // 重放失败不影响后续订阅
+    }
+  }
 
   if (record.done) {
     res.end()

@@ -3,11 +3,13 @@
 export interface SseMessage {
   event: string
   data: string
+  id?: string
 }
 
 const parseSseChunk = (rawBlock: string): SseMessage | null => {
   const lines = rawBlock.split('\n')
   let eventName = 'message'
+  let eventId: string | undefined
   const dataLines: string[] = []
 
   for (const line of lines) {
@@ -16,6 +18,10 @@ const parseSseChunk = (rawBlock: string): SseMessage | null => {
     }
     if (line.startsWith('event:')) {
       eventName = line.slice(6).trim() || 'message'
+      continue
+    }
+    if (line.startsWith('id:')) {
+      eventId = line.slice(3).trim()
       continue
     }
     if (line.startsWith('data:')) {
@@ -30,6 +36,7 @@ const parseSseChunk = (rawBlock: string): SseMessage | null => {
   return {
     event: eventName,
     data: dataLines.join('\n'),
+    id: eventId,
   }
 }
 

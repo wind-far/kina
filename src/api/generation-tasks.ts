@@ -50,6 +50,7 @@ export interface GenerationTaskStreamEvent {
   delta?: string
   content?: string
   agentEvent?: AgentWorkspaceEvent
+  id?: number
 }
 
 const GENERATION_TASKS_API_PATH = '/api/generation-tasks'
@@ -140,6 +141,8 @@ export const subscribeGenerationTaskEvents = async (
   const externalSignal = options.signal
   let attempt = 0
   let terminated = false
+  // 跟踪最后一个收到事件的 id，重连时传给服务端用于重放遗漏事件
+  let lastEventId = 0
 
   while (!terminated) {
     if (externalSignal?.aborted) return
@@ -158,7 +161,10 @@ export const subscribeGenerationTaskEvents = async (
 
     let connected = false
     try {
-      const response = await fetch(buildApiUrl(`${GENERATION_TASKS_API_PATH}/${encodeURIComponent(taskId)}/events`), {
+      const url = lastEventId > 0
+        ? `${GENERATION_TASKS_API_PATH}/${encodeURIComponent(taskId)}/events?lastEventId=${lastEventId}`
+        : `${GENERATION_TASKS_API_PATH}/${encodeURIComponent(taskId)}/events`
+      const response = await fetch(buildApiUrl(url), {
         method: 'GET',
         credentials: 'include',
         signal: innerController.signal,
@@ -183,6 +189,13 @@ export const subscribeGenerationTaskEvents = async (
 
         try {
           const parsed = JSON.parse(message.data) as GenerationTaskStreamEvent
+          // 跟踪 lastEventId（优先 SSE 协议层 id，其次 payload.id）
+          const incomingId = message.id
+            ? Number.parseInt(message.id, 10)
+            : (typeof parsed.id === 'number' ? parsed.id : 0)
+          if (Number.isFinite(incomingId) && incomingId > lastEventId) {
+            lastEventId = incomingId
+          }
           options.onEvent(parsed)
           if (TERMINAL_EVENT_TYPES.has(parsed.type)) {
             terminated = true

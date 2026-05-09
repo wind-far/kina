@@ -70,7 +70,14 @@ export const handleGenerationTasksRequest = async (req: any, res: any) => {
 
     if (req.method === 'GET' && taskId) {
       if (requestUrl === `${GENERATION_TASKS_BASE_PATH}/${encodeURIComponent(taskId)}/events`) {
-        await subscribeGenerationTaskStream(taskId, currentUser.id, res)
+        // 从原始 url 解析 lastEventId 用于断线重连重放
+        const queryString = String(req.url || '').split('?')[1] || ''
+        const queryParams = new URLSearchParams(queryString)
+        const lastEventIdRaw = queryParams.get('lastEventId')
+        const lastEventId = lastEventIdRaw ? Number.parseInt(lastEventIdRaw, 10) : 0
+        await subscribeGenerationTaskStream(taskId, currentUser.id, res, {
+          lastEventId: Number.isFinite(lastEventId) && lastEventId > 0 ? lastEventId : 0,
+        })
         return
       }
       const data = await getGenerationTaskRecord(taskId, currentUser.id)

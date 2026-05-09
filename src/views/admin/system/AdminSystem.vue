@@ -141,15 +141,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AdminStatCard from '@/components/admin/common/AdminStatCard.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
-import AdminSystemLayoutPanel from '@/views/admin/system/components/AdminSystemLayoutPanel.vue'
-import AdminSystemPolicyPanel from '@/views/admin/system/components/AdminSystemPolicyPanel.vue'
-import AdminSystemSitePanel from '@/views/admin/system/components/AdminSystemSitePanel.vue'
-import AdminSystemLoginPanel from '@/views/admin/system/components/AdminSystemLoginPanel.vue'
-import AdminSystemMethodDialog from '@/views/admin/system/components/AdminSystemMethodDialog.vue'
+// 4 个 Panel + 1 个 Dialog 通过 v-if 切换显示，改为异步组件后未激活的 Tab 不再下载
+const AdminSystemLayoutPanel = defineAsyncComponent(() => import('@/views/admin/system/components/AdminSystemLayoutPanel.vue'))
+const AdminSystemPolicyPanel = defineAsyncComponent(() => import('@/views/admin/system/components/AdminSystemPolicyPanel.vue'))
+const AdminSystemSitePanel = defineAsyncComponent(() => import('@/views/admin/system/components/AdminSystemSitePanel.vue'))
+const AdminSystemLoginPanel = defineAsyncComponent(() => import('@/views/admin/system/components/AdminSystemLoginPanel.vue'))
+const AdminSystemMethodDialog = defineAsyncComponent(() => import('@/views/admin/system/components/AdminSystemMethodDialog.vue'))
 import {
   createDefaultConversationSettings,
   createDefaultGenerationProgressSettings,

@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+import { visualizer } from 'rollup-plugin-visualizer'
 import path from 'path'
 import fs from 'node:fs/promises'
 
@@ -74,6 +75,15 @@ export default defineConfig({
     }),
     // 仅保留前端本地调试所需的 mock 文件服务。
     createMockAgentRawPlugin(),
+    // 构建产物体积可视化分析：每次 build 后生成 dist/stats.html，
+    // 通过 ANALYZE=1 时自动打开浏览器，便于排查重复/超大依赖。
+    visualizer({
+      filename: 'dist/stats.html',
+      gzipSize: true,
+      brotliSize: true,
+      open: process.env.ANALYZE === '1',
+      template: 'treemap',
+    }),
   ],
 
   // 开发服务器配置

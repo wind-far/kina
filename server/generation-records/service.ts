@@ -414,7 +414,15 @@ const normalizeOutputs = async (payload: GenerationRecordPayload) => {
   return normalizedOutputs
 }
 
-// 根据生成输出重建资源层数据，供首页与资产页统一查询。
+// 根据生成输出增量同步资源层数据，供首页与资产页统一查询。
+// 增量原则：
+//   - 已有资产（按 fileUrl 匹配）→ UPDATE 元数据，保留 favoriteCount/viewCount/downloadCount/
+//     publishedAt/visibility/publishStatus/reviewStatus/title/description/isDeleted 等用户态字段
+//   - 新增资产（fileUrl 在已有列表中找不到）→ CREATE，计数从 0 起步
+//   - 已不再持有的资产（已有但 incoming 中没有）→ DELETE
+// 身份键选用 fileUrl 而非 generationOutputId 的原因：
+//   父级 updateGenerationRecord 内会对 GenerationOutput 全量删除重建，generationOutputId 不稳定；
+//   fileUrl 落盘后是稳定的物理路径（/uploads/...），同一份产物路径恒定。
 const syncAssetItemsForRecord = async (
   tx: any,
   generationRecordId: string,
@@ -448,48 +456,101 @@ const syncAssetItemsForRecord = async (
     outputRecordCount: outputRecords.length,
   })
 
-  await tx.assetItem.deleteMany({
+  const existingItems = await tx.assetItem.findMany({
     where: { generationRecordId },
   })
 
-  await tx.assetItem.createMany({
-    data: assetOutputs.map((output) => ({
-      userId: currentUserId,
-      generationRecordId,
-      generationOutputId: output.id,
-      assetType: output.outputType === 'video' ? 'VIDEO' : 'IMAGE',
-      title: null,
-      description: null,
-      coverUrl: output.outputType === 'image' ? output.url : null,
-      fileUrl: output.url!,
-      thumbnailUrl: output.outputType === 'image' ? output.url : null,
-      width: output.width || null,
-      height: output.height || null,
-      durationSeconds: output.durationSeconds || null,
-      fileSizeBytes: null,
-      promptText: String(payload.prompt || '').trim() || null,
-      modelLabel: String(payload.model || '').trim() || null,
-      aspectRatio: String(payload.ratio || '').trim() || null,
-      // 生成完成后先进入个人资产草稿态，只有用户主动发布后才进入公开流。
-      visibility: 'PRIVATE',
-      publishStatus: 'DRAFT',
-      reviewStatus: 'APPROVED',
-      favoriteCount: 0,
-      viewCount: 0,
-      downloadCount: 0,
-      source: 'GENERATED',
-      sourceMetaJson: payload.agentRun
-        ? { skill: payload.skill || 'general', mode: 'agent' }
-        : { skill: payload.skill || 'general', mode: 'direct' },
-      isDeleted: false,
-      publishedAt: null,
-    })),
-  })
+  // 用可变副本逐个 claim，正确处理"同一 URL 出现多次"的边界场景。
+  const remainingItems: Array<typeof existingItems[number]> = [...existingItems]
+
+  const sourceMetaJson = payload.agentRun
+    ? { skill: payload.skill || 'general', mode: 'agent' }
+    : { skill: payload.skill || 'general', mode: 'direct' }
+  const promptText = String(payload.prompt || '').trim() || null
+  const modelLabel = String(payload.model || '').trim() || null
+  const aspectRatio = String(payload.ratio || '').trim() || null
+
+  let createdCount = 0
+  let updatedCount = 0
+  const createPayloads: any[] = []
+
+  for (const output of assetOutputs) {
+    const matchIndex = remainingItems.findIndex(item => item.fileUrl === output.url)
+    if (matchIndex >= 0) {
+      const existing = remainingItems.splice(matchIndex, 1)[0]
+      await tx.assetItem.update({
+        where: { id: existing.id },
+        data: {
+          // 父表删除重建后 generationOutputId 会被 SetNull，这里刷新到最新 output id。
+          generationOutputId: output.id,
+          assetType: output.outputType === 'video' ? 'VIDEO' : 'IMAGE',
+          coverUrl: output.outputType === 'image' ? output.url : null,
+          thumbnailUrl: output.outputType === 'image' ? output.url : null,
+          width: output.width || null,
+          height: output.height || null,
+          durationSeconds: output.durationSeconds || null,
+          promptText,
+          modelLabel,
+          aspectRatio,
+          sourceMetaJson,
+          // 显式不写 favoriteCount / viewCount / downloadCount / publishedAt /
+          // visibility / publishStatus / reviewStatus / title / description /
+          // isDeleted —— 这些是用户态/运营态字段，必须保留不动。
+        },
+      })
+      updatedCount += 1
+    } else {
+      createPayloads.push({
+        userId: currentUserId,
+        generationRecordId,
+        generationOutputId: output.id,
+        assetType: output.outputType === 'video' ? 'VIDEO' : 'IMAGE',
+        title: null,
+        description: null,
+        coverUrl: output.outputType === 'image' ? output.url : null,
+        fileUrl: output.url!,
+        thumbnailUrl: output.outputType === 'image' ? output.url : null,
+        width: output.width || null,
+        height: output.height || null,
+        durationSeconds: output.durationSeconds || null,
+        fileSizeBytes: null,
+        promptText,
+        modelLabel,
+        aspectRatio,
+        // 生成完成后先进入个人资产草稿态，只有用户主动发布后才进入公开流。
+        visibility: 'PRIVATE',
+        publishStatus: 'DRAFT',
+        reviewStatus: 'APPROVED',
+        favoriteCount: 0,
+        viewCount: 0,
+        downloadCount: 0,
+        source: 'GENERATED',
+        sourceMetaJson,
+        isDeleted: false,
+        publishedAt: null,
+      })
+      createdCount += 1
+    }
+  }
+
+  if (createPayloads.length) {
+    await tx.assetItem.createMany({ data: createPayloads })
+  }
+
+  // 未被任何 incoming 认领的资产 → 已不再持有，删除。
+  if (remainingItems.length) {
+    await tx.assetItem.deleteMany({
+      where: { id: { in: remainingItems.map(item => item.id) } },
+    })
+  }
 
   logGenerationRecord('sync_asset_items:success', {
     generationRecordId,
     currentUserId,
     assetCount: assetOutputs.length,
+    createdCount,
+    updatedCount,
+    deletedCount: remainingItems.length,
     assetTypes: assetOutputs.map(output => output.outputType),
   })
 }

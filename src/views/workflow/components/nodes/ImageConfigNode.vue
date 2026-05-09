@@ -89,11 +89,14 @@ const refImageCount = computed(() => {
 })
 
 // 监听外部数据变化
-watch(() => props.data, (d) => {
-  if (d?.model !== undefined) model.value = d.model
-  if (d?.size !== undefined) size.value = d.size
-  if (d?.quality !== undefined) quality.value = d.quality
-}, { deep: true })
+watch(
+  [() => props.data?.model, () => props.data?.size, () => props.data?.quality],
+  ([m, s, q]) => {
+    if (m !== undefined) model.value = m
+    if (s !== undefined) size.value = s
+    if (q !== undefined) quality.value = q
+  },
+)
 
 onMounted(() => {
   void loadPublicModelCatalog()

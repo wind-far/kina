@@ -22,11 +22,14 @@ const videoUrl = ref(props.data?.url || '')
 const isLoading = ref(!!props.data?.loading)
 const errorMsg = ref(props.data?.error || '')
 
-watch(() => props.data, (d) => {
-  if (d?.url !== undefined) videoUrl.value = d.url
-  if (d?.loading !== undefined) isLoading.value = d.loading
-  if (d?.error !== undefined) errorMsg.value = d.error
-}, { deep: true })
+watch(
+  [() => props.data?.url, () => props.data?.loading, () => props.data?.error],
+  ([url, loading, error]) => {
+    if (url !== undefined) videoUrl.value = url
+    if (loading !== undefined) isLoading.value = loading
+    if (error !== undefined) errorMsg.value = error
+  },
+)
 
 const handleUpload = () => {
   const input = document.createElement('input')

@@ -29,11 +29,14 @@ const errorMsg = ref(props.data?.error || '')
 const urlInput = ref('')
 const urlLoading = ref(false)
 
-watch(() => props.data, (d) => {
-  if (d?.url !== undefined) imageUrl.value = d.url
-  if (d?.loading !== undefined) isLoading.value = d.loading
-  if (d?.error !== undefined) errorMsg.value = d.error
-}, { deep: true })
+watch(
+  [() => props.data?.url, () => props.data?.loading, () => props.data?.error],
+  ([url, loading, error]) => {
+    if (url !== undefined) imageUrl.value = url
+    if (loading !== undefined) isLoading.value = loading
+    if (error !== undefined) errorMsg.value = error
+  },
+)
 
 // 上传图片
 const handleUpload = () => {

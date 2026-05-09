@@ -24,6 +24,10 @@ export interface LocalRunningGenerationTask {
 
 const runningGenerationTasks = new Map<string, LocalRunningGenerationTask>()
 const taskStreamSubscribers = new Map<string, Set<any>>()
+// 用户级订阅计数：防止同一用户开过多 SSE 连接耗尽资源
+const userStreamSubscribers = new Map<string, Set<any>>()
+// 每用户最多并发 SSE 订阅数（典型场景：多标签页 + 工作流多节点同时执行）
+export const SSE_PER_USER_LIMIT = Number.parseInt(process.env.SSE_PER_USER_LIMIT || '20', 10)
 
 export const setLocalRunningTask = (task: LocalRunningGenerationTask) => {
   runningGenerationTasks.set(task.recordId, task)
@@ -37,25 +41,47 @@ export const deleteLocalRunningTask = (recordId: string) => {
   runningGenerationTasks.delete(recordId)
 }
 
-export const addTaskStreamSubscriber = (recordId: string, res: any) => {
+// 检查用户当前的 SSE 并发订阅数是否已达上限
+export const isUserStreamSubscriberLimitReached = (userId: string) => {
+  const set = userStreamSubscribers.get(userId)
+  return (set?.size || 0) >= SSE_PER_USER_LIMIT
+}
+
+export const addTaskStreamSubscriber = (recordId: string, res: any, userId?: string) => {
   let subscribers = taskStreamSubscribers.get(recordId)
   if (!subscribers) {
     subscribers = new Set()
     taskStreamSubscribers.set(recordId, subscribers)
   }
-
   subscribers.add(res)
+
+  if (userId) {
+    let userSet = userStreamSubscribers.get(userId)
+    if (!userSet) {
+      userSet = new Set()
+      userStreamSubscribers.set(userId, userSet)
+    }
+    userSet.add(res)
+  }
 }
 
-export const removeTaskStreamSubscriber = (recordId: string, res: any) => {
+export const removeTaskStreamSubscriber = (recordId: string, res: any, userId?: string) => {
   const subscribers = taskStreamSubscribers.get(recordId)
-  if (!subscribers) {
-    return
+  if (subscribers) {
+    subscribers.delete(res)
+    if (subscribers.size === 0) {
+      taskStreamSubscribers.delete(recordId)
+    }
   }
 
-  subscribers.delete(res)
-  if (subscribers.size === 0) {
-    taskStreamSubscribers.delete(recordId)
+  if (userId) {
+    const userSet = userStreamSubscribers.get(userId)
+    if (userSet) {
+      userSet.delete(res)
+      if (userSet.size === 0) {
+        userStreamSubscribers.delete(userId)
+      }
+    }
   }
 }
 

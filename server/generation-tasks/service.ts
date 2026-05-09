@@ -59,6 +59,7 @@ import { executeAgentWorkspaceTaskFlow } from './agent-workspace-task-executor'
 import {
   emitTaskAgentEvent,
   emitTaskContentDeltaEvent,
+  emitTaskFailedEvent,
   emitTaskProgressEvent,
   emitTaskStreamEvent,
 } from './task-event-emitter'
@@ -421,11 +422,35 @@ const runTaskInBackground = (task: RunningGenerationTask, payload: GenerationTas
       const isStoppedAbort = task.abortController.signal.aborted
         && (abortReason === 'user_stop' || abortReason === 'shared_stop')
 
-      if (isStoppedAbort || (isAbortError && (abortReason === 'user_stop' || abortReason === 'shared_stop'))) {
-        await executionStrategy.handleStopped(task, payload, executionStrategyContext)
-      } else {
-        const errorMessage = executionStrategy.resolveFailureMessage(error, abortReason, executionStrategyContext)
-        await executionStrategy.handleFailed(task, payload, error, errorMessage, executionStrategyContext)
+      // 收口策略本身不应再抛错，但若内部 emit/退点/写库失败也要兜底,
+      // 避免异常冒泡到 IIFE 顶层成为 unhandledRejection，更要避免前端永远卡在“运行中”。
+      try {
+        if (isStoppedAbort || (isAbortError && (abortReason === 'user_stop' || abortReason === 'shared_stop'))) {
+          await executionStrategy.handleStopped(task, payload, executionStrategyContext)
+        } else {
+          const errorMessage = executionStrategy.resolveFailureMessage(error, abortReason, executionStrategyContext)
+          await executionStrategy.handleFailed(task, payload, error, errorMessage, executionStrategyContext)
+        }
+      } catch (fallbackError) {
+        logGenerationTaskError('task_failure_handler_failed', fallbackError, {
+          recordId: task.recordId,
+          userId: task.userId,
+          strategyKey: task.strategyKey,
+          originalErrorMessage: error instanceof Error ? error.message : String(error || ''),
+        })
+        // 兜底发一次 failed 事件，确保前端订阅器能收到终止信号并停止 watchdog 重连。
+        try {
+          emitTaskFailedEvent(task.recordId, {
+            errorCode: 'internal_error',
+            errorReason: '任务收口处理失败',
+            message: '任务收口处理失败',
+            stage: 'failure_handler_failed',
+          }, taskEventEmitterContext)
+        } catch (emitError) {
+          logGenerationTaskError('task_failure_emit_failed', emitError, {
+            recordId: task.recordId,
+          })
+        }
       }
     } finally {
       deleteLocalRunningTask(task.recordId)

@@ -121,35 +121,106 @@ export const stopGenerationTask = async (taskId: string, options: RequestOptions
 }
 
 // 订阅任务的实时状态事件流，页面切换回来后可直接重连。
+// 已内置自动重连（指数退避）+ watchdog（30s 无消息视为断流）。
+const ALLOWED_STREAM_EVENT_TYPES = new Set([
+  'connected', 'snapshot', 'progress', 'content_delta',
+  'agent_event', 'completed', 'failed', 'stopped',
+])
+const TERMINAL_EVENT_TYPES = new Set(['completed', 'failed', 'stopped'])
+const RETRY_DELAYS_MS = [1000, 2000, 5000, 10000, 30000]
+const WATCHDOG_TIMEOUT_MS = 30000
+const WATCHDOG_CHECK_INTERVAL_MS = 5000
+
 export const subscribeGenerationTaskEvents = async (
   taskId: string,
   options: RequestOptions & {
     onEvent: (event: GenerationTaskStreamEvent) => void
   },
 ) => {
-  const response = await fetch(buildApiUrl(`${GENERATION_TASKS_API_PATH}/${encodeURIComponent(taskId)}/events`), {
-    method: 'GET',
-    credentials: 'include',
-    signal: options.signal,
-    headers: {
-      Accept: 'text/event-stream',
-    },
-  })
+  const externalSignal = options.signal
+  let attempt = 0
+  let terminated = false
 
-  if (!response.ok) {
-    throw new Error(`订阅任务状态失败 (${response.status})`)
-  }
+  while (!terminated) {
+    if (externalSignal?.aborted) return
 
-  await consumeSseStream(response, (message: SseMessage) => {
-    if (!['connected', 'snapshot', 'progress', 'content_delta', 'agent_event', 'completed', 'failed', 'stopped'].includes(message.event)) {
-      return
-    }
+    const innerController = new AbortController()
+    const onExternalAbort = () => innerController.abort()
+    externalSignal?.addEventListener('abort', onExternalAbort)
 
+    // watchdog：超过 30s 没收到任何事件（含心跳）就视为断流，主动 abort 触发重连
+    let lastActivityAt = Date.now()
+    const watchdogTimer = setInterval(() => {
+      if (Date.now() - lastActivityAt > WATCHDOG_TIMEOUT_MS) {
+        innerController.abort()
+      }
+    }, WATCHDOG_CHECK_INTERVAL_MS)
+
+    let connected = false
     try {
-      const parsed = JSON.parse(message.data) as GenerationTaskStreamEvent
-      options.onEvent(parsed)
-    } catch {
-      // 忽略解析失败的事件消息。
+      const response = await fetch(buildApiUrl(`${GENERATION_TASKS_API_PATH}/${encodeURIComponent(taskId)}/events`), {
+        method: 'GET',
+        credentials: 'include',
+        signal: innerController.signal,
+        headers: {
+          Accept: 'text/event-stream',
+        },
+      })
+
+      if (!response.ok) {
+        // HTTP 4xx/5xx 不重试（鉴权失败 / 任务不存在等永久错误）
+        throw new Error(`订阅任务状态失败 (${response.status})`)
+      }
+
+      connected = true
+      attempt = 0  // 一旦成功连接就重置退避计数
+
+      await consumeSseStream(response, (message: SseMessage) => {
+        lastActivityAt = Date.now()
+        // 心跳事件仅用于刷新 watchdog，不向上派发
+        if (message.event === 'ping') return
+        if (!ALLOWED_STREAM_EVENT_TYPES.has(message.event)) return
+
+        try {
+          const parsed = JSON.parse(message.data) as GenerationTaskStreamEvent
+          options.onEvent(parsed)
+          if (TERMINAL_EVENT_TYPES.has(parsed.type)) {
+            terminated = true
+          }
+        } catch {
+          // 忽略解析失败的事件消息。
+        }
+      })
+    } catch (error) {
+      // 用户主动取消：直接退出，不重连
+      if (externalSignal?.aborted) return
+      // 已经收到终止事件后再抛错也直接退出
+      if (terminated) return
+      // 永久性 HTTP 错误（4xx/5xx response.ok=false）不重试
+      const message = error instanceof Error ? error.message : ''
+      if (/订阅任务状态失败 \(4\d{2}\)/.test(message)) throw error
+    } finally {
+      clearInterval(watchdogTimer)
+      externalSignal?.removeEventListener('abort', onExternalAbort)
     }
-  })
+
+    if (terminated || externalSignal?.aborted) return
+
+    // 退避后重连
+    if (attempt >= RETRY_DELAYS_MS.length) {
+      throw new Error('订阅任务状态失败：超过最大重试次数')
+    }
+    const delay = RETRY_DELAYS_MS[attempt]
+    attempt++
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, delay)
+      externalSignal?.addEventListener('abort', () => {
+        clearTimeout(timer)
+        resolve(undefined)
+      }, { once: true })
+    })
+    if (!connected && attempt === 1) {
+      // 首次连接就失败，可能是网络层问题，继续重试
+    }
+  }
 }

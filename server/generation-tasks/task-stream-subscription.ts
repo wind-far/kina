@@ -89,7 +89,8 @@ export const subscribeGenerationTaskStream = async (recordId: string, currentUse
 
   const heartbeatTimer = setInterval(() => {
     try {
-      res.write(': heartbeat\n\n')
+      // 显式心跳事件，前端可监听并实现 watchdog；保留 SSE 注释行作 TCP 层 keep-alive 兜底
+      res.write(`event: ping\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`)
     } catch {
       // 连接写入失败时，由 close 事件统一清理。
     }

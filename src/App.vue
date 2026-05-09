@@ -1,23 +1,28 @@
 <template>
-  <div id="app">
-    <router-view />
-    <ThemeToggle />
-    <LoginModal
-      :visible="loginModalVisible"
-      @update:visible="setLoginModalVisible"
-    />
-    <MarketingModal
-      :visible="marketingModalVisible"
-      @update:visible="setMarketingModalVisible"
-    />
-  </div>
+  <ElConfigProvider :locale="zhCn" size="default" :z-index="30000">
+    <div id="app">
+      <router-view />
+      <ThemeToggle />
+      <LoginModal
+        :visible="loginModalVisible"
+        @update:visible="setLoginModalVisible"
+      />
+      <MarketingModal
+        :visible="marketingModalVisible"
+        @update:visible="setMarketingModalVisible"
+      />
+    </div>
+  </ElConfigProvider>
 </template>
 
 <script setup lang="ts">
-import { watch } from 'vue'
+import { watch, defineAsyncComponent } from 'vue'
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import ThemeToggle from '@/components/ThemeToggle.vue'
-import LoginModal from '@/components/LoginModal.vue'
-import MarketingModal from '@/components/MarketingModal.vue'
+// 登录与营销弹窗首屏不可见，懒加载到弹出时再下载，缩小主入口体积
+const LoginModal = defineAsyncComponent(() => import('@/components/LoginModal.vue'))
+const MarketingModal = defineAsyncComponent(() => import('@/components/MarketingModal.vue'))
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'

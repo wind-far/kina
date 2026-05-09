@@ -64,12 +64,20 @@ onUnmounted(() => {
   taskStreamController.value = null
 })
 
-watch(() => props.data, (d) => {
-  if (d?.systemPrompt !== undefined) systemPrompt.value = d.systemPrompt
-  if (d?.model !== undefined) model.value = d.model
-  if (d?.outputContent !== undefined) outputContent.value = d.outputContent
-  if (d?.outputFormat !== undefined) outputFormat.value = d.outputFormat
-}, { deep: true })
+watch(
+  [
+    () => props.data?.systemPrompt,
+    () => props.data?.model,
+    () => props.data?.outputContent,
+    () => props.data?.outputFormat,
+  ],
+  ([sp, m, oc, of]) => {
+    if (sp !== undefined) systemPrompt.value = sp
+    if (m !== undefined) model.value = m
+    if (oc !== undefined) outputContent.value = oc
+    if (of !== undefined) outputFormat.value = of
+  },
+)
 
 const updateConfig = () => {
   updateNode(props.id, { systemPrompt: systemPrompt.value, model: model.value, outputContent: outputContent.value, outputFormat: outputFormat.value })

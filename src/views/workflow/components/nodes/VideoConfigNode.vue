@@ -62,11 +62,14 @@ const durationOptions = computed(() => (currentModel.value?.durs || []).map((d) 
 // 连接的输入
 const promptCount = computed(() => edges.value.filter(e => e.target === props.id && (e.type === 'promptOrder' || !e.type)).length)
 
-watch(() => props.data, (d) => {
-  if (d?.model !== undefined) model.value = d.model
-  if (d?.ratio !== undefined) ratio.value = d.ratio
-  if (d?.duration !== undefined) duration.value = d.duration
-}, { deep: true })
+watch(
+  [() => props.data?.model, () => props.data?.ratio, () => props.data?.duration],
+  ([m, r, d]) => {
+    if (m !== undefined) model.value = m
+    if (r !== undefined) ratio.value = r
+    if (d !== undefined) duration.value = d
+  },
+)
 
 onMounted(() => {
   void loadPublicModelCatalog()

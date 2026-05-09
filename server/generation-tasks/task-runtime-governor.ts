@@ -1,6 +1,7 @@
 import { getSharedTaskRuntime, hasSharedTaskAbortRequested, patchSharedTaskRuntime } from './runtime-store'
 import {
   acquireRedisLock,
+  isRedisEnabled,
   REDIS_CONFIG,
   redisKeys,
   releaseRedisLock,
@@ -145,6 +146,13 @@ export const runTaskWithExecutionLock = async (
   runner: () => Promise<void>,
   context: RuntimeGovernorContext,
 ) => {
+  // Redis 未启用时直接执行（无 Redis 降级运行）：单实例部署不需要分布式锁，
+  // 否则 acquireRedisLock 永远返回 null，会导致任务被误判为"锁占用"而跳过。
+  if (!isRedisEnabled()) {
+    await runner()
+    return true
+  }
+
   const lockKey = redisKeys.taskLock(task.recordId)
   const executionLock = await acquireRedisLock(lockKey)
   if (!executionLock) {

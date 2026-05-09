@@ -197,14 +197,14 @@ const adminForm = reactive<InstallAdminFormModel>({
 })
 
 const websiteForm = reactive<InstallWebsiteFormModel>({
-  siteName: 'Canana',
+  siteName: 'CananaMind',
   siteDescription: '',
   siteLogoUrl: '',
   siteIconUrl: '',
 })
 
 const submitting = computed(() => systemInitStore.systemInitLoading.value)
-const currentSiteName = computed(() => websiteForm.siteName || systemSettingsStore.siteName.value || 'Canana')
+const currentSiteName = computed(() => websiteForm.siteName || systemSettingsStore.siteName.value || 'CananaMind')
 const brandInitial = computed(() => currentSiteName.value.slice(0, 1).toUpperCase() || 'C')
 
 const usernameError = computed(() => {

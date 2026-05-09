@@ -275,8 +275,8 @@ watch(
 
 <style scoped>
 .home-content-shell {
-  width: min(100%, 1680px);
-  margin: 0 auto;
+/*  width: min(100%, 1680px);
+  margin: 0 auto;*/
   box-sizing: border-box;
   padding-inline: 10px;
 }

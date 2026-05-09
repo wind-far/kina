@@ -39,7 +39,7 @@
         descriptionVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0',
       ]"
     >
-      强大的开源企业智能创作平台，点击下方开始安装，快速开始您的智能创作之旅
+      强大的开源智能创作平台，点击下方开始安装，快速开始您的智能创作之旅
     </p>
 
     <div

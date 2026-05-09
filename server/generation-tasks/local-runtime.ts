@@ -62,6 +62,10 @@ export const removeTaskStreamSubscriber = (recordId: string, res: any) => {
 export const getTaskStreamSubscriberCount = (recordId: string) => taskStreamSubscribers.get(recordId)?.size || 0
 
 // 统一向当前实例上的 SSE 连接写事件，不关心事件来自本地还是 Redis 广播。
+//
+// backpressure 策略：当 res.write 返回 false 表示 socket 写入缓冲已满
+// （客户端处理太慢），主动断开该连接，让客户端通过自动重连 + lastEventId
+// 重放遗漏事件，避免内存被慢客户端撑爆。
 export const emitLocalTaskStreamEvent = (recordId: string, event: GenerationTaskStreamEvent) => {
   const subscribers = taskStreamSubscribers.get(recordId)
   if (!subscribers?.size) {
@@ -71,11 +75,26 @@ export const emitLocalTaskStreamEvent = (recordId: string, event: GenerationTask
   // 写入 SSE 标准 id 字段，让客户端跟踪 lastEventId 用于断线重连定位
   const idLine = event.id !== undefined ? `id: ${event.id}\n` : ''
   const payload = `${idLine}event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
+  const slowSubscribers: any[] = []
   for (const res of subscribers) {
     try {
-      res.write(payload)
+      const ok = res.write(payload)
+      if (ok === false) {
+        // 缓冲已满：标记为待断开，避免后续事件继续堆积内存
+        slowSubscribers.push(res)
+      }
     } catch {
       subscribers.delete(res)
+    }
+  }
+
+  // 慢订阅者断开连接，触发客户端通过自动重连 + lastEventId 恢复
+  for (const res of slowSubscribers) {
+    subscribers.delete(res)
+    try {
+      res.end()
+    } catch {
+      // 已经断开就忽略
     }
   }
 

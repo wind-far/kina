@@ -2,8 +2,11 @@ import { buildApiUrl } from './http'
 import { readApiData } from './response'
 import type { PersistedGenerationRecord } from './generation-records'
 import { consumeSseStream, type SseMessage } from '@/utils/sse'
-import type { AgentWorkspaceEvent } from '@/shared/agent-workspace'
+import type { GenerationTaskStreamEventBase } from '@/shared/generation-task-stream'
 import { resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
+
+// 重新导出失败码，便于业务代码 import { GenerationTaskFailureCode } from '@/api/generation-tasks'
+export type { GenerationTaskFailureCode } from '@/shared/generation-task-stream'
 
 export interface GenerationTaskStartPayload {
   sessionId?: string
@@ -39,19 +42,8 @@ export interface ResolvedGenerationTaskModelResult {
   modelKey: string
 }
 
-export interface GenerationTaskStreamEvent {
-  type: 'connected' | 'snapshot' | 'progress' | 'content_delta' | 'agent_event' | 'completed' | 'failed' | 'stopped'
-  recordId: string
-  done: boolean
-  stopped?: boolean
-  record?: PersistedGenerationRecord | null
-  stage?: string
-  message?: string
-  delta?: string
-  content?: string
-  agentEvent?: AgentWorkspaceEvent
-  id?: number
-}
+// 前端的 record 收紧为持久化记录类型
+export type GenerationTaskStreamEvent = GenerationTaskStreamEventBase<PersistedGenerationRecord>
 
 const GENERATION_TASKS_API_PATH = '/api/generation-tasks'
 

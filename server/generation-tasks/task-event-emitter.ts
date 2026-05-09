@@ -1,5 +1,5 @@
 import type { AgentWorkspaceEvent } from '../../src/shared/agent-workspace'
-import type { GenerationTaskStreamEvent } from './shared'
+import type { GenerationTaskStreamEvent, GenerationTaskFailureCode } from './shared'
 import { appendSharedTaskRecentEvent, setSharedTaskSnapshot } from './runtime-store'
 import { emitDistributedTaskStreamEvent } from './event-bus'
 import { allocateEventId, recordReplayEvent } from './task-event-replay'
@@ -106,5 +106,30 @@ export const emitTaskAgentEvent = (
     stage: input.stage,
     message: input.message,
     agentEvent: input.agentEvent,
+  }, context)
+}
+
+// 标准化的失败事件发送：带 errorCode + errorReason，便于前端区分错误类型
+export const emitTaskFailedEvent = (
+  recordId: string,
+  input: {
+    errorCode: GenerationTaskFailureCode
+    errorReason: string
+    message?: string
+    stage?: string
+    record?: Record<string, unknown> | null
+  },
+  context: TaskEventEmitterContext,
+) => {
+  emitTaskStreamEvent(recordId, {
+    type: 'failed',
+    recordId,
+    done: true,
+    stopped: false,
+    record: input.record,
+    stage: input.stage || 'failed',
+    message: input.message || input.errorReason,
+    errorCode: input.errorCode,
+    errorReason: input.errorReason,
   }, context)
 }

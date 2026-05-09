@@ -86,11 +86,6 @@ const layoutModeClass = computed(() => (isTopMenuLayout.value ? 'top' : 'side'))
   min-height: 0;
 }
 
-.frontstage-page-shell[data-layout-mode='top'] :deep(.entry-lav5_s) {
-  display: flex;
-  flex-direction: column;
-}
-
 .frontstage-page-shell[data-layout-mode='top'] :deep(.record-list-container) {
   flex: 1 1 auto;
   min-height: 0;

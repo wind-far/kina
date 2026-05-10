@@ -8,6 +8,7 @@ import ImageLoadingRecord from '../../components/generate/common/ImageLoadingRec
 import AgentLoadingRecord from '../../components/generate/common/AgentLoadingRecord.vue'
 import ImagePreview from '@/components/ImagePreview.vue'
 import { getAgentModel } from '@/api/agent'
+import { CAPABILITY_FLAGS_REQUEST_FIELD, type ModelCapabilityFlags } from '@/shared/provider-capability'
 import { getModelByName, loadPublicModelCatalog, resolveModelLabel, type ImageModel } from '@/config/models'
 import { buildAgentChatMessages, isAgentWorkspaceSkill, loadPublicSkillCatalog } from '@/config/agentSkills'
 import {
@@ -76,6 +77,12 @@ interface GeneratingRecord {
   feature: string
   skill: string
   content: string
+  /** 模型的思考过程（reasoning_content / thinking block）。从 record.metaJson.thinkingContent 回填。 */
+  thinkingContent?: string
+  /** 思考开始时间戳（毫秒）。用于 UI 计算"已思考 N 秒"。 */
+  thinkingStartedAt?: number
+  /** 思考结束时间戳（毫秒）。完成态时设置，用于 UI 显示固定耗时。 */
+  thinkingEndedAt?: number
   images: string[]
   done: boolean
   stopped?: boolean
@@ -85,6 +92,8 @@ interface GeneratingRecord {
   error: string
   agentTaskId?: string
   agentRun?: AgentRunState
+  /** Agent 模式下当前选中的扩展能力开关，转发给 createGenerationTask 注入上游请求 */
+  capabilityFlags?: ModelCapabilityFlags
 }
 
 interface GeneratePreviewImageItem {
@@ -674,11 +683,45 @@ const shouldUseAgentWorkspaceFlow = (skill?: string) => {
 }
 
 const buildAgentRequestMessages = (record: GeneratingRecord) => {
-  return buildAgentChatMessages(
+  const baseMessages = buildAgentChatMessages(
       record.skill || 'general',
       record.prompt,
       Array.isArray(record.referenceImages) ? record.referenceImages : [],
   )
+
+  // 从同 session 已完成的 agent 记录中提取历史上下文
+  const model = getModelByName(record.modelKey)
+  const maxContext = Number((model as any)?.defaultParams?.maxContext) || 3
+  const sessionId = record.sessionId
+  if (!sessionId || maxContext <= 0) {
+    return baseMessages
+  }
+
+  const historyRecords = generatingRecords.value
+    .filter(item =>
+      item !== record
+      && item.sessionId === sessionId
+      && item.type === 'agent'
+      && item.done
+      && !item.error
+      && item.content.trim()
+    )
+    .sort((a, b) => b.id - a.id)
+    .slice(0, maxContext)
+    .reverse()
+
+  if (!historyRecords.length) {
+    return baseMessages
+  }
+
+  // system + 历史轮次 + 当前 user
+  const historyMessages = historyRecords.flatMap(item => [
+    { role: 'user', content: item.prompt },
+    { role: 'assistant', content: item.content },
+  ])
+
+  const [systemMessage, ...currentMessages] = baseMessages
+  return [systemMessage, ...historyMessages, ...currentMessages]
 }
 
 // 将页面内的记录结构转换为后端持久化结构。
@@ -746,6 +789,7 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
     content: record.type === 'image'
         ? (record.content || (!record.done ? '[[queued]]任务已创建，等待服务端执行' : ''))
         : record.content,
+    thinkingContent: record.thinkingContent || '',
     images: record.images,
     done: record.done,
     stopped: Boolean(record.stopped),
@@ -764,6 +808,8 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
   }
 }
 
+const shouldDisplayThinkingContent = (record: GeneratingRecord) => Boolean(record.capabilityFlags?.reasoning)
+
 
 // 将后端持久化后的正式资源地址回写到当前记录，避免重复提交 base64 或上游临时链接。
 const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGenerationRecord) => {
@@ -772,6 +818,19 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   record.sessionTitle = saved.sessionTitle || record.sessionTitle || ''
   record.source = saved.source || record.source || 'generate'
   record.content = saved.content || record.content
+  if (typeof saved.thinkingContent === 'string' && saved.thinkingContent && shouldDisplayThinkingContent(record)) {
+    record.thinkingContent = saved.thinkingContent
+    if (!record.thinkingStartedAt) {
+      record.thinkingStartedAt = Date.now()
+    }
+    if (saved.done && !record.thinkingEndedAt) {
+      record.thinkingEndedAt = Date.now()
+    }
+  } else if (!shouldDisplayThinkingContent(record)) {
+    record.thinkingContent = ''
+    record.thinkingStartedAt = undefined
+    record.thinkingEndedAt = undefined
+  }
   record.error = saved.done || saved.stopped ? saved.error : ''
   record.done = saved.done
   record.stopped = Boolean(saved.stopped)
@@ -929,6 +988,26 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     targetRecord.progressMessage = resolveTaskStageLabel(event.stage, '内容生成中')
   }
 
+  if (event.type === 'thinking_delta') {
+    if (!shouldDisplayThinkingContent(targetRecord)) {
+      targetRecord.thinkingContent = ''
+      targetRecord.thinkingStartedAt = undefined
+      targetRecord.thinkingEndedAt = undefined
+      return
+    }
+    targetRecord.error = ''
+    if (typeof event.thinkingContent === 'string') {
+      targetRecord.thinkingContent = event.thinkingContent
+    } else if (typeof event.thinkingDelta === 'string') {
+      targetRecord.thinkingContent = (targetRecord.thinkingContent || '') + event.thinkingDelta
+    }
+    if (!targetRecord.thinkingStartedAt) {
+      targetRecord.thinkingStartedAt = Date.now()
+    }
+    targetRecord.progressStage = event.stage || targetRecord.progressStage || 'receiving_upstream_thinking'
+    targetRecord.progressMessage = resolveTaskStageLabel(event.stage, '模型正在深度思考')
+  }
+
   if (event.type === 'agent_event' && targetRecord.agentRun && event.agentEvent) {
     targetRecord.error = ''
     if (!event.record) {
@@ -959,6 +1038,9 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     targetRecord.progressStage = 'completed'
     targetRecord.progressMessage = resolveTaskStageLabel('completed', event.message || '图片生成完成')
     targetRecord.progressPercent = 100
+    if (targetRecord.thinkingStartedAt && !targetRecord.thinkingEndedAt) {
+      targetRecord.thinkingEndedAt = Date.now()
+    }
     if (isImageTaskRecord) {
       stageConversationChanged = upsertRecordStageConversation(
           targetRecord,
@@ -1154,7 +1236,7 @@ const syncSessionMetaFromRecord = (record: GeneratingRecord, saved: PersistedGen
 }
 
 // 处理发送事件
-const handleSend = async (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string, referenceImages?: string[] }) => {
+const handleSend = async (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string, referenceImages?: string[], capabilityFlags?: ModelCapabilityFlags }) => {
   if (!authStore.isLoggedIn.value) {
     openLoginModal('generate-send-guard')
     return
@@ -1182,6 +1264,7 @@ const handleSend = async (message: string, type: CreationType, options?: { model
     duration: options?.duration || '',
     feature: options?.feature || '',
     skill: options?.skill || 'general',
+    capabilityFlags: options?.capabilityFlags || undefined,
     content: type === 'image' ? '[[queued]]任务已创建，等待服务端执行' : '',
     images: [],
     done: false,
@@ -1239,6 +1322,9 @@ const startWorkspaceAgentTask = async (record: GeneratingRecord) => {
         model: currentModelKey,
         messages: buildAgentRequestMessages(record),
         stream: true,
+        ...(record.capabilityFlags && Object.keys(record.capabilityFlags).length
+          ? { [CAPABILITY_FLAGS_REQUEST_FIELD]: record.capabilityFlags }
+          : {}),
       },
     })
 
@@ -1276,6 +1362,9 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
         model: currentModelKey,
         messages: buildAgentRequestMessages(record),
         stream: true,
+        ...(record.capabilityFlags && Object.keys(record.capabilityFlags).length
+          ? { [CAPABILITY_FLAGS_REQUEST_FIELD]: record.capabilityFlags }
+          : {}),
       },
     })
 
@@ -1538,6 +1627,9 @@ onUnmounted(() => {
                     :done="record.done"
                     :reference-images="record.referenceImages || []"
                     :error="record.error ? formatGenerationError(record.error, '对话生成失败') : ''"
+                    :thinking-content="record.thinkingContent || ''"
+                    :thinking-started-at="record.thinkingStartedAt"
+                    :thinking-ended-at="record.thinkingEndedAt"
                 />
                 <ImageLoadingRecord
                     v-else

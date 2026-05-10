@@ -4,6 +4,7 @@ import type { GenerationTaskStartPayload, GenerationTaskStreamEvent } from './sh
 import type { GenerationTaskStrategyKey } from './strategy'
 import type { AgentRunState } from '../../src/types/agent'
 import { GenerationTaskRequestError } from './shared'
+import { readCapabilityFlagsFromRequestBody, type ModelCapabilityFlags } from '../../src/shared/provider-capability'
 
 type RunningGenerationTask = LocalRunningGenerationTask & {
   strategyKey: GenerationTaskStrategyKey
@@ -74,6 +75,7 @@ interface TaskLifecycleContext {
     providerId: string
     modelKey: string
     endpointType: 'chat' | 'image'
+    capabilityFlags?: ModelCapabilityFlags | null
   }) => Promise<BillingDetail>
   consumeGenerationPoints: (input: {
     userId: string
@@ -192,6 +194,9 @@ export const startGenerationTask = async (
   const strategy = context.resolveGenerationTaskStrategy(payload)
   const { providerId, modelKey } = resolveTaskBillingTarget(payload, strategy.key)
   const skillKey = resolveTaskSkillKey(payload, strategy.key)
+  // 解析前端塞入的能力开关（联网搜索/深度思考），用于计费倍率联动。
+  // 仅 agent-chat 链路读取；image / agent-workspace 暂时不接 capability 计费。
+  const capabilityFlags = readCapabilityFlagsFromRequestBody(payload.requestBody)
   const idempotencyKey = buildGenerationTaskIdempotencyKey(
     payload,
     currentUserId,
@@ -224,6 +229,7 @@ export const startGenerationTask = async (
         providerId,
         modelKey,
         endpointType: 'chat',
+        capabilityFlags,
       })
       const associationNo = context.buildGatewayAssociationNo()
       const pointLog = billingDetail.pointCost > 0
@@ -303,6 +309,7 @@ export const startGenerationTask = async (
         providerId,
         modelKey,
         endpointType: 'chat',
+        capabilityFlags,
       })
       const associationNo = context.buildGatewayAssociationNo()
       const pointLog = billingDetail.pointCost > 0

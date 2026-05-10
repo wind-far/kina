@@ -384,7 +384,23 @@
       </div>
 
       <form class="admin-form admin-dialog__body" @submit.prevent="handleSaveModel">
-        <div class="admin-form__grid">
+        <div class="admin-model-tabs" role="tablist">
+          <button
+            v-for="tab in modelDialogTabs"
+            :key="tab.key"
+            type="button"
+            role="tab"
+            :aria-selected="activeModelTab === tab.key"
+            class="admin-model-tabs__item"
+            :class="{ 'is-active': activeModelTab === tab.key }"
+            @click="activeModelTab = tab.key"
+          >
+            <span>{{ tab.label }}</span>
+            <small>{{ tab.hint }}</small>
+          </button>
+        </div>
+
+        <div v-show="activeModelTab === 'basic'" class="admin-form__grid admin-model-tab-panel">
           <div class="admin-form__field admin-form__field--full">
             <label class="admin-form__label" for="model-label">模型名称</label>
             <input id="model-label" v-model.trim="modelForm.label" class="admin-input" type="text" placeholder="例如: GPT-4o, DeepSeek-V3">
@@ -422,21 +438,6 @@
             <div class="admin-form__hint">例如: vip, pro。为空表示所有用户可用。</div>
           </div>
 
-          <div class="admin-form__field admin-form__field--full">
-            <label class="admin-form__label">模型能力</label>
-            <div class="admin-check-grid">
-              <label v-for="option in modelCapabilityOptions" :key="option.key" class="admin-check-item">
-                <input :checked="readCapabilityFlag(modelForm.capabilityJson, option.key)" type="checkbox" @change="toggleModelCapability(option.key)">
-                <span>{{ option.label }}</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="admin-form__field">
-            <label class="admin-form__label" for="model-max-context">最大上下文条数</label>
-            <input id="model-max-context" v-model.number="modelForm.maxContext" class="admin-input" type="number" min="1" placeholder="3">
-          </div>
-
           <div class="admin-form__field">
             <label class="admin-form__label" for="model-sort-order">排序权重</label>
             <input id="model-sort-order" v-model.number="modelForm.sortOrder" class="admin-input" type="number" min="0" placeholder="0">
@@ -449,23 +450,41 @@
                 <span>已启用</span>
               </label>
               <label class="admin-check-item admin-check-item--switch">
-                <input v-model="modelForm.supportsReasoning" type="checkbox">
-                <span>允许深度思考</span>
-              </label>
-              <label class="admin-check-item admin-check-item--switch">
-                <input v-model="modelForm.enableThinkingParam" type="checkbox">
-                <span>传递思考参数</span>
-              </label>
-              <label class="admin-check-item admin-check-item--switch">
                 <input v-model="modelForm.isDefault" type="checkbox">
                 <span>设为默认</span>
               </label>
             </div>
           </div>
+        </div>
+
+        <div v-show="activeModelTab === 'capability'" class="admin-form__grid admin-model-tab-panel">
+          <div class="admin-form__field admin-form__field--full">
+            <label class="admin-form__label">模型能力</label>
+            <div class="admin-form__hint">勾选当前模型支持的基础能力，影响前端能力开关与上游字段透传</div>
+            <div class="admin-check-grid">
+              <label v-for="option in modelCapabilityOptions" :key="option.key" class="admin-check-item">
+                <input :checked="readCapabilityFlag(modelForm.capabilityJson, option.key)" type="checkbox" @change="toggleModelCapability(option.key)">
+                <span>{{ option.label }}</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="admin-form__field admin-form__field--full">
+            <ModelCapabilityEditor v-model="modelForm.capabilityJson" />
+          </div>
+        </div>
+
+        <div v-show="activeModelTab === 'advanced'" class="admin-form__grid admin-model-tab-panel">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="model-max-context">最大上下文条数</label>
+            <input id="model-max-context" v-model.number="modelForm.maxContext" class="admin-input" type="number" min="1" placeholder="3">
+            <div class="admin-form__hint">单次请求附带的历史消息上限</div>
+          </div>
 
           <div class="admin-form__field admin-form__field--full">
             <label class="admin-form__label" for="model-default-params">默认参数 JSON</label>
             <textarea id="model-default-params" v-model="modelForm.defaultParamsJsonText" class="admin-textarea" placeholder='例如 {"temperature": 0.7}'></textarea>
+            <div class="admin-form__hint">透传到上游的兜底参数；与「能力配置」字段冲突时，能力配置优先</div>
           </div>
         </div>
 
@@ -487,6 +506,7 @@ import { ElMessage } from 'element-plus'
 import AdminPagination from '@/components/admin/common/AdminPagination.vue'
 import AdminFilterToolbar from '@/components/admin/common/AdminFilterToolbar.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
+import ModelCapabilityEditor from '@/components/admin/common/ModelCapabilityEditor.vue'
 import { matchesAdminKeyword, useAdminListFilters } from '@/composables/useAdminListFilters'
 import { useAdminPagination } from '@/composables/useAdminPagination'
 import {
@@ -553,6 +573,13 @@ const selectedProvider = ref<AdminProviderItem | null>(null)
 const providerDialogVisible = ref(false)
 const modelManagerVisible = ref(false)
 const modelDialogVisible = ref(false)
+type ModelDialogTab = 'basic' | 'capability' | 'advanced'
+const modelDialogTabs: Array<{ key: ModelDialogTab; label: string; hint: string }> = [
+  { key: 'basic', label: '基础信息', hint: '名称 / 计费 / 会员' },
+  { key: 'capability', label: '能力配置', hint: '联网 / 思考 / 工具' },
+  { key: 'advanced', label: '高级参数', hint: '上下文 / 默认参数' },
+]
+const activeModelTab = ref<ModelDialogTab>('basic')
 const discoverDialogVisible = ref(false)
 const editingProviderId = ref('')
 const editingModelId = ref('')
@@ -608,8 +635,6 @@ const modelForm = reactive({
   billingTokens: 1000,
   membershipLevelsText: '',
   maxContext: 3,
-  supportsReasoning: false,
-  enableThinkingParam: false,
   isDefault: false,
 })
 
@@ -751,8 +776,6 @@ const resetModelForm = () => {
   modelForm.billingTokens = 1000
   modelForm.membershipLevelsText = ''
   modelForm.maxContext = 3
-  modelForm.supportsReasoning = false
-  modelForm.enableThinkingParam = false
   modelForm.isDefault = false
 }
 
@@ -778,8 +801,6 @@ const applyModelForm = (model: AdminProviderModelItem) => {
     ? defaultParamsJson.membershipLevels.join(', ')
     : ''
   modelForm.maxContext = Number(defaultParamsJson.maxContext || 3) || 3
-  modelForm.supportsReasoning = Boolean(capabilityJson.supportsReasoning)
-  modelForm.enableThinkingParam = Boolean(defaultParamsJson.enableThinkingParam)
   modelForm.isDefault = Boolean(defaultParamsJson.isDefault)
 }
 
@@ -965,6 +986,7 @@ watch(() => [modelKeyword.value, modelStatus.value, modelCategoryFilter.value] a
 
 const openCreateModelDialog = () => {
   resetModelForm()
+  activeModelTab.value = 'basic'
   modelDialogVisible.value = true
 }
 
@@ -1058,6 +1080,7 @@ const handleBatchImportModels = async () => {
 
 const openEditModelDialog = (model: AdminProviderModelItem) => {
   applyModelForm(model)
+  activeModelTab.value = 'basic'
   modelDialogVisible.value = true
 }
 
@@ -1089,16 +1112,12 @@ const mergeModelDefaultParams = () => {
     },
     membershipLevels: normalizeMembershipLevels(modelForm.membershipLevelsText),
     maxContext: Number(modelForm.maxContext) || 3,
-    enableThinkingParam: Boolean(modelForm.enableThinkingParam),
     isDefault: Boolean(modelForm.isDefault),
   }
 }
 
 const buildModelPayload = (): AdminProviderModelPayload => {
-  const capabilityJson = {
-    ...(modelForm.capabilityJson || {}),
-    supportsReasoning: Boolean(modelForm.supportsReasoning || modelForm.capabilityJson.supportsReasoning),
-  }
+  const capabilityJson = { ...(modelForm.capabilityJson || {}) }
 
   return {
     category: modelForm.category,
@@ -1274,5 +1293,59 @@ onBeforeUnmount(() => {
 .admin-model-discover__badge.is-create {
   background: rgba(16, 185, 129, 0.12);
   color: #059669;
+}
+
+.admin-model-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 6px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-surface) 86%, var(--bg-block-secondary-default));
+}
+
+.admin-model-tabs__item {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 120px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+
+.admin-model-tabs__item:hover {
+  background: var(--bg-block-secondary-default);
+  color: var(--text-primary);
+}
+
+.admin-model-tabs__item.is-active {
+  border-color: color-mix(in srgb, var(--brand-main-default) 30%, transparent);
+  background: color-mix(in srgb, var(--brand-main-default) 16%, transparent);
+  color: var(--brand-main-default);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-main-default) 14%, transparent);
+}
+
+.admin-model-tabs__item span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-model-tabs__item small {
+  color: inherit;
+  opacity: .72;
+  font-size: 12px;
+}
+
+.admin-model-tab-panel {
+  margin-bottom: 8px;
 }
 </style>

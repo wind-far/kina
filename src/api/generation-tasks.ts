@@ -116,7 +116,7 @@ export const stopGenerationTask = async (taskId: string, options: RequestOptions
 // 订阅任务的实时状态事件流，页面切换回来后可直接重连。
 // 已内置自动重连（指数退避）+ watchdog（30s 无消息视为断流）。
 const ALLOWED_STREAM_EVENT_TYPES = new Set([
-  'connected', 'snapshot', 'progress', 'content_delta',
+  'connected', 'snapshot', 'progress', 'content_delta', 'thinking_delta',
   'agent_event', 'completed', 'failed', 'stopped',
 ])
 const TERMINAL_EVENT_TYPES = new Set(['completed', 'failed', 'stopped'])

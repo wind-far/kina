@@ -12,6 +12,7 @@ export type GenerationTaskStreamEventType =
   | 'snapshot'
   | 'progress'
   | 'content_delta'
+  | 'thinking_delta'
   | 'agent_event'
   | 'completed'
   | 'failed'
@@ -41,6 +42,10 @@ export interface GenerationTaskStreamEventBase<TRecord = unknown> {
   message?: string
   delta?: string
   content?: string
+  /** thinking_delta 事件用：本次新增的思考片段。 */
+  thinkingDelta?: string
+  /** thinking_delta / completed 事件用：累计完整思考内容。 */
+  thinkingContent?: string
   agentEvent?: AgentWorkspaceEvent
   // 单调递增的事件 id，用于客户端断线重连时通过 lastEventId 定位重放起点
   id?: number

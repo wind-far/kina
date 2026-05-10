@@ -19,6 +19,8 @@ export interface GenerationRecordPayload {
   type: string
   prompt: string
   content?: string
+  /** 模型的思考过程（reasoning_content / thinking block）。存到 record.metaJson.thinkingContent。 */
+  thinkingContent?: string
   error?: string
   model?: string
   modelKey?: string

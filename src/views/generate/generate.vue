@@ -683,11 +683,45 @@ const shouldUseAgentWorkspaceFlow = (skill?: string) => {
 }
 
 const buildAgentRequestMessages = (record: GeneratingRecord) => {
-  return buildAgentChatMessages(
+  const baseMessages = buildAgentChatMessages(
       record.skill || 'general',
       record.prompt,
       Array.isArray(record.referenceImages) ? record.referenceImages : [],
   )
+
+  // 从同 session 已完成的 agent 记录中提取历史上下文
+  const model = getModelByName(record.modelKey)
+  const maxContext = Number((model as any)?.defaultParams?.maxContext) || 3
+  const sessionId = record.sessionId
+  if (!sessionId || maxContext <= 0) {
+    return baseMessages
+  }
+
+  const historyRecords = generatingRecords.value
+    .filter(item =>
+      item !== record
+      && item.sessionId === sessionId
+      && item.type === 'agent'
+      && item.done
+      && !item.error
+      && item.content.trim()
+    )
+    .sort((a, b) => b.id - a.id)
+    .slice(0, maxContext)
+    .reverse()
+
+  if (!historyRecords.length) {
+    return baseMessages
+  }
+
+  // system + 历史轮次 + 当前 user
+  const historyMessages = historyRecords.flatMap(item => [
+    { role: 'user', content: item.prompt },
+    { role: 'assistant', content: item.content },
+  ])
+
+  const [systemMessage, ...currentMessages] = baseMessages
+  return [systemMessage, ...historyMessages, ...currentMessages]
 }
 
 // 将页面内的记录结构转换为后端持久化结构。

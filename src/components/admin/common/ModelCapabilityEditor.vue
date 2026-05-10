@@ -8,7 +8,7 @@
 // - 启用注入策略选择器（set / append / merge-object / custom），覆盖单字段、tools 数组、嵌套对象、命名 handler 场景
 // - 注入值用文本框配合 JSON 校验，校验失败时不写回父级，保留旧值并显示错误提示
 
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import type {
   CapabilityInjection,
   ReasoningCapabilityOption,
@@ -26,6 +26,9 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   'update:modelValue': [value: Record<string, any>]
 }>()
+
+const isSyncingFromModel = ref(false)
+const isEmitScheduled = ref(false)
 
 // ----------------------------------------------------------------------------
 // 注入草稿 + 厂商模板可表达的注入种类（multi 由模板内部组合，UI 不展开）
@@ -242,41 +245,46 @@ const createOptionDraft = (): OptionDraft => ({
 // ----------------------------------------------------------------------------
 
 const reloadFromModelValue = () => {
-  const root = readObject(props.modelValue) || {}
-  const webSearch = readObject(root.webSearch)
-  const reasoning = readObject(root.reasoning)
+  isSyncingFromModel.value = true
+  try {
+    const root = readObject(props.modelValue) || {}
+    const webSearch = readObject(root.webSearch)
+    const reasoning = readObject(root.reasoning)
 
-  formState.webSearchEnabled = Boolean(webSearch?.supported)
-  formState.webSearchEnabledInjection = decompileInjection(webSearch?.enabledInjection as CapabilityInjection | undefined)
-  const disabledInj = webSearch?.disabledInjection as CapabilityInjection | undefined
-  formState.webSearchUseDisabledInjection = Boolean(disabledInj)
-  formState.webSearchDisabledInjection = decompileInjection(disabledInj)
-  formState.webSearchBillingMultiplierText = webSearch?.billingMultiplier !== undefined ? String(webSearch.billingMultiplier) : ''
-  formState.webSearchLabel = String(webSearch?.label || '')
-  formState.webSearchDescription = String(webSearch?.description || '')
+    formState.webSearchEnabled = Boolean(webSearch?.supported)
+    formState.webSearchEnabledInjection = decompileInjection(webSearch?.enabledInjection as CapabilityInjection | undefined)
+    const disabledInj = webSearch?.disabledInjection as CapabilityInjection | undefined
+    formState.webSearchUseDisabledInjection = Boolean(disabledInj)
+    formState.webSearchDisabledInjection = decompileInjection(disabledInj)
+    formState.webSearchBillingMultiplierText = webSearch?.billingMultiplier !== undefined ? String(webSearch.billingMultiplier) : ''
+    formState.webSearchLabel = String(webSearch?.label || '')
+    formState.webSearchDescription = String(webSearch?.description || '')
 
-  formState.reasoningEnabled = Boolean(reasoning?.supported)
-  const reasoningDisabledInj = reasoning?.disabledInjection as CapabilityInjection | undefined
-  formState.reasoningUseDisabledInjection = Boolean(reasoningDisabledInj)
-  formState.reasoningDisabledInjection = decompileInjection(reasoningDisabledInj)
-  formState.reasoningDefaultKey = String(reasoning?.defaultKey || '')
-  formState.reasoningLabel = String(reasoning?.label || '')
-  formState.reasoningDescription = String(reasoning?.description || '')
-  const incomingOptions = Array.isArray(reasoning?.options) ? reasoning!.options : []
-  formState.reasoningOptions = incomingOptions
-    .filter((item: any) => item && typeof item === 'object')
-    .map((item: any) => ({
-      key: String(item.key || ''),
-      label: String(item.label || ''),
-      description: String(item.description || ''),
-      billingMultiplierText: item.billingMultiplier !== undefined ? String(item.billingMultiplier) : '',
-      injection: decompileInjection(item.injection as CapabilityInjection | undefined),
-    }))
+    formState.reasoningEnabled = Boolean(reasoning?.supported)
+    const reasoningDisabledInj = reasoning?.disabledInjection as CapabilityInjection | undefined
+    formState.reasoningUseDisabledInjection = Boolean(reasoningDisabledInj)
+    formState.reasoningDisabledInjection = decompileInjection(reasoningDisabledInj)
+    formState.reasoningDefaultKey = String(reasoning?.defaultKey || '')
+    formState.reasoningLabel = String(reasoning?.label || '')
+    formState.reasoningDescription = String(reasoning?.description || '')
+    const incomingOptions = Array.isArray(reasoning?.options) ? reasoning!.options : []
+    formState.reasoningOptions = incomingOptions
+      .filter((item: any) => item && typeof item === 'object')
+      .map((item: any) => ({
+        key: String(item.key || ''),
+        label: String(item.label || ''),
+        description: String(item.description || ''),
+        billingMultiplierText: item.billingMultiplier !== undefined ? String(item.billingMultiplier) : '',
+        injection: decompileInjection(item.injection as CapabilityInjection | undefined),
+      }))
 
-  errors.webSearchEnabledInjection = ''
-  errors.webSearchDisabledInjection = ''
-  errors.reasoningDisabledInjection = ''
-  errors.optionInjectionErrors = {}
+    errors.webSearchEnabledInjection = ''
+    errors.webSearchDisabledInjection = ''
+    errors.reasoningDisabledInjection = ''
+    errors.optionInjectionErrors = {}
+  } finally {
+    isSyncingFromModel.value = false
+  }
 }
 
 watch(() => props.modelValue, reloadFromModelValue, { immediate: true, deep: true })
@@ -287,6 +295,9 @@ watch(() => props.modelValue, reloadFromModelValue, { immediate: true, deep: tru
 // ----------------------------------------------------------------------------
 
 const emitUpdate = () => {
+  if (isSyncingFromModel.value) {
+    return
+  }
   const baseRoot = { ...(readObject(props.modelValue) || {}) }
 
   // ----- webSearch 段 -----
@@ -421,10 +432,27 @@ const emitUpdate = () => {
     delete baseRoot.reasoning
   }
 
+  const currentSerialized = JSON.stringify(props.modelValue || {})
+  const nextSerialized = JSON.stringify(baseRoot)
+  if (currentSerialized === nextSerialized) {
+    return
+  }
+
   emit('update:modelValue', baseRoot)
 }
 
-watch(formState, () => emitUpdate(), { deep: true })
+const scheduleEmitUpdate = () => {
+  if (isSyncingFromModel.value || isEmitScheduled.value) {
+    return
+  }
+  isEmitScheduled.value = true
+  queueMicrotask(() => {
+    isEmitScheduled.value = false
+    emitUpdate()
+  })
+}
+
+watch(formState, () => scheduleEmitUpdate(), { deep: true, flush: 'post' })
 
 // ----------------------------------------------------------------------------
 // 选项操作

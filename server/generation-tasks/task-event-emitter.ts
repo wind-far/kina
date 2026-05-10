@@ -85,6 +85,27 @@ export const emitTaskContentDeltaEvent = (
   }, context)
 }
 
+export const emitTaskThinkingDeltaEvent = (
+  recordId: string,
+  input: {
+    stage: string
+    thinkingDelta: string
+    thinkingContent: string
+  },
+  context: TaskEventEmitterContext,
+) => {
+  emitTaskStreamEvent(recordId, {
+    type: 'thinking_delta',
+    recordId,
+    done: false,
+    stopped: false,
+    stage: input.stage,
+    thinkingDelta: input.thinkingDelta,
+    thinkingContent: input.thinkingContent,
+    message: '模型正在深度思考',
+  }, context)
+}
+
 export const emitTaskAgentEvent = (
   recordId: string,
   input: {

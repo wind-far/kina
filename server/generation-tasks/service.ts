@@ -59,6 +59,7 @@ import { executeAgentWorkspaceTaskFlow } from './agent-workspace-task-executor'
 import {
   emitTaskAgentEvent,
   emitTaskContentDeltaEvent,
+  emitTaskThinkingDeltaEvent,
   emitTaskFailedEvent,
   emitTaskProgressEvent,
   emitTaskStreamEvent,
@@ -84,7 +85,9 @@ import {
   fetchWithBurstRateRetry,
   extractChatTextFromNonStreamResponse,
   extractChatTextFromJsonPayload,
+  extractChatReasoningFromJsonPayload,
   parseChatChunkText,
+  parseChatChunkReasoning,
   parseChatChunkError,
   requestImageGeneration,
   requestImageEdit,
@@ -217,6 +220,7 @@ const persistAgentTaskContentIfNeeded = async (input: {
   task: RunningGenerationTask
   payload: GenerationTaskStartPayload
   content: string
+  thinkingContent?: string
   force?: boolean
 }, state: {
   lastPersistAt: number
@@ -234,6 +238,7 @@ const persistAgentTaskContentIfNeeded = async (input: {
   await updateGenerationRecord(input.task.recordId, {
     ...buildInitialRecordPayload(input.payload),
     content: input.content,
+    ...(typeof input.thinkingContent === 'string' ? { thinkingContent: input.thinkingContent } : {}),
     done: false,
     stopped: false,
   }, input.task.userId)
@@ -256,8 +261,11 @@ const executeAgentChatTask = async (task: RunningGenerationTask, payload: Genera
     extractChatTextFromNonStreamResponse,
     parseChatChunkError,
     parseChatChunkText,
+    parseChatChunkReasoning,
     extractChatTextFromJsonPayload,
+    extractChatReasoningFromJsonPayload,
     emitTaskContentDeltaEvent: (recordId, input) => emitTaskContentDeltaEvent(recordId, input, taskEventEmitterContext),
+    emitTaskThinkingDeltaEvent: (recordId, input) => emitTaskThinkingDeltaEvent(recordId, input, taskEventEmitterContext),
     persistAgentTaskContentIfNeeded,
     buildInitialRecordPayload,
     updateGenerationRecord,

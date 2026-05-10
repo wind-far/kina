@@ -101,6 +101,23 @@ const readStoredAgentToolbarState = () => {
   }
 }
 
+// 按模型分桶的能力开关持久化结构：{ skill, capabilityFlags: { [modelKey]: { webSearch, reasoning } } }
+// 同模型间的选择互不污染：用户在 A 模型上的偏好不会因为切到 B 模型而被覆盖。
+type StoredCapabilityFlagsByModel = Record<string, { webSearch?: boolean; reasoning?: string }>
+
+const writeStoredAgentToolbarState = (patch: Record<string, unknown>) => {
+  if (typeof window === 'undefined') return
+  const current = readStoredAgentToolbarState() || {}
+  window.localStorage.setItem(AGENT_TOOLBAR_STORAGE_KEY, JSON.stringify({ ...current, ...patch }))
+}
+
+const readStoredCapabilityFlagsByModel = (): StoredCapabilityFlagsByModel => {
+  const stored = readStoredAgentToolbarState()
+  const raw = stored?.capabilityFlags
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  return raw as StoredCapabilityFlagsByModel
+}
+
 const storedAgentToolbarState = readStoredAgentToolbarState()
 const currentSkill = ref(typeof storedAgentToolbarState?.skill === 'string' ? storedAgentToolbarState.skill : props.defaultAssistantKey)
 const isSkillSelectOpen = ref(false)
@@ -278,21 +295,29 @@ watch(
 watch(
   currentSkill,
   (skill) => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem(AGENT_TOOLBAR_STORAGE_KEY, JSON.stringify({ skill }))
+    writeStoredAgentToolbarState({ skill })
   },
   { immediate: true },
 )
 
-// 切换模型时按目标模型的能力声明回写开关：
-// - 联网：目标模型不支持 → 强制关闭
-// - 深度思考：目标模型不支持 → 清空；目标模型支持但当前 key 不在选项中 → 回退默认或第一个
+// 切换模型 / 模型 capabilityJson 变化时：
+// 1. 从 localStorage 读取该模型上次的选择
+// 2. 按当前 spec 做收敛（不支持的能力清空当前显示态，但不写回 localStorage 其它模型的桶）
+// 3. 主动持久化（webSearch/reasoning 的写入 watcher 会兜底，但这里同步避免抖动）
 watch(
   currentModelCapabilitySpec,
   (spec) => {
-    if (!spec?.webSearch?.supported) {
+    const modelKey = currentModel.value
+    const storedForModel = modelKey ? readStoredCapabilityFlagsByModel()[modelKey] : undefined
+
+    // 联网搜索
+    if (spec?.webSearch?.supported) {
+      webSearchEnabled.value = Boolean(storedForModel?.webSearch)
+    } else {
       webSearchEnabled.value = false
     }
+
+    // 深度思考
     if (!spec?.reasoning?.supported) {
       reasoningKey.value = ''
       isReasoningSelectOpen.value = false
@@ -303,11 +328,35 @@ watch(
       reasoningKey.value = ''
       return
     }
-    if (reasoningKey.value && !options.some(item => item.key === reasoningKey.value)) {
+    const storedReasoning = String(storedForModel?.reasoning || '')
+    if (storedReasoning && options.some(item => item.key === storedReasoning)) {
+      reasoningKey.value = storedReasoning
+    } else if (reasoningKey.value && !options.some(item => item.key === reasoningKey.value)) {
       reasoningKey.value = spec.reasoning.defaultKey || ''
+    } else if (!reasoningKey.value) {
+      // 该模型无历史偏好且当前未选时，保持空（不自动选默认值，避免误扣点）
+      reasoningKey.value = ''
     }
   },
   { immediate: true },
+)
+
+// 用户主动切换 webSearch / reasoning 时按 modelKey 分桶持久化
+watch(
+  [webSearchEnabled, reasoningKey, currentModel],
+  ([nextWebSearch, nextReasoning, modelKey]) => {
+    if (!modelKey) return
+    const all = readStoredCapabilityFlagsByModel()
+    const next: { webSearch?: boolean; reasoning?: string } = {}
+    if (nextWebSearch) next.webSearch = true
+    if (nextReasoning) next.reasoning = nextReasoning
+    if (next.webSearch || next.reasoning) {
+      all[modelKey] = next
+    } else {
+      delete all[modelKey]
+    }
+    writeStoredAgentToolbarState({ capabilityFlags: all })
+  },
 )
 
 // 统一关闭 Agent 工具栏内部所有浮层

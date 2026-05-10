@@ -705,6 +705,9 @@ const serializeGenerationRecord = (record: any) => ({
   type: String(record.type || '').toLowerCase().replace('_', '-'),
   prompt: record.prompt,
   content: record.content || '',
+  thinkingContent: typeof (record.metaJson as any)?.thinkingContent === 'string'
+    ? (record.metaJson as any).thinkingContent
+    : '',
   error: record.errorMessage || '',
   model: record.modelLabel || '',
   modelKey: record.modelKey || '',
@@ -887,6 +890,9 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
           metaJson: {
             source: String(payload.source || 'generate').trim() || 'generate',
             referenceImages: normalizedReferenceImages,
+            ...(typeof payload.thinkingContent === 'string'
+              ? { thinkingContent: payload.thinkingContent }
+              : {}),
           },
           startedAt: new Date(),
           finishedAt: payload.done ? new Date() : null,
@@ -1137,6 +1143,9 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
             source: String(payload.source || (existingRecord.metaJson as any)?.source || 'generate').trim() || 'generate',
             ...(shouldOverwriteReferenceImages
               ? { referenceImages: normalizedReferenceImages }
+              : {}),
+            ...(typeof payload.thinkingContent === 'string'
+              ? { thinkingContent: payload.thinkingContent }
               : {}),
           },
           finishedAt: payload.done ? new Date() : null,

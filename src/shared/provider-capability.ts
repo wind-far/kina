@@ -10,69 +10,108 @@
  * 1. 厂商差异屏蔽在数据库层，新增厂商无需改代码
  * 2. 前端 UI 完全由 capabilityJson 驱动（"模型支持就显示，不支持就隐藏"）
  * 3. 计费可联动（联网/思考通常多扣点）
+ * 4. 注入策略可组合：set / append / merge-object / multi / custom
+ *    覆盖单字段赋值、tools 数组追加、嵌套对象合并、多字段联动等场景
  */
+
+// ----------------------------------------------------------------------------
+// 注入策略：把能力开关映射为对上游 requestBody 的修改
+// ----------------------------------------------------------------------------
+
+/** 单字段覆盖赋值。`requestBody[field] = value`。 */
+export interface SetInjection {
+  type: 'set'
+  field: string
+  value: unknown
+}
+
+/** 数组追加。`requestBody[field] = [...existing, ...value]`。用于 tools 数组场景。 */
+export interface AppendInjection {
+  type: 'append'
+  field: string
+  value: unknown[]
+}
+
+/** 嵌套对象浅合并。`requestBody[field] = { ...existing, ...value }`。 */
+export interface MergeObjectInjection {
+  type: 'merge-object'
+  field: string
+  value: Record<string, unknown>
+}
+
+/** 多注入组合。按顺序依次应用。 */
+export interface MultiInjection {
+  type: 'multi'
+  injections: CapabilityInjection[]
+}
+
+/** 命名 handler 兜底。极端厂商的特殊逻辑通过 server 端注册命名函数实现。 */
+export interface CustomInjection {
+  type: 'custom'
+  /** 已注册的 handler 名，未注册时跳过并打印警告。 */
+  handler: string
+  /** 透传给 handler 的额外配置。 */
+  config?: unknown
+}
+
+export type CapabilityInjection =
+  | SetInjection
+  | AppendInjection
+  | MergeObjectInjection
+  | MultiInjection
+  | CustomInjection
+
+// ----------------------------------------------------------------------------
+// 能力声明
+// ----------------------------------------------------------------------------
 
 /** 联网搜索能力声明。 */
 export interface WebSearchCapabilitySpec {
   /** 是否支持。false 时前端不显示开关。 */
   supported: boolean
-  /** 上游请求体中的字段名，例如 "web_search_options" / "enable_search"。 */
-  requestField: string
-  /**
-   * 启用时该字段的值。
-   * - OpenAI 兼容: `{}` 或 `{ search_context_size: "medium" }`
-   * - 阿里通义: `true`
-   * - 其它结构化值: 数组、对象、字符串均可
-   */
-  requestValue: unknown
-  /** 禁用时若需要显式发送字段，配置该值（默认不发送字段）。 */
-  disabledValue?: unknown
+  /** UI 显示标签（默认"联网搜索"）。 */
+  label?: string
+  /** 描述文案（鼠标悬停或副标题展示）。 */
+  description?: string
+  /** 启用时的注入策略。 */
+  enabledInjection: CapabilityInjection
+  /** 禁用时若需显式注入（如 enable_search: false），配置该字段。 */
+  disabledInjection?: CapabilityInjection
   /** 启用时的计费倍率（默认 1，不调整）。 */
   billingMultiplier?: number
-  /** UI 显示标签（可选，默认"联网搜索"）。 */
-  label?: string
-  /** 描述文案（可选，鼠标悬停或副标题展示）。 */
-  description?: string
 }
 
-/** 深度思考能力的可选项。 */
+/** 深度思考的可选项（"低 / 中 / 高" / "标准 / 扩展"）。 */
 export interface ReasoningCapabilityOption {
   /** 选项 key（前端开关存的值）。 */
   key: string
-  /** UI 显示名，例如"低 / 中 / 高"。 */
+  /** UI 显示名。 */
   label: string
-  /**
-   * 启用该选项时上游字段的值。
-   * - OpenAI: "low" / "medium" / "high"
-   * - Claude: { type: "enabled", budget_tokens: 8192 }
-   * - 简单布尔: true
-   */
-  value: unknown
+  /** 选项描述（UI 副标题）。 */
+  description?: string
+  /** 选中该选项时的注入策略（每个等级独立，便于不同等级走不同字段）。 */
+  injection: CapabilityInjection
   /** 该等级的计费倍率（默认 1）。 */
   billingMultiplier?: number
-  /** 选项描述（可选，UI 副标题）。 */
-  description?: string
 }
 
 /** 深度思考能力声明。 */
 export interface ReasoningCapabilitySpec {
   /** 是否支持。false 时前端不显示选择器。 */
   supported: boolean
-  /** 上游请求体中的字段名，例如 "reasoning_effort" / "thinking" / "enable_thinking"。 */
-  requestField: string
-  /** 可选等级列表（如仅是开关，配单个选项即可）。 */
-  options: ReasoningCapabilityOption[]
-  /** 默认选项 key（用户未主动选择时使用）。 */
-  defaultKey?: string
   /** UI 显示标签（默认"深度思考"）。 */
   label?: string
   /** 描述文案。 */
   description?: string
+  /** 可选等级列表（如仅是开关，配单个选项即可）。 */
+  options: ReasoningCapabilityOption[]
+  /** 默认选项 key（用户未主动选择时使用）。 */
+  defaultKey?: string
 }
 
 /**
  * 模型能力总声明。
- * 当前只覆盖联网与深度思考；后续新增能力（如代码执行、文件检索）按需扩展。
+ * 当前覆盖联网与深度思考；后续新增能力（如代码执行、文件检索）按需扩展。
  */
 export interface ModelCapabilitySpec {
   webSearch?: WebSearchCapabilitySpec
@@ -100,6 +139,95 @@ export interface AppliedCapabilityResult {
   effectiveFlags: ModelCapabilityFlags
 }
 
+// ----------------------------------------------------------------------------
+// 命名 handler 注册中心（custom injection 兜底）
+// ----------------------------------------------------------------------------
+
+export type CapabilityHandler = (
+  upstreamFields: Record<string, unknown>,
+  config: unknown,
+) => Record<string, unknown>
+
+const capabilityHandlers = new Map<string, CapabilityHandler>()
+
+/** 注册命名 handler。重复注册会覆盖，便于热更新或测试。 */
+export const registerCapabilityHandler = (name: string, handler: CapabilityHandler) => {
+  capabilityHandlers.set(name, handler)
+}
+
+/** 查询已注册的 handler，未注册返回 undefined。 */
+export const getCapabilityHandler = (name: string): CapabilityHandler | undefined =>
+  capabilityHandlers.get(name)
+
+// ----------------------------------------------------------------------------
+// 注入算子（dispatch）
+// ----------------------------------------------------------------------------
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  Boolean(v) && typeof v === 'object' && !Array.isArray(v)
+
+/** 把单条注入应用到 upstreamFields，返回新对象（不可变）。 */
+const applyInjection = (
+  upstreamFields: Record<string, unknown>,
+  inj: CapabilityInjection | null | undefined,
+): Record<string, unknown> => {
+  // 防御：旧数据 / 空配置都直接跳过，避免运行时崩溃影响整条任务链路
+  if (!inj || typeof inj !== 'object' || typeof (inj as { type?: unknown }).type !== 'string') {
+    // eslint-disable-next-line no-console
+    console.warn('[provider-capability] 注入配置缺失或非法，已跳过:', inj)
+    return upstreamFields
+  }
+
+  switch (inj.type) {
+    case 'set':
+      return { ...upstreamFields, [inj.field]: inj.value }
+
+    case 'append': {
+      const existing = Array.isArray(upstreamFields[inj.field])
+        ? (upstreamFields[inj.field] as unknown[])
+        : []
+      const incoming = Array.isArray(inj.value) ? inj.value : []
+      return { ...upstreamFields, [inj.field]: [...existing, ...incoming] }
+    }
+
+    case 'merge-object': {
+      const existing = isPlainObject(upstreamFields[inj.field])
+        ? (upstreamFields[inj.field] as Record<string, unknown>)
+        : {}
+      const incoming = isPlainObject(inj.value) ? inj.value : {}
+      return { ...upstreamFields, [inj.field]: { ...existing, ...incoming } }
+    }
+
+    case 'multi':
+      return (Array.isArray(inj.injections) ? inj.injections : []).reduce(
+        (acc, sub) => applyInjection(acc, sub),
+        upstreamFields,
+      )
+
+    case 'custom': {
+      const handler = capabilityHandlers.get(inj.handler)
+      if (!handler) {
+        // eslint-disable-next-line no-console
+        console.warn('[provider-capability] custom handler 未注册:', inj.handler)
+        return upstreamFields
+      }
+      const result = handler(upstreamFields, inj.config)
+      return isPlainObject(result) ? result : upstreamFields
+    }
+
+    default: {
+      // 兜底：未识别的注入类型直接跳过（运行时容错，避免脏数据破坏整体流程）
+      // eslint-disable-next-line no-console
+      console.warn('[provider-capability] 未识别的注入类型:', (inj as { type?: unknown }).type)
+      return upstreamFields
+    }
+  }
+}
+
+// ----------------------------------------------------------------------------
+// 公共 API
+// ----------------------------------------------------------------------------
+
 /** 容错读取 capabilityJson，无效结构返回 null。 */
 export const parseModelCapabilitySpec = (value: unknown): ModelCapabilitySpec | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -125,7 +253,7 @@ export const applyCapabilityFlags = (
   flags: ModelCapabilityFlags | null | undefined,
   spec: ModelCapabilitySpec | null | undefined,
 ): AppliedCapabilityResult => {
-  const upstreamFields: Record<string, unknown> = {}
+  let upstreamFields: Record<string, unknown> = {}
   const effectiveFlags: ModelCapabilityFlags = {}
   let billingMultiplier = 1
 
@@ -136,26 +264,30 @@ export const applyCapabilityFlags = (
   // 联网搜索
   if (spec.webSearch?.supported) {
     if (flags?.webSearch) {
-      upstreamFields[spec.webSearch.requestField] = spec.webSearch.requestValue
+      upstreamFields = applyInjection(upstreamFields, spec.webSearch.enabledInjection)
       effectiveFlags.webSearch = true
       const multiplier = spec.webSearch.billingMultiplier
       if (typeof multiplier === 'number' && multiplier > 0) {
         billingMultiplier *= multiplier
       }
-    } else if (spec.webSearch.disabledValue !== undefined) {
+    } else if (spec.webSearch.disabledInjection) {
       // 部分厂商需要显式发 false 才能关闭，否则可能继承上一次状态
-      upstreamFields[spec.webSearch.requestField] = spec.webSearch.disabledValue
+      upstreamFields = applyInjection(upstreamFields, spec.webSearch.disabledInjection)
     }
   }
 
   // 深度思考
-  if (spec.reasoning?.supported && Array.isArray(spec.reasoning.options) && spec.reasoning.options.length) {
+  if (
+    spec.reasoning?.supported &&
+    Array.isArray(spec.reasoning.options) &&
+    spec.reasoning.options.length
+  ) {
     const requestedKey = String(flags?.reasoning || '').trim()
     const option = requestedKey
       ? spec.reasoning.options.find(item => item.key === requestedKey)
       : null
     if (option) {
-      upstreamFields[spec.reasoning.requestField] = option.value
+      upstreamFields = applyInjection(upstreamFields, option.injection)
       effectiveFlags.reasoning = option.key
       const multiplier = option.billingMultiplier
       if (typeof multiplier === 'number' && multiplier > 0) {

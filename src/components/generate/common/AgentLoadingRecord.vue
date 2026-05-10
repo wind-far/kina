@@ -37,12 +37,26 @@
               </div>
             </div>
           </div>
+          <!-- 思考过程：思考阶段实时展开显示，回答开始后自动折叠 -->
+          <details v-if="hasThinking" class="agent-thinking-block" :open="isThinkingPhase">
+            <summary class="agent-thinking-block__summary">
+              <span class="agent-thinking-block__icon">💭</span>
+              <span class="agent-thinking-block__title">{{ thinkingSummaryText }}</span>
+              <span class="agent-thinking-block__chevron" aria-hidden="true">▾</span>
+            </summary>
+            <div class="agent-thinking-block__content" v-html="renderedThinking"></div>
+          </details>
+
           <!-- AI 加载/回复区域 -->
-          <div v-if="!done && !content" class="agent-loading-status-wrapper">
+          <div v-if="isThinkingPhase" class="agent-loading-status-wrapper">
+            <AgentLoadingIcon :size="22" />
+            <span class="agent-loading-text">深度思考中…</span>
+          </div>
+          <div v-else-if="!done && !content && !hasThinking" class="agent-loading-status-wrapper">
             <AgentLoadingIcon :size="22" />
             <span class="agent-loading-text">思考中</span>
           </div>
-          <div v-else class="assistant-message-text-e69SR6">
+          <div v-else-if="content" class="assistant-message-text-e69SR6">
             <div class="markdown-render-DkILWY markdown-render-UH4_kU" v-html="renderedContent"></div>
           </div>
           <!-- 错误提示 -->
@@ -65,6 +79,12 @@ const props = defineProps<{
   done: boolean
   error?: string
   referenceImages?: string[]
+  /** 模型的思考过程文本（reasoning_content / thinking block）。 */
+  thinkingContent?: string
+  /** 思考开始时间戳（毫秒）。用于计算"已思考 N 秒"。 */
+  thinkingStartedAt?: number
+  /** 思考结束时间戳（毫秒）。完成时设置；未设置则按当前时间计算。 */
+  thinkingEndedAt?: number
 }>()
 
 const maxVisibleReferenceCount = 4
@@ -122,6 +142,40 @@ const renderedContent = computed(() => {
     .replace(/\n/g, '<br>')
     .replace(/^/, '<p>')
     .replace(/$/, '</p>')
+})
+
+// ----------------------------------------------------------------------------
+// 思考过程渲染
+// ----------------------------------------------------------------------------
+
+const hasThinking = computed(() => Boolean((props.thinkingContent || '').trim()))
+
+// 思考阶段：有思考内容但还没有正式回答内容（content 为空）
+const isThinkingPhase = computed(() => hasThinking.value && !props.content)
+
+const thinkingDurationSeconds = computed(() => {
+  const startedAt = props.thinkingStartedAt
+  if (!startedAt) return 0
+  const endedAt = props.thinkingEndedAt || Date.now()
+  return Math.max(0, Math.round((endedAt - startedAt) / 1000))
+})
+
+const thinkingSummaryText = computed(() => {
+  if (isThinkingPhase.value) {
+    const seconds = thinkingDurationSeconds.value
+    return seconds > 0 ? `深度思考中…（${seconds}s）` : '深度思考中…'
+  }
+  const seconds = thinkingDurationSeconds.value
+  return seconds > 0 ? `已思考 ${seconds}s` : '思考过程'
+})
+
+// 思考内容用 pre-wrap 简单渲染，保留换行；不做 markdown，避免与正式回答的视觉权重冲突
+const renderedThinking = computed(() => {
+  return (props.thinkingContent || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>')
 })
 </script>
 
@@ -193,5 +247,60 @@ const renderedContent = computed(() => {
   color: var(--functional-danger, #f53f3f);
   font-size: 13px;
   padding: 8px 0;
+}
+
+.agent-thinking-block {
+  margin: 8px 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 8px;
+  background: var(--bg-block-secondary-default, rgba(15, 23, 42, 0.04));
+}
+
+.agent-thinking-block__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+  color: var(--text-secondary, #4b5563);
+  user-select: none;
+}
+
+.agent-thinking-block__summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-thinking-block__icon {
+  font-size: 14px;
+}
+
+.agent-thinking-block__title {
+  flex: 1;
+  font-weight: 500;
+}
+
+.agent-thinking-block__chevron {
+  font-size: 12px;
+  color: var(--text-tertiary, #9ca3af);
+  transition: transform 0.2s ease;
+}
+
+.agent-thinking-block[open] .agent-thinking-block__chevron {
+  transform: rotate(180deg);
+}
+
+.agent-thinking-block__content {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line-divider, #00000014);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-tertiary, #6b7280);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
+  overflow-y: auto;
 }
 </style>

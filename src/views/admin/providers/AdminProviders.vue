@@ -482,23 +482,9 @@
           </div>
 
           <div class="admin-form__field admin-form__field--full">
-            <label class="admin-form__label">深度思考</label>
-            <div class="admin-check-grid admin-check-grid--two">
-              <label class="admin-check-item admin-check-item--switch">
-                <input v-model="modelForm.supportsReasoning" type="checkbox">
-                <span>允许深度思考</span>
-              </label>
-              <label class="admin-check-item admin-check-item--switch">
-                <input v-model="modelForm.enableThinkingParam" type="checkbox">
-                <span>传递思考参数</span>
-              </label>
-            </div>
-            <div class="admin-form__hint">细粒度的「联网 / 思考」字段配置请到「能力配置」页签</div>
-          </div>
-
-          <div class="admin-form__field admin-form__field--full">
             <label class="admin-form__label" for="model-default-params">默认参数 JSON</label>
             <textarea id="model-default-params" v-model="modelForm.defaultParamsJsonText" class="admin-textarea" placeholder='例如 {"temperature": 0.7}'></textarea>
+            <div class="admin-form__hint">透传到上游的兜底参数；与「能力配置」字段冲突时，能力配置优先</div>
           </div>
         </div>
 
@@ -649,8 +635,6 @@ const modelForm = reactive({
   billingTokens: 1000,
   membershipLevelsText: '',
   maxContext: 3,
-  supportsReasoning: false,
-  enableThinkingParam: false,
   isDefault: false,
 })
 
@@ -792,8 +776,6 @@ const resetModelForm = () => {
   modelForm.billingTokens = 1000
   modelForm.membershipLevelsText = ''
   modelForm.maxContext = 3
-  modelForm.supportsReasoning = false
-  modelForm.enableThinkingParam = false
   modelForm.isDefault = false
 }
 
@@ -819,8 +801,6 @@ const applyModelForm = (model: AdminProviderModelItem) => {
     ? defaultParamsJson.membershipLevels.join(', ')
     : ''
   modelForm.maxContext = Number(defaultParamsJson.maxContext || 3) || 3
-  modelForm.supportsReasoning = Boolean(capabilityJson.supportsReasoning)
-  modelForm.enableThinkingParam = Boolean(defaultParamsJson.enableThinkingParam)
   modelForm.isDefault = Boolean(defaultParamsJson.isDefault)
 }
 
@@ -1132,16 +1112,12 @@ const mergeModelDefaultParams = () => {
     },
     membershipLevels: normalizeMembershipLevels(modelForm.membershipLevelsText),
     maxContext: Number(modelForm.maxContext) || 3,
-    enableThinkingParam: Boolean(modelForm.enableThinkingParam),
     isDefault: Boolean(modelForm.isDefault),
   }
 }
 
 const buildModelPayload = (): AdminProviderModelPayload => {
-  const capabilityJson = {
-    ...(modelForm.capabilityJson || {}),
-    supportsReasoning: Boolean(modelForm.supportsReasoning || modelForm.capabilityJson.supportsReasoning),
-  }
+  const capabilityJson = { ...(modelForm.capabilityJson || {}) }
 
   return {
     category: modelForm.category,

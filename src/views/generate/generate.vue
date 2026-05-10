@@ -77,6 +77,12 @@ interface GeneratingRecord {
   feature: string
   skill: string
   content: string
+  /** 模型的思考过程（reasoning_content / thinking block）。从 record.metaJson.thinkingContent 回填。 */
+  thinkingContent?: string
+  /** 思考开始时间戳（毫秒）。用于 UI 计算"已思考 N 秒"。 */
+  thinkingStartedAt?: number
+  /** 思考结束时间戳（毫秒）。完成态时设置，用于 UI 显示固定耗时。 */
+  thinkingEndedAt?: number
   images: string[]
   done: boolean
   stopped?: boolean
@@ -775,6 +781,15 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   record.sessionTitle = saved.sessionTitle || record.sessionTitle || ''
   record.source = saved.source || record.source || 'generate'
   record.content = saved.content || record.content
+  if (typeof saved.thinkingContent === 'string' && saved.thinkingContent) {
+    record.thinkingContent = saved.thinkingContent
+    if (!record.thinkingStartedAt) {
+      record.thinkingStartedAt = Date.now()
+    }
+    if (saved.done && !record.thinkingEndedAt) {
+      record.thinkingEndedAt = Date.now()
+    }
+  }
   record.error = saved.done || saved.stopped ? saved.error : ''
   record.done = saved.done
   record.stopped = Boolean(saved.stopped)
@@ -932,6 +947,20 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     targetRecord.progressMessage = resolveTaskStageLabel(event.stage, '内容生成中')
   }
 
+  if (event.type === 'thinking_delta') {
+    targetRecord.error = ''
+    if (typeof event.thinkingContent === 'string') {
+      targetRecord.thinkingContent = event.thinkingContent
+    } else if (typeof event.thinkingDelta === 'string') {
+      targetRecord.thinkingContent = (targetRecord.thinkingContent || '') + event.thinkingDelta
+    }
+    if (!targetRecord.thinkingStartedAt) {
+      targetRecord.thinkingStartedAt = Date.now()
+    }
+    targetRecord.progressStage = event.stage || targetRecord.progressStage || 'receiving_upstream_thinking'
+    targetRecord.progressMessage = resolveTaskStageLabel(event.stage, '模型正在深度思考')
+  }
+
   if (event.type === 'agent_event' && targetRecord.agentRun && event.agentEvent) {
     targetRecord.error = ''
     if (!event.record) {
@@ -962,6 +991,9 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     targetRecord.progressStage = 'completed'
     targetRecord.progressMessage = resolveTaskStageLabel('completed', event.message || '图片生成完成')
     targetRecord.progressPercent = 100
+    if (targetRecord.thinkingStartedAt && !targetRecord.thinkingEndedAt) {
+      targetRecord.thinkingEndedAt = Date.now()
+    }
     if (isImageTaskRecord) {
       stageConversationChanged = upsertRecordStageConversation(
           targetRecord,
@@ -1548,6 +1580,9 @@ onUnmounted(() => {
                     :done="record.done"
                     :reference-images="record.referenceImages || []"
                     :error="record.error ? formatGenerationError(record.error, '对话生成失败') : ''"
+                    :thinking-content="record.thinkingContent || ''"
+                    :thinking-started-at="record.thinkingStartedAt"
+                    :thinking-ended-at="record.thinkingEndedAt"
                 />
                 <ImageLoadingRecord
                     v-else

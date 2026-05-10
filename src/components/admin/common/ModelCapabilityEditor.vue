@@ -5,11 +5,12 @@
 // 设计原则：
 // - 仅负责 webSearch / reasoning 两段（与现有 supportsVision 等 flat flag 共存于同一 capabilityJson）
 // - 对外通过 v-model 直接绑定整段 capabilityJson；内部按字段拆分
-// - requestValue / option.value 是任意 JSON 值，用文本框配合 JSON 校验，避免限制结构
-// - 校验失败时不写回父级，保留旧值并显示错误提示
+// - 启用注入策略选择器（set / append / merge-object / custom），覆盖单字段、tools 数组、嵌套对象、命名 handler 场景
+// - 注入值用文本框配合 JSON 校验，校验失败时不写回父级，保留旧值并显示错误提示
 
 import { computed, reactive, watch } from 'vue'
 import type {
+  CapabilityInjection,
   ReasoningCapabilityOption,
   ReasoningCapabilitySpec,
   WebSearchCapabilitySpec,
@@ -26,13 +27,44 @@ const emit = defineEmits<{
   'update:modelValue': [value: Record<string, any>]
 }>()
 
-// 容错读取嵌套对象
+// ----------------------------------------------------------------------------
+// 注入草稿 + 厂商模板可表达的注入种类（multi 由模板内部组合，UI 不展开）
+// ----------------------------------------------------------------------------
+
+type InjectionFormType = 'set' | 'append' | 'merge-object' | 'custom'
+
+interface InjectionDraft {
+  type: InjectionFormType
+  field: string
+  valueText: string
+  handlerName: string
+  configText: string
+}
+
+const INJECTION_TYPE_OPTIONS: Array<{ value: InjectionFormType; label: string; hint: string }> = [
+  { value: 'set', label: '单字段覆盖', hint: 'requestBody[字段] = 值' },
+  { value: 'append', label: '数组追加', hint: 'tools 等数组场景' },
+  { value: 'merge-object', label: '对象合并', hint: '嵌套对象浅合并' },
+  { value: 'custom', label: '命名 handler', hint: '调用服务端注册的特殊逻辑' },
+]
+
+const createInjectionDraft = (): InjectionDraft => ({
+  type: 'set',
+  field: '',
+  valueText: '',
+  handlerName: '',
+  configText: '',
+})
+
+// ----------------------------------------------------------------------------
+// 工具
+// ----------------------------------------------------------------------------
+
 const readObject = (value: unknown): Record<string, any> | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   return value as Record<string, any>
 }
 
-// 通用 JSON 字符串化（用于把 unknown 值显示为可编辑文本）
 const stringifyJsonValue = (value: unknown) => {
   if (value === undefined) return ''
   try {
@@ -42,7 +74,6 @@ const stringifyJsonValue = (value: unknown) => {
   }
 }
 
-// 容错解析 JSON 文本，失败返回 { ok:false }
 const parseJsonText = (text: string): { ok: true; value: unknown } | { ok: false; error: string } => {
   const trimmed = String(text || '').trim()
   if (!trimmed) {
@@ -55,26 +86,116 @@ const parseJsonText = (text: string): { ok: true; value: unknown } | { ok: false
   }
 }
 
-// 表单中间态：所有可输入字段都用字符串承载，提交时再转回结构化值。
+/**
+ * 把 InjectionDraft 编译为 CapabilityInjection。
+ * - 返回 null 表示草稿未填或字段不全（视为"无注入"）。
+ * - 返回 { error } 表示 JSON 解析失败，调用方应阻断 emit 并展示错误。
+ */
+const compileInjection = (
+  draft: InjectionDraft,
+): { ok: true; injection: CapabilityInjection | null } | { ok: false; error: string } => {
+  if (draft.type === 'custom') {
+    if (!draft.handlerName.trim()) {
+      return { ok: true, injection: null }
+    }
+    const configParsed = parseJsonText(draft.configText)
+    if (!configParsed.ok) return { ok: false, error: configParsed.error }
+    const inj: CapabilityInjection = { type: 'custom', handler: draft.handlerName.trim() }
+    if (configParsed.value !== undefined) {
+      ;(inj as { config: unknown }).config = configParsed.value
+    }
+    return { ok: true, injection: inj }
+  }
+
+  // set / append / merge-object 都需要 field + value
+  if (!draft.field.trim() && !draft.valueText.trim()) {
+    return { ok: true, injection: null }
+  }
+
+  const valueParsed = parseJsonText(draft.valueText)
+  if (!valueParsed.ok) return { ok: false, error: valueParsed.error }
+  if (!draft.field.trim()) {
+    return { ok: false, error: '字段名不能为空' }
+  }
+
+  const field = draft.field.trim()
+  if (draft.type === 'set') {
+    return { ok: true, injection: { type: 'set', field, value: valueParsed.value } }
+  }
+  if (draft.type === 'append') {
+    if (!Array.isArray(valueParsed.value)) {
+      return { ok: false, error: '数组追加模式下值必须是 JSON 数组' }
+    }
+    return { ok: true, injection: { type: 'append', field, value: valueParsed.value } }
+  }
+  // merge-object
+  if (!valueParsed.value || typeof valueParsed.value !== 'object' || Array.isArray(valueParsed.value)) {
+    return { ok: false, error: '对象合并模式下值必须是 JSON 对象' }
+  }
+  return { ok: true, injection: { type: 'merge-object', field, value: valueParsed.value as Record<string, unknown> } }
+}
+
+/**
+ * 把已存在的 CapabilityInjection 反向回填为 InjectionDraft，便于编辑回显。
+ * multi 类型展平不可逆，UI 不直接编辑 multi（仅模板可生成）；这里把 multi 退化为 set 占位。
+ */
+const decompileInjection = (inj: CapabilityInjection | null | undefined): InjectionDraft => {
+  const draft = createInjectionDraft()
+  if (!inj || typeof inj !== 'object') return draft
+  switch (inj.type) {
+    case 'set':
+      draft.type = 'set'
+      draft.field = String(inj.field || '')
+      draft.valueText = stringifyJsonValue(inj.value)
+      return draft
+    case 'append':
+      draft.type = 'append'
+      draft.field = String(inj.field || '')
+      draft.valueText = stringifyJsonValue(inj.value)
+      return draft
+    case 'merge-object':
+      draft.type = 'merge-object'
+      draft.field = String(inj.field || '')
+      draft.valueText = stringifyJsonValue(inj.value)
+      return draft
+    case 'custom':
+      draft.type = 'custom'
+      draft.handlerName = String(inj.handler || '')
+      draft.configText = inj.config !== undefined ? stringifyJsonValue(inj.config) : ''
+      return draft
+    case 'multi':
+      // 退化：UI 不展开嵌套结构；保留原始 JSON 让运维通过其它入口编辑
+      draft.type = 'set'
+      draft.field = ''
+      draft.valueText = stringifyJsonValue(inj)
+      return draft
+    default:
+      return draft
+  }
+}
+
+// ----------------------------------------------------------------------------
+// 表单状态
+// ----------------------------------------------------------------------------
+
 interface OptionDraft {
   key: string
   label: string
-  valueText: string
-  billingMultiplierText: string
   description: string
+  billingMultiplierText: string
+  injection: InjectionDraft
 }
 
 interface CapabilityFormState {
   webSearchEnabled: boolean
-  webSearchRequestField: string
-  webSearchRequestValueText: string
-  webSearchDisabledValueText: string
+  webSearchEnabledInjection: InjectionDraft
+  webSearchUseDisabledInjection: boolean
+  webSearchDisabledInjection: InjectionDraft
   webSearchBillingMultiplierText: string
   webSearchLabel: string
   webSearchDescription: string
 
   reasoningEnabled: boolean
-  reasoningRequestField: string
   reasoningDefaultKey: string
   reasoningLabel: string
   reasoningDescription: string
@@ -83,15 +204,14 @@ interface CapabilityFormState {
 
 const formState = reactive<CapabilityFormState>({
   webSearchEnabled: false,
-  webSearchRequestField: '',
-  webSearchRequestValueText: '',
-  webSearchDisabledValueText: '',
+  webSearchEnabledInjection: createInjectionDraft(),
+  webSearchUseDisabledInjection: false,
+  webSearchDisabledInjection: createInjectionDraft(),
   webSearchBillingMultiplierText: '',
   webSearchLabel: '',
   webSearchDescription: '',
 
   reasoningEnabled: false,
-  reasoningRequestField: '',
   reasoningDefaultKey: '',
   reasoningLabel: '',
   reasoningDescription: '',
@@ -99,27 +219,38 @@ const formState = reactive<CapabilityFormState>({
 })
 
 const errors = reactive({
-  webSearchRequestValue: '',
-  webSearchDisabledValue: '',
-  optionValueErrors: {} as Record<number, string>,
+  webSearchEnabledInjection: '',
+  webSearchDisabledInjection: '',
+  optionInjectionErrors: {} as Record<number, string>,
 })
 
-// 初始化：从 props.modelValue 读取 webSearch / reasoning 段，回填到 form
+const createOptionDraft = (): OptionDraft => ({
+  key: '',
+  label: '',
+  description: '',
+  billingMultiplierText: '',
+  injection: createInjectionDraft(),
+})
+
+// ----------------------------------------------------------------------------
+// 初始化：从 props.modelValue 反向回填
+// ----------------------------------------------------------------------------
+
 const reloadFromModelValue = () => {
   const root = readObject(props.modelValue) || {}
   const webSearch = readObject(root.webSearch)
   const reasoning = readObject(root.reasoning)
 
   formState.webSearchEnabled = Boolean(webSearch?.supported)
-  formState.webSearchRequestField = String(webSearch?.requestField || '')
-  formState.webSearchRequestValueText = stringifyJsonValue(webSearch?.requestValue)
-  formState.webSearchDisabledValueText = webSearch?.disabledValue !== undefined ? stringifyJsonValue(webSearch.disabledValue) : ''
+  formState.webSearchEnabledInjection = decompileInjection(webSearch?.enabledInjection as CapabilityInjection | undefined)
+  const disabledInj = webSearch?.disabledInjection as CapabilityInjection | undefined
+  formState.webSearchUseDisabledInjection = Boolean(disabledInj)
+  formState.webSearchDisabledInjection = decompileInjection(disabledInj)
   formState.webSearchBillingMultiplierText = webSearch?.billingMultiplier !== undefined ? String(webSearch.billingMultiplier) : ''
   formState.webSearchLabel = String(webSearch?.label || '')
   formState.webSearchDescription = String(webSearch?.description || '')
 
   formState.reasoningEnabled = Boolean(reasoning?.supported)
-  formState.reasoningRequestField = String(reasoning?.requestField || '')
   formState.reasoningDefaultKey = String(reasoning?.defaultKey || '')
   formState.reasoningLabel = String(reasoning?.label || '')
   formState.reasoningDescription = String(reasoning?.description || '')
@@ -129,76 +260,93 @@ const reloadFromModelValue = () => {
     .map((item: any) => ({
       key: String(item.key || ''),
       label: String(item.label || ''),
-      valueText: stringifyJsonValue(item.value),
-      billingMultiplierText: item.billingMultiplier !== undefined ? String(item.billingMultiplier) : '',
       description: String(item.description || ''),
+      billingMultiplierText: item.billingMultiplier !== undefined ? String(item.billingMultiplier) : '',
+      injection: decompileInjection(item.injection as CapabilityInjection | undefined),
     }))
 
-  errors.webSearchRequestValue = ''
-  errors.webSearchDisabledValue = ''
-  errors.optionValueErrors = {}
+  errors.webSearchEnabledInjection = ''
+  errors.webSearchDisabledInjection = ''
+  errors.optionInjectionErrors = {}
 }
 
 watch(() => props.modelValue, reloadFromModelValue, { immediate: true, deep: true })
 
-// 把 form 拼装成 capabilityJson，并触发 emit；any JSON 解析错误期间保留父级原值。
+// ----------------------------------------------------------------------------
+// 提交：把 form 拼装成 capabilityJson 并触发 emit
+// 任意 JSON 解析失败时阻断 emit，保留父级原值
+// ----------------------------------------------------------------------------
+
 const emitUpdate = () => {
   const baseRoot = { ...(readObject(props.modelValue) || {}) }
-  // webSearch 段
+
+  // ----- webSearch 段 -----
   let nextWebSearch: WebSearchCapabilitySpec | undefined
-  if (formState.webSearchEnabled || formState.webSearchRequestField || formState.webSearchRequestValueText) {
-    const requestValueParsed = parseJsonText(formState.webSearchRequestValueText)
-    if (!requestValueParsed.ok) {
-      errors.webSearchRequestValue = requestValueParsed.error
+  const hasWebSearchInput = formState.webSearchEnabled
+    || formState.webSearchEnabledInjection.field
+    || formState.webSearchEnabledInjection.valueText
+    || formState.webSearchEnabledInjection.handlerName
+  if (hasWebSearchInput) {
+    const enabledCompiled = compileInjection(formState.webSearchEnabledInjection)
+    if (!enabledCompiled.ok) {
+      errors.webSearchEnabledInjection = enabledCompiled.error
       return
     }
-    errors.webSearchRequestValue = ''
+    errors.webSearchEnabledInjection = ''
 
-    const disabledValueParsed = parseJsonText(formState.webSearchDisabledValueText)
-    if (!disabledValueParsed.ok) {
-      errors.webSearchDisabledValue = disabledValueParsed.error
-      return
+    let disabledInjection: CapabilityInjection | null = null
+    if (formState.webSearchUseDisabledInjection) {
+      const disabledCompiled = compileInjection(formState.webSearchDisabledInjection)
+      if (!disabledCompiled.ok) {
+        errors.webSearchDisabledInjection = disabledCompiled.error
+        return
+      }
+      errors.webSearchDisabledInjection = ''
+      disabledInjection = disabledCompiled.injection
+    } else {
+      errors.webSearchDisabledInjection = ''
     }
-    errors.webSearchDisabledValue = ''
 
-    nextWebSearch = {
-      supported: Boolean(formState.webSearchEnabled),
-      requestField: formState.webSearchRequestField.trim(),
-      requestValue: requestValueParsed.value === undefined ? {} : requestValueParsed.value,
+    if (enabledCompiled.injection) {
+      nextWebSearch = {
+        supported: Boolean(formState.webSearchEnabled),
+        enabledInjection: enabledCompiled.injection,
+      }
+      if (disabledInjection) nextWebSearch.disabledInjection = disabledInjection
+      const billingMultiplier = Number(formState.webSearchBillingMultiplierText)
+      if (Number.isFinite(billingMultiplier) && billingMultiplier > 0) {
+        nextWebSearch.billingMultiplier = billingMultiplier
+      }
+      if (formState.webSearchLabel.trim()) nextWebSearch.label = formState.webSearchLabel.trim()
+      if (formState.webSearchDescription.trim()) nextWebSearch.description = formState.webSearchDescription.trim()
     }
-    if (disabledValueParsed.value !== undefined) {
-      nextWebSearch.disabledValue = disabledValueParsed.value
-    }
-    const billingMultiplier = Number(formState.webSearchBillingMultiplierText)
-    if (Number.isFinite(billingMultiplier) && billingMultiplier > 0) {
-      nextWebSearch.billingMultiplier = billingMultiplier
-    }
-    if (formState.webSearchLabel.trim()) nextWebSearch.label = formState.webSearchLabel.trim()
-    if (formState.webSearchDescription.trim()) nextWebSearch.description = formState.webSearchDescription.trim()
   }
 
-  // reasoning 段
+  // ----- reasoning 段 -----
   let nextReasoning: ReasoningCapabilitySpec | undefined
   const optionDrafts = formState.reasoningOptions
   const hasAnyOptionInput = optionDrafts.some(item => (
-    item.key.trim() || item.label.trim() || item.valueText.trim()
+    item.key.trim() || item.label.trim() || item.injection.field || item.injection.valueText || item.injection.handlerName
   ))
-  if (formState.reasoningEnabled || formState.reasoningRequestField || hasAnyOptionInput) {
+  if (formState.reasoningEnabled || hasAnyOptionInput) {
     const optionList: ReasoningCapabilityOption[] = []
     let optionParseFailed = false
     optionDrafts.forEach((item, index) => {
-      const valueParsed = parseJsonText(item.valueText)
-      if (!valueParsed.ok) {
-        errors.optionValueErrors[index] = valueParsed.error
+      const compiled = compileInjection(item.injection)
+      if (!compiled.ok) {
+        errors.optionInjectionErrors[index] = compiled.error
         optionParseFailed = true
         return
       }
-      delete errors.optionValueErrors[index]
+      delete errors.optionInjectionErrors[index]
+
+      // 没有有效注入则跳过该选项
+      if (!compiled.injection) return
 
       const next: ReasoningCapabilityOption = {
         key: item.key.trim(),
         label: item.label.trim(),
-        value: valueParsed.value === undefined ? null : valueParsed.value,
+        injection: compiled.injection,
       }
       const optionMultiplier = Number(item.billingMultiplierText)
       if (Number.isFinite(optionMultiplier) && optionMultiplier > 0) {
@@ -207,13 +355,10 @@ const emitUpdate = () => {
       if (item.description.trim()) next.description = item.description.trim()
       optionList.push(next)
     })
-    if (optionParseFailed) {
-      return
-    }
+    if (optionParseFailed) return
 
     nextReasoning = {
       supported: Boolean(formState.reasoningEnabled),
-      requestField: formState.reasoningRequestField.trim(),
       options: optionList,
     }
     if (formState.reasoningDefaultKey.trim()) nextReasoning.defaultKey = formState.reasoningDefaultKey.trim()
@@ -221,7 +366,6 @@ const emitUpdate = () => {
     if (formState.reasoningDescription.trim()) nextReasoning.description = formState.reasoningDescription.trim()
   }
 
-  // 写回根对象。webSearch / reasoning 段有空白时清空对应键，避免脏数据残留。
   if (nextWebSearch) {
     baseRoot.webSearch = nextWebSearch
   } else {
@@ -236,43 +380,45 @@ const emitUpdate = () => {
   emit('update:modelValue', baseRoot)
 }
 
-// 任意字段变化都触发 emit；JSON 校验错误时跳过，保留父级原值
-const triggerEmitUpdate = () => emitUpdate()
+watch(formState, () => emitUpdate(), { deep: true })
 
-// 自动应用：watch 整个 formState
-watch(formState, triggerEmitUpdate, { deep: true })
-
+// ----------------------------------------------------------------------------
 // 选项操作
+// ----------------------------------------------------------------------------
+
 const addReasoningOption = () => {
-  formState.reasoningOptions.push({
-    key: '',
-    label: '',
-    valueText: '',
-    billingMultiplierText: '',
-    description: '',
-  })
+  formState.reasoningOptions.push(createOptionDraft())
 }
 
 const removeReasoningOption = (index: number) => {
   formState.reasoningOptions.splice(index, 1)
-  delete errors.optionValueErrors[index]
+  delete errors.optionInjectionErrors[index]
 }
 
-// 模板按钮：一键填充常见厂商的字段
-const presetSamples = [
+// ----------------------------------------------------------------------------
+// 厂商模板
+// ----------------------------------------------------------------------------
+
+const draftFromInjection = (inj: CapabilityInjection): InjectionDraft => decompileInjection(inj)
+
+const presetSamples: Array<{ name: string; apply: () => void }> = [
   {
     name: 'OpenAI 系列',
     apply: () => {
       formState.webSearchEnabled = true
-      formState.webSearchRequestField = 'web_search_options'
-      formState.webSearchRequestValueText = '{}'
+      formState.webSearchEnabledInjection = draftFromInjection({
+        type: 'set',
+        field: 'web_search_options',
+        value: {},
+      })
+      formState.webSearchUseDisabledInjection = false
+      formState.webSearchDisabledInjection = createInjectionDraft()
       formState.webSearchBillingMultiplierText = '1.5'
       formState.reasoningEnabled = true
-      formState.reasoningRequestField = 'reasoning_effort'
       formState.reasoningOptions = [
-        { key: 'low', label: '低', valueText: '"low"', billingMultiplierText: '1.5', description: '' },
-        { key: 'medium', label: '中', valueText: '"medium"', billingMultiplierText: '2', description: '' },
-        { key: 'high', label: '高', valueText: '"high"', billingMultiplierText: '3', description: '' },
+        { key: 'low', label: '低', description: '', billingMultiplierText: '1.5', injection: draftFromInjection({ type: 'set', field: 'reasoning_effort', value: 'low' }) },
+        { key: 'medium', label: '中', description: '', billingMultiplierText: '2', injection: draftFromInjection({ type: 'set', field: 'reasoning_effort', value: 'medium' }) },
+        { key: 'high', label: '高', description: '', billingMultiplierText: '3', injection: draftFromInjection({ type: 'set', field: 'reasoning_effort', value: 'high' }) },
       ]
       formState.reasoningDefaultKey = 'medium'
     },
@@ -281,14 +427,13 @@ const presetSamples = [
     name: '阿里通义 / DashScope',
     apply: () => {
       formState.webSearchEnabled = true
-      formState.webSearchRequestField = 'enable_search'
-      formState.webSearchRequestValueText = 'true'
-      formState.webSearchDisabledValueText = 'false'
+      formState.webSearchEnabledInjection = draftFromInjection({ type: 'set', field: 'enable_search', value: true })
+      formState.webSearchUseDisabledInjection = true
+      formState.webSearchDisabledInjection = draftFromInjection({ type: 'set', field: 'enable_search', value: false })
       formState.webSearchBillingMultiplierText = '1.3'
       formState.reasoningEnabled = true
-      formState.reasoningRequestField = 'enable_thinking'
       formState.reasoningOptions = [
-        { key: 'on', label: '开启', valueText: 'true', billingMultiplierText: '2', description: '' },
+        { key: 'on', label: '开启', description: '', billingMultiplierText: '2', injection: draftFromInjection({ type: 'set', field: 'enable_thinking', value: true }) },
       ]
       formState.reasoningDefaultKey = ''
     },
@@ -296,16 +441,61 @@ const presetSamples = [
   {
     name: 'Anthropic Claude',
     apply: () => {
-      formState.webSearchEnabled = false
-      formState.webSearchRequestField = ''
-      formState.webSearchRequestValueText = ''
+      formState.webSearchEnabled = true
+      formState.webSearchEnabledInjection = draftFromInjection({
+        type: 'append',
+        field: 'tools',
+        value: [{ type: 'web_search_20250305', name: 'web_search' }],
+      })
+      formState.webSearchUseDisabledInjection = false
+      formState.webSearchDisabledInjection = createInjectionDraft()
+      formState.webSearchBillingMultiplierText = '1.5'
       formState.reasoningEnabled = true
-      formState.reasoningRequestField = 'thinking'
       formState.reasoningOptions = [
-        { key: 'standard', label: '标准', valueText: '{ "type": "enabled", "budget_tokens": 4096 }', billingMultiplierText: '2', description: '' },
-        { key: 'extended', label: '扩展', valueText: '{ "type": "enabled", "budget_tokens": 16000 }', billingMultiplierText: '3.5', description: '' },
+        { key: 'standard', label: '标准', description: '', billingMultiplierText: '2', injection: draftFromInjection({ type: 'set', field: 'thinking', value: { type: 'enabled', budget_tokens: 4096 } }) },
+        { key: 'extended', label: '扩展', description: '', billingMultiplierText: '3.5', injection: draftFromInjection({ type: 'set', field: 'thinking', value: { type: 'enabled', budget_tokens: 16000 } }) },
       ]
       formState.reasoningDefaultKey = 'standard'
+    },
+  },
+  {
+    name: 'Google Gemini',
+    apply: () => {
+      formState.webSearchEnabled = true
+      formState.webSearchEnabledInjection = draftFromInjection({
+        type: 'append',
+        field: 'tools',
+        value: [{ googleSearch: {} }],
+      })
+      formState.webSearchUseDisabledInjection = false
+      formState.webSearchDisabledInjection = createInjectionDraft()
+      formState.webSearchBillingMultiplierText = '1.3'
+      formState.reasoningEnabled = true
+      formState.reasoningOptions = [
+        { key: 'auto', label: '自动', description: '由模型自行决定思考预算', billingMultiplierText: '2', injection: draftFromInjection({ type: 'set', field: 'thinkingConfig', value: { thinkingBudget: -1 } }) },
+        { key: 'low', label: '低', description: '', billingMultiplierText: '1.5', injection: draftFromInjection({ type: 'set', field: 'thinkingConfig', value: { thinkingBudget: 1024 } }) },
+        { key: 'high', label: '高', description: '', billingMultiplierText: '3', injection: draftFromInjection({ type: 'set', field: 'thinkingConfig', value: { thinkingBudget: 16000 } }) },
+      ]
+      formState.reasoningDefaultKey = 'auto'
+    },
+  },
+  {
+    name: '智谱 GLM',
+    apply: () => {
+      formState.webSearchEnabled = true
+      formState.webSearchEnabledInjection = draftFromInjection({
+        type: 'append',
+        field: 'tools',
+        value: [{ type: 'web_search', web_search: { enable: true } }],
+      })
+      formState.webSearchUseDisabledInjection = false
+      formState.webSearchDisabledInjection = createInjectionDraft()
+      formState.webSearchBillingMultiplierText = '1.3'
+      formState.reasoningEnabled = true
+      formState.reasoningOptions = [
+        { key: 'on', label: '开启', description: '', billingMultiplierText: '2', injection: draftFromInjection({ type: 'set', field: 'thinking', value: { type: 'enabled' } }) },
+      ]
+      formState.reasoningDefaultKey = ''
     },
   },
 ]
@@ -316,9 +506,9 @@ const applyPreset = (preset: typeof presetSamples[number]) => {
 
 const clearWebSearch = () => {
   formState.webSearchEnabled = false
-  formState.webSearchRequestField = ''
-  formState.webSearchRequestValueText = ''
-  formState.webSearchDisabledValueText = ''
+  formState.webSearchEnabledInjection = createInjectionDraft()
+  formState.webSearchUseDisabledInjection = false
+  formState.webSearchDisabledInjection = createInjectionDraft()
   formState.webSearchBillingMultiplierText = ''
   formState.webSearchLabel = ''
   formState.webSearchDescription = ''
@@ -326,26 +516,39 @@ const clearWebSearch = () => {
 
 const clearReasoning = () => {
   formState.reasoningEnabled = false
-  formState.reasoningRequestField = ''
   formState.reasoningDefaultKey = ''
   formState.reasoningLabel = ''
   formState.reasoningDescription = ''
   formState.reasoningOptions = []
-  errors.optionValueErrors = {}
+  errors.optionInjectionErrors = {}
 }
 
+// ----------------------------------------------------------------------------
 // 视图辅助
+// ----------------------------------------------------------------------------
+
 const hasWebSearchInput = computed(() => (
   formState.webSearchEnabled
-  || formState.webSearchRequestField
-  || formState.webSearchRequestValueText
+  || formState.webSearchEnabledInjection.field
+  || formState.webSearchEnabledInjection.valueText
+  || formState.webSearchEnabledInjection.handlerName
 ))
 
 const hasReasoningInput = computed(() => (
   formState.reasoningEnabled
-  || formState.reasoningRequestField
   || formState.reasoningOptions.length > 0
 ))
+
+const isCustomType = (type: InjectionFormType) => type === 'custom'
+
+const valuePlaceholder = (type: InjectionFormType) => {
+  switch (type) {
+    case 'set': return '例如 {} / true / "high"'
+    case 'append': return '例如 [{ "googleSearch": {} }]'
+    case 'merge-object': return '例如 { "thinkingBudget": 1024 }'
+    case 'custom': return ''
+  }
+}
 </script>
 
 <template>
@@ -376,36 +579,89 @@ const hasReasoningInput = computed(() => (
         </button>
       </legend>
 
+      <div class="capability-editor__subsection">
+        <div class="capability-editor__subsection-title">启用时的注入</div>
+        <div class="admin-form__grid">
+          <div class="admin-form__field">
+            <label class="admin-form__label">注入模式</label>
+            <select v-model="formState.webSearchEnabledInjection.type" class="admin-input">
+              <option v-for="opt in INJECTION_TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+            <div class="admin-form__hint">{{ INJECTION_TYPE_OPTIONS.find(o => o.value === formState.webSearchEnabledInjection.type)?.hint }}</div>
+          </div>
+
+          <template v-if="!isCustomType(formState.webSearchEnabledInjection.type)">
+            <div class="admin-form__field">
+              <label class="admin-form__label">字段名 <span class="capability-editor__required">*</span></label>
+              <input v-model.trim="formState.webSearchEnabledInjection.field" class="admin-input" type="text" placeholder="如 web_search_options / tools / enable_search">
+            </div>
+            <div class="admin-form__field admin-form__field--full">
+              <label class="admin-form__label">字段值（JSON）<span class="capability-editor__required">*</span></label>
+              <textarea v-model="formState.webSearchEnabledInjection.valueText" class="admin-textarea capability-editor__json" rows="3" :placeholder="valuePlaceholder(formState.webSearchEnabledInjection.type)"></textarea>
+              <div v-if="errors.webSearchEnabledInjection" class="admin-form__hint admin-form__hint--error">{{ errors.webSearchEnabledInjection }}</div>
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="admin-form__field">
+              <label class="admin-form__label">handler 名 <span class="capability-editor__required">*</span></label>
+              <input v-model.trim="formState.webSearchEnabledInjection.handlerName" class="admin-input" type="text" placeholder="服务端已注册的 handler">
+            </div>
+            <div class="admin-form__field admin-form__field--full">
+              <label class="admin-form__label">配置（JSON，可选）</label>
+              <textarea v-model="formState.webSearchEnabledInjection.configText" class="admin-textarea capability-editor__json" rows="2" placeholder="透传给 handler 的参数"></textarea>
+              <div v-if="errors.webSearchEnabledInjection" class="admin-form__hint admin-form__hint--error">{{ errors.webSearchEnabledInjection }}</div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div class="capability-editor__subsection">
+        <label class="admin-check-item admin-check-item--switch capability-editor__subsection-title">
+          <input v-model="formState.webSearchUseDisabledInjection" type="checkbox">
+          <span>禁用时也注入（部分厂商需要显式 false）</span>
+        </label>
+        <div v-if="formState.webSearchUseDisabledInjection" class="admin-form__grid">
+          <div class="admin-form__field">
+            <label class="admin-form__label">注入模式</label>
+            <select v-model="formState.webSearchDisabledInjection.type" class="admin-input">
+              <option v-for="opt in INJECTION_TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+          </div>
+          <template v-if="!isCustomType(formState.webSearchDisabledInjection.type)">
+            <div class="admin-form__field">
+              <label class="admin-form__label">字段名</label>
+              <input v-model.trim="formState.webSearchDisabledInjection.field" class="admin-input" type="text">
+            </div>
+            <div class="admin-form__field admin-form__field--full">
+              <label class="admin-form__label">字段值（JSON）</label>
+              <textarea v-model="formState.webSearchDisabledInjection.valueText" class="admin-textarea capability-editor__json" rows="2" :placeholder="valuePlaceholder(formState.webSearchDisabledInjection.type)"></textarea>
+              <div v-if="errors.webSearchDisabledInjection" class="admin-form__hint admin-form__hint--error">{{ errors.webSearchDisabledInjection }}</div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="admin-form__field">
+              <label class="admin-form__label">handler 名</label>
+              <input v-model.trim="formState.webSearchDisabledInjection.handlerName" class="admin-input" type="text">
+            </div>
+            <div class="admin-form__field admin-form__field--full">
+              <label class="admin-form__label">配置（JSON，可选）</label>
+              <textarea v-model="formState.webSearchDisabledInjection.configText" class="admin-textarea capability-editor__json" rows="2"></textarea>
+              <div v-if="errors.webSearchDisabledInjection" class="admin-form__hint admin-form__hint--error">{{ errors.webSearchDisabledInjection }}</div>
+            </div>
+          </template>
+        </div>
+      </div>
+
       <div class="admin-form__grid">
-        <div class="admin-form__field admin-form__field--full">
-          <label class="admin-form__label">上游字段名 <span class="capability-editor__required">*</span></label>
-          <input v-model.trim="formState.webSearchRequestField" class="admin-input" type="text" placeholder="如 web_search_options / enable_search">
-          <div class="admin-form__hint">不同厂商字段名不同：OpenAI 用 web_search_options；阿里用 enable_search。</div>
-        </div>
-
-        <div class="admin-form__field admin-form__field--full">
-          <label class="admin-form__label">启用时字段值（JSON）</label>
-          <textarea v-model="formState.webSearchRequestValueText" class="admin-textarea capability-editor__json" rows="3" placeholder='例如 {} / true / { "search_context_size": "medium" }'></textarea>
-          <div v-if="errors.webSearchRequestValue" class="admin-form__hint admin-form__hint--error">JSON 解析失败：{{ errors.webSearchRequestValue }}</div>
-        </div>
-
-        <div class="admin-form__field admin-form__field--full">
-          <label class="admin-form__label">关闭时字段值（JSON，可选）</label>
-          <textarea v-model="formState.webSearchDisabledValueText" class="admin-textarea capability-editor__json" rows="2" placeholder="部分厂商需要显式发 false"></textarea>
-          <div v-if="errors.webSearchDisabledValue" class="admin-form__hint admin-form__hint--error">JSON 解析失败：{{ errors.webSearchDisabledValue }}</div>
-        </div>
-
         <div class="admin-form__field">
           <label class="admin-form__label">计费倍率</label>
           <input v-model.trim="formState.webSearchBillingMultiplierText" class="admin-input" type="number" min="0" step="0.1" placeholder="例如 1.5（默认 1）">
-          <div class="admin-form__hint">启用联网时按此倍率放大基础点数。</div>
         </div>
-
         <div class="admin-form__field">
           <label class="admin-form__label">UI 显示标签（可选）</label>
           <input v-model.trim="formState.webSearchLabel" class="admin-input" type="text" placeholder="默认 联网搜索">
         </div>
-
         <div class="admin-form__field admin-form__field--full">
           <label class="admin-form__label">描述（可选）</label>
           <input v-model.trim="formState.webSearchDescription" class="admin-input" type="text" placeholder="鼠标悬停时显示，可解释费用">
@@ -426,21 +682,14 @@ const hasReasoningInput = computed(() => (
       </legend>
 
       <div class="admin-form__grid">
-        <div class="admin-form__field admin-form__field--full">
-          <label class="admin-form__label">上游字段名 <span class="capability-editor__required">*</span></label>
-          <input v-model.trim="formState.reasoningRequestField" class="admin-input" type="text" placeholder="如 reasoning_effort / thinking / enable_thinking">
-        </div>
-
         <div class="admin-form__field">
           <label class="admin-form__label">默认选项 key（可选）</label>
           <input v-model.trim="formState.reasoningDefaultKey" class="admin-input" type="text" placeholder="如 medium">
         </div>
-
         <div class="admin-form__field">
           <label class="admin-form__label">UI 标签（可选）</label>
           <input v-model.trim="formState.reasoningLabel" class="admin-input" type="text" placeholder="默认 深度思考">
         </div>
-
         <div class="admin-form__field admin-form__field--full">
           <label class="admin-form__label">描述（可选）</label>
           <input v-model.trim="formState.reasoningDescription" class="admin-input" type="text" placeholder="解释思考能力的影响">
@@ -454,7 +703,7 @@ const hasReasoningInput = computed(() => (
         </div>
 
         <div v-if="!formState.reasoningOptions.length" class="capability-editor__empty">
-          至少添加一个选项才能让前端展示。仅有"开关"语义时也建议加一个选项（如 key=on / value=true）。
+          至少添加一个选项才能让前端展示。仅有"开关"语义时也建议加一个选项（如 key=on）。
         </div>
 
         <div v-for="(option, index) in formState.reasoningOptions" :key="index" class="capability-editor__option">
@@ -475,11 +724,34 @@ const hasReasoningInput = computed(() => (
               <label class="admin-form__label">计费倍率</label>
               <input v-model.trim="option.billingMultiplierText" class="admin-input" type="number" min="0" step="0.1" placeholder="如 1.5">
             </div>
-            <div class="admin-form__field admin-form__field--full">
-              <label class="admin-form__label">字段值（JSON）<span class="capability-editor__required">*</span></label>
-              <textarea v-model="option.valueText" class="admin-textarea capability-editor__json" rows="2" placeholder='例如 "high" / true / { "type": "enabled", "budget_tokens": 8192 }'></textarea>
-              <div v-if="errors.optionValueErrors[index]" class="admin-form__hint admin-form__hint--error">JSON 解析失败：{{ errors.optionValueErrors[index] }}</div>
+            <div class="admin-form__field">
+              <label class="admin-form__label">注入模式</label>
+              <select v-model="option.injection.type" class="admin-input">
+                <option v-for="opt in INJECTION_TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              </select>
             </div>
+            <template v-if="!isCustomType(option.injection.type)">
+              <div class="admin-form__field">
+                <label class="admin-form__label">字段名 <span class="capability-editor__required">*</span></label>
+                <input v-model.trim="option.injection.field" class="admin-input" type="text" placeholder="如 reasoning_effort / thinking">
+              </div>
+              <div class="admin-form__field admin-form__field--full">
+                <label class="admin-form__label">字段值（JSON）<span class="capability-editor__required">*</span></label>
+                <textarea v-model="option.injection.valueText" class="admin-textarea capability-editor__json" rows="2" :placeholder="valuePlaceholder(option.injection.type)"></textarea>
+                <div v-if="errors.optionInjectionErrors[index]" class="admin-form__hint admin-form__hint--error">{{ errors.optionInjectionErrors[index] }}</div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="admin-form__field">
+                <label class="admin-form__label">handler 名 <span class="capability-editor__required">*</span></label>
+                <input v-model.trim="option.injection.handlerName" class="admin-input" type="text" placeholder="服务端已注册的 handler">
+              </div>
+              <div class="admin-form__field admin-form__field--full">
+                <label class="admin-form__label">配置（JSON，可选）</label>
+                <textarea v-model="option.injection.configText" class="admin-textarea capability-editor__json" rows="2" placeholder="透传给 handler 的参数"></textarea>
+                <div v-if="errors.optionInjectionErrors[index]" class="admin-form__hint admin-form__hint--error">{{ errors.optionInjectionErrors[index] }}</div>
+              </div>
+            </template>
             <div class="admin-form__field admin-form__field--full">
               <label class="admin-form__label">描述（可选）</label>
               <input v-model.trim="option.description" class="admin-input" type="text" placeholder="选项副标题">
@@ -546,6 +818,21 @@ const hasReasoningInput = computed(() => (
   padding: 0 4px;
   font-size: 13px;
   color: var(--text-primary, #1f2937);
+}
+
+.capability-editor__subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-block-secondary-default, #f9fafb);
+  border-radius: 6px;
+}
+
+.capability-editor__subsection-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #4b5563);
 }
 
 .capability-editor__required {

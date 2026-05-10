@@ -56,16 +56,24 @@ export interface AgentChatTaskExecutorContext {
   extractChatTextFromNonStreamResponse: (response: Response) => Promise<string>
   parseChatChunkError: (chunk: string) => string
   parseChatChunkText: (chunk: string) => string
+  parseChatChunkReasoning: (chunk: string) => string
   extractChatTextFromJsonPayload: (result: any) => string
+  extractChatReasoningFromJsonPayload: (result: any) => string
   emitTaskContentDeltaEvent: (recordId: string, input: {
     stage: string
     delta: string
     content: string
   }) => void
+  emitTaskThinkingDeltaEvent: (recordId: string, input: {
+    stage: string
+    thinkingDelta: string
+    thinkingContent: string
+  }) => void
   persistAgentTaskContentIfNeeded: (input: {
     task: AgentChatExecutionTask
     payload: GenerationTaskStartPayload
     content: string
+    thinkingContent?: string
     force?: boolean
   }, state: PersistState) => Promise<void>
   buildInitialRecordPayload: (payload: GenerationTaskStartPayload) => GenerationRecordPayload
@@ -210,6 +218,7 @@ export const executeAgentChatTaskFlow = async (
   const decoder = new TextDecoder()
   let buffer = ''
   let fullContent = ''
+  let fullThinking = ''
   let rawResponseText = ''
   let hasSseDelta = false
   let streamErrorMessage = ''
@@ -251,6 +260,25 @@ export const executeAgentChatTaskFlow = async (
       }
 
       try {
+        // 同一 chunk 可能同时包含思考与正式内容（罕见但合法），因此分别抽取后各自 emit
+        const thinkingDelta = context.parseChatChunkReasoning(chunk)
+        if (thinkingDelta) {
+          hasSseDelta = true
+          fullThinking += thinkingDelta
+          context.emitTaskThinkingDeltaEvent(task.recordId, {
+            stage: 'receiving_upstream_thinking',
+            thinkingDelta,
+            thinkingContent: fullThinking,
+          })
+          // 思考内容随主流程节流持久化（避免长思考过程刷库）
+          await context.persistAgentTaskContentIfNeeded({
+            task,
+            payload,
+            content: fullContent,
+            thinkingContent: fullThinking,
+          }, persistState)
+        }
+
         const delta = context.parseChatChunkText(chunk)
         if (!delta) continue
 
@@ -265,6 +293,7 @@ export const executeAgentChatTaskFlow = async (
           task,
           payload,
           content: fullContent,
+          thinkingContent: fullThinking,
         }, persistState)
       } catch {
         // 跳过无效 SSE 数据块，继续处理后续消息。
@@ -340,6 +369,7 @@ export const executeAgentChatTaskFlow = async (
   await context.updateGenerationRecord(task.recordId, {
     ...context.buildInitialRecordPayload(payload),
     content: fullContent,
+    thinkingContent: fullThinking,
     done: true,
     stopped: false,
   }, task.userId)

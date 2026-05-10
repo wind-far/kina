@@ -12,6 +12,8 @@ export interface PersistedGenerationRecord {
   type: CreationType
   prompt: string
   content: string
+  /** 模型的思考过程（reasoning_content / thinking block）。可能为空字符串。 */
+  thinkingContent?: string
   error: string
   model: string
   modelKey: string

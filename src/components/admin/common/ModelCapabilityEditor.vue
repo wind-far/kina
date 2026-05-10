@@ -196,6 +196,8 @@ interface CapabilityFormState {
   webSearchDescription: string
 
   reasoningEnabled: boolean
+  reasoningUseDisabledInjection: boolean
+  reasoningDisabledInjection: InjectionDraft
   reasoningDefaultKey: string
   reasoningLabel: string
   reasoningDescription: string
@@ -212,6 +214,8 @@ const formState = reactive<CapabilityFormState>({
   webSearchDescription: '',
 
   reasoningEnabled: false,
+  reasoningUseDisabledInjection: false,
+  reasoningDisabledInjection: createInjectionDraft(),
   reasoningDefaultKey: '',
   reasoningLabel: '',
   reasoningDescription: '',
@@ -221,6 +225,7 @@ const formState = reactive<CapabilityFormState>({
 const errors = reactive({
   webSearchEnabledInjection: '',
   webSearchDisabledInjection: '',
+  reasoningDisabledInjection: '',
   optionInjectionErrors: {} as Record<number, string>,
 })
 
@@ -251,6 +256,9 @@ const reloadFromModelValue = () => {
   formState.webSearchDescription = String(webSearch?.description || '')
 
   formState.reasoningEnabled = Boolean(reasoning?.supported)
+  const reasoningDisabledInj = reasoning?.disabledInjection as CapabilityInjection | undefined
+  formState.reasoningUseDisabledInjection = Boolean(reasoningDisabledInj)
+  formState.reasoningDisabledInjection = decompileInjection(reasoningDisabledInj)
   formState.reasoningDefaultKey = String(reasoning?.defaultKey || '')
   formState.reasoningLabel = String(reasoning?.label || '')
   formState.reasoningDescription = String(reasoning?.description || '')
@@ -267,6 +275,7 @@ const reloadFromModelValue = () => {
 
   errors.webSearchEnabledInjection = ''
   errors.webSearchDisabledInjection = ''
+  errors.reasoningDisabledInjection = ''
   errors.optionInjectionErrors = {}
 }
 
@@ -286,6 +295,13 @@ const emitUpdate = () => {
     || formState.webSearchEnabledInjection.field
     || formState.webSearchEnabledInjection.valueText
     || formState.webSearchEnabledInjection.handlerName
+    || formState.webSearchUseDisabledInjection
+    || formState.webSearchDisabledInjection.field
+    || formState.webSearchDisabledInjection.valueText
+    || formState.webSearchDisabledInjection.handlerName
+    || formState.webSearchBillingMultiplierText.trim()
+    || formState.webSearchLabel.trim()
+    || formState.webSearchDescription.trim()
   if (hasWebSearchInput) {
     const enabledCompiled = compileInjection(formState.webSearchEnabledInjection)
     if (!enabledCompiled.ok) {
@@ -299,6 +315,10 @@ const emitUpdate = () => {
       const disabledCompiled = compileInjection(formState.webSearchDisabledInjection)
       if (!disabledCompiled.ok) {
         errors.webSearchDisabledInjection = disabledCompiled.error
+        return
+      }
+      if (!disabledCompiled.injection) {
+        errors.webSearchDisabledInjection = '已开启“禁用时也注入”，请完整填写关闭注入配置'
         return
       }
       errors.webSearchDisabledInjection = ''
@@ -328,7 +348,16 @@ const emitUpdate = () => {
   const hasAnyOptionInput = optionDrafts.some(item => (
     item.key.trim() || item.label.trim() || item.injection.field || item.injection.valueText || item.injection.handlerName
   ))
-  if (formState.reasoningEnabled || hasAnyOptionInput) {
+  const hasReasoningInput = formState.reasoningEnabled
+    || formState.reasoningUseDisabledInjection
+    || formState.reasoningDisabledInjection.field
+    || formState.reasoningDisabledInjection.valueText
+    || formState.reasoningDisabledInjection.handlerName
+    || formState.reasoningDefaultKey.trim()
+    || formState.reasoningLabel.trim()
+    || formState.reasoningDescription.trim()
+    || hasAnyOptionInput
+  if (hasReasoningInput) {
     const optionList: ReasoningCapabilityOption[] = []
     let optionParseFailed = false
     optionDrafts.forEach((item, index) => {
@@ -360,6 +389,21 @@ const emitUpdate = () => {
     nextReasoning = {
       supported: Boolean(formState.reasoningEnabled),
       options: optionList,
+    }
+    if (formState.reasoningUseDisabledInjection) {
+      const disabledCompiled = compileInjection(formState.reasoningDisabledInjection)
+      if (!disabledCompiled.ok) {
+        errors.reasoningDisabledInjection = disabledCompiled.error
+        return
+      }
+      if (!disabledCompiled.injection) {
+        errors.reasoningDisabledInjection = '已开启“禁用时也注入”，请完整填写关闭注入配置'
+        return
+      }
+      errors.reasoningDisabledInjection = ''
+      nextReasoning.disabledInjection = disabledCompiled.injection
+    } else {
+      errors.reasoningDisabledInjection = ''
     }
     if (formState.reasoningDefaultKey.trim()) nextReasoning.defaultKey = formState.reasoningDefaultKey.trim()
     if (formState.reasoningLabel.trim()) nextReasoning.label = formState.reasoningLabel.trim()
@@ -401,6 +445,41 @@ const removeReasoningOption = (index: number) => {
 
 const draftFromInjection = (inj: CapabilityInjection): InjectionDraft => decompileInjection(inj)
 
+const buildReasoningDisabledInjectionDraft = (
+  options: OptionDraft[],
+): InjectionDraft => {
+  const firstDraft = options.find(item => item?.injection)?.injection
+  if (!firstDraft) {
+    return draftFromInjection({ type: 'set', field: 'enable_thinking', value: false })
+  }
+
+  const compiled = compileInjection(firstDraft)
+  if (!compiled.ok || !compiled.injection) {
+    return draftFromInjection({ type: 'set', field: 'enable_thinking', value: false })
+  }
+
+  if (compiled.injection.type === 'set') {
+    const field = String(compiled.injection.field || '').trim()
+    let value: unknown = false
+
+    if (compiled.injection.value === true) {
+      value = false
+    } else if (field === 'thinking') {
+      value = { type: 'disabled' }
+    } else if (field === 'thinkingConfig') {
+      value = { thinkingBudget: 0 }
+    } else if (field === 'reasoning_effort') {
+      value = ''
+    } else if (compiled.injection.value && typeof compiled.injection.value === 'object' && !Array.isArray(compiled.injection.value)) {
+      value = {}
+    }
+
+    return draftFromInjection({ type: 'set', field, value })
+  }
+
+  return draftFromInjection({ type: 'set', field: 'enable_thinking', value: false })
+}
+
 const presetSamples: Array<{ name: string; apply: () => void }> = [
   {
     name: 'OpenAI 系列',
@@ -415,6 +494,8 @@ const presetSamples: Array<{ name: string; apply: () => void }> = [
       formState.webSearchDisabledInjection = createInjectionDraft()
       formState.webSearchBillingMultiplierText = '1.5'
       formState.reasoningEnabled = true
+      formState.reasoningUseDisabledInjection = false
+      formState.reasoningDisabledInjection = createInjectionDraft()
       formState.reasoningOptions = [
         { key: 'low', label: '低', description: '', billingMultiplierText: '1.5', injection: draftFromInjection({ type: 'set', field: 'reasoning_effort', value: 'low' }) },
         { key: 'medium', label: '中', description: '', billingMultiplierText: '2', injection: draftFromInjection({ type: 'set', field: 'reasoning_effort', value: 'medium' }) },
@@ -432,9 +513,11 @@ const presetSamples: Array<{ name: string; apply: () => void }> = [
       formState.webSearchDisabledInjection = draftFromInjection({ type: 'set', field: 'enable_search', value: false })
       formState.webSearchBillingMultiplierText = '1.3'
       formState.reasoningEnabled = true
+      formState.reasoningUseDisabledInjection = true
       formState.reasoningOptions = [
         { key: 'on', label: '开启', description: '', billingMultiplierText: '2', injection: draftFromInjection({ type: 'set', field: 'enable_thinking', value: true }) },
       ]
+      formState.reasoningDisabledInjection = buildReasoningDisabledInjectionDraft(formState.reasoningOptions)
       formState.reasoningDefaultKey = ''
     },
   },
@@ -451,10 +534,12 @@ const presetSamples: Array<{ name: string; apply: () => void }> = [
       formState.webSearchDisabledInjection = createInjectionDraft()
       formState.webSearchBillingMultiplierText = '1.5'
       formState.reasoningEnabled = true
+      formState.reasoningUseDisabledInjection = true
       formState.reasoningOptions = [
         { key: 'standard', label: '标准', description: '', billingMultiplierText: '2', injection: draftFromInjection({ type: 'set', field: 'thinking', value: { type: 'enabled', budget_tokens: 4096 } }) },
         { key: 'extended', label: '扩展', description: '', billingMultiplierText: '3.5', injection: draftFromInjection({ type: 'set', field: 'thinking', value: { type: 'enabled', budget_tokens: 16000 } }) },
       ]
+      formState.reasoningDisabledInjection = buildReasoningDisabledInjectionDraft(formState.reasoningOptions)
       formState.reasoningDefaultKey = 'standard'
     },
   },
@@ -471,11 +556,13 @@ const presetSamples: Array<{ name: string; apply: () => void }> = [
       formState.webSearchDisabledInjection = createInjectionDraft()
       formState.webSearchBillingMultiplierText = '1.3'
       formState.reasoningEnabled = true
+      formState.reasoningUseDisabledInjection = true
       formState.reasoningOptions = [
         { key: 'auto', label: '自动', description: '由模型自行决定思考预算', billingMultiplierText: '2', injection: draftFromInjection({ type: 'set', field: 'thinkingConfig', value: { thinkingBudget: -1 } }) },
         { key: 'low', label: '低', description: '', billingMultiplierText: '1.5', injection: draftFromInjection({ type: 'set', field: 'thinkingConfig', value: { thinkingBudget: 1024 } }) },
         { key: 'high', label: '高', description: '', billingMultiplierText: '3', injection: draftFromInjection({ type: 'set', field: 'thinkingConfig', value: { thinkingBudget: 16000 } }) },
       ]
+      formState.reasoningDisabledInjection = buildReasoningDisabledInjectionDraft(formState.reasoningOptions)
       formState.reasoningDefaultKey = 'auto'
     },
   },
@@ -492,9 +579,11 @@ const presetSamples: Array<{ name: string; apply: () => void }> = [
       formState.webSearchDisabledInjection = createInjectionDraft()
       formState.webSearchBillingMultiplierText = '1.3'
       formState.reasoningEnabled = true
+      formState.reasoningUseDisabledInjection = true
       formState.reasoningOptions = [
         { key: 'on', label: '开启', description: '', billingMultiplierText: '2', injection: draftFromInjection({ type: 'set', field: 'thinking', value: { type: 'enabled' } }) },
       ]
+      formState.reasoningDisabledInjection = buildReasoningDisabledInjectionDraft(formState.reasoningOptions)
       formState.reasoningDefaultKey = ''
     },
   },
@@ -516,12 +605,27 @@ const clearWebSearch = () => {
 
 const clearReasoning = () => {
   formState.reasoningEnabled = false
+  formState.reasoningUseDisabledInjection = false
+  formState.reasoningDisabledInjection = createInjectionDraft()
   formState.reasoningDefaultKey = ''
   formState.reasoningLabel = ''
   formState.reasoningDescription = ''
   formState.reasoningOptions = []
+  errors.reasoningDisabledInjection = ''
   errors.optionInjectionErrors = {}
 }
+
+watch(
+  () => formState.reasoningUseDisabledInjection,
+  (enabled) => {
+    if (!enabled) return
+    const draft = formState.reasoningDisabledInjection
+    const hasAnyValue = draft.field.trim() || draft.valueText.trim() || draft.handlerName.trim() || draft.configText.trim()
+    if (!hasAnyValue) {
+      formState.reasoningDisabledInjection = buildReasoningDisabledInjectionDraft(formState.reasoningOptions)
+    }
+  },
+)
 
 // ----------------------------------------------------------------------------
 // 视图辅助
@@ -536,6 +640,7 @@ const hasWebSearchInput = computed(() => (
 
 const hasReasoningInput = computed(() => (
   formState.reasoningEnabled
+  || formState.reasoningUseDisabledInjection
   || formState.reasoningOptions.length > 0
 ))
 
@@ -693,6 +798,43 @@ const valuePlaceholder = (type: InjectionFormType) => {
         <div class="admin-form__field admin-form__field--full">
           <label class="admin-form__label">描述（可选）</label>
           <input v-model.trim="formState.reasoningDescription" class="admin-input" type="text" placeholder="解释思考能力的影响">
+        </div>
+      </div>
+
+      <div class="capability-editor__subsection">
+        <label class="admin-check-item admin-check-item--switch capability-editor__subsection-title">
+          <input v-model="formState.reasoningUseDisabledInjection" type="checkbox">
+          <span>禁用时也注入（需要显式关闭思考时开启）</span>
+        </label>
+        <div v-if="formState.reasoningUseDisabledInjection" class="admin-form__grid">
+          <div class="admin-form__field">
+            <label class="admin-form__label">注入模式</label>
+            <select v-model="formState.reasoningDisabledInjection.type" class="admin-input">
+              <option v-for="opt in INJECTION_TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+          </div>
+          <template v-if="!isCustomType(formState.reasoningDisabledInjection.type)">
+            <div class="admin-form__field">
+              <label class="admin-form__label">字段名</label>
+              <input v-model.trim="formState.reasoningDisabledInjection.field" class="admin-input" type="text" placeholder="如 enable_thinking / thinking">
+            </div>
+            <div class="admin-form__field admin-form__field--full">
+              <label class="admin-form__label">字段值（JSON）</label>
+              <textarea v-model="formState.reasoningDisabledInjection.valueText" class="admin-textarea capability-editor__json" rows="2" :placeholder="valuePlaceholder(formState.reasoningDisabledInjection.type)"></textarea>
+              <div v-if="errors.reasoningDisabledInjection" class="admin-form__hint admin-form__hint--error">{{ errors.reasoningDisabledInjection }}</div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="admin-form__field">
+              <label class="admin-form__label">handler 名</label>
+              <input v-model.trim="formState.reasoningDisabledInjection.handlerName" class="admin-input" type="text">
+            </div>
+            <div class="admin-form__field admin-form__field--full">
+              <label class="admin-form__label">配置（JSON，可选）</label>
+              <textarea v-model="formState.reasoningDisabledInjection.configText" class="admin-textarea capability-editor__json" rows="2"></textarea>
+              <div v-if="errors.reasoningDisabledInjection" class="admin-form__hint admin-form__hint--error">{{ errors.reasoningDisabledInjection }}</div>
+            </div>
+          </template>
         </div>
       </div>
 

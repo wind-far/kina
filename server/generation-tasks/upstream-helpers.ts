@@ -5,6 +5,11 @@ import { getUploadsDir } from '../storage/service'
 import { buildAgentChatMessages } from '../../src/shared/agent-skills-core'
 import { normalizeGenerationErrorMessage } from '../../src/shared/generation-error'
 import {
+  applyCapabilityFlags,
+  parseModelCapabilitySpec,
+  type ModelCapabilityFlags,
+} from '../../src/shared/provider-capability'
+import {
   buildImageEditRequestFormData,
   normalizeImageGenerationRequestBody,
 } from '../../src/shared/upstream-request-normalizer'
@@ -531,6 +536,7 @@ export const requestAgentWorkspaceModelPlan = async (input: {
   signal: AbortSignal
   providerId: string
   modelKey: string
+  capabilityFlags?: ModelCapabilityFlags | null
   skill: string
   skillLabel: string
   workspaceSkillKey: string
@@ -551,6 +557,9 @@ export const requestAgentWorkspaceModelPlan = async (input: {
   if (upstream.apiKey) {
     headers.set('Authorization', `Bearer ${upstream.apiKey}`)
   }
+
+  const capabilitySpec = parseModelCapabilitySpec(upstream.modelCapabilityJson)
+  const appliedCapability = applyCapabilityFlags(input.capabilityFlags || null, capabilitySpec)
 
   const messages = [
     ...buildAgentChatMessages(input.skill, input.prompt, input.referenceImages),
@@ -595,6 +604,7 @@ export const requestAgentWorkspaceModelPlan = async (input: {
       method: 'POST',
       headers,
       body: JSON.stringify({
+        ...appliedCapability.upstreamFields,
         model: input.modelKey,
         stream: false,
         messages,

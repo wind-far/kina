@@ -808,6 +808,8 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
   }
 }
 
+const shouldDisplayThinkingContent = (record: GeneratingRecord) => Boolean(record.capabilityFlags?.reasoning)
+
 
 // 将后端持久化后的正式资源地址回写到当前记录，避免重复提交 base64 或上游临时链接。
 const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGenerationRecord) => {
@@ -816,7 +818,7 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   record.sessionTitle = saved.sessionTitle || record.sessionTitle || ''
   record.source = saved.source || record.source || 'generate'
   record.content = saved.content || record.content
-  if (typeof saved.thinkingContent === 'string' && saved.thinkingContent) {
+  if (typeof saved.thinkingContent === 'string' && saved.thinkingContent && shouldDisplayThinkingContent(record)) {
     record.thinkingContent = saved.thinkingContent
     if (!record.thinkingStartedAt) {
       record.thinkingStartedAt = Date.now()
@@ -824,6 +826,10 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
     if (saved.done && !record.thinkingEndedAt) {
       record.thinkingEndedAt = Date.now()
     }
+  } else if (!shouldDisplayThinkingContent(record)) {
+    record.thinkingContent = ''
+    record.thinkingStartedAt = undefined
+    record.thinkingEndedAt = undefined
   }
   record.error = saved.done || saved.stopped ? saved.error : ''
   record.done = saved.done
@@ -983,6 +989,12 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
   }
 
   if (event.type === 'thinking_delta') {
+    if (!shouldDisplayThinkingContent(targetRecord)) {
+      targetRecord.thinkingContent = ''
+      targetRecord.thinkingStartedAt = undefined
+      targetRecord.thinkingEndedAt = undefined
+      return
+    }
     targetRecord.error = ''
     if (typeof event.thinkingContent === 'string') {
       targetRecord.thinkingContent = event.thinkingContent

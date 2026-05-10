@@ -1,6 +1,7 @@
 import type { GenerationTaskStartPayload } from './shared'
 import type { AgentWorkspaceEvent } from '../../src/shared/agent-workspace'
 import type { AgentRunState } from '../../src/types/agent'
+import { readCapabilityFlagsFromRequestBody } from '../../src/shared/provider-capability'
 
 type AgentWorkspaceExecutionTask = {
   recordId: string
@@ -375,10 +376,12 @@ export const executeAgentWorkspaceTaskFlow = async (
       })
 
       try {
+        const capabilityFlags = readCapabilityFlagsFromRequestBody(payload.requestBody)
         const modelPlan = await context.requestAgentWorkspaceModelPlan({
           signal: task.abortController.signal,
           providerId: plannerProviderId,
           modelKey: plannerModelKey,
+          capabilityFlags,
           skill,
           skillLabel,
           workspaceSkillKey,

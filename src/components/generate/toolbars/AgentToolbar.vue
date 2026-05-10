@@ -183,14 +183,17 @@ const reasoningSpec = computed(() => currentModelCapabilitySpec.value?.reasoning
 const webSearchEnabled = ref(false)
 const reasoningKey = ref('')
 
-// 当前能力开关的纯净视图，提供给父组件透传到 createGenerationTask。
+// 当前能力开关的显式视图，提供给父组件透传到 createGenerationTask。
+// 只要模型声明支持该能力，就始终发送当前状态：
+// - 联网搜索：true / false
+// - 深度思考：选中的 key；关闭时为空字符串
 const currentCapabilityFlags = computed<ModelCapabilityFlags>(() => {
   const flags: ModelCapabilityFlags = {}
-  if (webSearchSpec.value?.supported && webSearchEnabled.value) {
-    flags.webSearch = true
+  if (webSearchSpec.value?.supported) {
+    flags.webSearch = Boolean(webSearchEnabled.value)
   }
-  if (reasoningSpec.value?.supported && reasoningKey.value) {
-    flags.reasoning = reasoningKey.value
+  if (reasoningSpec.value?.supported) {
+    flags.reasoning = reasoningKey.value || ''
   }
   return flags
 })

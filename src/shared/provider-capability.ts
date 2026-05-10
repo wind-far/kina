@@ -107,6 +107,8 @@ export interface ReasoningCapabilitySpec {
   options: ReasoningCapabilityOption[]
   /** 默认选项 key（用户未主动选择时使用）。 */
   defaultKey?: string
+  /** 禁用时若需显式注入（如 enable_thinking: false），配置该字段。 */
+  disabledInjection?: CapabilityInjection
 }
 
 /**
@@ -293,6 +295,8 @@ export const applyCapabilityFlags = (
       if (typeof multiplier === 'number' && multiplier > 0) {
         billingMultiplier *= multiplier
       }
+    } else if (spec.reasoning.disabledInjection) {
+      upstreamFields = applyInjection(upstreamFields, spec.reasoning.disabledInjection)
     }
   }
 

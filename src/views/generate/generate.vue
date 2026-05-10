@@ -755,6 +755,7 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
     content: record.type === 'image'
         ? (record.content || (!record.done ? '[[queued]]任务已创建，等待服务端执行' : ''))
         : record.content,
+    thinkingContent: record.thinkingContent || '',
     images: record.images,
     done: record.done,
     stopped: Boolean(record.stopped),

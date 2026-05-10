@@ -1,5 +1,11 @@
 import type { GenerationTaskStartPayload, GenerationTaskStreamEvent } from './shared'
 import type { GenerationRecordPayload } from '../generation-records/shared'
+import {
+  applyCapabilityFlags,
+  CAPABILITY_FLAGS_REQUEST_FIELD,
+  parseModelCapabilitySpec,
+  readCapabilityFlagsFromRequestBody,
+} from '../../src/shared/provider-capability'
 
 type AgentChatExecutionTask = {
   recordId: string
@@ -31,6 +37,7 @@ export interface AgentChatTaskExecutorContext {
     baseUrl: string
     endpoint: string
     apiKey: string
+    modelCapabilityJson?: unknown
   }>
   emitTaskProgressEvent: (recordId: string, input: {
     stage: string
@@ -103,12 +110,30 @@ export const executeAgentChatTaskFlow = async (
     headers.set('Authorization', `Bearer ${upstream.apiKey}`)
   }
 
+  // 解析前端开关 + 模型能力声明，注入联网搜索/深度思考等扩展字段。
+  // 不支持的能力直接被忽略；__capabilities__ 仅作为前端→后端的传输容器，不应该发往上游。
+  const capabilityFlags = readCapabilityFlagsFromRequestBody(payload.requestBody)
+  const capabilitySpec = parseModelCapabilitySpec(upstream.modelCapabilityJson)
+  const appliedCapability = applyCapabilityFlags(capabilityFlags, capabilitySpec)
+
   const requestBody = {
     ...(payload.requestBody || {}),
+    ...appliedCapability.upstreamFields,
     model: modelKey,
     stream: true,
   }
   delete (requestBody as Record<string, unknown>).providerId
+  delete (requestBody as Record<string, unknown>)[CAPABILITY_FLAGS_REQUEST_FIELD]
+
+  if (Object.keys(appliedCapability.upstreamFields).length) {
+    context.logGenerationTask('agent_task:capabilities_applied', {
+      recordId: task.recordId,
+      userId: task.userId,
+      effectiveFlags: appliedCapability.effectiveFlags,
+      injectedFields: Object.keys(appliedCapability.upstreamFields),
+      billingMultiplier: appliedCapability.billingMultiplier,
+    })
+  }
 
   const upstreamUrl = `${upstream.baseUrl.replace(/\/+$/, '')}/${upstream.endpoint.replace(/^\/+/, '')}`
   context.logGenerationTask('agent_task:request_start', {

@@ -8,6 +8,7 @@ import ImageLoadingRecord from '../../components/generate/common/ImageLoadingRec
 import AgentLoadingRecord from '../../components/generate/common/AgentLoadingRecord.vue'
 import ImagePreview from '@/components/ImagePreview.vue'
 import { getAgentModel } from '@/api/agent'
+import { CAPABILITY_FLAGS_REQUEST_FIELD, type ModelCapabilityFlags } from '@/shared/provider-capability'
 import { getModelByName, loadPublicModelCatalog, resolveModelLabel, type ImageModel } from '@/config/models'
 import { buildAgentChatMessages, isAgentWorkspaceSkill, loadPublicSkillCatalog } from '@/config/agentSkills'
 import {
@@ -85,6 +86,8 @@ interface GeneratingRecord {
   error: string
   agentTaskId?: string
   agentRun?: AgentRunState
+  /** Agent 模式下当前选中的扩展能力开关，转发给 createGenerationTask 注入上游请求 */
+  capabilityFlags?: ModelCapabilityFlags
 }
 
 interface GeneratePreviewImageItem {
@@ -1154,7 +1157,7 @@ const syncSessionMetaFromRecord = (record: GeneratingRecord, saved: PersistedGen
 }
 
 // 处理发送事件
-const handleSend = async (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string, referenceImages?: string[] }) => {
+const handleSend = async (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string, referenceImages?: string[], capabilityFlags?: ModelCapabilityFlags }) => {
   if (!authStore.isLoggedIn.value) {
     openLoginModal('generate-send-guard')
     return
@@ -1182,6 +1185,7 @@ const handleSend = async (message: string, type: CreationType, options?: { model
     duration: options?.duration || '',
     feature: options?.feature || '',
     skill: options?.skill || 'general',
+    capabilityFlags: options?.capabilityFlags || undefined,
     content: type === 'image' ? '[[queued]]任务已创建，等待服务端执行' : '',
     images: [],
     done: false,
@@ -1239,6 +1243,9 @@ const startWorkspaceAgentTask = async (record: GeneratingRecord) => {
         model: currentModelKey,
         messages: buildAgentRequestMessages(record),
         stream: true,
+        ...(record.capabilityFlags && Object.keys(record.capabilityFlags).length
+          ? { [CAPABILITY_FLAGS_REQUEST_FIELD]: record.capabilityFlags }
+          : {}),
       },
     })
 
@@ -1276,6 +1283,9 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
         model: currentModelKey,
         messages: buildAgentRequestMessages(record),
         stream: true,
+        ...(record.capabilityFlags && Object.keys(record.capabilityFlags).length
+          ? { [CAPABILITY_FLAGS_REQUEST_FIELD]: record.capabilityFlags }
+          : {}),
       },
     })
 

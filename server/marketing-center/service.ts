@@ -2,6 +2,11 @@ import prisma from '../db/prisma'
 import { invalidateRedisCachePatterns, invalidateRedisCaches } from '../redis/cache-manager'
 import { getOrSetJsonCache } from '../redis/json-cache'
 import { redisKeys } from '../redis/keys'
+import {
+  applyCapabilityFlags,
+  type ModelCapabilityFlags,
+  type ModelCapabilitySpec,
+} from '../../src/shared/provider-capability'
 
 const MARKETING_CENTER_OVERVIEW_SCOPE = 'marketing-center-overview'
 const MARKETING_CENTER_GUEST_OVERVIEW_CACHE_KEY = redisKeys.cache(MARKETING_CENTER_OVERVIEW_SCOPE, 'guest')
@@ -236,10 +241,13 @@ const readModelBillingPower = (value: unknown) => {
 }
 
 // 读取后台模型配置中的积分消耗规则，统一给生成链路使用。
+// capabilityFlags 用于"联网搜索 / 深度思考"等扩展能力开关，按 capabilityJson 配置的
+// billingMultiplier 放大基础点数，让额外成本能反映在用户扣点上。
 export const resolveGenerationPointCost = async (input: {
   providerId: string
   modelKey: string
   endpointType: 'chat' | 'image' | 'video'
+  capabilityFlags?: ModelCapabilityFlags | null
 }) => {
   const providerId = String(input.providerId || '').trim()
   const modelKey = String(input.modelKey || '').trim()
@@ -264,6 +272,7 @@ export const resolveGenerationPointCost = async (input: {
       id: true,
       name: true,
       defaultParamsJson: true,
+      capabilityJson: true,
     },
   })
 
@@ -275,8 +284,20 @@ export const resolveGenerationPointCost = async (input: {
     }
   }
 
+  // 基础点数。
+  const basePointCost = readModelBillingPower(model.defaultParamsJson)
+
+  // 应用能力开关倍率（联网/深度思考通常更贵），未配置或不支持则倍率为 1。
+  const capabilitySpec = (() => {
+    const value = model.capabilityJson
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+    return value as ModelCapabilitySpec
+  })()
+  const applied = applyCapabilityFlags(input.capabilityFlags || null, capabilitySpec)
+  const finalPointCost = Math.max(0, Math.ceil(basePointCost * (applied.billingMultiplier || 1)))
+
   return {
-    pointCost: readModelBillingPower(model.defaultParamsJson),
+    pointCost: finalPointCost,
     modelId: model.id,
     modelName: model.name,
   }

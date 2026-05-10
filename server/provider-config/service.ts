@@ -597,6 +597,9 @@ export const resolveGatewayProviderUpstream = async (input: {
     throw new Error('厂商不可用或未启用')
   }
 
+  // 模型能力声明（capabilityJson）随上游配置一起返回，
+  // 让执行器无需再额外查 AiModel 表，便可注入联网搜索/深度思考等扩展字段。
+  let modelCapabilityJson: unknown = null
   if (modelKey) {
     const model = await prisma.aiModel.findFirst({
       where: {
@@ -605,12 +608,14 @@ export const resolveGatewayProviderUpstream = async (input: {
         modelKey,
         category: resolveEndpointModelCategory(endpointType),
       },
-      select: { id: true },
+      select: { id: true, capabilityJson: true },
     })
 
     if (!model) {
       throw new Error('模型不存在或未启用')
     }
+
+    modelCapabilityJson = model.capabilityJson ?? null
   }
 
   const endpoint = provider[resolveProviderEndpointField(endpointType)]
@@ -619,6 +624,7 @@ export const resolveGatewayProviderUpstream = async (input: {
     baseUrl: provider.baseUrl,
     apiKey: decryptProviderApiKey(provider.apiKeyEncrypted),
     endpoint,
+    modelCapabilityJson,
   }
 }
 

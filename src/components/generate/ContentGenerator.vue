@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
 import { useSystemSettingsStore } from '@/stores/system-settings'
 import { getModelByName } from '@/config/models'
+import type { ModelCapabilityFlags } from '@/shared/provider-capability'
 
 // 导入子组件
 import { TypeSelector, type CreationType } from './selectors'
@@ -51,6 +52,8 @@ interface GeneratorSendOptions {
   feature?: string
   skill?: string
   referenceImages?: string[]
+  /** Agent 模式下当前模型支持的扩展能力开关（联网搜索 / 深度思考） */
+  capabilityFlags?: ModelCapabilityFlags
 }
 
 interface GeneratorDraftPayload {
@@ -321,8 +324,10 @@ const handleSubmit = () => {
     const toolbar = agentToolbarExpandRef.value || agentToolbarRef.value
     emit('send', message, currentType.value, {
       model: toolbar?.currentModelLabel || '',
+      modelKey: toolbar?.currentModel || '',
       skill: toolbar?.currentSkill || 'general',
       referenceImages: [...imageReferenceImages.value],
+      capabilityFlags: toolbar?.currentCapabilityFlags || {},
     })
   } else {
     emit('send', message, currentType.value)

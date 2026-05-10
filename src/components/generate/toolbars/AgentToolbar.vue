@@ -9,6 +9,11 @@ import SelectPopup from '../common/SelectPopup.vue'
 import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
 import { listEnabledAgentSkills, loadPublicSkillCatalog } from '@/config/agentSkills'
 import { getAgentModel, setAgentModel } from '@/api/agent'
+import {
+  parseModelCapabilitySpec,
+  type ModelCapabilityFlags,
+  type ModelCapabilitySpec,
+} from '@/shared/provider-capability'
 
 // 弹出方向类型
 type Placement = 'top' | 'bottom' | 'auto'
@@ -126,7 +131,12 @@ const chatModels = computed(() => {
     ? props.allowedModelKeys.map(item => String(item || '').trim()).filter(Boolean)
     : []
 
-  const allModels = getAllChatModels().map((m: any) => ({ value: m.key, label: m.label }))
+  // 保留 capabilityJson，供下方"联网搜索/深度思考"开关读取模型能力声明。
+  const allModels = getAllChatModels().map((m: any) => ({
+    value: m.key,
+    label: m.label,
+    capabilityJson: m.capabilityJson || null,
+  }))
   const nextModels = allowedModelKeys.length
     ? allModels.filter(item => allowedModelKeys.includes(item.value))
     : allModels
@@ -141,6 +151,48 @@ const currentModelLabel = computed(() => {
   const m = chatModels.value.find(v => v.value === currentModel.value)
   return m?.label || currentModel.value
 })
+
+// 模型能力声明：联网搜索 / 深度思考由 AiModel.capabilityJson 配置。
+// 切换模型时，前端开关需自动跟随：未声明则隐藏，声明了则显示。
+const currentModelCapabilitySpec = computed<ModelCapabilitySpec | null>(() => {
+  const matched = chatModels.value.find(item => item.value === currentModel.value)
+  return parseModelCapabilitySpec(matched?.capabilityJson)
+})
+
+const webSearchSpec = computed(() => currentModelCapabilitySpec.value?.webSearch || null)
+const reasoningSpec = computed(() => currentModelCapabilitySpec.value?.reasoning || null)
+
+// 用户当前选中的开关状态。模型切换时按"目标模型支持的能力"做收敛。
+const webSearchEnabled = ref(false)
+const reasoningKey = ref('')
+
+// 当前能力开关的纯净视图，提供给父组件透传到 createGenerationTask。
+const currentCapabilityFlags = computed<ModelCapabilityFlags>(() => {
+  const flags: ModelCapabilityFlags = {}
+  if (webSearchSpec.value?.supported && webSearchEnabled.value) {
+    flags.webSearch = true
+  }
+  if (reasoningSpec.value?.supported && reasoningKey.value) {
+    flags.reasoning = reasoningKey.value
+  }
+  return flags
+})
+
+// 深度思考下拉框开关
+const isReasoningSelectOpen = ref(false)
+const reasoningTriggerRef = ref<HTMLElement | null>(null)
+
+const reasoningOptions = computed(() => reasoningSpec.value?.options || [])
+
+const currentReasoningLabel = computed(() => {
+  const fallback = reasoningSpec.value?.label || '深度思考'
+  if (!reasoningKey.value) return fallback
+  const matched = reasoningOptions.value.find(item => item.key === reasoningKey.value)
+  return matched ? `${fallback}：${matched.label}` : fallback
+})
+
+const webSearchLabel = computed(() => webSearchSpec.value?.label || '联网搜索')
+const reasoningLabel = computed(() => reasoningSpec.value?.label || '深度思考')
 
 watch(
   chatModels,
@@ -232,11 +284,38 @@ watch(
   { immediate: true },
 )
 
+// 切换模型时按目标模型的能力声明回写开关：
+// - 联网：目标模型不支持 → 强制关闭
+// - 深度思考：目标模型不支持 → 清空；目标模型支持但当前 key 不在选项中 → 回退默认或第一个
+watch(
+  currentModelCapabilitySpec,
+  (spec) => {
+    if (!spec?.webSearch?.supported) {
+      webSearchEnabled.value = false
+    }
+    if (!spec?.reasoning?.supported) {
+      reasoningKey.value = ''
+      isReasoningSelectOpen.value = false
+      return
+    }
+    const options = spec.reasoning.options || []
+    if (!options.length) {
+      reasoningKey.value = ''
+      return
+    }
+    if (reasoningKey.value && !options.some(item => item.key === reasoningKey.value)) {
+      reasoningKey.value = spec.reasoning.defaultKey || ''
+    }
+  },
+  { immediate: true },
+)
+
 // 统一关闭 Agent 工具栏内部所有浮层
 const closeAllPopups = () => {
   isModelSelectOpen.value = false
   isSkillSelectOpen.value = false
   isPreferencePanelOpen.value = false
+  isReasoningSelectOpen.value = false
 }
 
 const toggleModelSelect = (e: Event) => {
@@ -293,7 +372,7 @@ const preferenceButtonText = computed(() => autoMode.value ? '自动' : '自定�
 
 // 关闭面板方法（供外部调用）
 const closePanel = () => {
-  if (isPreferencePanelOpen.value || isModelSelectOpen.value || isSkillSelectOpen.value) {
+  if (isPreferencePanelOpen.value || isModelSelectOpen.value || isSkillSelectOpen.value || isReasoningSelectOpen.value) {
     closeAllPopups()
     emit('panelClose')
   }
@@ -306,7 +385,8 @@ defineExpose({
   currentModel,
   currentModelLabel,
   currentSkill,
-  currentSkillLabel
+  currentSkillLabel,
+  currentCapabilityFlags,
 })
 
 // 切换生成偏好面板
@@ -315,6 +395,7 @@ const togglePreferencePanel = (e: Event) => {
   const wasOpen = isPreferencePanelOpen.value
   isModelSelectOpen.value = false
   isSkillSelectOpen.value = false
+  isReasoningSelectOpen.value = false
   isPreferencePanelOpen.value = !isPreferencePanelOpen.value
   // 打开时通知父组件
   if (!wasOpen && isPreferencePanelOpen.value) {
@@ -332,6 +413,42 @@ const toggleInspirationSearch = () => {
 // 切换创意设计
 const toggleCreativeDesign = () => {
   creativeDesignEnabled.value = !creativeDesignEnabled.value
+}
+
+// 切换联网搜索按钮
+const toggleWebSearch = () => {
+  if (!webSearchSpec.value?.supported) return
+  webSearchEnabled.value = !webSearchEnabled.value
+}
+
+// 打开/关闭深度思考下拉
+const toggleReasoningSelect = (e: Event) => {
+  e.stopPropagation()
+  if (!reasoningSpec.value?.supported) return
+  const wasOpen = isReasoningSelectOpen.value
+  isModelSelectOpen.value = false
+  isSkillSelectOpen.value = false
+  if (isPreferencePanelOpen.value) {
+    isPreferencePanelOpen.value = false
+    emit('panelClose')
+  }
+  isReasoningSelectOpen.value = !isReasoningSelectOpen.value
+  if (!wasOpen && isReasoningSelectOpen.value) {
+    emit('panelOpen')
+  } else if (wasOpen && !isReasoningSelectOpen.value) {
+    emit('panelClose')
+  }
+}
+
+// 选择深度思考等级；点击当前已选中的等级时取消
+const selectReasoning = (key: string) => {
+  if (reasoningKey.value === key) {
+    reasoningKey.value = ''
+  } else {
+    reasoningKey.value = key
+  }
+  isReasoningSelectOpen.value = false
+  emit('panelClose')
 }
 </script>
 
@@ -540,6 +657,89 @@ const toggleCreativeDesign = () => {
       </svg>
       <span v-if="!iconOnly">创意设计</span>
     </button>
+
+    <!-- 联网搜索（按模型 capabilityJson.webSearch.supported 决定显隐） -->
+    <button v-if="webSearchSpec?.supported"
+            :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'toolbar-button-pEFNv9', 'switch-button-GPRaGT', 'capability-button', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': webSearchEnabled }]"
+            type="button"
+            :title="webSearchSpec?.description || (iconOnly ? webSearchLabel : undefined)"
+            @click="toggleWebSearch">
+      <svg width="1em" height="1em" viewBox="0 0 24 24"
+           preserveAspectRatio="xMidYMid meet" fill="none"
+           role="presentation" xmlns="http://www.w3.org/2000/svg">
+        <g>
+          <path data-follow-fill="currentColor"
+                d="M12 2.25c5.385 0 9.75 4.365 9.75 9.75s-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12 6.615 2.25 12 2.25Zm0 1.6a8.15 8.15 0 0 0-7.95 6.4h3.36a13.7 13.7 0 0 1 1.86-4.74A8.16 8.16 0 0 0 8.5 5l3.5-1.15Zm0 0c.84 1.42 1.5 3.06 1.95 4.84A8.13 8.13 0 0 0 12 3.85Zm0 16.3c.99-1.42 1.78-3.07 2.34-4.85h-4.68A14.2 14.2 0 0 0 12 20.15Zm-3.95-4.85h-3.36A8.16 8.16 0 0 0 12 20.15a13.7 13.7 0 0 1-1.86-4.74A14.7 14.7 0 0 1 8.05 15.3Zm-3.36-1.6h3.18a16 16 0 0 1 0-3.4H4.7a8.1 8.1 0 0 0 0 3.4Zm5.06-3.4a14.6 14.6 0 0 0 0 3.4h4.5a14.6 14.6 0 0 0 0-3.4h-4.5Zm5.95 0a16 16 0 0 1 0 3.4h3.18a8.1 8.1 0 0 0 0-3.4h-3.18Zm-1.96-1.6c-.45-1.78-1.1-3.42-1.95-4.84.85 1.42 1.5 3.06 1.95 4.84Zm-2.34 7.95c-.56-1.78-1.35-3.43-2.34-4.85h4.68A14.2 14.2 0 0 1 12 18.45Z"
+                fill="currentColor"></path>
+        </g>
+      </svg>
+      <span v-if="!iconOnly">{{ webSearchLabel }}</span>
+    </button>
+
+    <!-- 深度思考（按模型 capabilityJson.reasoning.supported 决定显隐） -->
+    <div v-if="reasoningSpec?.supported" ref="reasoningTriggerRef"
+         :class="['lv-btn', 'lv-btn-secondary', 'lv-btn-size-default', 'lv-btn-shape-square', 'button-lc3WzE', 'toolbar-button-FhFnQ_', 'toolbar-button-pEFNv9', 'switch-button-GPRaGT', 'capability-button', { 'lv-btn-icon-only': iconOnly, 'checked-SqLqYu': !!reasoningKey, 'active-Rs99sz active-mrQmUS': isReasoningSelectOpen }]"
+         role="combobox"
+         tabindex="0"
+         :aria-expanded="isReasoningSelectOpen"
+         :title="reasoningSpec?.description || (iconOnly ? currentReasoningLabel : undefined)"
+         @click.stop="toggleReasoningSelect">
+      <svg width="1em" height="1em" viewBox="0 0 24 24"
+           preserveAspectRatio="xMidYMid meet" fill="none"
+           role="presentation" xmlns="http://www.w3.org/2000/svg">
+        <g>
+          <path data-follow-fill="currentColor"
+                d="M12 2.5a7.75 7.75 0 0 1 7.75 7.75c0 2.04-.79 3.9-2.07 5.28-.42.45-.71.95-.85 1.46l-.45 1.6a3.5 3.5 0 0 1-3.36 2.4h-2.14a3.5 3.5 0 0 1-3.36-2.4l-.45-1.6a3.7 3.7 0 0 0-.85-1.46A7.72 7.72 0 0 1 4.25 10.25 7.75 7.75 0 0 1 12 2.5Zm0 2a5.75 5.75 0 0 0-5.75 5.75c0 1.51.59 2.9 1.55 3.93a5.7 5.7 0 0 1 1.31 2.27l.45 1.6c.18.65.78 1.1 1.45 1.1h2.14c.67 0 1.27-.45 1.45-1.1l.45-1.6c.27-.96.71-1.69 1.31-2.27A5.74 5.74 0 0 0 17.75 10.25 5.75 5.75 0 0 0 12 4.5ZM10 13a1 1 0 1 1 0-2h4a1 1 0 1 1 0 2h-4Z"
+                fill="currentColor"></path>
+        </g>
+      </svg>
+      <span v-if="!iconOnly">{{ currentReasoningLabel }}</span>
+      <div v-if="!iconOnly" aria-hidden="true" class="lv-select-suffix">
+        <div class="lv-select-arrow-icon">
+          <svg width="1em" height="1em" viewBox="0 0 24 24"
+               preserveAspectRatio="xMidYMid meet" fill="none"
+               role="presentation" xmlns="http://www.w3.org/2000/svg">
+            <g>
+              <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"
+                    d="M21.01 7.982A1.2 1.2 0 0 1 21 9.679l-8.156 8.06a1.2 1.2 0 0 1-1.688 0L3 9.68a1.2 1.2 0 0 1 1.687-1.707L12 15.199l7.313-7.227a1.2 1.2 0 0 1 1.697.01Z"
+                    fill="currentColor"></path>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- 深度思考等级弹窗 -->
+    <SelectPopup v-if="reasoningSpec?.supported"
+                 v-model:visible="isReasoningSelectOpen"
+                 :trigger-ref="reasoningTriggerRef"
+                 :placement="placement"
+                 :title="reasoningLabel">
+      <ul class="lv-select-popup-inner">
+        <li v-for="option in reasoningOptions"
+            :key="option.key"
+            :class="['lv-select-option', { 'lv-select-option-wrapper-selected': reasoningKey === option.key }]"
+            @click.stop="selectReasoning(option.key)">
+          <div class="select-option-label">
+            <div class="select-option-label-content">
+              <span>{{ option.label }}</span>
+              <span v-if="option.description" class="reasoning-option-description">{{ option.description }}</span>
+            </div>
+            <span v-if="reasoningKey === option.key" class="select-option-check-icon">
+              <svg width="1em" height="1em" viewBox="0 0 24 24"
+                   preserveAspectRatio="xMidYMid meet" fill="none"
+                   role="presentation" xmlns="http://www.w3.org/2000/svg">
+                <g>
+                  <path data-follow-fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"
+                        d="M20.774 6.289a1 1 0 0 1 .1 1.41l-9.666 11a1 1 0 0 1-1.447.063l-5.334-5a1 1 0 0 1 1.368-1.458l4.572 4.286 9.002-10.2a1 1 0 0 1 1.405-.101Z"
+                        fill="currentColor"></path>
+                </g>
+              </svg>
+            </span>
+          </div>
+        </li>
+      </ul>
+    </SelectPopup>
   </div>
 </template>
 
@@ -677,6 +877,22 @@ const toggleCreativeDesign = () => {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 联网搜索 / 深度思考开关组：与既有"灵感搜索""创意设计"按钮共用样式，
+   仅靠 capability-button 类做轻量区分（如未来需要单独主题色）。 */
+.capability-button .lv-select-suffix {
+  margin-left: 4px;
+}
+
+.reasoning-option-description {
+  margin-left: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 </style>

@@ -1,5 +1,6 @@
 import { readJsonBody, sendJson } from '../ai-gateway/shared'
 import type { GenerationTaskStreamEventBase } from '../../src/shared/generation-task-stream'
+import type { ResearchTaskConfig } from '../../src/shared/research/research-types'
 
 // 重新导出共享协议中的类型与失败码，让服务端代码继续按原路径引用
 export type {
@@ -22,6 +23,7 @@ export interface GenerationTaskStartPayload {
   feature?: string
   skill?: string
   referenceImages?: string[]
+  researchConfig?: Partial<ResearchTaskConfig> | null
   requestBody?: Record<string, unknown> | null
 }
 

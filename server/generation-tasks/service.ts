@@ -56,6 +56,7 @@ import { getGenerationTaskExecutionStrategy, type TaskAbortReason } from './exec
 import { executeImageTask } from './image-task-executor'
 import { executeAgentChatTaskFlow } from './agent-chat-task-executor'
 import { executeAgentWorkspaceTaskFlow } from './agent-workspace-task-executor'
+import { executeResearchTaskFlow } from '../research/executor'
 import {
   emitTaskAgentEvent,
   emitTaskContentDeltaEvent,
@@ -112,6 +113,8 @@ const GENERATION_TASK_STAGE_LABELS: Record<string, string> = {
   'image_task:failed': '图片任务执行失败',
   'agent_task:failed': '智能体对话任务执行失败',
   'agent_workspace_task:failed': '智能体工作台任务执行失败',
+  'research_task:completed': '研究任务执行完成',
+  'research_task:failed': '研究任务执行失败',
   task_execution_lock_renew_failed: '任务执行锁续约失败',
   task_snapshot_cache_failed: '任务快照缓存失败',
   task_recent_event_cache_failed: '最近事件缓存失败',
@@ -162,6 +165,7 @@ const buildTaskExecutionStrategyContext = () => ({
   executeImageGenerationTask,
   executeAgentChatTask,
   executeAgentWorkspaceTask,
+  executeResearchReportTask,
   refundTaskPointsIfNeeded,
   markTaskExecutionState,
   emitTaskProgressEvent: (recordId: string, input: {
@@ -382,6 +386,19 @@ const executeAgentWorkspaceTask = async (task: RunningGenerationTask, payload: G
     normalizeGenerationErrorMessage,
     buildWorkspaceCompletionSummary,
     AgentWorkspaceStoppedError,
+  })
+}
+
+  const executeResearchReportTask = async (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
+  await executeResearchTaskFlow(task, payload, {
+    syncSharedTaskRuntime,
+    ensureTaskNotAborted: (runningTask) => ensureTaskNotAborted(runningTask, { abortTaskWithReason }),
+    buildInitialRecordPayload,
+    updateGenerationRecord,
+    getGenerationRecordById,
+    emitTaskStreamEvent: (recordId, event) => emitTaskStreamEvent(recordId, event, taskEventEmitterContext),
+    emitTaskProgressEvent: (recordId, input) => emitTaskProgressEvent(recordId, input, taskEventEmitterContext),
+    logGenerationTask,
   })
 }
 

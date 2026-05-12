@@ -9,13 +9,15 @@ import AgentLoadingRecord from '../../components/generate/common/AgentLoadingRec
 import ImagePreview from '@/components/ImagePreview.vue'
 import { getAgentModel } from '@/api/agent'
 import { CAPABILITY_FLAGS_REQUEST_FIELD, type ModelCapabilityFlags } from '@/shared/provider-capability'
-import { getModelByName, loadPublicModelCatalog, resolveModelLabel, type ImageModel } from '@/config/models'
-import { buildAgentChatMessages, isAgentWorkspaceSkill, loadPublicSkillCatalog } from '@/config/agentSkills'
+import { findCatalogModel, getModelByName, loadPublicModelCatalog, resolveModelLabel, type ImageModel } from '@/config/models'
+import { buildAgentChatMessages, getAgentSkillCatalogItem, isAgentWorkspaceSkill, loadPublicSkillCatalog } from '@/config/agentSkills'
 import {
   createGenerationRecord as createGenerationRecordRequest,
   listGenerationRecords as listGenerationRecordsRequest,
   updateGenerationRecord as updateGenerationRecordRequest,
+  type GenerationRecordType,
   type GenerationRecordUpsertPayload,
+  type PersistedResearchRuntimeMeta,
   type PersistedGenerationRecord,
 } from '@/api/generation-records'
 import {
@@ -35,12 +37,25 @@ import {
   buildAgentPendingRun,
   type AgentWorkspaceEvent,
 } from '@/shared/agent-workspace'
+import type {
+  ResearchEvidence,
+  ResearchFact,
+  ResearchOutlineSection,
+  ResearchTokenUsage,
+  ResearchVerificationResult,
+} from '@/shared/research/research-types'
 import { normalizeGenerationErrorMessage } from '@/shared/generation-error'
 import { appendImageReferencesToRequestBody } from '@/shared/image-generation-request'
 import { AUTH_LOGIN_SUCCESS_EVENT, useAuthStore } from '@/stores/auth'
 import { useLoginModalStore } from '@/stores/login-modal'
 import { useSystemSettingsStore } from '@/stores/system-settings'
 import GenerateAgentRecord from './components/GenerateAgentRecord.vue'
+import ResearchReportRecord from './components/ResearchReportRecord.vue'
+import type {
+  ResearchSearchGroupViewItem,
+  ResearchSearchSourceViewItem,
+  ResearchTimelineViewItem,
+} from './components/research-report-record.types'
 import GenerateSessionList from './components/GenerateSessionList.vue'
 import GenerateConversationSidebar, { type GenerateConversationSidebarItem } from './components/GenerateConversationSidebar.vue'
 
@@ -50,6 +65,8 @@ const authStore = useAuthStore()
 const { openLoginModal } = useLoginModalStore()
 const { publicSystemSettings, loadPublicSettings } = useSystemSettingsStore()
 const conversationHeroSettings = computed(() => publicSystemSettings.value.conversationSettings.entryDisplay.hero)
+
+const RESEARCH_REPORT_SKILL_KEY = 'research-report'
 
 const formatGenerationError = (message?: string | null, fallback = '任务执行失败') => {
   return normalizeGenerationErrorMessage(String(message || '').trim(), fallback)
@@ -65,7 +82,7 @@ interface GeneratingRecord {
   sessionId?: string
   sessionTitle?: string
   source?: string
-  type: CreationType
+  type: GenerationRecordType
   prompt: string
   time: string
   model: string
@@ -94,6 +111,13 @@ interface GeneratingRecord {
   agentRun?: AgentRunState
   /** Agent 模式下当前选中的扩展能力开关，转发给 createGenerationTask 注入上游请求 */
   capabilityFlags?: ModelCapabilityFlags
+  researchTimeline?: ResearchTimelineViewItem[]
+  researchSearchGroups?: ResearchSearchGroupViewItem[]
+  researchEvidences?: ResearchEvidence[]
+  researchFacts?: ResearchFact[]
+  researchOutlineSections?: ResearchOutlineSection[]
+  researchVerification?: ResearchVerificationResult | null
+  researchTokenUsage?: ResearchTokenUsage | null
 }
 
 interface GeneratePreviewImageItem {
@@ -106,7 +130,7 @@ interface GeneratePreviewImageItem {
   featureLabel?: string
   createDate?: string
   sourceRecordId?: number
-  type?: CreationType
+  type?: GenerationRecordType
   model?: string
   modelKey?: string
   ratio?: string
@@ -211,6 +235,241 @@ const getRecordConversationEntries = (record: GeneratingRecord) => {
   return parseStageConversationEntries(record.content)
 }
 
+const formatResearchTimelineTime = () => {
+  const now = new Date()
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+}
+
+const ensureResearchTimeline = (record: GeneratingRecord) => {
+  if (!Array.isArray(record.researchTimeline)) {
+    record.researchTimeline = []
+  }
+  return record.researchTimeline
+}
+
+type ResearchTimelineAppendMode = 'dedupe' | 'always'
+
+const buildResearchTimelineUniqueId = (
+  timeline: ResearchTimelineViewItem[],
+  item: Omit<ResearchTimelineViewItem, 'id' | 'time'> & { id?: string, time?: string },
+) => {
+  const normalizedBaseId = String(item.id || `${item.kind}-${timeline.length + 1}`).trim() || `${item.kind}-${timeline.length + 1}`
+  return `${normalizedBaseId}-${Date.now()}-${timeline.length + 1}`
+}
+
+const pushResearchTimeline = (
+  record: GeneratingRecord,
+  item: Omit<ResearchTimelineViewItem, 'id' | 'time'> & { id?: string, time?: string },
+  options?: { appendMode?: ResearchTimelineAppendMode },
+) => {
+  const timeline = ensureResearchTimeline(record)
+  const appendMode = options?.appendMode || 'dedupe'
+  const fallbackId = `${item.kind}-${timeline.length + 1}-${Date.now()}`
+  const candidateId = item.id || fallbackId
+  if (appendMode === 'dedupe' && timeline.some(existing => existing.id === candidateId)) {
+    return
+  }
+  const itemId = appendMode === 'always'
+    ? buildResearchTimelineUniqueId(timeline, item)
+    : candidateId
+  timeline.push({
+    id: itemId,
+    kind: item.kind,
+    title: item.title,
+    description: item.description,
+    stage: item.stage,
+    confidence: item.confidence,
+    meta: item.meta,
+    time: item.time || formatResearchTimelineTime(),
+  })
+  if (timeline.length > 80) {
+    timeline.splice(0, timeline.length - 80)
+  }
+}
+
+const mergeResearchEvidence = (record: GeneratingRecord, evidence?: ResearchEvidence | null) => {
+  if (!evidence?.id) {
+    return
+  }
+  const list = Array.isArray(record.researchEvidences) ? record.researchEvidences : []
+  const existingIndex = list.findIndex(item => item.id === evidence.id)
+  record.researchEvidences = existingIndex >= 0
+    ? list.map(item => item.id === evidence.id ? evidence : item)
+    : [...list, evidence]
+}
+
+const mergeResearchFact = (record: GeneratingRecord, fact?: ResearchFact | null) => {
+  if (!fact?.id) {
+    return
+  }
+  const list = Array.isArray(record.researchFacts) ? record.researchFacts : []
+  const existingIndex = list.findIndex(item => item.id === fact.id)
+  record.researchFacts = existingIndex >= 0
+    ? list.map(item => item.id === fact.id ? fact : item)
+    : [...list, fact]
+}
+
+const readResearchSourceDomain = (url?: string) => {
+  const value = String(url || '').trim()
+  if (!value) {
+    return ''
+  }
+
+  try {
+    return new URL(value).hostname.replace(/^www\./, '')
+  } catch {
+    return ''
+  }
+}
+
+const readPlainObject = (value: unknown): Record<string, unknown> => {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+const readResearchSkillConfig = () => {
+  return readPlainObject(getAgentSkillCatalogItem(RESEARCH_REPORT_SKILL_KEY)?.configJson)
+}
+
+const readResearchModelBindingConfig = (configJson = readResearchSkillConfig()) => {
+  const binding = readPlainObject(configJson.researchModelBinding || configJson.research_model_binding)
+  return {
+    providerId: String(binding.providerId || binding.provider_id || configJson.researchModelProviderId || configJson.research_model_provider_id || '').trim(),
+    modelKey: String(binding.modelKey || binding.model_key || configJson.researchModelKey || configJson.research_model_key || '').trim(),
+  }
+}
+
+const readResearchSearchConfig = (configJson = readResearchSkillConfig()) => {
+  const search = readPlainObject(configJson.researchSearch || configJson.research_search)
+  return {
+    provider: String(search.provider || search.searchProvider || configJson.researchSearchProvider || configJson.research_search_provider || '').trim(),
+    providerId: String(search.providerId || search.provider_id || configJson.researchSearchProviderId || configJson.research_search_provider_id || '').trim(),
+    model: String(search.model || search.modelKey || search.model_key || configJson.researchSearchModel || configJson.research_search_model || '').trim(),
+  }
+}
+
+const normalizeResearchSearchSource = (raw: unknown): ResearchSearchSourceViewItem | null => {
+  if (!raw || typeof raw !== 'object') {
+    return null
+  }
+
+  const item = raw as Record<string, unknown>
+  const url = String(item.url || '').trim()
+  const title = String(item.title || item.name || url || '').trim()
+  if (!title && !url) {
+    return null
+  }
+
+  const siteName = String(item.siteName || item.type || readResearchSourceDomain(url) || '').trim()
+  const snippet = String(item.snippet || item.summary || item.note || '').trim()
+  return {
+    title: title || siteName || '未命名结果',
+    url,
+    siteName,
+    snippet,
+    siteIcon: String(item.siteIcon || item.icon || item.favicon || '').trim(),
+    publishedTime: String(item.publishedTime || item.datePublished || item.published_at || '').trim(),
+    referenceIndex: typeof item.referenceIndex === 'number'
+      ? item.referenceIndex
+      : Number.isFinite(Number(item.referenceIndex))
+        ? Number(item.referenceIndex)
+        : undefined,
+  }
+}
+
+const normalizeResearchSearchDiagnostics = (raw: unknown) => {
+  if (!raw || typeof raw !== 'object') {
+    return ''
+  }
+
+  const item = raw as Record<string, unknown>
+  const reason = String(item.reason || '').trim()
+  const provider = String(item.provider || '').trim()
+  const providerIdConfigured = item.providerIdConfigured === true
+  const modelConfigured = item.modelConfigured === true
+  const missingItems = [
+    providerIdConfigured ? '' : '搜索供应商',
+    modelConfigured ? '' : '搜索模型',
+  ].filter(Boolean)
+
+  return [
+    reason || '搜索上游未返回可用链接',
+    provider ? `当前搜索供应商：${provider}` : '',
+    missingItems.length ? `请到后台「技能配置 / 深度研究报告」选择${missingItems.join('和')}，并在「供应商配置」维护 Base URL、API Key 和接口路径` : '',
+  ].filter(Boolean).join('；')
+}
+
+const mergeResearchSearchGroup = (
+  record: GeneratingRecord,
+  toolResult?: { id?: string, toolName?: string, preview?: Record<string, unknown> } | null,
+) => {
+  if (toolResult?.toolName !== 'web-search' || !toolResult.preview) {
+    return
+  }
+
+  const preview = toolResult.preview
+  const query = String(preview.query || '').trim()
+  if (!query) {
+    return
+  }
+  const rawSources = Array.isArray(preview.searchSourcesPreview) && preview.searchSourcesPreview.length
+      ? preview.searchSourcesPreview
+      : Array.isArray(preview.topResults)
+          ? preview.topResults
+          : []
+  const sources = rawSources
+      .map(normalizeResearchSearchSource)
+      .filter((item): item is ResearchSearchSourceViewItem => Boolean(item))
+      .slice(0, 12)
+  if (!query && !sources.length) {
+    return
+  }
+
+  const list = Array.isArray(record.researchSearchGroups) ? record.researchSearchGroups : []
+  const groupId = String(toolResult.id || query || `search-${list.length + 1}`).trim()
+  const nextGroup: ResearchSearchGroupViewItem = {
+    id: groupId,
+    query,
+    title: query || '搜索结果',
+    sources,
+    stage: record.progressStage,
+    time: formatResearchTimelineTime(),
+    pending: false,
+    order: list.find(item => item.id === groupId || (query && item.query === query))?.order || list.length + 1,
+    diagnostics: normalizeResearchSearchDiagnostics(preview.diagnostics),
+  }
+  const existingIndex = list.findIndex(item => item.id === groupId || (query && item.query === query))
+  record.researchSearchGroups = existingIndex >= 0
+      ? list.map((item, index) => index === existingIndex ? nextGroup : item)
+      : [...list, nextGroup].slice(-12)
+}
+
+const buildResearchRuntimeMeta = (record: GeneratingRecord): PersistedResearchRuntimeMeta | null => {
+  if (record.type !== 'research') {
+    return null
+  }
+
+  return {
+    version: 1,
+    timeline: Array.isArray(record.researchTimeline) ? record.researchTimeline.slice(-80) : [],
+    searchGroups: Array.isArray(record.researchSearchGroups) ? record.researchSearchGroups.slice(-12) : [],
+    evidences: Array.isArray(record.researchEvidences) ? record.researchEvidences.slice(-30) : [],
+    facts: Array.isArray(record.researchFacts) ? record.researchFacts.slice(-80) : [],
+    outlineSections: Array.isArray(record.researchOutlineSections) ? record.researchOutlineSections : [],
+    verification: record.researchVerification || null,
+    tokenUsage: record.researchTokenUsage || null,
+  }
+}
+
+const readResearchRuntimeMeta = (record: PersistedGenerationRecord): PersistedResearchRuntimeMeta | null => {
+  const research = record.research
+  if (!research || typeof research !== 'object' || research.version !== 1) {
+    return null
+  }
+  return research
+}
+
 // 某个阶段重复到达时只覆盖该阶段文案，不重复堆积。
 const upsertRecordStageConversation = (record: GeneratingRecord, stageKey: string, text: string) => {
   const normalizedStageKey = String(stageKey || '').trim()
@@ -243,6 +502,86 @@ const upsertRecordStageConversation = (record: GeneratingRecord, stageKey: strin
   return true
 }
 
+const describeResearchTool = (toolName?: string) => {
+  switch (toolName) {
+    case 'web-search':
+      return '网页搜索'
+    case 'web-reader':
+      return '网页阅读'
+    case 'gap-analyzer':
+      return '缺口分析'
+    case 'fact-verifier':
+      return '事实核查'
+    case 'start-report':
+      return '报告生成'
+    default:
+      return toolName || '研究工具'
+  }
+}
+
+const readResearchPreviewDescription = (preview?: Record<string, unknown>) => {
+  if (!preview || typeof preview !== 'object') {
+    return ''
+  }
+
+  const resultCount = Number(preview.resultCount || 0)
+  const query = String(preview.query || '').trim()
+  if (query && resultCount) {
+    return `${query}，返回 ${resultCount} 条结果`
+  }
+  if (query) {
+    return query
+  }
+
+  const queries = Array.isArray(preview.queries) ? preview.queries : []
+  if (queries.length) {
+    return `已规划 ${queries.length} 个查询方向`
+  }
+
+  const title = String(preview.title || '').trim()
+  const excerpt = String(preview.excerpt || '').trim()
+  if (title && excerpt) {
+    return `${title}｜${excerpt}`
+  }
+  if (title) {
+    return title
+  }
+
+  const subject = String(preview.subject || '').trim()
+  return subject ? `研究主体：${subject}` : ''
+}
+
+const readResearchPreviewMeta = (preview?: Record<string, unknown>) => {
+  if (!preview || typeof preview !== 'object') {
+    return undefined
+  }
+
+  const meta: Record<string, unknown> = {}
+  for (const key of ['url', 'title', 'excerpt', 'content', 'siteName', 'siteIcon', 'query', 'referenceIndex', 'contentLength', 'redirected', 'contentType']) {
+    const value = preview[key]
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      meta[key] = value
+    }
+  }
+
+  return Object.keys(meta).length ? meta : undefined
+}
+
+const isResearchReportRecord = (record: GeneratingRecord) => {
+  const content = String(record.content || '')
+  return record.type === 'research'
+      || record.skill === RESEARCH_REPORT_SKILL_KEY
+      || /^#\s*Deep Research\s*执行结果/m.test(content)
+      || /^##\s*核查说明/m.test(content)
+}
+
+const isResearchPersistedRecord = (record?: PersistedGenerationRecord | null) => {
+  if (!record) {
+    return false
+  }
+  return record.type === 'research' || record.skill === RESEARCH_REPORT_SKILL_KEY
+}
+
 // 将服务端阶段映射成前台百分比，避免继续显示固定 99%。
 const mapTaskStageToProgressPercent = (stage?: string) => {
   const configuredStage = publicSystemSettings.value.generationProgressSettings?.stages?.find(item => item.key === String(stage || '').trim())
@@ -253,6 +592,34 @@ const mapTaskStageToProgressPercent = (stage?: string) => {
   switch (String(stage || '').trim()) {
     case 'queued':
       return 5
+    case 'intake':
+      return 8
+    case 'bootstrap_planning':
+      return 14
+    case 'parallel_search':
+      return 24
+    case 'initial_analysis':
+      return 34
+    case 'disambiguation':
+      return 40
+    case 'gap_detection':
+      return 46
+    case 'targeted_search':
+      return 56
+    case 'deep_reading':
+      return 66
+    case 'evidence_merge':
+      return 72
+    case 'fact_verification':
+      return 80
+    case 'uncertainty_marking':
+      return 84
+    case 'report_planning':
+      return 88
+    case 'report_writing':
+      return 94
+    case 'final_review':
+      return 98
     case 'resolved_provider':
       return 12
     case 'requesting_upstream':
@@ -283,7 +650,46 @@ const resolveTaskStageLabel = (stage?: string, fallback = '造梦中') => {
     }
   }
 
-  return fallback
+  switch (String(stage || '').trim()) {
+    case 'intake':
+      return '理解研究问题'
+    case 'bootstrap_planning':
+      return '制定研究计划'
+    case 'parallel_search':
+      return '并行搜索资料'
+    case 'initial_analysis':
+      return '初步分析资料'
+    case 'disambiguation':
+      return '澄清研究范围'
+    case 'gap_detection':
+      return '识别信息缺口'
+    case 'targeted_search':
+      return '定向补充搜索'
+    case 'deep_reading':
+      return '深度阅读信源'
+    case 'evidence_merge':
+      return '合并证据'
+    case 'fact_verification':
+      return '事实核查'
+    case 'uncertainty_marking':
+      return '标记不确定性'
+    case 'report_planning':
+      return '规划报告结构'
+    case 'report_writing':
+      return '撰写研究报告'
+    case 'final_review':
+      return '最终审阅'
+    case 'completed':
+      return '任务已完成'
+    case 'failed':
+      return '任务执行失败'
+    case 'stopped':
+      return '任务已停止'
+    case 'stopping':
+      return '任务停止中'
+    default:
+      return fallback
+  }
 }
 
 // 页面进入时预加载后台公开模型目录，确保工具栏与生成请求使用同一份模型清单。
@@ -340,6 +746,9 @@ const handlePreviewRecordImage = (record: GeneratingRecord, index: number) => {
 }
 
 const handleEditImageRecord = async (record: GeneratingRecord, imageUrl?: string) => {
+  if (record.type !== 'image') {
+    return
+  }
   const draftReferenceImages = buildDraftReferenceImages(imageUrl || record.images[0], record.referenceImages)
   previewVisible.value = false
   await contentGeneratorRef.value?.applyDraft({
@@ -356,6 +765,9 @@ const handleEditImageRecord = async (record: GeneratingRecord, imageUrl?: string
 }
 
 const handleRegenerateImageRecord = async (record: GeneratingRecord) => {
+  if (record.type !== 'image') {
+    return
+  }
   await handleSend(record.prompt, record.type, {
     model: record.model,
     modelKey: record.modelKey,
@@ -677,9 +1089,10 @@ const handleToggleConversationSidebar = () => {
   writeStoredConversationSidebarCollapsed(conversationSidebarCollapsed.value)
 }
 
-// 只有显式选择技能时，才进入工作台式 Agent 流程；通用助手仍保留原流式对话体验。
+// 只有显式选择普通技能时，才进入工作台式 Agent 流程；研究报告走独立 research 策略。
 const shouldUseAgentWorkspaceFlow = (skill?: string) => {
-  return isAgentWorkspaceSkill(skill)
+  const normalizedSkill = String(skill || '').trim()
+  return normalizedSkill !== RESEARCH_REPORT_SKILL_KEY && isAgentWorkspaceSkill(normalizedSkill)
 }
 
 const buildAgentRequestMessages = (record: GeneratingRecord) => {
@@ -745,6 +1158,7 @@ const toGenerationRecordPayload = (record: GeneratingRecord): GenerationRecordUp
   agentTaskId: record.agentTaskId,
   images: record.images,
   agentRun: record.agentRun,
+  research: buildResearchRuntimeMeta(record),
 })
 
 // 格式化时间分组标签
@@ -765,6 +1179,14 @@ const formatGroupLabel = (date: Date): string => {
 
 // 将后端返回的持久化记录还原成页面使用结构。
 const createRecordFromPersisted = (record: PersistedGenerationRecord): GeneratingRecord => {
+  const isImageRecord = record.type === 'image'
+  const isResearchRecord = isResearchPersistedRecord(record)
+  const researchMeta = isResearchRecord ? readResearchRuntimeMeta(record) : null
+  const modelCategory = record.type === 'image'
+      ? 'IMAGE'
+      : record.type === 'video'
+        ? 'VIDEO'
+        : 'CHAT'
   return {
     id: nextId++,
     dbId: record.id,
@@ -777,7 +1199,7 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
     // 后端若返回旧的 model 文本，这里统一按最新后台模型目录重新解析展示名称。
     model: resolveModelLabel(
         record.modelKey || record.model,
-        record.type === 'image' ? 'IMAGE' : record.type === 'agent' ? 'CHAT' : 'VIDEO',
+        modelCategory,
     ) || record.model,
     modelKey: record.modelKey,
     ratio: record.ratio,
@@ -786,25 +1208,47 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
     feature: record.feature,
     skill: record.skill,
     referenceImages: Array.isArray(record.referenceImages) ? [...record.referenceImages] : [],
-    content: record.type === 'image'
+    content: isImageRecord
         ? (record.content || (!record.done ? '[[queued]]任务已创建，等待服务端执行' : ''))
         : record.content,
     thinkingContent: record.thinkingContent || '',
     images: record.images,
     done: record.done,
     stopped: Boolean(record.stopped),
-    progressStage: record.type === 'image'
-        ? (record.done ? (record.stopped ? 'stopped' : 'completed') : 'queued')
+    progressStage: isImageRecord || isResearchRecord
+        ? (record.done ? (record.stopped ? 'stopped' : record.error ? 'failed' : 'completed') : (isResearchRecord ? 'intake' : 'queued'))
         : undefined,
-    progressMessage: record.type === 'image'
+    progressMessage: isImageRecord
         ? (record.done
             ? resolveTaskStageLabel(record.stopped ? 'stopped' : 'completed', record.stopped ? '任务已停止' : '任务已完成')
             : resolveTaskStageLabel('queued', '任务已创建，等待服务端执行'))
+        : isResearchRecord
+          ? (record.done
+              ? resolveTaskStageLabel(record.stopped ? 'stopped' : record.error ? 'failed' : 'completed', record.stopped ? '研究任务已停止' : record.error ? record.error : '研究报告已完成')
+              : resolveTaskStageLabel('intake', '研究任务已创建，等待服务端执行'))
         : undefined,
-    progressPercent: record.type === 'image' ? (record.done ? 100 : 5) : 0,
+    progressPercent: isImageRecord || isResearchRecord ? (record.done ? 100 : (isResearchRecord ? 8 : 5)) : 0,
     error: record.done || record.stopped ? record.error : '',
     agentTaskId: record.agentTaskId,
     agentRun: record.agentRun,
+    researchTimeline: isResearchRecord
+        ? (Array.isArray(researchMeta?.timeline) && researchMeta.timeline.length
+            ? [...researchMeta.timeline]
+            : [{
+          id: `persisted-${record.id}`,
+          kind: record.done ? (record.stopped ? 'stopped' : record.error ? 'failed' : 'completed') : 'stage',
+          title: record.done ? (record.stopped ? '研究任务已停止' : record.error ? '研究任务失败' : '研究报告已完成') : '研究任务执行中',
+          description: record.done ? '' : '历史记录恢复后会继续订阅运行中的研究事件',
+          stage: record.done ? (record.stopped ? 'stopped' : record.error ? 'failed' : 'completed') : 'intake',
+          time: formatGroupLabel(new Date(record.createdAt)),
+        }])
+        : [],
+    researchSearchGroups: Array.isArray(researchMeta?.searchGroups) ? [...researchMeta.searchGroups] : [],
+    researchEvidences: Array.isArray(researchMeta?.evidences) ? [...researchMeta.evidences] : [],
+    researchFacts: Array.isArray(researchMeta?.facts) ? [...researchMeta.facts] : [],
+    researchOutlineSections: Array.isArray(researchMeta?.outlineSections) ? [...researchMeta.outlineSections] : [],
+    researchVerification: researchMeta?.verification || null,
+    researchTokenUsage: researchMeta?.tokenUsage || null,
   }
 }
 
@@ -817,6 +1261,9 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   record.sessionId = saved.sessionId
   record.sessionTitle = saved.sessionTitle || record.sessionTitle || ''
   record.source = saved.source || record.source || 'generate'
+  record.type = isResearchPersistedRecord(saved) || isResearchReportRecord(record)
+      ? 'research'
+      : (saved.type || record.type)
   record.content = saved.content || record.content
   if (typeof saved.thinkingContent === 'string' && saved.thinkingContent && shouldDisplayThinkingContent(record)) {
     record.thinkingContent = saved.thinkingContent
@@ -894,6 +1341,39 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
     record.agentRun = undefined
   }
 
+  if (record.type === 'research') {
+    const researchMeta = readResearchRuntimeMeta(saved)
+    record.agentRun = undefined
+    record.skill = record.skill || RESEARCH_REPORT_SKILL_KEY
+    if (Array.isArray(researchMeta?.timeline) && researchMeta.timeline.length && !Array.isArray(record.researchTimeline)) {
+      record.researchTimeline = [...researchMeta.timeline]
+    } else if (!Array.isArray(record.researchTimeline)) {
+      record.researchTimeline = []
+    }
+    if (Array.isArray(researchMeta?.searchGroups) && researchMeta.searchGroups.length && !Array.isArray(record.researchSearchGroups)) {
+      record.researchSearchGroups = [...researchMeta.searchGroups]
+    } else if (!Array.isArray(record.researchSearchGroups)) {
+      record.researchSearchGroups = []
+    }
+    if (Array.isArray(researchMeta?.evidences) && researchMeta.evidences.length && !Array.isArray(record.researchEvidences)) {
+      record.researchEvidences = [...researchMeta.evidences]
+    } else if (!Array.isArray(record.researchEvidences)) {
+      record.researchEvidences = []
+    }
+    if (Array.isArray(researchMeta?.facts) && researchMeta.facts.length && !Array.isArray(record.researchFacts)) {
+      record.researchFacts = [...researchMeta.facts]
+    } else if (!Array.isArray(record.researchFacts)) {
+      record.researchFacts = []
+    }
+    if (Array.isArray(researchMeta?.outlineSections) && researchMeta.outlineSections.length && !Array.isArray(record.researchOutlineSections)) {
+      record.researchOutlineSections = [...researchMeta.outlineSections]
+    } else if (!Array.isArray(record.researchOutlineSections)) {
+      record.researchOutlineSections = []
+    }
+    record.researchVerification = record.researchVerification || researchMeta?.verification || null
+    record.researchTokenUsage = record.researchTokenUsage || researchMeta?.tokenUsage || null
+  }
+
   syncSessionMetaFromRecord(record, saved)
 }
 
@@ -953,13 +1433,17 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     return
   }
 
-  const isImageTaskRecord = targetRecord.type === 'image'
   let stageConversationChanged = false
 
+  const eventRecordType = isResearchPersistedRecord(event.record) ? 'research' : event.record?.type
   if (event.record) {
     syncRecordWithPersisted(targetRecord, event.record)
   }
 
+  const isImageTaskRecord = targetRecord.type === 'image'
+  const isResearchTaskRecord = targetRecord.type === 'research'
+      || eventRecordType === 'research'
+      || targetRecord.skill === RESEARCH_REPORT_SKILL_KEY
   if (event.type === 'progress' && event.message) {
     targetRecord.error = ''
     targetRecord.progressStage = event.stage || targetRecord.progressStage || 'queued'
@@ -1008,6 +1492,214 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
     targetRecord.progressMessage = resolveTaskStageLabel(event.stage, '模型正在深度思考')
   }
 
+  if (event.type === 'stage_changed') {
+    targetRecord.error = ''
+    targetRecord.progressStage = event.stage || event.researchStage?.stage || targetRecord.progressStage || 'queued'
+    targetRecord.progressMessage = resolveTaskStageLabel(
+        targetRecord.progressStage,
+        event.message || event.researchStage?.message || '研究任务执行中',
+    )
+    targetRecord.progressPercent = Math.max(
+        targetRecord.progressPercent || 0,
+        mapTaskStageToProgressPercent(targetRecord.progressStage),
+    )
+    if (isResearchTaskRecord) {
+      pushResearchTimeline(targetRecord, {
+        id: event.id ? `event-${event.id}` : undefined,
+        kind: 'stage',
+        title: resolveTaskStageLabel(targetRecord.progressStage, '研究阶段更新'),
+        description: event.message || event.researchStage?.message || '',
+        stage: targetRecord.progressStage,
+      }, {
+        appendMode: 'always',
+      })
+    }
+  }
+
+  if (
+      event.type === 'tool_call'
+      || event.type === 'tool_result'
+      || event.type === 'reasoning_summary'
+      || event.type === 'evidence_added'
+      || event.type === 'fact_update'
+      || event.type === 'verification'
+      || event.type === 'outline_ready'
+      || event.type === 'token_usage'
+      || event.type === 'begin'
+  ) {
+    targetRecord.error = ''
+    targetRecord.progressStage = event.stage || targetRecord.progressStage || 'queued'
+    targetRecord.progressMessage = resolveTaskStageLabel(
+        targetRecord.progressStage,
+        event.message || '研究任务执行中',
+    )
+    targetRecord.progressPercent = Math.max(
+        targetRecord.progressPercent || 0,
+        mapTaskStageToProgressPercent(targetRecord.progressStage),
+    )
+    if (isResearchTaskRecord) {
+      if (event.type === 'begin') {
+        pushResearchTimeline(targetRecord, {
+          id: event.id ? `event-${event.id}` : 'research-begin',
+          kind: 'begin',
+          title: event.researchBegin?.title || '研究任务已开始',
+          description: event.researchBegin?.subject || event.message || '',
+          stage: targetRecord.progressStage,
+        }, {
+          appendMode: 'always',
+        })
+      } else if (event.type === 'reasoning_summary' && event.reasoningSummary) {
+        pushResearchTimeline(targetRecord, {
+          id: event.id ? `event-${event.id}` : undefined,
+          kind: 'reasoning',
+          title: event.message || '完成阶段性推理',
+          description: [
+            event.reasoningSummary.goal,
+            ...(event.reasoningSummary.nextActions || []).slice(0, 2),
+          ].filter(Boolean).join('；'),
+          stage: event.reasoningSummary.stage,
+        }, {
+          appendMode: 'always',
+        })
+      } else if (event.type === 'tool_call' && event.toolCall) {
+        const toolDescription = event.toolCall.toolName === 'web-reader'
+          ? String(event.toolCall.parameters?.url || event.message || '').trim()
+          : String(event.toolCall.parameters?.query || event.message || '').trim()
+        pushResearchTimeline(targetRecord, {
+          id: event.id ? `event-${event.id}` : event.toolCall.id,
+          kind: 'tool_call',
+          title: `调用${describeResearchTool(event.toolCall.toolName)}`,
+          description: toolDescription,
+          stage: targetRecord.progressStage,
+          meta: event.toolCall.toolName === 'web-reader'
+            ? {
+              toolId: event.toolCall.id,
+              url: String(event.toolCall.parameters?.url || '').trim(),
+            }
+            : event.toolCall.toolName === 'web-search'
+              ? {
+                toolId: event.toolCall.id,
+                query: String(event.toolCall.parameters?.query || '').trim(),
+              }
+              : {
+                toolId: event.toolCall.id,
+              },
+        }, {
+          appendMode: 'always',
+        })
+      } else if (event.type === 'tool_result' && event.toolResult) {
+        mergeResearchSearchGroup(targetRecord, event.toolResult)
+        pushResearchTimeline(targetRecord, {
+          id: event.id ? `event-${event.id}` : `result-${event.toolResult.id}`,
+          kind: 'tool_result',
+          title: `${describeResearchTool(event.toolResult.toolName)}完成`,
+          description: readResearchPreviewDescription(event.toolResult.preview) || event.message || '',
+          stage: targetRecord.progressStage,
+          meta: event.toolResult.toolName === 'web-reader'
+            ? {
+              ...(readResearchPreviewMeta(event.toolResult.preview) || {}),
+              toolId: event.toolResult.id,
+            }
+            : undefined,
+        }, {
+          appendMode: 'always',
+        })
+      } else if (event.type === 'evidence_added' && event.evidence) {
+        mergeResearchEvidence(targetRecord, event.evidence)
+        pushResearchTimeline(targetRecord, {
+          id: event.id ? `event-${event.id}` : `evidence-${event.evidence.id}`,
+          kind: 'evidence',
+          title: '新增信源',
+          description: event.evidence.summary || event.evidence.title || event.evidence.source?.title || '',
+          stage: targetRecord.progressStage,
+          confidence: event.evidence.confidence,
+          meta: {
+            title: event.evidence.title || event.evidence.source?.title || '',
+            url: event.evidence.source?.url || '',
+            excerpt: event.evidence.summary || '',
+            siteName: event.evidence.source?.note || event.evidence.source?.sourceType || '',
+          },
+        }, {
+          appendMode: 'always',
+        })
+      } else if (event.type === 'fact_update' && event.fact) {
+        mergeResearchFact(targetRecord, event.fact)
+        pushResearchTimeline(targetRecord, {
+          id: event.id ? `event-${event.id}` : `fact-${event.fact.id}`,
+          kind: 'fact',
+          title: '更新事实',
+          description: event.fact.statement,
+          stage: targetRecord.progressStage,
+          confidence: event.fact.confidence,
+        }, {
+          appendMode: 'always',
+        })
+      } else if (event.type === 'verification' && event.verification) {
+        targetRecord.researchVerification = event.verification
+        pushResearchTimeline(targetRecord, {
+          id: event.id ? `event-${event.id}` : 'verification',
+          kind: 'verification',
+          title: '完成事实核查',
+          description: `已核查 ${event.verification.checkedFacts} 条事实`,
+          stage: targetRecord.progressStage,
+        }, {
+          appendMode: 'always',
+        })
+      } else if (event.type === 'outline_ready' && event.outline) {
+        targetRecord.researchOutlineSections = [...(event.outline.sections || [])]
+        pushResearchTimeline(targetRecord, {
+          id: event.id ? `event-${event.id}` : 'outline-ready',
+          kind: 'outline',
+          title: '报告大纲已生成',
+          description: `共 ${event.outline.sections?.length || 0} 个章节`,
+          stage: targetRecord.progressStage,
+        }, {
+          appendMode: 'always',
+        })
+      } else if (event.type === 'token_usage' && event.tokenUsage) {
+        targetRecord.researchTokenUsage = event.tokenUsage
+        pushResearchTimeline(targetRecord, {
+          id: event.id ? `event-${event.id}` : 'token-usage',
+          kind: 'usage',
+          title: '模型消耗已更新',
+          description: `总计 ${event.tokenUsage.totalTokens} tokens`,
+          stage: targetRecord.progressStage,
+        }, {
+          appendMode: 'always',
+        })
+      }
+    }
+  }
+
+  if (event.type === 'section_delta') {
+    targetRecord.error = ''
+    const nextDelta = typeof event.sectionDelta?.delta === 'string'
+        ? event.sectionDelta.delta
+        : typeof event.content === 'string'
+            ? event.content
+            : typeof event.delta === 'string'
+                ? event.delta
+                : ''
+    if (nextDelta) {
+      targetRecord.content += nextDelta
+    }
+    targetRecord.progressStage = event.stage || targetRecord.progressStage || 'report_writing'
+    targetRecord.progressMessage = resolveTaskStageLabel(event.stage, event.message || '研究报告写作中')
+    targetRecord.progressPercent = Math.max(
+        targetRecord.progressPercent || 0,
+        mapTaskStageToProgressPercent(event.stage),
+    )
+    if (isResearchTaskRecord && nextDelta) {
+      pushResearchTimeline(targetRecord, {
+        id: event.id ? `event-${event.id}` : `section-${event.sectionDelta?.sectionId || targetRecord.content.length}`,
+        kind: 'section',
+        title: event.sectionDelta?.title || '写入报告章节',
+        description: '报告正文正在流式生成',
+        stage: targetRecord.progressStage,
+      })
+    }
+  }
+
   if (event.type === 'agent_event' && targetRecord.agentRun && event.agentEvent) {
     targetRecord.error = ''
     if (!event.record) {
@@ -1019,8 +1711,8 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
 
   if (event.type === 'connected' && event.message) {
     targetRecord.error = ''
-    targetRecord.progressStage = event.stage || targetRecord.progressStage || 'queued'
-    targetRecord.progressMessage = resolveTaskStageLabel(event.stage, '造梦中')
+    targetRecord.progressStage = event.stage || targetRecord.progressStage || (isResearchTaskRecord ? 'intake' : 'queued')
+    targetRecord.progressMessage = resolveTaskStageLabel(event.stage, isResearchTaskRecord ? '研究任务连接中' : '造梦中')
     targetRecord.progressPercent = Math.max(
         targetRecord.progressPercent || 0,
         mapTaskStageToProgressPercent(event.stage),
@@ -1036,7 +1728,7 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
 
   if (event.type === 'completed') {
     targetRecord.progressStage = 'completed'
-    targetRecord.progressMessage = resolveTaskStageLabel('completed', event.message || '图片生成完成')
+    targetRecord.progressMessage = resolveTaskStageLabel('completed', event.message || (isResearchTaskRecord ? '研究报告已完成' : '图片生成完成'))
     targetRecord.progressPercent = 100
     if (targetRecord.thinkingStartedAt && !targetRecord.thinkingEndedAt) {
       targetRecord.thinkingEndedAt = Date.now()
@@ -1047,6 +1739,15 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
           'completed',
           `${targetRecord.progressMessage}：${event.message || '图片生成完成'}`,
       ) || stageConversationChanged
+    }
+    if (isResearchTaskRecord) {
+      pushResearchTimeline(targetRecord, {
+        id: event.id ? `event-${event.id}` : 'research-completed',
+        kind: 'completed',
+        title: '研究报告已完成',
+        description: event.message || '',
+        stage: 'completed',
+      })
     }
   } else if (event.type === 'failed') {
     targetRecord.progressStage = 'failed'
@@ -1059,6 +1760,15 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
           `${targetRecord.progressMessage}：${event.message || '任务执行失败'}`,
       ) || stageConversationChanged
     }
+    if (isResearchTaskRecord) {
+      pushResearchTimeline(targetRecord, {
+        id: event.id ? `event-${event.id}` : 'research-failed',
+        kind: 'failed',
+        title: '研究任务失败',
+        description: event.message || '',
+        stage: 'failed',
+      })
+    }
   } else if (event.type === 'stopped') {
     targetRecord.progressStage = 'stopped'
     targetRecord.progressMessage = resolveTaskStageLabel('stopped', event.message || '任务已停止')
@@ -1070,12 +1780,21 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
           `${targetRecord.progressMessage}：${event.message || '任务已停止'}`,
       ) || stageConversationChanged
     }
+    if (isResearchTaskRecord) {
+      pushResearchTimeline(targetRecord, {
+        id: event.id ? `event-${event.id}` : 'research-stopped',
+        kind: 'stopped',
+        title: '研究任务已停止',
+        description: event.message || '',
+        stage: 'stopped',
+      })
+    }
   }
 
   // 终止态（completed/failed/stopped，event.done=true）的最终 record 已由 SSE 带回并通过
   // syncRecordWithPersisted 同步到本地，无需再 PATCH 回写。回写会触发服务端二次
   // normalizeOutputs + 事务 + outputs 重建 + 资产同步，纯属冗余。仅在中间态持久化阶段对话。
-  if (stageConversationChanged && !event.done) {
+  if ((stageConversationChanged || isResearchTaskRecord) && !event.done) {
     schedulePersistRecord(targetRecord)
   }
 
@@ -1248,52 +1967,82 @@ const handleSend = async (message: string, type: CreationType, options?: { model
   }
 
   const recordId = nextId++
+  const normalizedSkill = String(options?.skill || 'general').trim() || 'general'
+  const isResearchReport = type === 'agent' && normalizedSkill === RESEARCH_REPORT_SKILL_KEY
+  const recordType: GenerationRecordType = isResearchReport ? 'research' : type
+  const modelCategory = recordType === 'image'
+      ? 'IMAGE'
+      : recordType === 'video'
+        ? 'VIDEO'
+        : 'CHAT'
   const record: GeneratingRecord = {
     id: recordId,
     sessionId: activeSession.id,
     sessionTitle: activeSession.title,
     source: 'generate',
-    type,
+    type: recordType,
     prompt: message,
     time: formatGroupLabel(new Date()),
-    model: options?.model || resolveModelLabel(options?.modelKey || '', type === 'image' ? 'IMAGE' : type === 'agent' ? 'CHAT' : 'VIDEO') || '',
+    model: options?.model || resolveModelLabel(options?.modelKey || '', modelCategory) || '',
     modelKey: options?.modelKey || '',
     referenceImages: options?.referenceImages || [],
     ratio: options?.ratio || '',
     resolution: options?.resolution || '',
     duration: options?.duration || '',
     feature: options?.feature || '',
-    skill: options?.skill || 'general',
+    skill: normalizedSkill,
     capabilityFlags: options?.capabilityFlags || undefined,
-    content: type === 'image' ? '[[queued]]任务已创建，等待服务端执行' : '',
+    content: recordType === 'image' ? '[[queued]]任务已创建，等待服务端执行' : '',
     images: [],
     done: false,
     stopped: false,
-    progressStage: type === 'image' ? 'queued' : undefined,
-    progressMessage: type === 'image' ? resolveTaskStageLabel('queued', '任务已创建，等待服务端执行') : undefined,
-    progressPercent: type === 'image' ? 5 : 0,
+    progressStage: recordType === 'image' ? 'queued' : recordType === 'research' ? 'intake' : undefined,
+    progressMessage: recordType === 'image'
+        ? resolveTaskStageLabel('queued', '任务已创建，等待服务端执行')
+        : recordType === 'research'
+          ? resolveTaskStageLabel('intake', '研究任务已创建，等待服务端执行')
+          : undefined,
+    progressPercent: recordType === 'image' ? 5 : recordType === 'research' ? 8 : 0,
     error: '',
-    agentRun: type === 'agent' && shouldUseAgentWorkspaceFlow(options?.skill)
+    agentRun: recordType === 'agent' && shouldUseAgentWorkspaceFlow(normalizedSkill)
         ? buildAgentPendingRun(
             recordId,
             message,
-            options?.skill || 'general',
+            normalizedSkill,
             Array.isArray(options?.referenceImages) ? options.referenceImages : [],
         )
         : undefined,
+    researchTimeline: recordType === 'research'
+        ? [{
+          id: `research-created-${recordId}`,
+          kind: 'begin',
+          title: '研究任务已创建',
+          description: '正在等待服务端执行深度研究',
+          stage: 'intake',
+          time: formatResearchTimelineTime(),
+        }]
+        : [],
+    researchSearchGroups: [],
+    researchEvidences: [],
+    researchFacts: [],
+    researchOutlineSections: [],
+    researchVerification: null,
+    researchTokenUsage: null,
   }
 
   generatingRecords.value.unshift(record)
   touchSessionAfterRecordCreated(activeSession.id)
 
   // 根据类型触发不同的生成逻辑
-  if (type === 'agent') {
+  if (record.type === 'research') {
+    void startResearchTask(generatingRecords.value[0])
+  } else if (record.type === 'agent') {
     if (record.agentRun) {
       void startWorkspaceAgentTask(generatingRecords.value[0])
     } else {
       void startGeneralAgentTask(generatingRecords.value[0])
     }
-  } else if (type === 'image') {
+  } else if (record.type === 'image') {
     void startImageGenerationTask(generatingRecords.value[0])
   }
 }
@@ -1374,6 +2123,72 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
     record.done = true
     record.stopped = false
     record.error = formatGenerationError(error instanceof Error ? error.message : '', '对话生成失败')
+    schedulePersistRecord(record, true)
+  }
+}
+
+// 深度研究报告复用 generate 对话入口，提交到 research-report 策略执行。
+const startResearchTask = async (record: GeneratingRecord) => {
+  try {
+    await Promise.all([
+      loadPublicModelCatalog(),
+      loadPublicSkillCatalog(),
+    ])
+    const researchSkillConfig = readResearchSkillConfig()
+    const modelBinding = readResearchModelBindingConfig(researchSkillConfig)
+    const searchConfig = readResearchSearchConfig(researchSkillConfig)
+    const configuredModelKey = modelBinding.modelKey || record.modelKey
+    const configuredModel = configuredModelKey ? findCatalogModel(configuredModelKey, 'CHAT') : null
+    const { providerId, modelKey: currentModelKey } = resolveGenerationTaskModel({
+      modelKey: configuredModel?.selectionKey || configuredModelKey || record.modelKey,
+      fallbackModelKey: getAgentModel(),
+      category: 'CHAT',
+      missingModelMessage: '缺少研究模型标识',
+    })
+    const currentProviderId = modelBinding.providerId || providerId
+
+    const saved = await createGenerationTask({
+      sessionId: record.sessionId,
+      source: 'generate',
+      type: 'research',
+      prompt: record.prompt,
+      model: record.model || resolveModelLabel(currentModelKey, 'CHAT'),
+      modelKey: currentModelKey,
+      skill: RESEARCH_REPORT_SKILL_KEY,
+      referenceImages: Array.isArray(record.referenceImages) ? [...record.referenceImages] : [],
+      researchConfig: {
+        outputType: 'report',
+        requireVerification: true,
+      },
+      requestBody: {
+        providerId: currentProviderId,
+        model: currentModelKey,
+        stream: true,
+        ...(searchConfig.provider ? { researchSearchProvider: searchConfig.provider } : {}),
+        ...(searchConfig.providerId ? { researchSearchProviderId: searchConfig.providerId } : {}),
+        ...(searchConfig.model ? { researchSearchModel: searchConfig.model } : {}),
+        ...(record.capabilityFlags && Object.keys(record.capabilityFlags).length
+          ? { [CAPABILITY_FLAGS_REQUEST_FIELD]: record.capabilityFlags }
+          : {}),
+      },
+    })
+
+    syncRecordWithPersisted(record, saved)
+    connectGenerationTaskStream(record)
+  } catch (error: unknown) {
+    const errorMessage = formatGenerationError(error instanceof Error ? error.message : '', '研究任务生成失败')
+    record.done = true
+    record.stopped = false
+    record.progressStage = 'failed'
+    record.progressMessage = resolveTaskStageLabel('failed', errorMessage)
+    record.progressPercent = 100
+    record.error = errorMessage
+    pushResearchTimeline(record, {
+      kind: 'failed',
+      title: '研究任务失败',
+      description: errorMessage,
+      stage: 'failed',
+    })
     schedulePersistRecord(record, true)
   }
 }
@@ -1461,6 +2276,29 @@ const handleStopAgentExecution = async (record: GeneratingRecord) => {
 
   try {
     markRecordStopping(record)
+    const saved = await stopGenerationTask(record.dbId)
+    syncRecordWithPersisted(record, saved)
+    const controller = taskStreamControllers.get(record.dbId)
+    if (controller) {
+      controller.abort()
+      taskStreamControllers.delete(record.dbId)
+    }
+  } catch {
+    // 停止失败时保持当前状态，等待 SSE 或后续同步刷新。
+  }
+}
+
+const handleStopResearchTask = async (record: GeneratingRecord) => {
+  if (record.done || !record.dbId) return
+
+  try {
+    markRecordStopping(record)
+    pushResearchTimeline(record, {
+      kind: 'stopped',
+      title: '已发送停止指令',
+      description: '服务端正在收口研究任务状态',
+      stage: 'stopping',
+    })
     const saved = await stopGenerationTask(record.dbId)
     syncRecordWithPersisted(record, saved)
     const controller = taskStreamControllers.get(record.dbId)
@@ -1614,11 +2452,30 @@ onUnmounted(() => {
             <template v-for="(record, index) in visibleGeneratingRecords" :key="record.id">
               <div class="item-Xh64V7" :data-index="index * 2 + 1" style="z-index:1">
                 <GenerateAgentRecord
-                    v-if="record.type === 'agent' && record.agentRun"
+                    v-if="!isResearchReportRecord(record) && record.type === 'agent' && record.agentRun"
                     :run="record.agentRun"
                     :reference-images="record.referenceImages || []"
                     :error-text="record.error ? formatGenerationError(record.error, '任务执行失败') : ''"
                     @stop="handleStopAgentExecution(record)"
+                />
+                <ResearchReportRecord
+                    v-else-if="isResearchReportRecord(record)"
+                    :prompt="record.prompt"
+                    :content="record.content"
+                    :done="record.done"
+                    :stopped="Boolean(record.stopped)"
+                    :error="record.error ? formatGenerationError(record.error, '研究任务失败') : ''"
+                    :progress-stage="record.progressStage"
+                    :progress-message="record.progressMessage"
+                    :progress-percent="record.progressPercent || 0"
+                    :timeline="record.researchTimeline || []"
+                    :search-groups="record.researchSearchGroups || []"
+                    :evidences="record.researchEvidences || []"
+                    :facts="record.researchFacts || []"
+                    :outline-sections="record.researchOutlineSections || []"
+                    :verification="record.researchVerification || null"
+                    :token-usage="record.researchTokenUsage || null"
+                    @stop="handleStopResearchTask(record)"
                 />
                 <AgentLoadingRecord
                     v-else-if="record.type === 'agent'"
@@ -1656,7 +2513,7 @@ onUnmounted(() => {
                 />
               </div>
               <div
-                  v-if="record.type === 'agent'"
+                  v-if="record.type === 'agent' || isResearchReportRecord(record)"
                   class="item-Xh64V7"
                   :data-index="index * 2 + 2"
                   style="z-index:1"

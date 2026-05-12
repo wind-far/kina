@@ -4,7 +4,7 @@ import type { GenerationTaskStreamEvent } from './shared'
 export interface SharedTaskRuntimeState {
   recordId: string
   userId: string
-  type: 'image' | 'agent'
+  type: 'image' | 'agent' | 'research'
   strategyKey: string
   status: 'queued' | 'running' | 'completed' | 'failed' | 'stopped'
   updatedAt: string

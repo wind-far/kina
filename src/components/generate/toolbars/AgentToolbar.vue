@@ -228,16 +228,16 @@ watch(
 
 onMounted(() => {
   void loadPublicModelCatalog()
-  void loadPublicSkillCatalog().then((skills) => {
+  void loadPublicSkillCatalog().then(() => {
     skillOptions.value = listEnabledAgentSkills()
     const allowedSkillKeys = Array.isArray(props.allowedAssistantKeys) && props.allowedAssistantKeys.length
       ? props.allowedAssistantKeys.map(item => String(item || '').trim()).filter(Boolean)
       : []
     const filteredSkills = allowedSkillKeys.length
-      ? skills.filter(item => allowedSkillKeys.includes(item.skillKey))
-      : skills
-    if (!filteredSkills.some(item => item.skillKey === currentSkill.value)) {
-      currentSkill.value = props.defaultAssistantKey || filteredSkills[0]?.skillKey || 'general'
+      ? skillOptions.value.filter(item => allowedSkillKeys.includes(item.value))
+      : skillOptions.value
+    if (!filteredSkills.some(item => item.value === currentSkill.value)) {
+      currentSkill.value = props.defaultAssistantKey || filteredSkills[0]?.value || 'general'
     }
   })
 })

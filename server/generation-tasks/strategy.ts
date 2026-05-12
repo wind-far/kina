@@ -1,6 +1,6 @@
 import type { GenerationTaskStartPayload } from './shared'
 
-export type GenerationTaskStrategyKey = 'image' | 'agent-chat' | 'agent-workspace'
+export type GenerationTaskStrategyKey = 'image' | 'agent-chat' | 'agent-workspace' | 'research-report'
 
 export interface GenerationTaskStrategy {
   key: GenerationTaskStrategyKey
@@ -21,6 +21,10 @@ const strategies: GenerationTaskStrategy[] = [
   {
     key: 'agent-chat',
     matches: payload => String(payload.type || '').trim() === 'agent',
+  },
+  {
+    key: 'research-report',
+    matches: payload => String(payload.type || '').trim() === 'research',
   },
 ]
 

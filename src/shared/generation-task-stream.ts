@@ -6,13 +6,39 @@
 // - 定义标准化的失败码 GenerationTaskFailureCode，用于 failed 事件，
 //   前端可据此区分错误类型并给出准确的用户反馈
 import type { AgentWorkspaceEvent } from './agent-workspace'
+import type {
+  ResearchBeginPayload,
+  ResearchOutlineReadyPayload,
+  ResearchStageChangedPayload,
+} from './research/research-stream'
+import type {
+  ResearchEvidence,
+  ResearchFact,
+  ResearchReasoningSummary,
+  ResearchSectionDelta,
+  ResearchTokenUsage,
+  ResearchToolCallPayload,
+  ResearchToolResultPayload,
+  ResearchVerificationResult,
+} from './research/research-types'
 
 export type GenerationTaskStreamEventType =
   | 'connected'
   | 'snapshot'
+  | 'begin'
   | 'progress'
+  | 'stage_changed'
+  | 'reasoning_summary'
+  | 'tool_call'
+  | 'tool_result'
+  | 'evidence_added'
+  | 'fact_update'
+  | 'verification'
+  | 'outline_ready'
   | 'content_delta'
   | 'thinking_delta'
+  | 'section_delta'
+  | 'token_usage'
   | 'agent_event'
   | 'completed'
   | 'failed'
@@ -47,6 +73,17 @@ export interface GenerationTaskStreamEventBase<TRecord = unknown> {
   /** thinking_delta / completed 事件用：累计完整思考内容。 */
   thinkingContent?: string
   agentEvent?: AgentWorkspaceEvent
+  researchBegin?: ResearchBeginPayload
+  researchStage?: ResearchStageChangedPayload
+  reasoningSummary?: ResearchReasoningSummary
+  toolCall?: ResearchToolCallPayload
+  toolResult?: ResearchToolResultPayload
+  evidence?: ResearchEvidence
+  fact?: ResearchFact
+  verification?: ResearchVerificationResult
+  outline?: ResearchOutlineReadyPayload
+  sectionDelta?: ResearchSectionDelta
+  tokenUsage?: ResearchTokenUsage
   // 单调递增的事件 id，用于客户端断线重连时通过 lastEventId 定位重放起点
   id?: number
   // 仅 failed 事件使用：标准化错误码 + 详细原因

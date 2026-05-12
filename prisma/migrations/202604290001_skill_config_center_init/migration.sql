@@ -1,7 +1,7 @@
 -- 技能配置中心初始化迁移
 -- 说明：
 -- 1. 新增技能主表、依赖表、提示词模板表、工作流模板表、计划模板表、阶段模板表
--- 2. 预置 general、ecommerce-pack、poster-design 三个内置技能
+-- 2. 预置 general、ecommerce-pack、poster-design、research-report 四个内置技能
 -- 3. 所有表结构和字段注释均使用中文，便于后续后台维护
 
 CREATE TABLE ai_skills (
@@ -112,7 +112,8 @@ INSERT INTO ai_skills (
 ) VALUES
   ('skill_general_builtin', NULL, 'general', '通用助手', '通用对话与创意辅助技能', 'message', 'assistant', 'PLAIN_CHAT', 'CHAT_ONLY', NULL, 'CHAT', 0, 1, 1, 0, NULL),
   ('skill_ecommerce_builtin', NULL, 'ecommerce-pack', '电商套图', '面向电商商品的主图、卖点图、场景图和细节图生成技能', 'shop', 'commerce', 'WORKSPACE', 'PLANNER_THEN_GENERATE', 'text_to_image', 'CHAT', 4, 1, 1, 10, JSON_OBJECT('result_parser', 'text_to_image_default')),
-  ('skill_poster_builtin', NULL, 'poster-design', '海报设计', '面向品牌宣传与营销传播的海报设计技能', 'poster', 'marketing', 'WORKSPACE', 'PLANNER_THEN_GENERATE', 'text_to_image', 'CHAT', 4, 1, 1, 20, JSON_OBJECT('workspace_skill_key', 'image-poster', 'dependency_skill_keys', JSON_ARRAY('image-main'), 'result_parser', 'text_to_image_default'));
+  ('skill_poster_builtin', NULL, 'poster-design', '海报设计', '面向品牌宣传与营销传播的海报设计技能', 'poster', 'marketing', 'WORKSPACE', 'PLANNER_THEN_GENERATE', 'text_to_image', 'CHAT', 4, 1, 1, 20, JSON_OBJECT('workspace_skill_key', 'image-poster', 'dependency_skill_keys', JSON_ARRAY('image-main'), 'result_parser', 'text_to_image_default')),
+  ('skill_research_report_builtin', NULL, 'research-report', '深度研究报告', '联网搜索、深度阅读、证据核查并生成结构化研究报告', 'search', 'research', 'PLAIN_CHAT', 'CHAT_ONLY', NULL, 'CHAT', 0, 1, 1, 10, JSON_OBJECT('researchModelBinding', JSON_OBJECT('modelKey', 'minimax-m2.5'), 'researchSearch', JSON_OBJECT('provider', 'grok2api')));
 
 -- 初始化提示词模板
 INSERT INTO ai_skill_prompt_templates (id, skill_id, scene, system_prompt, user_prompt_template, is_enabled) VALUES
@@ -120,7 +121,8 @@ INSERT INTO ai_skill_prompt_templates (id, skill_id, scene, system_prompt, user_
   ('skill_prompt_ecommerce_chat', 'skill_ecommerce_builtin', 'CHAT', '你是一名电商视觉策划与商品拍摄导演。请把用户需求整理为适合电商商品套图生成的视觉方案。要强调主图、卖点图、场景图、细节图的一致风格。', '请将下面需求整理成电商套图策划案。\n\n用户原始需求：\n{{input}}\n\n生成要求：\n1. 突出商品主体、材质、卖点与适用场景\n2. 保持整套视觉风格统一\n3. 描述要适合商品主图与详情图生成\n4. 输出中文', 1),
   ('skill_prompt_ecommerce_planner', 'skill_ecommerce_builtin', 'PLANNER', '你是一个 AI 技能工作流规划器，需要把电商套图需求转成结构化执行计划。', '请根据用户需求输出 analysis_lines、workflow_label、workflow_params、plan_items、image_tasks、submit_lines，所有字段必须使用中文。\n用户需求：{{input}}', 1),
   ('skill_prompt_poster_chat', 'skill_poster_builtin', 'CHAT', '你是一名海报创意总监。请将用户需求扩展为适合宣传海报生产的视觉创意与文案结构。重点关注主视觉、版式焦点、气氛与传播主题。', '请将下面需求整理成海报设计方案。\n\n用户原始需求：\n{{input}}\n\n生成要求：\n1. 突出海报主题与视觉焦点\n2. 补充氛围、色彩、构图与文字区域预留建议\n3. 结果适合后续图像生成\n4. 输出中文', 1),
-  ('skill_prompt_poster_planner', 'skill_poster_builtin', 'PLANNER', '你是一个 AI 技能工作流规划器，需要把海报设计需求转成结构化执行计划。', '请根据用户需求输出 analysis_lines、workflow_label、workflow_params、plan_items、image_tasks、submit_lines，所有字段必须使用中文。\n用户需求：{{input}}', 1);
+  ('skill_prompt_poster_planner', 'skill_poster_builtin', 'PLANNER', '你是一个 AI 技能工作流规划器，需要把海报设计需求转成结构化执行计划。', '请根据用户需求输出 analysis_lines、workflow_label、workflow_params、plan_items、image_tasks、submit_lines，所有字段必须使用中文。\n用户需求：{{input}}', 1),
+  ('skill_prompt_research_report_chat', 'skill_research_report_builtin', 'CHAT', '你是一个中文深度研究助手。你需要围绕用户主题进行问题拆解、联网搜索、深度阅读、证据核查，并输出结构清晰、标注不确定性的研究报告。', '{{input}}', 1);
 
 -- 初始化工作流模板
 INSERT INTO ai_skill_workflow_templates (

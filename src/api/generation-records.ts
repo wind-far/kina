@@ -1,7 +1,31 @@
 import type { AgentRunState } from '@/types/agent'
 import type { CreationType } from '@/components/generate/selectors'
+import type {
+  ResearchEvidence,
+  ResearchFact,
+  ResearchOutlineSection,
+  ResearchTokenUsage,
+  ResearchVerificationResult,
+} from '@/shared/research/research-types'
+import type {
+  ResearchSearchGroupViewItem,
+  ResearchTimelineViewItem,
+} from '@/views/generate/components/research-report-record.types'
 import { buildApiUrl } from './http'
 import { readApiData } from './response'
+
+export type GenerationRecordType = CreationType | 'research'
+
+export interface PersistedResearchRuntimeMeta {
+  version: 1
+  timeline?: ResearchTimelineViewItem[]
+  searchGroups?: ResearchSearchGroupViewItem[]
+  evidences?: ResearchEvidence[]
+  facts?: ResearchFact[]
+  outlineSections?: ResearchOutlineSection[]
+  verification?: ResearchVerificationResult | null
+  tokenUsage?: ResearchTokenUsage | null
+}
 
 // 后端返回的持久化生成记录结构
 export interface PersistedGenerationRecord {
@@ -9,7 +33,7 @@ export interface PersistedGenerationRecord {
   sessionId: string
   sessionTitle?: string
   source?: string
-  type: CreationType
+  type: GenerationRecordType
   prompt: string
   content: string
   /** 模型的思考过程（reasoning_content / thinking block）。可能为空字符串。 */
@@ -35,13 +59,14 @@ export interface PersistedGenerationRecord {
     sortOrder?: number
   }>
   agentRun?: AgentRunState
+  research?: PersistedResearchRuntimeMeta | null
 }
 
 // 前端提交给后端的生成记录写入结构
 export interface GenerationRecordUpsertPayload {
   sessionId?: string
   source?: string
-  type: CreationType
+  type: GenerationRecordType
   prompt: string
   content: string
   error: string
@@ -58,6 +83,7 @@ export interface GenerationRecordUpsertPayload {
   agentTaskId?: string
   images: string[]
   agentRun?: AgentRunState
+  research?: PersistedResearchRuntimeMeta | null
 }
 
 const GENERATION_RECORDS_API_PATH = '/api/generation-records'

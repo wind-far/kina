@@ -3,6 +3,7 @@ import { readApiData } from './response'
 import type { PersistedGenerationRecord } from './generation-records'
 import { consumeSseStream, type SseMessage } from '@/utils/sse'
 import type { GenerationTaskStreamEventBase } from '@/shared/generation-task-stream'
+import type { ResearchTaskConfig } from '@/shared/research/research-types'
 import { resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 
 // 重新导出失败码，便于业务代码 import { GenerationTaskFailureCode } from '@/api/generation-tasks'
@@ -11,7 +12,7 @@ export type { GenerationTaskFailureCode } from '@/shared/generation-task-stream'
 export interface GenerationTaskStartPayload {
   sessionId?: string
   source?: string
-  type: 'image' | 'agent'
+  type: 'image' | 'agent' | 'research'
   requestMode?: 'image-generation' | 'image-edit'
   prompt: string
   model?: string
@@ -22,6 +23,7 @@ export interface GenerationTaskStartPayload {
   feature?: string
   skill?: string
   referenceImages?: string[]
+  researchConfig?: Partial<ResearchTaskConfig> | null
   requestBody?: Record<string, unknown>
 }
 
@@ -117,7 +119,11 @@ export const stopGenerationTask = async (taskId: string, options: RequestOptions
 // 已内置自动重连（指数退避）+ watchdog（30s 无消息视为断流）。
 const ALLOWED_STREAM_EVENT_TYPES = new Set([
   'connected', 'snapshot', 'progress', 'content_delta', 'thinking_delta',
-  'agent_event', 'completed', 'failed', 'stopped',
+  'agent_event',
+  'begin', 'stage_changed', 'reasoning_summary', 'tool_call', 'tool_result',
+  'evidence_added', 'fact_update', 'verification', 'outline_ready',
+  'section_delta', 'token_usage',
+  'completed', 'failed', 'stopped',
 ])
 const TERMINAL_EVENT_TYPES = new Set(['completed', 'failed', 'stopped'])
 const RETRY_DELAYS_MS = [1000, 2000, 5000, 10000, 30000]

@@ -36,6 +36,7 @@ export interface GenerationRecordPayload {
   images?: string[]
   outputs?: GenerationOutputPayload[]
   agentRun?: AgentRunState | null
+  research?: Record<string, unknown> | null
 }
 
 // 读取生成记录请求体

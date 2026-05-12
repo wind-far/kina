@@ -110,6 +110,10 @@
           <span>图片模型</span>
           <strong>{{ getSkillImageModelSummary(skill.skillKey) }}</strong>
         </div>
+        <div v-if="skill.skillKey === RESEARCH_REPORT_SKILL_KEY" class="admin-skill-tile__binding">
+          <span>深度搜索</span>
+          <strong>{{ getSkillResearchSearchSummary(skill.skillKey) }}</strong>
+        </div>
 
         <div class="admin-skill-tile__meta-row">
           <span>提示词 {{ getPromptCount(skill.skillKey) }}</span>
@@ -288,6 +292,21 @@
                         <option value="">{{ skillForm.imageModelProviderId ? '请选择图片模型' : '请先选择厂商' }}</option>
                         <option v-for="model in currentImageModelOptions" :key="model.id" :value="model.modelKey">{{ model.label }}（{{ model.modelKey }}）</option>
                       </select>
+                    </div>
+                    <div v-if="isResearchReportSkill" class="admin-form__field">
+                      <label class="admin-form__label">深度搜索供应商</label>
+                      <select v-model="skillForm.researchSearchProviderId" class="admin-input">
+                        <option value="">请选择搜索供应商</option>
+                        <option v-for="provider in researchSearchProviderOptions" :key="provider.id" :value="provider.id">{{ provider.name }}</option>
+                      </select>
+                    </div>
+                    <div v-if="isResearchReportSkill" class="admin-form__field">
+                      <label class="admin-form__label">深度搜索模型</label>
+                      <select v-model="skillForm.researchSearchModelKey" class="admin-input" :disabled="!skillForm.researchSearchProviderId">
+                        <option value="">{{ skillForm.researchSearchProviderId ? '请选择搜索模型' : '请先选择供应商' }}</option>
+                        <option v-for="model in currentResearchSearchModelOptions" :key="model.id" :value="model.modelKey">{{ model.label }}（{{ model.modelKey }}）</option>
+                      </select>
+                      <div class="admin-form__hint">供应商的 Base URL、API Key 和接口路径在供应商配置中心维护。</div>
                     </div>
                     <div class="admin-form__field admin-form__field--full">
                       <label class="admin-form__label">依赖技能键（逗号分隔）</label>
@@ -688,6 +707,10 @@
                     <span>图片模型</span>
                     <strong>{{ currentSkillImageModelSummary }}</strong>
                   </div>
+                  <div v-if="isResearchReportSkill" class="admin-skill-summary__row">
+                    <span>深度搜索</span>
+                    <strong>{{ currentResearchSearchSummary }}</strong>
+                  </div>
                   <div class="admin-skill-summary__row">
                     <span>提示词模板</span>
                     <strong>{{ enabledPromptCount }}/{{ skillForm.promptTemplates.length }}</strong>
@@ -845,6 +868,8 @@ const skills = ref<AdminSkillDetail['skill'][]>([])
 const skillDetailMap = ref<Record<string, AdminSkillDetail>>({})
 const providerOptions = ref<AdminProviderItem[]>([])
 const providerImageModelMap = ref<Record<string, AdminProviderModelItem[]>>({})
+const providerChatModelMap = ref<Record<string, AdminProviderModelItem[]>>({})
+const RESEARCH_REPORT_SKILL_KEY = 'research-report'
 const { activeFilterCount, resetFilters } = useAdminListFilters({
   filters,
   defaults: filterDefaults,
@@ -885,6 +910,8 @@ const skillForm = reactive({
   workspaceSkillKey: '',
   imageModelProviderId: '',
   imageModelKey: '',
+  researchSearchProviderId: '',
+  researchSearchModelKey: '',
   dependencySkillKeysText: '',
   configJsonText: '',
   promptTemplates: [] as SkillPromptFormItem[],
@@ -926,14 +953,30 @@ const imageModelProviderOptions = computed(() => {
     return models.length > 0
   })
 })
+const isResearchReportSkill = computed(() => skillForm.skillKey.trim() === RESEARCH_REPORT_SKILL_KEY)
+const researchSearchProviderOptions = computed(() => {
+  return providerOptions.value.filter((provider) => {
+    const models = providerChatModelMap.value[provider.id] || []
+    return models.length > 0
+  })
+})
 const currentImageModelOptions = computed(() => {
   if (!skillForm.imageModelProviderId) {
     return []
   }
   return providerImageModelMap.value[skillForm.imageModelProviderId] || []
 })
+const currentResearchSearchModelOptions = computed(() => {
+  if (!skillForm.researchSearchProviderId) {
+    return []
+  }
+  return providerChatModelMap.value[skillForm.researchSearchProviderId] || []
+})
 const currentSkillImageModelSummary = computed(() => {
   return formatImageModelSummary(skillForm.imageModelProviderId, skillForm.imageModelKey)
+})
+const currentResearchSearchSummary = computed(() => {
+  return formatResearchSearchSummary(skillForm.researchSearchProviderId, skillForm.researchSearchModelKey)
 })
 const visibleSectionNavItems = computed(() => {
   const currentTab = editorTabs.find(item => item.key === activeEditorTab.value)
@@ -990,6 +1033,44 @@ const getSkillImageModelSummary = (skillKey: string) => {
   ).trim()
 
   return formatImageModelSummary(providerId, modelKey)
+}
+
+const formatResearchSearchSummary = (providerId?: string, modelKey?: string) => {
+  const normalizedProviderId = String(providerId || '').trim()
+  const normalizedModelKey = String(modelKey || '').trim()
+  if (!normalizedProviderId || !normalizedModelKey) {
+    return '未配置深度搜索'
+  }
+
+  const provider = providerOptions.value.find(item => item.id === normalizedProviderId)
+  const matchedModel = (providerChatModelMap.value[normalizedProviderId] || []).find(item => item.modelKey === normalizedModelKey)
+  const modelLabel = matchedModel?.label || normalizedModelKey
+  const providerLabel = provider?.name || normalizedProviderId
+
+  return `${providerLabel} / ${modelLabel}`
+}
+
+const getSkillResearchSearchSummary = (skillKey: string) => {
+  const detail = skillDetailMap.value[skillKey]
+  const configJson = detail?.skill?.configJson as Record<string, unknown> | null | undefined
+  const researchSearch = configJson?.researchSearch as Record<string, unknown> | undefined
+  const providerId = String(
+    researchSearch?.providerId
+    || researchSearch?.provider_id
+    || configJson?.researchSearchProviderId
+    || configJson?.research_search_provider_id
+    || '',
+  ).trim()
+  const modelKey = String(
+    researchSearch?.model
+    || researchSearch?.modelKey
+    || researchSearch?.model_key
+    || configJson?.researchSearchModel
+    || configJson?.research_search_model
+    || '',
+  ).trim()
+
+  return formatResearchSearchSummary(providerId, modelKey)
 }
 
 const getSkillInitial = (label: string) => String(label || '').trim().slice(0, 1).toUpperCase() || 'S'
@@ -1182,6 +1263,8 @@ const resetForm = () => {
   skillForm.workspaceSkillKey = ''
   skillForm.imageModelProviderId = ''
   skillForm.imageModelKey = ''
+  skillForm.researchSearchProviderId = ''
+  skillForm.researchSearchModelKey = ''
   skillForm.dependencySkillKeysText = ''
   skillForm.configJsonText = ''
   skillForm.promptTemplates = []
@@ -1242,6 +1325,47 @@ const buildConfigJson = () => {
     delete nextConfigJson.imageModelProviderId
     delete nextConfigJson.imageModelKey
     delete nextConfigJson.imageModelBinding
+  }
+
+  delete nextConfigJson.researchSearchProvider
+  delete nextConfigJson.research_search_provider
+  delete nextConfigJson.researchSearchProviderId
+  delete nextConfigJson.research_search_provider_id
+  delete nextConfigJson.researchSearchModel
+  delete nextConfigJson.research_search_model
+  delete nextConfigJson.researchSearchBaseUrl
+  delete nextConfigJson.research_search_base_url
+  delete nextConfigJson.researchSearchApiKey
+  delete nextConfigJson.research_search_api_key
+
+  if (skillForm.skillKey.trim() === RESEARCH_REPORT_SKILL_KEY) {
+    const researchSearchProviderId = skillForm.researchSearchProviderId.trim()
+    const researchSearchModelKey = skillForm.researchSearchModelKey.trim()
+    if (!researchSearchProviderId || !researchSearchModelKey) {
+      throw new Error('深度研究报告必须选择深度搜索供应商和模型')
+    }
+
+    const oldResearchSearch = (
+      nextConfigJson.researchSearch
+      && typeof nextConfigJson.researchSearch === 'object'
+      && !Array.isArray(nextConfigJson.researchSearch)
+    ) ? nextConfigJson.researchSearch as Record<string, unknown> : {}
+
+    delete oldResearchSearch.baseUrl
+    delete oldResearchSearch.base_url
+    delete oldResearchSearch.apiKey
+    delete oldResearchSearch.api_key
+
+    nextConfigJson.researchSearch = {
+      ...oldResearchSearch,
+      provider: 'grok2api',
+      providerId: researchSearchProviderId,
+      model: researchSearchModelKey,
+    }
+    delete nextConfigJson.research_search
+  } else {
+    delete nextConfigJson.researchSearch
+    delete nextConfigJson.research_search
   }
 
   const dependencySkillKeys = parseDependencySkillKeys(skillForm.dependencySkillKeysText)
@@ -1329,6 +1453,22 @@ const applyDetailToForm = (detail: AdminSkillDetail) => {
     || configJson.imageModelKey
     || '',
   ).trim()
+  const researchSearch = configJson.researchSearch as Record<string, unknown> | undefined
+  skillForm.researchSearchProviderId = String(
+    researchSearch?.providerId
+    || researchSearch?.provider_id
+    || configJson.researchSearchProviderId
+    || configJson.research_search_provider_id
+    || '',
+  ).trim()
+  skillForm.researchSearchModelKey = String(
+    researchSearch?.model
+    || researchSearch?.modelKey
+    || researchSearch?.model_key
+    || configJson.researchSearchModel
+    || configJson.research_search_model
+    || '',
+  ).trim()
   skillForm.dependencySkillKeysText = (
     Array.isArray(configJson.dependencySkillKeys)
       ? configJson.dependencySkillKeys
@@ -1367,20 +1507,29 @@ const applyDetailToForm = (detail: AdminSkillDetail) => {
 
 const loadProviders = async () => {
   providerOptions.value = await listAdminProviders()
-  const imageModelEntries = await Promise.all(providerOptions.value.map(async (provider) => {
+  const modelEntries = await Promise.all(providerOptions.value.map(async (provider) => {
     try {
       const result = await listAdminProviderModels(provider.id)
-      return [
-        provider.id,
-        result.models.filter(model => model.category === 'IMAGE' && model.isEnabled),
-      ] as [string, AdminProviderModelItem[]]
+      return {
+        providerId: provider.id,
+        imageModels: result.models.filter(model => model.category === 'IMAGE' && model.isEnabled),
+        chatModels: result.models.filter(model => model.category === 'CHAT' && model.isEnabled),
+      }
     } catch {
-      return [provider.id, []] as [string, AdminProviderModelItem[]]
+      return {
+        providerId: provider.id,
+        imageModels: [] as AdminProviderModelItem[],
+        chatModels: [] as AdminProviderModelItem[],
+      }
     }
   }))
 
-  providerImageModelMap.value = imageModelEntries.reduce<Record<string, AdminProviderModelItem[]>>((result, [providerId, models]) => {
-    result[providerId] = models
+  providerImageModelMap.value = modelEntries.reduce<Record<string, AdminProviderModelItem[]>>((result, item) => {
+    result[item.providerId] = item.imageModels
+    return result
+  }, {})
+  providerChatModelMap.value = modelEntries.reduce<Record<string, AdminProviderModelItem[]>>((result, item) => {
+    result[item.providerId] = item.chatModels
     return result
   }, {})
 }
@@ -1430,6 +1579,14 @@ watch(() => skillForm.imageModelProviderId, (providerId) => {
     return
   }
   skillForm.imageModelKey = ''
+})
+
+watch(() => skillForm.researchSearchProviderId, (providerId) => {
+  const currentModels = providerId ? (providerChatModelMap.value[providerId] || []) : []
+  if (currentModels.some(model => model.modelKey === skillForm.researchSearchModelKey)) {
+    return
+  }
+  skillForm.researchSearchModelKey = ''
 })
 
 const closeDialog = () => {

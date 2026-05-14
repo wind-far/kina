@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
@@ -74,6 +74,7 @@ const formatGenerationError = (message?: string | null, fallback = '任务执行
 
 // ContentGenerator 组件引用
 const contentGeneratorRef = ref<InstanceType<typeof ContentGenerator> | null>(null)
+const generateSessionListRef = ref<InstanceType<typeof GenerateSessionList> | null>(null)
 
 // 生成记录列表
 interface GeneratingRecord {
@@ -118,6 +119,7 @@ interface GeneratingRecord {
   researchOutlineSections?: ResearchOutlineSection[]
   researchVerification?: ResearchVerificationResult | null
   researchTokenUsage?: ResearchTokenUsage | null
+  researchVerificationPending?: boolean
 }
 
 interface GeneratePreviewImageItem {
@@ -141,6 +143,17 @@ interface GeneratePreviewImageItem {
   referenceImages?: string[]
 }
 
+interface RawTranscriptStreamEvent {
+  type: 'begin' | 'text' | 'tool_call' | 'tool_result' | 'token_usage' | 'end'
+  id?: string
+  role?: string
+  timestamp?: number
+  reasoningContent?: string | null
+  toolName?: string
+  toolCallId?: string
+  content?: unknown
+}
+
 interface GenerateSessionScrollState {
   scrollTop: number
   isAtBottom: boolean
@@ -150,6 +163,10 @@ const generatingRecords = ref<GeneratingRecord[]>([])
 let nextId = 0
 const recordPersistTimers = new Map<number, ReturnType<typeof setTimeout>>()
 const recordPersistInflight = new Set<number>()
+const researchSearchRevealTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const researchSearchRevealQueues = new Map<string, ResearchSearchSourceViewItem[]>()
+const researchUiRevealTimers = new Map<number, ReturnType<typeof setTimeout>>()
+const researchUiRevealQueues = new Map<number, Array<() => void>>()
 const taskStreamControllers = new Map<string, AbortController>()
 const previewVisible = ref(false)
 const previewIndex = ref(0)
@@ -159,6 +176,9 @@ const generationSessions = ref<PersistedGenerationSession[]>([])
 const currentSessionId = ref('')
 const conversationSidebarCollapsed = ref(false)
 const isGenerationSessionsLoading = ref(false)
+
+const RESEARCH_SEARCH_REVEAL_INTERVAL_MS = 90
+const RESEARCH_UI_REVEAL_INTERVAL_MS = 70
 
 const GENERATE_SIDEBAR_COLLAPSED_STORAGE_KEY = 'generate_conversation_sidebar_collapsed'
 
@@ -287,6 +307,45 @@ const pushResearchTimeline = (
   }
 }
 
+const flushResearchUiRevealQueue = (record: GeneratingRecord) => {
+  const queue = researchUiRevealQueues.get(record.id) || []
+  if (!queue.length) {
+    researchUiRevealQueues.delete(record.id)
+    researchUiRevealTimers.delete(record.id)
+    return
+  }
+
+  const nextMutation = queue.shift()
+  researchUiRevealQueues.set(record.id, queue)
+  if (nextMutation) {
+    nextMutation()
+    schedulePersistRecord(record)
+  }
+
+  if (!queue.length) {
+    researchUiRevealQueues.delete(record.id)
+    researchUiRevealTimers.delete(record.id)
+    return
+  }
+
+  const timer = setTimeout(() => {
+    flushResearchUiRevealQueue(record)
+  }, RESEARCH_UI_REVEAL_INTERVAL_MS)
+  researchUiRevealTimers.set(record.id, timer)
+}
+
+const enqueueResearchUiReveal = (record: GeneratingRecord, mutation: () => void) => {
+  const queue = researchUiRevealQueues.get(record.id) || []
+  queue.push(mutation)
+  researchUiRevealQueues.set(record.id, queue)
+
+  if (researchUiRevealTimers.has(record.id)) {
+    return
+  }
+
+  flushResearchUiRevealQueue(record)
+}
+
 const mergeResearchEvidence = (record: GeneratingRecord, evidence?: ResearchEvidence | null) => {
   if (!evidence?.id) {
     return
@@ -400,6 +459,199 @@ const normalizeResearchSearchDiagnostics = (raw: unknown) => {
   ].filter(Boolean).join('；')
 }
 
+const buildResearchSearchRevealKey = (record: GeneratingRecord, groupId: string) => {
+  return `${record.id}:${String(groupId || '').trim()}`
+}
+
+const upsertResearchSearchGroupBase = (
+  record: GeneratingRecord,
+  input: {
+    groupId: string
+    query: string
+    diagnostics?: string
+    pending: boolean
+  },
+) => {
+  const normalizedGroupId = String(input.groupId || '').trim()
+  const normalizedQuery = String(input.query || '').trim()
+  if (!normalizedGroupId || !normalizedQuery) {
+    return
+  }
+
+  const list = Array.isArray(record.researchSearchGroups) ? record.researchSearchGroups : []
+  const existingIndex = list.findIndex(item => item.id === normalizedGroupId || item.query === normalizedQuery)
+  const existing = existingIndex >= 0 ? list[existingIndex] : null
+  const nextGroup: ResearchSearchGroupViewItem = {
+    id: normalizedGroupId,
+    query: normalizedQuery,
+    title: normalizedQuery || existing?.title || '搜索结果',
+    sources: existing?.sources || [],
+    stage: record.progressStage,
+    time: existing?.time || formatResearchTimelineTime(),
+    pending: input.pending,
+    order: existing?.order || list.length + 1,
+    diagnostics: input.diagnostics !== undefined ? input.diagnostics : (existing?.diagnostics || ''),
+  }
+  record.researchSearchGroups = existingIndex >= 0
+    ? list.map((item, index) => index === existingIndex ? nextGroup : item)
+    : [...list, nextGroup].slice(-12)
+}
+
+const appendResearchSearchSource = (
+  record: GeneratingRecord,
+  input: {
+    groupId: string
+    query: string
+    source: ResearchSearchSourceViewItem
+    diagnostics?: string
+    pending?: boolean
+  },
+) => {
+  const normalizedGroupId = String(input.groupId || '').trim()
+  const normalizedQuery = String(input.query || '').trim()
+  if (!normalizedGroupId || !normalizedQuery) {
+    return
+  }
+
+  const list = Array.isArray(record.researchSearchGroups) ? record.researchSearchGroups : []
+  const existingIndex = list.findIndex(item => item.id === normalizedGroupId || item.query === normalizedQuery)
+  const existing = existingIndex >= 0 ? list[existingIndex] : null
+  const existingSources = existing?.sources || []
+  const dedupedSources = existingSources.some(item => (
+    (item.url && input.source.url && item.url === input.source.url)
+    || (!item.url && !input.source.url && item.title === input.source.title && item.snippet === input.source.snippet)
+  ))
+    ? existingSources
+    : [...existingSources, input.source].slice(0, 12)
+  const nextGroup: ResearchSearchGroupViewItem = {
+    id: normalizedGroupId,
+    query: normalizedQuery,
+    title: normalizedQuery || existing?.title || '搜索结果',
+    sources: dedupedSources,
+    stage: record.progressStage,
+    time: existing?.time || formatResearchTimelineTime(),
+    pending: input.pending ?? existing?.pending ?? false,
+    order: existing?.order || list.length + 1,
+    diagnostics: input.diagnostics !== undefined ? input.diagnostics : (existing?.diagnostics || ''),
+  }
+  record.researchSearchGroups = existingIndex >= 0
+    ? list.map((item, index) => index === existingIndex ? nextGroup : item)
+    : [...list, nextGroup].slice(-12)
+}
+
+const finalizeResearchSearchReveal = (
+  record: GeneratingRecord,
+  input: {
+    groupId: string
+    query: string
+    diagnostics?: string
+  },
+) => {
+  const normalizedGroupId = String(input.groupId || '').trim()
+  const normalizedQuery = String(input.query || '').trim()
+  if (!normalizedGroupId || !normalizedQuery) {
+    return
+  }
+
+  const list = Array.isArray(record.researchSearchGroups) ? record.researchSearchGroups : []
+  const existingIndex = list.findIndex(item => item.id === normalizedGroupId || item.query === normalizedQuery)
+  if (existingIndex < 0) {
+    upsertResearchSearchGroupBase(record, {
+      groupId: normalizedGroupId,
+      query: normalizedQuery,
+      diagnostics: input.diagnostics,
+      pending: false,
+    })
+    return
+  }
+
+  record.researchSearchGroups = list.map((item, index) => index === existingIndex
+    ? {
+      ...item,
+      pending: false,
+      diagnostics: input.diagnostics !== undefined ? input.diagnostics : item.diagnostics,
+    }
+    : item)
+}
+
+const flushResearchSearchRevealQueue = (
+  record: GeneratingRecord,
+  input: {
+    groupId: string
+    query: string
+    diagnostics?: string
+  },
+) => {
+  const revealKey = buildResearchSearchRevealKey(record, input.groupId)
+  const queue = researchSearchRevealQueues.get(revealKey) || []
+  if (!queue.length) {
+    researchSearchRevealQueues.delete(revealKey)
+    researchSearchRevealTimers.delete(revealKey)
+    finalizeResearchSearchReveal(record, input)
+    schedulePersistRecord(record)
+    return
+  }
+
+  const nextSource = queue.shift()
+  researchSearchRevealQueues.set(revealKey, queue)
+  if (nextSource) {
+    appendResearchSearchSource(record, {
+      groupId: input.groupId,
+      query: input.query,
+      source: nextSource,
+      diagnostics: input.diagnostics,
+      pending: true,
+    })
+    schedulePersistRecord(record)
+  }
+
+  const nextTimer = setTimeout(() => {
+    flushResearchSearchRevealQueue(record, input)
+  }, RESEARCH_SEARCH_REVEAL_INTERVAL_MS)
+  researchSearchRevealTimers.set(revealKey, nextTimer)
+}
+
+const enqueueResearchSearchReveal = (
+  record: GeneratingRecord,
+  input: {
+    groupId: string
+    query: string
+    sources: ResearchSearchSourceViewItem[]
+    diagnostics?: string
+  },
+) => {
+  const normalizedGroupId = String(input.groupId || '').trim()
+  const normalizedQuery = String(input.query || '').trim()
+  if (!normalizedGroupId || !normalizedQuery) {
+    return
+  }
+
+  upsertResearchSearchGroupBase(record, {
+    groupId: normalizedGroupId,
+    query: normalizedQuery,
+    diagnostics: input.diagnostics,
+    pending: true,
+  })
+
+  const revealKey = buildResearchSearchRevealKey(record, normalizedGroupId)
+  const existingQueue = researchSearchRevealQueues.get(revealKey) || []
+  const dedupedIncoming = input.sources.filter(source => !existingQueue.some(item => (
+    (item.url && source.url && item.url === source.url)
+    || (!item.url && !source.url && item.title === source.title && item.snippet === source.snippet)
+  )))
+  researchSearchRevealQueues.set(revealKey, [...existingQueue, ...dedupedIncoming])
+
+  if (researchSearchRevealTimers.has(revealKey)) {
+    return
+  }
+
+  flushResearchSearchRevealQueue(record, {
+    groupId: normalizedGroupId,
+    query: normalizedQuery,
+    diagnostics: input.diagnostics,
+  })
+}
+
 const mergeResearchSearchGroup = (
   record: GeneratingRecord,
   toolResult?: { id?: string, toolName?: string, preview?: Record<string, unknown> } | null,
@@ -426,23 +678,74 @@ const mergeResearchSearchGroup = (
     return
   }
 
-  const list = Array.isArray(record.researchSearchGroups) ? record.researchSearchGroups : []
-  const groupId = String(toolResult.id || query || `search-${list.length + 1}`).trim()
-  const nextGroup: ResearchSearchGroupViewItem = {
-    id: groupId,
-    query,
-    title: query || '搜索结果',
-    sources,
-    stage: record.progressStage,
-    time: formatResearchTimelineTime(),
-    pending: false,
-    order: list.find(item => item.id === groupId || (query && item.query === query))?.order || list.length + 1,
-    diagnostics: normalizeResearchSearchDiagnostics(preview.diagnostics),
+  const groupId = String(toolResult.id || query || `search-${(record.researchSearchGroups || []).length + 1}`).trim()
+  const diagnostics = normalizeResearchSearchDiagnostics(preview.diagnostics)
+  if (!sources.length) {
+    finalizeResearchSearchReveal(record, {
+      groupId,
+      query,
+      diagnostics,
+    })
+    return
   }
-  const existingIndex = list.findIndex(item => item.id === groupId || (query && item.query === query))
-  record.researchSearchGroups = existingIndex >= 0
-      ? list.map((item, index) => index === existingIndex ? nextGroup : item)
-      : [...list, nextGroup].slice(-12)
+
+  enqueueResearchSearchReveal(record, {
+    groupId,
+    query,
+    sources,
+    diagnostics,
+  })
+}
+
+const upsertResearchSearchPendingGroup = (
+  record: GeneratingRecord,
+  groupId: string,
+  query: string,
+) => {
+  const normalizedId = String(groupId || '').trim()
+  const normalizedQuery = String(query || '').trim()
+  if (!normalizedId || !normalizedQuery) {
+    return
+  }
+
+  const list = Array.isArray(record.researchSearchGroups) ? record.researchSearchGroups : []
+  const existingIndex = list.findIndex(item => item.id === normalizedId || item.query === normalizedQuery)
+  upsertResearchSearchGroupBase(record, {
+    groupId: normalizedId,
+    query: normalizedQuery,
+    diagnostics: existingIndex >= 0 ? list[existingIndex].diagnostics : '',
+    pending: true,
+  })
+}
+
+const mergeRawResearchSearchGroup = (
+  record: GeneratingRecord,
+  rawEvent: RawTranscriptStreamEvent,
+) => {
+  const list = Array.isArray(rawEvent.content) ? rawEvent.content : []
+  if (!list.length) {
+    return
+  }
+
+  const sources = list
+    .map(normalizeResearchSearchSource)
+    .filter((item): item is ResearchSearchSourceViewItem => Boolean(item))
+    .slice(0, 12)
+  const groupId = String(rawEvent.toolCallId || rawEvent.id || '').trim()
+  const existing = (record.researchSearchGroups || []).find(item => item.id === groupId)
+  const query = String(existing?.query || '').trim()
+  if (!groupId || !query) {
+    return
+  }
+
+  mergeResearchSearchGroup(record, {
+    id: groupId,
+    toolName: 'web-search',
+    preview: {
+      query,
+      topResults: sources,
+    },
+  })
 }
 
 const buildResearchRuntimeMeta = (record: GeneratingRecord): PersistedResearchRuntimeMeta | null => {
@@ -454,7 +757,7 @@ const buildResearchRuntimeMeta = (record: GeneratingRecord): PersistedResearchRu
     version: 1,
     timeline: Array.isArray(record.researchTimeline) ? record.researchTimeline.slice(-80) : [],
     searchGroups: Array.isArray(record.researchSearchGroups) ? record.researchSearchGroups.slice(-12) : [],
-    evidences: Array.isArray(record.researchEvidences) ? record.researchEvidences.slice(-30) : [],
+    evidences: Array.isArray(record.researchEvidences) ? record.researchEvidences.slice(-120) : [],
     facts: Array.isArray(record.researchFacts) ? record.researchFacts.slice(-80) : [],
     outlineSections: Array.isArray(record.researchOutlineSections) ? record.researchOutlineSections : [],
     verification: record.researchVerification || null,
@@ -981,6 +1284,80 @@ const handleSessionActionFilterClick = () => {
   ElMessage.info('操作类型筛选下一步接入。')
 }
 
+const handleJumpToResearchVerification = (targetId: string) => {
+  generateSessionListRef.value?.scrollToElementById(targetId)
+}
+
+const buildManualResearchVerificationRecord = (sourceRecord: GeneratingRecord): GeneratingRecord => {
+  const recordId = nextId++
+  return {
+    id: recordId,
+    sessionId: sourceRecord.sessionId,
+    sessionTitle: sourceRecord.sessionTitle,
+    source: 'generate',
+    type: 'research',
+    prompt: `核查报告：${sourceRecord.prompt}`,
+    time: formatGroupLabel(new Date()),
+    model: sourceRecord.model,
+    modelKey: sourceRecord.modelKey,
+    referenceImages: [],
+    ratio: '',
+    resolution: '',
+    duration: '',
+    feature: '',
+    skill: RESEARCH_REPORT_SKILL_KEY,
+    capabilityFlags: sourceRecord.capabilityFlags || undefined,
+    content: '',
+    images: [],
+    done: false,
+    stopped: false,
+    progressStage: 'fact_verification',
+    progressMessage: resolveTaskStageLabel('fact_verification', '已创建报告核查任务'),
+    progressPercent: mapTaskStageToProgressPercent('fact_verification'),
+    error: '',
+    researchTimeline: [{
+      id: `research-verify-created-${recordId}`,
+      kind: 'begin',
+      title: '报告核查任务已创建',
+      description: '正在基于现有报告和证据快照执行手动核查',
+      stage: 'fact_verification',
+      time: formatResearchTimelineTime(),
+    }],
+    researchSearchGroups: [],
+    researchEvidences: [],
+    researchFacts: [],
+    researchOutlineSections: [],
+    researchVerification: null,
+    researchTokenUsage: null,
+    researchVerificationPending: true,
+  }
+}
+
+const handleVerifyResearchReport = async (record: GeneratingRecord) => {
+  if (
+    record.researchVerificationPending
+    || !record.prompt.trim()
+    || !String(record.content || '').trim()
+    || record.prompt.startsWith('核查报告：')
+  ) {
+    return
+  }
+
+  const verificationRecord = buildManualResearchVerificationRecord(record)
+  generatingRecords.value.unshift(verificationRecord)
+  if (verificationRecord.sessionId) {
+    touchSessionAfterRecordCreated(verificationRecord.sessionId)
+  }
+
+  try {
+    await startResearchTask(verificationRecord, {
+      manualVerificationSource: record,
+    })
+  } catch {
+    verificationRecord.researchVerificationPending = false
+  }
+}
+
 const handleSelectSidebarDefault = () => {
   applyCurrentSessionId(sidebarDefaultSession.value.id)
   sessionSearchKeyword.value = ''
@@ -991,25 +1368,61 @@ const handleSelectSidebarSession = (id: string) => {
   sessionSearchKeyword.value = ''
 }
 
-const handleRenameSidebarSession = async (id: string) => {
+const sessionRenameDialogVisible = ref(false)
+const sessionDeleteDialogVisible = ref(false)
+const sessionActionLoading = ref(false)
+const renamingSessionId = ref('')
+const deletingSessionId = ref('')
+const sessionRenameDraftTitle = ref('')
+const deletingSessionTitle = computed(() => {
+  const targetSession = generationSessions.value.find(session => session.id === deletingSessionId.value)
+  return String(targetSession?.title || '').trim() || '未命名会话'
+})
+
+const closeSessionRenameDialog = (force = false) => {
+  if (sessionActionLoading.value && !force) {
+    return
+  }
+  sessionRenameDialogVisible.value = false
+  renamingSessionId.value = ''
+  sessionRenameDraftTitle.value = ''
+}
+
+const closeSessionDeleteDialog = (force = false) => {
+  if (sessionActionLoading.value && !force) {
+    return
+  }
+  sessionDeleteDialogVisible.value = false
+  deletingSessionId.value = ''
+}
+
+const handleRenameSidebarSession = (id: string) => {
   const targetSession = generationSessions.value.find(session => session.id === id)
   if (!targetSession) {
     return
   }
 
-  try {
-    const { value } = await ElMessageBox.prompt('请输入新的会话名称', '重命名会话', {
-      confirmButtonText: '确认',
-      cancelButtonText: '取消',
-      inputValue: targetSession.title,
-      inputPlaceholder: '请输入会话名称',
-      inputValidator: (inputValue) => {
-        return String(inputValue || '').trim() ? true : '会话名称不能为空'
-      },
-    })
+  renamingSessionId.value = id
+  sessionRenameDraftTitle.value = targetSession.title
+  sessionRenameDialogVisible.value = true
+}
 
+const submitRenameSidebarSession = async () => {
+  const id = renamingSessionId.value
+  const nextTitle = String(sessionRenameDraftTitle.value || '').trim()
+  if (!id) {
+    return
+  }
+
+  if (!nextTitle) {
+    ElMessage.warning('会话名称不能为空')
+    return
+  }
+
+  sessionActionLoading.value = true
+  try {
     const savedSession = await updateGenerationSessionRequest(id, {
-      title: String(value || '').trim(),
+      title: nextTitle,
     })
 
     generationSessions.value = generationSessions.value.map((session) => {
@@ -1028,28 +1441,39 @@ const handleRenameSidebarSession = async (id: string) => {
         sessionTitle: savedSession.title,
       }
     })
-  } catch {
-    // 用户取消重命名时不提示错误。
+
+    closeSessionRenameDialog(true)
+  } catch (error) {
+    ElMessage.error(formatGenerationError(error instanceof Error ? error.message : String(error || ''), '会话重命名失败'))
+  } finally {
+    sessionActionLoading.value = false
   }
 }
 
-const handleDeleteSidebarSession = async (id: string) => {
+const handleDeleteSidebarSession = (id: string) => {
   const targetSession = generationSessions.value.find(session => session.id === id)
   if (!targetSession) {
     return
   }
 
-  try {
-    await ElMessageBox.confirm(
-        `确定删除会话“${targetSession.title}”吗？该会话下的生成记录也会一并移除。`,
-        '删除会话',
-        {
-          confirmButtonText: '删除',
-          cancelButtonText: '取消',
-          type: 'warning',
-        },
-    )
+  deletingSessionId.value = id
+  sessionDeleteDialogVisible.value = true
+}
 
+const submitDeleteSidebarSession = async () => {
+  const id = deletingSessionId.value
+  if (!id) {
+    return
+  }
+
+  const targetSession = generationSessions.value.find(session => session.id === id)
+  if (!targetSession) {
+    closeSessionDeleteDialog(true)
+    return
+  }
+
+  sessionActionLoading.value = true
+  try {
     const runningRecords = generatingRecords.value.filter(record => record.sessionId === id && !record.done && record.dbId)
     await Promise.allSettled(runningRecords.map(async (record) => {
       if (!record.dbId) {
@@ -1079,8 +1503,11 @@ const handleDeleteSidebarSession = async (id: string) => {
       conversationSidebarCollapsed.value = false
       writeStoredConversationSidebarCollapsed(false)
     }
-  } catch {
-    // 用户取消删除时不提示错误。
+    closeSessionDeleteDialog(true)
+  } catch (error) {
+    ElMessage.error(formatGenerationError(error instanceof Error ? error.message : String(error || ''), '会话删除失败'))
+  } finally {
+    sessionActionLoading.value = false
   }
 }
 
@@ -1249,6 +1676,7 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
     researchOutlineSections: Array.isArray(researchMeta?.outlineSections) ? [...researchMeta.outlineSections] : [],
     researchVerification: researchMeta?.verification || null,
     researchTokenUsage: researchMeta?.tokenUsage || null,
+    researchVerificationPending: false,
   }
 }
 
@@ -1427,7 +1855,7 @@ const schedulePersistRecord = (record: GeneratingRecord, immediate = false) => {
 }
 
 // 处理任务事件流推送，SSE 已直接携带完整记录，不再额外回拉详情。
-const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTaskStreamEvent) => {
+const handleGenerationTaskStreamEvent = (recordId: string, streamEvent: GenerationTaskStreamEvent | RawTranscriptStreamEvent) => {
   const targetRecord = generatingRecords.value.find(item => item.dbId === recordId)
   if (!targetRecord) {
     return
@@ -1435,15 +1863,164 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
 
   let stageConversationChanged = false
 
-  const eventRecordType = isResearchPersistedRecord(event.record) ? 'research' : event.record?.type
-  if (event.record) {
-    syncRecordWithPersisted(targetRecord, event.record)
+  const standardEvent = 'done' in streamEvent ? streamEvent as GenerationTaskStreamEvent : null
+  const rawEvent = standardEvent ? null : streamEvent as RawTranscriptStreamEvent
+
+  const eventRecordType = standardEvent && isResearchPersistedRecord(standardEvent.record) ? 'research' : standardEvent?.record?.type
+  if (standardEvent?.record) {
+    syncRecordWithPersisted(targetRecord, standardEvent.record)
   }
 
   const isImageTaskRecord = targetRecord.type === 'image'
   const isResearchTaskRecord = targetRecord.type === 'research'
       || eventRecordType === 'research'
       || targetRecord.skill === RESEARCH_REPORT_SKILL_KEY
+
+  if (isResearchTaskRecord && rawEvent?.type === 'text') {
+    const reasoningContent = typeof rawEvent.reasoningContent === 'string' ? rawEvent.reasoningContent.trim() : ''
+    if (reasoningContent) {
+      pushResearchTimeline(targetRecord, {
+        id: rawEvent.id ? `event-${rawEvent.id}` : `raw-reasoning-${Date.now()}`,
+        kind: 'reasoning',
+        title: '阶段性推理',
+        description: reasoningContent.split('\n').map(item => item.trim()).filter(Boolean).slice(0, 3).join('；'),
+        stage: targetRecord.progressStage || 'intake',
+      }, {
+        appendMode: 'always',
+      })
+    }
+
+    if (rawEvent.role === 'assistant' && typeof rawEvent.content === 'string' && rawEvent.content.trim()) {
+      targetRecord.error = ''
+      targetRecord.content = rawEvent.content
+      targetRecord.progressStage = targetRecord.progressStage || 'report_writing'
+      targetRecord.progressMessage = resolveTaskStageLabel(targetRecord.progressStage, '研究报告生成中')
+      targetRecord.progressPercent = Math.max(
+          targetRecord.progressPercent || 0,
+          mapTaskStageToProgressPercent(targetRecord.progressStage),
+      )
+    }
+  }
+
+  if (isResearchTaskRecord && rawEvent?.type === 'begin') {
+    const rawContent = rawEvent.content && typeof rawEvent.content === 'object'
+      ? rawEvent.content as Record<string, unknown>
+      : null
+    targetRecord.error = ''
+    targetRecord.progressStage = 'intake'
+    targetRecord.progressMessage = resolveTaskStageLabel('intake', '研究任务已开始')
+    targetRecord.progressPercent = Math.max(
+        targetRecord.progressPercent || 0,
+        mapTaskStageToProgressPercent('intake'),
+    )
+    pushResearchTimeline(targetRecord, {
+      id: rawEvent.id ? `event-${rawEvent.id}` : 'raw-research-begin',
+      kind: 'begin',
+      title: String(rawContent?.title || '研究任务已开始').trim() || '研究任务已开始',
+      description: String(rawContent?.summary || rawEvent.role || '').trim(),
+      stage: 'intake',
+    }, {
+      appendMode: 'always',
+    })
+  }
+
+  if (isResearchTaskRecord && rawEvent?.type === 'tool_call') {
+    const rawContent = rawEvent.content && typeof rawEvent.content === 'object'
+      ? rawEvent.content as Record<string, unknown>
+      : null
+    const toolName = String(rawContent?.name || rawEvent.toolName || '').trim()
+    const rawToolId = String(rawContent?.id || rawEvent.toolCallId || rawEvent.id || '').trim()
+    const parameters = rawContent?.parameters && typeof rawContent.parameters === 'object'
+      ? rawContent.parameters as Record<string, unknown>
+      : {}
+    const toolDescription = toolName === 'web-reader'
+      ? String(parameters.url || '').trim()
+      : String(parameters.query || '').trim()
+
+    if (toolName) {
+      targetRecord.error = ''
+      pushResearchTimeline(targetRecord, {
+        id: rawToolId || (rawEvent.id ? `event-${rawEvent.id}` : `raw-tool-call-${Date.now()}`),
+        kind: 'tool_call',
+        title: `调用${describeResearchTool(toolName)}`,
+        description: toolDescription,
+        stage: targetRecord.progressStage || 'parallel_search',
+        meta: {
+          toolId: rawToolId,
+          ...(toolName === 'web-search' ? { query: toolDescription } : {}),
+          ...(toolName === 'web-reader' ? { url: toolDescription } : {}),
+        },
+      }, {
+        appendMode: 'always',
+      })
+      if (toolName === 'web-search' && rawToolId && toolDescription) {
+        upsertResearchSearchPendingGroup(targetRecord, rawToolId, toolDescription)
+      }
+    }
+  }
+
+  if (isResearchTaskRecord && rawEvent?.type === 'tool_result') {
+    const rawToolName = String(rawEvent.toolName || '').trim()
+    enqueueResearchUiReveal(targetRecord, () => {
+      if (rawToolName === 'web-search') {
+        mergeRawResearchSearchGroup(targetRecord, rawEvent)
+      }
+      pushResearchTimeline(targetRecord, {
+        id: rawEvent.id ? `event-${rawEvent.id}` : `raw-tool-result-${Date.now()}`,
+        kind: 'tool_result',
+        title: `${describeResearchTool(rawToolName || 'web-search')}完成`,
+        description: rawToolName === 'web-search'
+          ? `返回 ${Array.isArray(rawEvent.content) ? rawEvent.content.length : 0} 条结果`
+          : '',
+        stage: targetRecord.progressStage || 'parallel_search',
+        meta: rawEvent.toolCallId ? { toolId: rawEvent.toolCallId } : undefined,
+      }, {
+        appendMode: 'always',
+      })
+    })
+  }
+
+  if (isResearchTaskRecord && rawEvent?.type === 'token_usage') {
+    const rawUsage = rawEvent.content && typeof rawEvent.content === 'object'
+      ? rawEvent.content as Record<string, unknown>
+      : null
+    const tokenUsage = {
+      inputTokens: Number(rawUsage?.prompt_tokens || 0),
+      outputTokens: Number(rawUsage?.completion_tokens || 0),
+      totalTokens: Number(rawUsage?.total_tokens || 0),
+    }
+    if (tokenUsage.totalTokens > 0) {
+      targetRecord.researchTokenUsage = tokenUsage
+        pushResearchTimeline(targetRecord, {
+          id: rawEvent.id ? `event-${rawEvent.id}` : 'raw-token-usage',
+          kind: 'usage',
+          title: '模型消耗已更新',
+          description: `总计 ${tokenUsage.totalTokens} tokens`,
+          stage: targetRecord.progressStage || 'report_writing',
+        }, {
+          appendMode: 'always',
+        })
+    }
+  }
+
+  if (isResearchTaskRecord && rawEvent?.type === 'end') {
+    targetRecord.researchVerificationPending = false
+    targetRecord.done = true
+    targetRecord.stopped = false
+    targetRecord.progressStage = 'completed'
+    targetRecord.progressMessage = resolveTaskStageLabel('completed', '研究任务已完成')
+    targetRecord.progressPercent = 100
+  }
+
+  if (!standardEvent) {
+    if (isResearchTaskRecord) {
+      schedulePersistRecord(targetRecord, rawEvent?.type === 'end')
+    }
+    return
+  }
+
+  const event = standardEvent
+
   if (event.type === 'progress' && event.message) {
     targetRecord.error = ''
     targetRecord.progressStage = event.stage || targetRecord.progressStage || 'queued'
@@ -1588,53 +2165,70 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
           appendMode: 'always',
         })
       } else if (event.type === 'tool_result' && event.toolResult) {
-        mergeResearchSearchGroup(targetRecord, event.toolResult)
-        pushResearchTimeline(targetRecord, {
-          id: event.id ? `event-${event.id}` : `result-${event.toolResult.id}`,
-          kind: 'tool_result',
-          title: `${describeResearchTool(event.toolResult.toolName)}完成`,
-          description: readResearchPreviewDescription(event.toolResult.preview) || event.message || '',
-          stage: targetRecord.progressStage,
-          meta: event.toolResult.toolName === 'web-reader'
-            ? {
-              ...(readResearchPreviewMeta(event.toolResult.preview) || {}),
-              toolId: event.toolResult.id,
-            }
-            : undefined,
-        }, {
-          appendMode: 'always',
+        const toolResult = event.toolResult
+        const eventId = event.id
+        const eventMessage = event.message
+        const progressStage = targetRecord.progressStage
+        enqueueResearchUiReveal(targetRecord, () => {
+          mergeResearchSearchGroup(targetRecord, toolResult)
+          pushResearchTimeline(targetRecord, {
+            id: eventId ? `event-${eventId}` : `result-${toolResult.id}`,
+            kind: 'tool_result',
+            title: `${describeResearchTool(toolResult.toolName)}完成`,
+            description: readResearchPreviewDescription(toolResult.preview) || eventMessage || '',
+            stage: progressStage,
+            meta: toolResult.toolName === 'web-reader'
+              ? {
+                ...(readResearchPreviewMeta(toolResult.preview) || {}),
+                toolId: toolResult.id,
+              }
+              : undefined,
+          }, {
+            appendMode: 'always',
+          })
         })
       } else if (event.type === 'evidence_added' && event.evidence) {
-        mergeResearchEvidence(targetRecord, event.evidence)
-        pushResearchTimeline(targetRecord, {
-          id: event.id ? `event-${event.id}` : `evidence-${event.evidence.id}`,
-          kind: 'evidence',
-          title: '新增信源',
-          description: event.evidence.summary || event.evidence.title || event.evidence.source?.title || '',
-          stage: targetRecord.progressStage,
-          confidence: event.evidence.confidence,
-          meta: {
-            title: event.evidence.title || event.evidence.source?.title || '',
-            url: event.evidence.source?.url || '',
-            excerpt: event.evidence.summary || '',
-            siteName: event.evidence.source?.note || event.evidence.source?.sourceType || '',
-          },
-        }, {
-          appendMode: 'always',
+        const evidence = event.evidence
+        const eventId = event.id
+        const progressStage = targetRecord.progressStage
+        enqueueResearchUiReveal(targetRecord, () => {
+          mergeResearchEvidence(targetRecord, evidence)
+          pushResearchTimeline(targetRecord, {
+            id: eventId ? `event-${eventId}` : `evidence-${evidence.id}`,
+            kind: 'evidence',
+            title: '新增信源',
+            description: evidence.summary || evidence.title || evidence.source?.title || '',
+            stage: progressStage,
+            confidence: evidence.confidence,
+            meta: {
+              title: evidence.title || evidence.source?.title || '',
+              url: evidence.source?.url || '',
+              excerpt: evidence.summary || '',
+              siteName: evidence.source?.note || evidence.source?.sourceType || '',
+            },
+          }, {
+            appendMode: 'always',
+          })
         })
       } else if (event.type === 'fact_update' && event.fact) {
-        mergeResearchFact(targetRecord, event.fact)
-        pushResearchTimeline(targetRecord, {
-          id: event.id ? `event-${event.id}` : `fact-${event.fact.id}`,
-          kind: 'fact',
-          title: '更新事实',
-          description: event.fact.statement,
-          stage: targetRecord.progressStage,
-          confidence: event.fact.confidence,
-        }, {
-          appendMode: 'always',
+        const fact = event.fact
+        const eventId = event.id
+        const progressStage = targetRecord.progressStage
+        enqueueResearchUiReveal(targetRecord, () => {
+          mergeResearchFact(targetRecord, fact)
+          pushResearchTimeline(targetRecord, {
+            id: eventId ? `event-${eventId}` : `fact-${fact.id}`,
+            kind: 'fact',
+            title: '更新事实',
+            description: fact.statement,
+            stage: progressStage,
+            confidence: fact.confidence,
+          }, {
+            appendMode: 'always',
+          })
         })
       } else if (event.type === 'verification' && event.verification) {
+        targetRecord.researchVerificationPending = false
         targetRecord.researchVerification = event.verification
         pushResearchTimeline(targetRecord, {
           id: event.id ? `event-${event.id}` : 'verification',
@@ -1727,6 +2321,7 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
   }
 
   if (event.type === 'completed') {
+    targetRecord.researchVerificationPending = false
     targetRecord.progressStage = 'completed'
     targetRecord.progressMessage = resolveTaskStageLabel('completed', event.message || (isResearchTaskRecord ? '研究报告已完成' : '图片生成完成'))
     targetRecord.progressPercent = 100
@@ -1750,6 +2345,7 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
       })
     }
   } else if (event.type === 'failed') {
+    targetRecord.researchVerificationPending = false
     targetRecord.progressStage = 'failed'
     targetRecord.progressMessage = resolveTaskStageLabel('failed', event.message || '任务执行失败')
     targetRecord.progressPercent = 100
@@ -1770,6 +2366,7 @@ const handleGenerationTaskStreamEvent = (recordId: string, event: GenerationTask
       })
     }
   } else if (event.type === 'stopped') {
+    targetRecord.researchVerificationPending = false
     targetRecord.progressStage = 'stopped'
     targetRecord.progressMessage = resolveTaskStageLabel('stopped', event.message || '任务已停止')
     targetRecord.progressPercent = 100
@@ -2128,7 +2725,12 @@ const startGeneralAgentTask = async (record: GeneratingRecord) => {
 }
 
 // 深度研究报告复用 generate 对话入口，提交到 research-report 策略执行。
-const startResearchTask = async (record: GeneratingRecord) => {
+const startResearchTask = async (
+  record: GeneratingRecord,
+  options?: {
+    manualVerificationSource?: GeneratingRecord | null
+  },
+) => {
   try {
     await Promise.all([
       loadPublicModelCatalog(),
@@ -2146,6 +2748,8 @@ const startResearchTask = async (record: GeneratingRecord) => {
       missingModelMessage: '缺少研究模型标识',
     })
     const currentProviderId = modelBinding.providerId || providerId
+    const verificationSource = options?.manualVerificationSource || null
+    const isManualVerification = Boolean(verificationSource)
 
     const saved = await createGenerationTask({
       sessionId: record.sessionId,
@@ -2158,12 +2762,22 @@ const startResearchTask = async (record: GeneratingRecord) => {
       referenceImages: Array.isArray(record.referenceImages) ? [...record.referenceImages] : [],
       researchConfig: {
         outputType: 'report',
-        requireVerification: true,
+        requireVerification: isManualVerification,
       },
       requestBody: {
         providerId: currentProviderId,
         model: currentModelKey,
         stream: true,
+        ...(isManualVerification && verificationSource
+          ? {
+            manualVerification: {
+              subject: verificationSource.prompt,
+              report: verificationSource.content,
+              evidences: verificationSource.researchEvidences || [],
+              facts: verificationSource.researchFacts || [],
+            },
+          }
+          : {}),
         ...(searchConfig.provider ? { researchSearchProvider: searchConfig.provider } : {}),
         ...(searchConfig.providerId ? { researchSearchProviderId: searchConfig.providerId } : {}),
         ...(searchConfig.model ? { researchSearchModel: searchConfig.model } : {}),
@@ -2177,6 +2791,7 @@ const startResearchTask = async (record: GeneratingRecord) => {
     connectGenerationTaskStream(record)
   } catch (error: unknown) {
     const errorMessage = formatGenerationError(error instanceof Error ? error.message : '', '研究任务生成失败')
+    record.researchVerificationPending = false
     record.done = true
     record.stopped = false
     record.progressStage = 'failed'
@@ -2292,6 +2907,7 @@ const handleStopResearchTask = async (record: GeneratingRecord) => {
   if (record.done || !record.dbId) return
 
   try {
+    record.researchVerificationPending = false
     markRecordStopping(record)
     pushResearchTimeline(record, {
       kind: 'stopped',
@@ -2390,6 +3006,12 @@ onMounted(() => {
 onUnmounted(() => {
   recordPersistTimers.forEach(timer => clearTimeout(timer))
   recordPersistTimers.clear()
+  researchSearchRevealTimers.forEach(timer => clearTimeout(timer))
+  researchSearchRevealTimers.clear()
+  researchSearchRevealQueues.clear()
+  researchUiRevealTimers.forEach(timer => clearTimeout(timer))
+  researchUiRevealTimers.clear()
+  researchUiRevealQueues.clear()
   document.removeEventListener('click', handlePageClick)
 
   if (authLoginSuccessListener) {
@@ -2440,6 +3062,7 @@ onUnmounted(() => {
         </template>
         <div v-else class=entry-lav5_s>
           <GenerateSessionList
+              ref="generateSessionListRef"
               v-model:search-value="sessionSearchKeyword"
               scroll-list-id="scroll-list-generate-session"
               @create-session="handleCreateSession"
@@ -2475,7 +3098,10 @@ onUnmounted(() => {
                     :outline-sections="record.researchOutlineSections || []"
                     :verification="record.researchVerification || null"
                     :token-usage="record.researchTokenUsage || null"
+                    :verification-pending="Boolean(record.researchVerificationPending)"
                     @stop="handleStopResearchTask(record)"
+                    @jump-to-verification="handleJumpToResearchVerification"
+                    @verify-report="handleVerifyResearchReport(record)"
                 />
                 <AgentLoadingRecord
                     v-else-if="record.type === 'agent'"
@@ -2556,6 +3182,53 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <el-dialog
+      v-model="sessionRenameDialogVisible"
+      title="重命名会话"
+      width="420px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="!sessionActionLoading"
+      :show-close="!sessionActionLoading"
+      destroy-on-close
+      @close="closeSessionRenameDialog()"
+    >
+      <div class="session-action-dialog__body">
+        <el-input
+          v-model="sessionRenameDraftTitle"
+          maxlength="100"
+          placeholder="请输入会话名称"
+          @keydown.enter="submitRenameSidebarSession"
+        />
+      </div>
+      <template #footer>
+        <div class="session-action-dialog__footer">
+          <el-button :disabled="sessionActionLoading" @click="closeSessionRenameDialog">取消</el-button>
+          <el-button type="primary" :loading="sessionActionLoading" @click="submitRenameSidebarSession">确认</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="sessionDeleteDialogVisible"
+      title="删除会话"
+      width="420px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="!sessionActionLoading"
+      :show-close="!sessionActionLoading"
+      destroy-on-close
+      @close="closeSessionDeleteDialog()"
+    >
+      <div class="session-action-dialog__body">
+        确定删除会话“{{ deletingSessionTitle }}”吗？该会话下的生成记录也会一并移除。
+      </div>
+      <template #footer>
+        <div class="session-action-dialog__footer">
+          <el-button :disabled="sessionActionLoading" @click="closeSessionDeleteDialog">取消</el-button>
+          <el-button type="danger" :loading="sessionActionLoading" @click="submitDeleteSidebarSession">删除</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <template #after>
       <ImagePreview
           v-model:visible="previewVisible"
@@ -2611,5 +3284,17 @@ onUnmounted(() => {
   line-height: 22px;
   margin: -28px 0 24px;
   text-align: center;
+}
+
+.session-action-dialog__body {
+  color: var(--text-primary, #0f1419);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.session-action-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 </style>

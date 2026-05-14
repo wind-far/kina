@@ -6,8 +6,13 @@ import type {
   ResearchVerificationResult,
 } from '../../src/shared/research/research-types'
 import { runResearchStageModel } from './model-runner'
-import { buildResearchFinalReviewSystemPrompt, buildResearchFinalReviewUserPrompt } from './prompts/final-review'
 import { buildResearchReportWritingSystemPrompt, buildResearchReportWritingUserPrompt } from './prompts/report-writing'
+
+type ReferenceAppendixItem = {
+  index?: number
+  title: string
+  url: string
+}
 
 const buildEvidenceLines = (evidences: ResearchEvidence[]) => {
   if (!evidences.length) {
@@ -27,6 +32,88 @@ const buildFactLines = (facts: ResearchFact[]) => {
   return facts.map((item) => (
     `- ${item.statement}（语义：${item.factNature || 'soft_claim'}，置信度：${item.confidence}，核查状态：${item.verificationStatus || 'unverified'}${item.sourceDomainCount ? `，来源域名：${item.sourceDomainCount}` : ''}${item.independentSourceDomainCount !== undefined ? `，独立补充域名：${item.independentSourceDomainCount}` : ''}${item.uncertaintyNote ? `，备注：${item.uncertaintyNote}` : ''}）`
   )).join('\n') + '\n'
+}
+
+const extractReferencedIndexes = (report: string) => {
+  return Array.from(new Set(
+    Array.from(String(report || '').matchAll(/\[(\d+)\]/g))
+      .map(match => Number(match[1]))
+      .filter(index => Number.isFinite(index) && index > 0),
+  )).sort((left, right) => left - right)
+}
+
+const buildReferenceAppendixItems = (report: string, evidences: ResearchEvidence[]) => {
+  const citedIndexes = extractReferencedIndexes(report)
+  const byReferenceIndex = new Map<number, ReferenceAppendixItem>()
+  const byUrl = new Map<string, ReferenceAppendixItem>()
+
+  for (const evidence of evidences) {
+    const searchSources = Array.isArray(evidence.discovery?.searchSources) ? evidence.discovery?.searchSources || [] : []
+    for (const source of searchSources) {
+      const url = String(source.url || '').trim()
+      const index = Number(source.referenceIndex)
+      if (!url || !Number.isFinite(index) || index <= 0 || byReferenceIndex.has(index)) {
+        continue
+      }
+
+      const item = {
+        index,
+        title: String(source.title || evidence.source?.title || evidence.title || `参考资料 ${index}`).trim() || `参考资料 ${index}`,
+        url,
+      } satisfies ReferenceAppendixItem
+      byReferenceIndex.set(index, item)
+      if (!byUrl.has(url)) {
+        byUrl.set(url, item)
+      }
+    }
+  }
+
+  const orderedItems: ReferenceAppendixItem[] = []
+  const usedUrls = new Set<string>()
+  for (const index of citedIndexes) {
+    const matched = byReferenceIndex.get(index)
+    if (!matched || usedUrls.has(matched.url)) {
+      continue
+    }
+    orderedItems.push(matched)
+    usedUrls.add(matched.url)
+  }
+
+  for (const evidence of evidences) {
+    const url = String(evidence.source?.url || '').trim()
+    if (!url || usedUrls.has(url)) {
+      continue
+    }
+
+    const existing = byUrl.get(url)
+    const item = existing || {
+      title: String(evidence.source?.title || evidence.title || '参考资料').trim() || '参考资料',
+      url,
+    }
+    orderedItems.push(item)
+    usedUrls.add(url)
+
+    if (orderedItems.length >= 24) {
+      break
+    }
+  }
+
+  return orderedItems.slice(0, 24)
+}
+
+const buildReferenceAppendix = (report: string, evidences: ResearchEvidence[]) => {
+  const lines = buildReferenceAppendixItems(report, evidences)
+    .map((item, index) => `${item.index || index + 1}. [${item.title}](${item.url})`)
+
+  if (!lines.length) {
+    return ''
+  }
+
+  return [
+    '## 参考资料',
+    '',
+    ...lines,
+  ].join('\n')
 }
 
 const writeSectionContent = (
@@ -139,32 +226,16 @@ export const writeResearchSectionWithModel = async (input: {
   return String(result.content || '').trim()
 }
 
-export const finalReviewResearchReport = async (input: {
-  payloadRequestBody: Record<string, unknown> | null | undefined
-  modelKey: string
-  subject: string
-  report: string
-  facts: ResearchFact[]
-  unresolvedItems: string[]
-  signal: AbortSignal
-  logGenerationTask: (stage: string, detail: Record<string, unknown>) => void
-}) => {
-  return runResearchStageModel<{
-    issues: string[]
-    revisedReport: string
-    finalNotes: string[]
-  }>({
-    payloadRequestBody: input.payloadRequestBody,
-    modelKey: input.modelKey,
-    systemPrompt: buildResearchFinalReviewSystemPrompt(),
-    userPrompt: buildResearchFinalReviewUserPrompt({
-      subject: input.subject,
-      report: input.report,
-      facts: input.facts,
-      unresolvedItems: input.unresolvedItems,
-    }),
-    signal: input.signal,
-    stage: 'final_review',
-    logGenerationTask: input.logGenerationTask,
-  })
+export const appendResearchReferenceAppendix = (report: string, evidences: ResearchEvidence[]) => {
+  const appendix = buildReferenceAppendix(report, evidences)
+  if (!appendix) {
+    return report.trim()
+  }
+
+  const normalizedReport = report.trim()
+  if (normalizedReport.includes('## 参考资料')) {
+    return normalizedReport
+  }
+
+  return `${normalizedReport}\n\n${appendix}`.trim()
 }

@@ -3,9 +3,9 @@ import type { ResearchEvidence, ResearchFact, ResearchVerificationResult } from 
 export const buildResearchPreWritingGateSystemPrompt = () => {
   return [
     '你是 Deep Research 引擎的 pre-writing-gate 模块。',
-    '职责：在正式写报告前，判断当前证据质量是否足以支持正文写作。',
-    '你要特别区分：可交叉验证的硬事实、来自单一来源的软判断、以及仅适合作为分析框架的概括性主张。',
-    '如果核心结论仍主要依赖单一来源、软判断或未充分核查的框架性表述，必须阻止进入正式报告写作。',
+    '职责：在正式写报告前，判断当前证据质量是否足以支持成品化输出。',
+    '你要特别区分：完全没有材料、材料不足但可写成审慎成品、以及材料充分可写成强成品。',
+    '除非核心主题几乎没有任何可用外部材料，否则不要阻止写作；应优先建议采用 full_report 或 strong_report with caveats。',
     '必须返回严格 JSON。',
     '禁止直接写报告正文。',
   ].join('\n')
@@ -32,9 +32,9 @@ export const buildResearchPreWritingGateUserPrompt = (input: {
     JSON.stringify(input.verification, null, 2),
     '',
     '请重点判断：',
-    '- 是否已经有足够多的核心结论得到独立来源支撑。',
-    '- 当前事实里是否有大量内容其实只是 soft claim 或 framework claim，而不适合作为确定性结论入正文。',
-    '- 如果现在开写，是否大概率会把 partial / unverified / 单一来源判断写成确定结论。',
+    '- 当前材料是否已经足以支撑一篇有明确判断、但会在局部保持审慎措辞的成品报告。',
+    '- 是否存在完全缺失材料、导致整篇报告无法成立的核心主题。',
+    '- 对于仍偏弱的结论，是否可以通过语气控制、结构安排和风险边注来处理，而不是阻止写作。',
     '',
     '请返回 JSON：',
     '{',
@@ -43,7 +43,7 @@ export const buildResearchPreWritingGateUserPrompt = (input: {
     '  "reason": "字符串",',
     '  "blockingIssues": ["字符串"],',
     '  "readySignals": ["字符串"],',
-    '  "recommendedOutputMode": "full_report | bounded_summary"',
+    '  "recommendedOutputMode": "full_report | bounded_summary | strong_report_with_caveats"',
     '}',
   ].join('\n')
 }

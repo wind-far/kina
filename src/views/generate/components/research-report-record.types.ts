@@ -48,3 +48,14 @@ export interface ResearchSearchGroupViewItem {
   order?: number
   diagnostics?: string
 }
+
+export interface ResearchSourceDialogItem {
+  id: string
+  referenceLabel: string
+  metaLabel: string
+  title: string
+  siteName: string
+  domain: string
+  snippet: string
+  url: string
+}

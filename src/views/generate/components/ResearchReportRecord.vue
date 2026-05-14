@@ -3,7 +3,10 @@
     <div class="content-DPogfx ai-generated-record-content-hg5EL8">
       <article class="research-chat-record">
         <header class="research-user-message">
-          <div class="research-user-message__bubble">{{ prompt }}</div>
+          <div class="research-user-message__bubble" :class="{ 'is-verification': isVerificationRecord }">
+            <span v-if="isVerificationRecord" class="research-user-message__badge">报告核查</span>
+            <span>{{ displayPrompt }}</span>
+          </div>
         </header>
 
         <section class="research-assistant-message">
@@ -13,6 +16,10 @@
           <div class="research-assistant-message__body">
             <div class="research-flow">
               <div class="research-flow__rail" aria-hidden="true"></div>
+              <div v-if="error" class="research-alert research-alert--danger">
+                <el-icon><WarningFilled /></el-icon>
+                <span>{{ error }}</span>
+              </div>
 
               <section
                 v-for="(block, blockIndex) in researchFlowBlocks"
@@ -54,9 +61,10 @@
                   <details
                     v-if="block.type !== 'planning' && block.items?.length"
                     class="research-node-log"
+                    :open="shouldOpenNodeLog(blockIndex)"
                   >
                     <summary class="research-node-log__summary">
-                      <span>节点详情</span>
+                      <span>{{ isTranscriptStyle ? '事件日志' : '节点详情' }}</span>
                       <span class="research-node-log__chevron">›</span>
                     </summary>
                     <div class="research-node-log__content">
@@ -66,6 +74,12 @@
                           :key="item.id"
                         >
                           <span class="research-node-log__time">{{ item.time }}</span>
+                          <span
+                            class="research-node-log__badge"
+                            :class="`is-${item.kind}`"
+                          >
+                            {{ formatTimelineNodeKind(item) }}
+                          </span>
                           <span class="research-node-log__title">{{ formatTimelineNodeTitle(item) }}</span>
                           <p v-if="item.description" class="research-node-log__desc">{{ item.description }}</p>
                         </li>
@@ -98,12 +112,7 @@
                     </div>
                   </details>
 
-                  <div v-if="error" class="research-alert research-alert--danger">
-                    <el-icon><WarningFilled /></el-icon>
-                    <span>{{ error }}</span>
-                  </div>
-
-                  <div v-else-if="block.type === 'search'" class="research-search-grid">
+                  <div v-if="block.type === 'search'" class="research-search-grid">
                     <article
                       v-for="(group, groupIndex) in block.groups"
                       :key="group.id"
@@ -116,10 +125,17 @@
                           <Pointer v-if="group.kind === 'reader'" />
                           <Search v-else />
                         </el-icon>
-                        <span>{{ group.title }}</span>
+                        <span>{{ formatSearchCardTitle(group) }}</span>
+                        <span
+                          v-if="readSearchCardTag(group)"
+                          class="research-search-card__tag"
+                        >
+                          {{ readSearchCardTag(group) }}
+                        </span>
                       </div>
                       <div v-if="group.kind === 'reader'" class="research-search-card__body research-search-card__body--reader">
                         <a
+                          :id="readSearchCardAnchorId(group)"
                           class="research-reader-preview__header"
                           :href="group.url || undefined"
                           target="_blank"
@@ -178,6 +194,7 @@
                         <a
                           v-for="(source, sourceIndex) in group.sources"
                           :key="`${group.id}-${source.url || source.title}-${sourceIndex}`"
+                          :id="readSearchSourceAnchorId(group, source, sourceIndex)"
                           class="research-search-source"
                           :href="source.url || undefined"
                           target="_blank"
@@ -260,7 +277,7 @@
                     >
                       <summary class="research-final-brainstorm__summary">
                         <el-icon><Cpu /></el-icon>
-                        <span>头脑风暴</span>
+                        <span>{{ isTranscriptStyle ? '推理摘录' : '头脑风暴' }}</span>
                         <span class="research-final-brainstorm__chevron">›</span>
                       </summary>
                       <div class="research-final-brainstorm__content">
@@ -273,11 +290,20 @@
                       </div>
                     </details>
 
-                    <div class="research-report-verification-banner">
+                    <div
+                      v-if="showPostReportActions && !isTranscriptStyle"
+                      class="research-report-verification-banner"
+                    >
                       <el-icon><WarningFilled /></el-icon>
                       <span>
                         {{ reportVerificationBannerText }}
-                        <button type="button">前往核查</button>
+                        <button
+                          type="button"
+                          class="research-report-verification-banner__action"
+                          @click="scrollToVerification"
+                        >
+                          前往核查
+                        </button>
                       </span>
                     </div>
 
@@ -287,40 +313,47 @@
                       :class="{ 'is-streaming': isContentStreaming }"
                       v-html="renderedContent"
                     ></div>
-                    <div v-else class="research-report-empty">
+                    <div v-if="!hasContent" class="research-report-empty">
                       <el-icon><DataAnalysis /></el-icon>
-                      <span>正在整理研究线索与报告结构</span>
+                      <span>{{ isTranscriptStyle ? '正在输出最终回答' : '正在整理研究线索与报告结构' }}</span>
                     </div>
                   </div>
 
-                  <footer v-if="block.type === 'report'" class="research-actions">
-                    <button type="button">
-                      <el-icon><Share /></el-icon>
-                      <span>分享</span>
-                    </button>
-                    <button type="button">
+                  <footer v-if="block.type === 'report' && showPostReportActions" class="research-actions">
+<!--                    <button type="button">-->
+<!--                      <el-icon><Share /></el-icon>-->
+<!--                      <span>分享</span>-->
+<!--                    </button>-->
+                    <button type="button" @click="handleCopyReport">
                       <el-icon><CopyDocument /></el-icon>
-                      <span>复制</span>
+                      <span>{{ copyReportLabel }}</span>
                     </button>
-                    <button type="button">
-                      <el-icon><Download /></el-icon>
-                      <span>导出PDF</span>
-                    </button>
-                    <button type="button">
-                      <el-icon><Files /></el-icon>
-                      <span>导出Word</span>
-                    </button>
-                    <button type="button">
+<!--                    <button type="button">-->
+<!--                      <el-icon><Download /></el-icon>-->
+<!--                      <span>导出PDF</span>-->
+<!--                    </button>-->
+<!--                    <button type="button">-->
+<!--                      <el-icon><Files /></el-icon>-->
+<!--                      <span>导出Word</span>-->
+<!--                    </button>-->
+                    <button type="button" :disabled="!hasSourceCards" @click="handleViewSources">
                       <el-icon><Link /></el-icon>
                       <span>查看信源</span>
                     </button>
-                    <button type="button" class="research-actions__promote">
-                      <el-icon><Promotion /></el-icon>
-                      <span>推广公域</span>
-                    </button>
-                    <button type="button">
+<!--                    <button type="button" class="research-actions__promote">-->
+<!--                      <el-icon><Promotion /></el-icon>-->
+<!--                      <span>推广公域</span>-->
+<!--                    </button>-->
+                    <button
+                      v-if="!isVerificationRecord"
+                      :id="verifyReportTargetId"
+                      type="button"
+                      :disabled="verificationPending"
+                      :class="{ 'research-actions__promote': hasJumpedToVerifyReport }"
+                      @click="handleVerifyReport"
+                    >
                       <el-icon><CircleCheck /></el-icon>
-                      <span>点我核查报告，让AI替你找茬！</span>
+                      <span>{{ verificationPending ? '正在核查报告...' : '点我核查报告，让AI替你找茬！' }}</span>
                     </button>
                     <span v-if="tokenUsage" class="research-token-usage">
                       输入 {{ tokenUsage.inputTokens }} / 输出 {{ tokenUsage.outputTokens }}
@@ -334,10 +367,16 @@
       </article>
     </div>
   </div>
+
+  <ResearchSourceDialog
+    v-model:visible="sourceDialogVisible"
+    :items="sourcePreviewList"
+  />
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import {
   Aim,
   CircleCheck,
@@ -345,14 +384,10 @@ import {
   Cpu,
   DataAnalysis,
   Document,
-  Download,
-  Files,
   Link,
   MagicStick,
   Pointer,
-  Promotion,
   Search,
-  Share,
   VideoPause,
   WarningFilled,
 } from '@element-plus/icons-vue'
@@ -364,10 +399,12 @@ import type {
   ResearchVerificationResult,
 } from '@/shared/research/research-types'
 import type {
+  ResearchSourceDialogItem,
   ResearchSearchGroupViewItem,
   ResearchSearchSourceViewItem,
   ResearchTimelineViewItem,
 } from './research-report-record.types'
+import ResearchSourceDialog from './ResearchSourceDialog.vue'
 
 const props = defineProps<{
   prompt: string
@@ -385,14 +422,26 @@ const props = defineProps<{
   outlineSections?: ResearchOutlineSection[]
   verification?: ResearchVerificationResult | null
   tokenUsage?: ResearchTokenUsage | null
+  verificationPending?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   stop: []
+  jumpToVerification: [targetId: string]
+  verifyReport: []
 }>()
 
 const displayedContent = ref(props.done ? String(props.content || '') : '')
 let typewriterTimer: ReturnType<typeof setTimeout> | null = null
+const isVerificationRecord = computed(() => String(props.prompt || '').trim().startsWith('核查报告：'))
+const displayPrompt = computed(() => {
+  const promptValue = String(props.prompt || '').trim()
+  if (!isVerificationRecord.value) {
+    return promptValue
+  }
+
+  return promptValue.replace(/^核查报告：\s*/u, '').trim() || '当前研究报告'
+})
 
 const clearTypewriterTimer = () => {
   if (!typewriterTimer) {
@@ -541,6 +590,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearTypewriterTimer()
+  clearCopyFeedbackTimer()
   document.removeEventListener('mousemove', handleResearchCardPointerMoveCapture, true)
   document.removeEventListener('wheel', handleResearchCardWheelCapture, true)
 })
@@ -568,8 +618,15 @@ const splitReportVerificationSection = (value: string) => {
 
 const visibleReportContent = computed(() => splitReportVerificationSection(displayedContent.value).body)
 const finalReportVerificationNotes = computed(() => splitReportVerificationSection(displayedContent.value || props.content).verificationNotes)
+const hasJumpedToVerifyReport = ref(false)
+const componentUid = getCurrentInstance()?.uid || 'unknown'
+const verifyReportTargetId = `research-verify-report-target-${componentUid}`
+const copyReportFeedback = ref<'idle' | 'success'>('idle')
+const sourceDialogVisible = ref(false)
+let copyFeedbackTimer: ReturnType<typeof setTimeout> | null = null
 
 const hasContent = computed(() => Boolean(String(visibleReportContent.value).trim()))
+const showPostReportActions = computed(() => props.done && hasContent.value)
 const isContentStreaming = computed(() => {
   return Boolean(props.content) && displayedContent.value.length < String(props.content || '').length
 })
@@ -584,10 +641,85 @@ const escapeHtml = (value: string) => {
 }
 
 const renderInlineMarkdown = (value: string) => {
-  return escapeHtml(value)
+  return renderCitationReferences(escapeHtml(value))
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+}
+
+const scrollToVerification = () => {
+  hasJumpedToVerifyReport.value = true
+  emit('jumpToVerification', verifyReportTargetId)
+}
+
+const clearCopyFeedbackTimer = () => {
+  if (!copyFeedbackTimer) {
+    return
+  }
+  clearTimeout(copyFeedbackTimer)
+  copyFeedbackTimer = null
+}
+
+const copyReportLabel = computed(() => copyReportFeedback.value === 'success' ? '已复制' : '复制')
+
+const scheduleCopyFeedbackReset = () => {
+  clearCopyFeedbackTimer()
+  copyFeedbackTimer = setTimeout(() => {
+    copyReportFeedback.value = 'idle'
+    copyFeedbackTimer = null
+  }, 1800)
+}
+
+const writeClipboardText = async (text: string) => {
+  const normalized = String(text || '')
+  if (!normalized) {
+    throw new Error('EMPTY_TEXT')
+  }
+
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(normalized)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = normalized
+  textarea.setAttribute('readonly', 'true')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  textarea.style.pointerEvents = 'none'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+
+  try {
+    const copied = document.execCommand('copy')
+    if (!copied) {
+      throw new Error('COPY_FAILED')
+    }
+  } finally {
+    document.body.removeChild(textarea)
+  }
+}
+
+const handleCopyReport = async () => {
+  const reportText = String(visibleReportContent.value || '').trim()
+  if (!reportText) {
+    ElMessage.warning('当前还没有可复制的报告内容')
+    return
+  }
+
+  try {
+    await writeClipboardText(reportText)
+    copyReportFeedback.value = 'success'
+    scheduleCopyFeedbackReset()
+    ElMessage.success('报告内容已复制')
+  } catch {
+    ElMessage.error('复制失败，请稍后重试')
+  }
+}
+
+const handleVerifyReport = () => {
+  emit('verifyReport')
 }
 
 const renderedContent = computed(() => {
@@ -645,7 +777,55 @@ const evidences = computed(() => props.evidences || [])
 const timeline = computed(() => props.timeline || [])
 const outlineSections = computed(() => props.outlineSections || [])
 const verification = computed(() => props.verification || null)
+
+const reportReferenceAppendixMap = computed(() => {
+  const map = new Map<number, CitationPreview>()
+  const lines = String(visibleReportContent.value || '').replace(/\r\n/g, '\n').split('\n')
+
+  lines.forEach((rawLine) => {
+    const line = rawLine.trim()
+    const match = line.match(/^(\d+)\.\s+\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/)
+    if (!match) {
+      return
+    }
+
+    const referenceIndex = Number(match[1])
+    if (!Number.isFinite(referenceIndex) || referenceIndex <= 0 || map.has(referenceIndex)) {
+      return
+    }
+
+    const title = String(match[2] || '').trim()
+    const url = String(match[3] || '').trim()
+    const domain = readResearchSourceDomain(url)
+    map.set(referenceIndex, {
+      siteIcon: '',
+      domain,
+      siteName: domain,
+      title: title || `参考资料 ${referenceIndex}`,
+      snippet: '',
+      url,
+    })
+  })
+
+  return map
+})
 const tokenUsage = computed(() => props.tokenUsage || null)
+const verificationPending = computed(() => Boolean(props.verificationPending))
+
+type CitationPreview = {
+  siteIcon: string
+  domain: string
+  siteName: string
+  title: string
+  snippet: string
+  url: string
+}
+
+type CitationTooltipData = CitationPreview & {
+  detailLink: string
+  detailLabel: string
+  siteInitial: string
+}
 
 const reportBrainstormItems = computed(() => {
   const lateReasoningItems = timeline.value
@@ -662,6 +842,10 @@ const reportBrainstormItems = computed(() => {
 })
 
 const reportVerificationBannerText = computed(() => {
+  if (isVerificationRecord.value) {
+    return '这是针对原报告生成的独立核查结果，您可以'
+  }
+
   if (verification.value?.verdict === 'passed') {
     return '此报告内容已完成可信度核查，您也可以'
   }
@@ -902,7 +1086,7 @@ const evidenceCards = computed<ResearchDataSonarCard[]>(() => {
       id: `evidence-${item.id}`,
       kind: 'evidence' as const,
       query: '',
-      title: '新增信源',
+      title: isTranscriptStyle.value ? '采纳信源' : '新增信源',
       sources: [],
       stage: item.stage,
       time: item.time,
@@ -923,7 +1107,7 @@ const factCards = computed<ResearchDataSonarCard[]>(() => {
       id: `fact-${item.id}`,
       kind: 'fact' as const,
       query: '',
-      title: '更新事实',
+      title: isTranscriptStyle.value ? '提取事实' : '更新事实',
       sources: [],
       stage: item.stage,
       time: item.time,
@@ -934,13 +1118,278 @@ const factCards = computed<ResearchDataSonarCard[]>(() => {
     }))
 })
 
+const readSearchCardAnchorId = (group: ResearchDataSonarCard) => {
+  if (group.kind === 'reader') {
+    return group.referenceIndex ? `research-ref-${group.referenceIndex}` : `research-reader-${group.id}`
+  }
+
+  return `research-group-${group.id}`
+}
+
+const readSearchSourceAnchorId = (
+  group: ResearchSearchGroupViewItem | (ResearchSearchGroupViewItem & { kind?: 'search' }),
+  source: ResearchSearchSourceViewItem,
+  sourceIndex: number,
+) => {
+  if (source.referenceIndex) {
+    return `research-ref-${source.referenceIndex}`
+  }
+
+  return `research-source-${group.id}-${sourceIndex + 1}`
+}
+
+const citationReferenceTargetMap = computed(() => {
+  const map = new Map<number, string>()
+
+  readerCards.value.forEach((group) => {
+    if (group.kind === 'reader' && group.referenceIndex && !map.has(group.referenceIndex)) {
+      map.set(group.referenceIndex, readSearchCardAnchorId(group))
+    }
+  })
+
+  stagedSearchGroups.value.forEach((group) => {
+    if ('sources' in group && Array.isArray(group.sources)) {
+      group.sources.forEach((source, sourceIndex) => {
+        if (!source.referenceIndex || map.has(source.referenceIndex)) {
+          return
+        }
+        map.set(source.referenceIndex, readSearchSourceAnchorId(group, source, sourceIndex))
+      })
+    }
+  })
+
+  return map
+})
+
+const citationReferencePreviewMap = computed(() => {
+  const map = new Map<number, CitationPreview>()
+  const setPreview = (referenceIndex: number | undefined, preview: CitationPreview) => {
+    if (!referenceIndex || map.has(referenceIndex)) {
+      return
+    }
+    map.set(referenceIndex, preview)
+  }
+
+  readerCards.value.forEach((group) => {
+    if (group.kind !== 'reader') {
+      return
+    }
+    setPreview(group.referenceIndex, {
+      siteIcon: group.siteIcon || '',
+      domain: readResearchSourceDomain(group.url) || '',
+      siteName: group.siteName || '',
+      title: group.headline || group.title || '',
+      snippet: group.excerpt || group.content || '',
+      url: group.url || '',
+    })
+  })
+
+  stagedSearchGroups.value.forEach((group) => {
+    if (!('sources' in group) || !Array.isArray(group.sources)) {
+      return
+    }
+    group.sources.forEach((source) => {
+      setPreview(source.referenceIndex, {
+        siteIcon: source.siteIcon || '',
+        domain: readResearchSourceDomain(source.url) || '',
+        siteName: source.siteName || '',
+        title: source.title || '',
+        snippet: source.snippet || '',
+        url: source.url || '',
+      })
+    })
+  })
+
+  evidences.value.forEach((evidence) => {
+    const discoverySources = Array.isArray(evidence.discovery?.searchSources)
+      ? evidence.discovery?.searchSources || []
+      : []
+
+    discoverySources.forEach((source) => {
+      setPreview(source.referenceIndex, {
+        siteIcon: source.siteIcon || '',
+        domain: readResearchSourceDomain(source.url) || '',
+        siteName: source.siteName || evidence.source?.note || '',
+        title: source.title || evidence.source?.title || evidence.title || '',
+        snippet: source.snippet || evidence.summary || '',
+        url: source.url || evidence.source?.url || '',
+      })
+    })
+  })
+
+  reportReferenceAppendixMap.value.forEach((preview, referenceIndex) => {
+    setPreview(referenceIndex, preview)
+  })
+
+  return map
+})
+
+const buildCitationTooltipData = (referenceIndex: number): CitationTooltipData | null => {
+  const preview = citationReferencePreviewMap.value.get(referenceIndex)
+  if (!preview) {
+    return null
+  }
+
+  const targetId = citationReferenceTargetMap.value.get(referenceIndex)
+  const siteName = (preview.siteName || '未命名信源').trim() || '未命名信源'
+  const domain = (preview.domain || preview.siteName || '').trim()
+  const title = (preview.title || '未命名信源').trim() || '未命名信源'
+  const snippet = (preview.snippet || '').trim().slice(0, 140)
+  const siteInitial = (siteName || domain || '未命名信源').slice(0, 1).toUpperCase()
+  return {
+    siteIcon: preview.siteIcon || '',
+    siteName,
+    domain,
+    title,
+    snippet,
+    url: preview.url || '',
+    detailLink: targetId ? `#${targetId}` : (preview.url || ''),
+    detailLabel: targetId ? '定位到信源卡片' : '',
+    siteInitial,
+  }
+}
+
+const renderCitationTooltip = (referenceIndex: number) => {
+  const tooltip = buildCitationTooltipData(referenceIndex)
+  const pillLabel = `[${referenceIndex}]`
+  if (!tooltip) {
+    return `<span class="research-inline-citation" tabindex="0"><span class="research-inline-citation__pill">${pillLabel}</span></span>`
+  }
+
+  const favicon = tooltip.siteIcon
+    ? `<img src="${escapeHtml(tooltip.siteIcon)}" alt="">`
+    : `<span>${escapeHtml(tooltip.siteInitial)}</span>`
+  const domain = tooltip.domain
+    ? `<span class="research-inline-citation__domain">${escapeHtml(tooltip.domain)}</span>`
+    : ''
+  const title = tooltip.url
+    ? `<a class="research-inline-citation__title" href="${escapeHtml(tooltip.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(tooltip.title)}</a>`
+    : `<span class="research-inline-citation__title">${escapeHtml(tooltip.title)}</span>`
+  const snippet = tooltip.snippet
+    ? `<span class="research-inline-citation__snippet">${escapeHtml(tooltip.snippet)}</span>`
+    : ''
+  const jump = tooltip.detailLink
+    ? `<a class="research-inline-citation__jump" href="${escapeHtml(tooltip.detailLink)}">${escapeHtml(tooltip.detailLabel)}</a>`
+    : ''
+
+  return `<span class="research-inline-citation" data-reference-index="${referenceIndex}" tabindex="0"><span class="research-inline-citation__pill">${pillLabel}</span><span class="research-inline-citation__tooltip"><span class="research-inline-citation__header"><span class="research-inline-citation__favicon">${favicon}</span><span class="research-inline-citation__header-text"><span class="research-inline-citation__site">${escapeHtml(tooltip.siteName)}</span>${domain}</span></span>${title}${snippet}${jump}</span></span>`
+}
+
+const renderCitationReferences = (value: string) => {
+  return value.replace(/\[(\d+)\]/g, (_matched, rawIndex) => {
+    const referenceIndex = Number(rawIndex)
+    return renderCitationTooltip(referenceIndex)
+  })
+}
+
 const stagedSearchGroups = computed<ResearchDataSonarCard[]>(() => {
   return [...visibleSearchGroups.value, ...searchCallGroups.value, ...readerCards.value, ...evidenceCards.value, ...factCards.value]
       .sort((a, b) => Number(a.order || 9999) - Number(b.order || 9999))
       .slice(0, 18)
 })
 
+const sourcePreviewList = computed<ResearchSourceDialogItem[]>(() => {
+  const items: ResearchSourceDialogItem[] = []
+  const seenKeys = new Set<string>()
+
+  const pushItem = (item: ResearchSourceDialogItem) => {
+    const dedupeKey = `${item.url}__${item.title}__${item.referenceLabel}`
+    if (seenKeys.has(dedupeKey)) {
+      return
+    }
+    seenKeys.add(dedupeKey)
+    items.push(item)
+  }
+
+  stagedSearchGroups.value.forEach((group) => {
+    if (group.kind === 'reader') {
+      pushItem({
+        id: group.id,
+        referenceLabel: group.referenceIndex ? `[${group.referenceIndex}]` : '',
+        metaLabel: readSearchCardTag(group),
+        title: group.headline || group.title || '未命名信源',
+        siteName: group.siteName || '',
+        domain: readResearchSourceDomain(group.url) || '',
+        snippet: group.excerpt || group.content || '',
+        url: group.url || '',
+      })
+      return
+    }
+
+    if (group.kind === 'evidence') {
+      pushItem({
+        id: group.id,
+        referenceLabel: '',
+        metaLabel: readSearchCardTag(group),
+        title: group.headline || group.title || '未命名信源',
+        siteName: group.siteName || '',
+        domain: '',
+        snippet: group.excerpt || '',
+        url: '',
+      })
+      return
+    }
+
+    if (group.kind === 'fact') {
+      return
+    }
+
+    group.sources.forEach((source, sourceIndex) => {
+      pushItem({
+        id: `${group.id}-${sourceIndex}`,
+        referenceLabel: source.referenceIndex ? `[${source.referenceIndex}]` : '',
+        metaLabel: group.title || group.query || '候选信源',
+        title: source.title || '未命名信源',
+        siteName: source.siteName || '',
+        domain: readResearchSourceDomain(source.url) || '',
+        snippet: source.snippet || '',
+        url: source.url || '',
+      })
+    })
+  })
+
+  if (!items.length) {
+    citationReferencePreviewMap.value.forEach((preview, referenceIndex) => {
+      pushItem({
+        id: `reference-${referenceIndex}`,
+        referenceLabel: `[${referenceIndex}]`,
+        metaLabel: '引用信源',
+        title: preview.title || `参考资料 ${referenceIndex}`,
+        siteName: preview.siteName || '',
+        domain: preview.domain || '',
+        snippet: preview.snippet || '',
+        url: preview.url || '',
+      })
+    })
+  }
+
+  return items
+})
+
+const hasSourceCards = computed(() => sourcePreviewList.value.length > 0)
+
+const handleViewSources = () => {
+  if (!hasSourceCards.value) {
+    ElMessage.info('当前还没有可查看的信源')
+    return
+  }
+  sourceDialogVisible.value = true
+}
+
 const searchStageOrder = ['parallel_search', 'targeted_search', 'deep_reading', 'evidence_merge', 'fact_verification']
+
+const isTranscriptStyle = computed(() => {
+  const hasStructuredMarkers = Boolean(
+    verification.value
+    || outlineSections.value.length
+    || timeline.value.some(item => item.kind === 'verification' || item.kind === 'outline' || item.kind === 'section'),
+  )
+  if (hasStructuredMarkers) {
+    return false
+  }
+
+  return timeline.value.some(item => item.kind === 'reasoning' || item.kind === 'tool_call' || item.kind === 'tool_result')
+})
 
 const normalizeSearchStage = (stage?: string) => {
   return searchStageOrder.includes(String(stage || ''))
@@ -988,6 +1437,18 @@ const makeFallbackTimelineItem = (title: string, description: string): ResearchT
 })
 
 const stageTitle = (stage?: string) => {
+  if (isTranscriptStyle.value) {
+    switch (stage) {
+      case 'fact_verification':
+        return '补充检索'
+      case 'targeted_search':
+        return '定向检索'
+      case 'parallel_search':
+      default:
+        return '工具调用'
+    }
+  }
+
   switch (stage) {
     case 'fact_verification':
       return '核查补搜'
@@ -999,6 +1460,19 @@ const stageTitle = (stage?: string) => {
 }
 
 const planningTitle = (stage?: string) => {
+  if (isTranscriptStyle.value) {
+    switch (stage) {
+      case 'report_planning':
+        return '准备输出'
+      case 'gap_detection':
+      case 'targeted_search':
+      case 'initial_analysis':
+        return '推理记录'
+      default:
+        return '研究笔记'
+    }
+  }
+
   switch (stage) {
     case 'gap_detection':
     case 'targeted_search':
@@ -1031,7 +1505,7 @@ const researchFlowBlocks = computed<ResearchFlowBlock[]>(() => {
     blocks.push({
       id: `planning-${firstItem.id}`,
       type: 'planning',
-      title: '深度研究',
+      title: isTranscriptStyle.value ? '研究转录' : '深度研究',
       cardTitle: planningTitle(String(firstItem.stage || '')),
       time: firstItem.time || displayTime.value,
       items: [...planningItems],
@@ -1158,32 +1632,12 @@ const researchFlowBlocks = computed<ResearchFlowBlock[]>(() => {
     }
   }
 
-  if (!hasVerification && verification.value) {
-    blocks.push({
-      id: 'verification-result',
-      type: 'verification',
-      title: '分析核查',
-      time: displayTime.value,
-      items: stageItemsByStage.get('fact_verification') || stageItemsByStage.get('final_review') || [],
-    })
-  }
-
-  if (!hasOutline && outlineSections.value.length) {
-    blocks.push({
-      id: 'outline-ready',
-      type: 'outline',
-      title: '报告规划',
-      time: displayTime.value,
-      items: stageItemsByStage.get('report_planning') || [],
-    })
-  }
-
   hasDataSonar = hasDataSonar || blocks.some(block => block.type === 'search')
   if (hasDataSonar && (hasContent.value || hasReportSignal)) {
     blocks.push({
       id: 'report',
       type: 'report',
-      title: '深度研究',
+      title: isVerificationRecord.value ? '报告核查' : (isTranscriptStyle.value ? '最终回答' : '深度研究'),
       time: timeline.value.find(item => item.kind === 'section')?.time || displayTime.value,
       items: [
         ...(stageItemsByStage.get('report_writing') || []),
@@ -1221,6 +1675,14 @@ const shouldOpenProcessCard = (blockIndex: number) => {
   return !props.done && blockIndex === researchFlowBlocks.value.length - 1
 }
 
+const shouldOpenNodeLog = (blockIndex: number) => {
+  if (props.done || props.stopped || props.error) {
+    return false
+  }
+
+  return isActiveFlowBlock(blockIndex)
+}
+
 const verificationVerdictText = computed(() => {
   switch (verification.value?.verdict) {
     case 'passed':
@@ -1235,6 +1697,21 @@ const verificationVerdictText = computed(() => {
 })
 
 const formatTimelineNodeTitle = (item: ResearchTimelineViewItem) => {
+  if (isTranscriptStyle.value) {
+    switch (item.kind) {
+      case 'tool_call':
+        return item.title || '工具调用'
+      case 'tool_result':
+        return item.title || '工具结果'
+      case 'reasoning':
+        return item.title || '推理记录'
+      case 'usage':
+        return 'Token 统计'
+      default:
+        return item.title || '事件'
+    }
+  }
+
   switch (item.kind) {
     case 'tool_call':
       return `调用：${item.title}`
@@ -1257,6 +1734,102 @@ const formatTimelineNodeTitle = (item: ResearchTimelineViewItem) => {
   }
 }
 
+const formatTimelineNodeKind = (item: ResearchTimelineViewItem) => {
+  if (isTranscriptStyle.value) {
+    switch (item.kind) {
+      case 'stage':
+        return '状态'
+      case 'tool_call':
+        return '调用'
+      case 'tool_result':
+        return '结果'
+      case 'evidence':
+        return '信源'
+      case 'fact':
+        return '事实'
+      case 'reasoning':
+        return '推理'
+      case 'usage':
+        return 'Tokens'
+      case 'completed':
+        return '结束'
+      default:
+        return '事件'
+    }
+  }
+
+  switch (item.kind) {
+    case 'stage':
+      return '阶段'
+    case 'tool_call':
+      return '调用'
+    case 'tool_result':
+      return '结果'
+    case 'evidence':
+      return '信源'
+    case 'fact':
+      return '事实'
+    case 'reasoning':
+      return '推理'
+    case 'verification':
+      return '核查'
+    case 'outline':
+      return '大纲'
+    case 'section':
+      return '写作'
+    case 'usage':
+      return '用量'
+    case 'completed':
+      return '完成'
+    case 'failed':
+      return '失败'
+    case 'stopped':
+      return '停止'
+    default:
+      return '节点'
+  }
+}
+
+const formatSearchCardTitle = (group: ResearchDataSonarCard) => {
+  if (!isTranscriptStyle.value) {
+    return group.title
+  }
+
+  if (group.kind === 'reader') {
+    return group.headline || group.title || '网页阅读'
+  }
+
+  if (group.kind === 'evidence') {
+    return group.headline || group.title || '采纳信源'
+  }
+
+  if (group.kind === 'fact') {
+    return group.title || '提取事实'
+  }
+
+  return group.query || group.title || '搜索结果'
+}
+
+const readSearchCardTag = (group: ResearchDataSonarCard) => {
+  if (!isTranscriptStyle.value) {
+    return ''
+  }
+
+  if (group.kind === 'reader') {
+    return group.referenceIndex ? `已读信源 #${group.referenceIndex}` : '已读信源'
+  }
+
+  if (group.kind === 'evidence') {
+    return '采纳信源'
+  }
+
+  if (group.kind === 'fact') {
+    return '提取事实'
+  }
+
+  return '候选信源'
+}
+
 const readSourceInitial = (source: ResearchSearchSourceViewItem) => {
   const text = String(source.siteName || source.title || '').trim()
   return text.slice(0, 1).toUpperCase() || '链'
@@ -1277,7 +1850,7 @@ const readResearchSourceDomain = (url?: string) => {
 
 const formatSourceMeta = (source: ResearchSearchSourceViewItem) => {
   const parts = [
-    source.referenceIndex ? `#${source.referenceIndex}` : '',
+    source.referenceIndex ? (isTranscriptStyle.value ? `候选 #${source.referenceIndex}` : `#${source.referenceIndex}`) : '',
     source.publishedTime || '',
   ].filter(Boolean)
   return parts.join(' · ')
@@ -1286,30 +1859,30 @@ const formatSourceMeta = (source: ResearchSearchSourceViewItem) => {
 const formatReaderMeta = (item: Extract<ResearchDataSonarCard, { kind: 'reader' }>) => {
   const parts = [
     item.siteName,
-    item.referenceIndex ? `#${item.referenceIndex}` : '',
+    item.referenceIndex ? (isTranscriptStyle.value ? `引用 #${item.referenceIndex}` : `#${item.referenceIndex}`) : '',
     item.contentLength ? `${item.contentLength} 字符` : '',
   ].filter(Boolean)
-  return parts.join(' · ') || '网页阅读'
+  return parts.join(' · ') || (isTranscriptStyle.value ? '网页读取结果' : '网页阅读')
 }
 
 const readReaderEmptyState = (item: Extract<ResearchDataSonarCard, { kind: 'reader' }>) => {
   if (item.pending) {
-    return '正在读取网页内容'
+    return isTranscriptStyle.value ? '等待网页返回正文' : '正在读取网页内容'
   }
 
-  return readReaderFailureReason(item) || '暂无可展示的网页摘要'
+  return readReaderFailureReason(item) || (isTranscriptStyle.value ? '该次读取没有返回可展示正文' : '暂无可展示的网页摘要')
 }
 
 const formatSearchEmptyState = (group: ResearchSearchGroupViewItem) => {
   if (group.pending) {
-    return '搜索中'
+    return isTranscriptStyle.value ? '等待搜索结果返回' : '搜索中'
   }
 
   if (group.diagnostics) {
-    return '搜索上游未返回可用链接'
+    return isTranscriptStyle.value ? '该次搜索没有返回可用结果' : '搜索上游未返回可用链接'
   }
 
-  return '未搜索到相关信息'
+  return isTranscriptStyle.value ? '该次搜索没有命中可展示结果' : '未搜索到相关信息'
 }
 
 const displayTime = computed(() => {
@@ -1364,6 +1937,24 @@ const displayTime = computed(() => {
   font-size: 14px;
   line-height: 22px;
   word-break: break-word;
+}
+
+.research-user-message__bubble.is-verification {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.research-user-message__badge {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.16);
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: middle;
 }
 
 .research-assistant-message {
@@ -1617,6 +2208,45 @@ const displayTime = computed(() => {
   font-weight: 600;
 }
 
+.research-node-log__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 20px;
+  margin-right: 8px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--research-text-secondary);
+  background: var(--research-block);
+  font-size: 11px;
+  line-height: 20px;
+  vertical-align: middle;
+}
+
+.research-node-log__badge.is-stage {
+  color: var(--research-brand);
+  background: color-mix(in srgb, var(--research-brand) 12%, transparent);
+}
+
+.research-node-log__badge.is-tool_call,
+.research-node-log__badge.is-tool_result {
+  color: var(--research-warning);
+  background: color-mix(in srgb, var(--research-warning) 12%, transparent);
+}
+
+.research-node-log__badge.is-evidence,
+.research-node-log__badge.is-fact {
+  color: var(--brand-success-default, #16a34a);
+  background: color-mix(in srgb, var(--brand-success-default, #16a34a) 12%, transparent);
+}
+
+.research-node-log__badge.is-verification,
+.research-node-log__badge.is-failed {
+  color: var(--research-danger);
+  background: color-mix(in srgb, var(--research-danger) 12%, transparent);
+}
+
 .research-node-log__desc {
   margin: 4px 0 0 0;
   color: var(--research-text-secondary);
@@ -1653,23 +2283,31 @@ const displayTime = computed(() => {
 }
 
 .research-search-grid {
-  display: flex;
-  flex-flow: row wrap;
-  align-items: flex-start;
-  gap: 5px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 30px;
+  scroll-margin-top: 20px;
+  transition: box-shadow 0.24s ease, background-color 0.24s ease;
+}
+
+.research-search-grid.is-highlighted {
+  background: color-mix(in srgb, var(--research-brand-soft) 58%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--research-brand) 34%, transparent) inset;
+  border-radius: 10px;
 }
 
 .research-search-card {
   display: flex;
-  width: 250px;
-  min-width: 250px;
+  width: 100%;
+  min-width: 0;
   height: 320px;
-  min-height: 320px;
+  min-height: 420px;
   max-height: 320px;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--research-border);
   border-radius: 6px;
+  padding: 10px;
   background: var(--research-card);
   animation: researchFadeIn 0.36s ease both;
   transition: border-color 0.24s ease, transform 0.24s ease, box-shadow 0.24s ease;
@@ -1710,6 +2348,19 @@ const displayTime = computed(() => {
   white-space: nowrap;
 }
 
+.research-search-card__tag {
+  flex: 0 0 auto;
+  max-width: 96px;
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--research-brand) 22%, var(--research-border));
+  border-radius: 999px;
+  color: var(--research-text-secondary);
+  background: color-mix(in srgb, var(--research-surface) 88%, var(--research-brand) 12%);
+  font-size: 11px;
+  line-height: 16px;
+}
+
 .research-search-card__body {
   display: flex;
   flex: 1;
@@ -1719,7 +2370,7 @@ const displayTime = computed(() => {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 10px 12px;
+  padding: 10px 10px;
   scrollbar-color: color-mix(in srgb, var(--research-text-tertiary) 58%, transparent) transparent;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
@@ -1779,6 +2430,7 @@ const displayTime = computed(() => {
   font-size: 13px;
   line-height: 20px;
   animation: researchFadeIn 0.32s ease both;
+  scroll-margin-top: 18px;
 }
 
 .research-search-source:hover .research-search-source__text {
@@ -1862,6 +2514,7 @@ const displayTime = computed(() => {
   padding: 12px 14px 10px;
   color: var(--research-text-secondary);
   text-decoration: none;
+  scroll-margin-top: 18px;
 }
 
 .research-reader-preview__meta {
@@ -2176,6 +2829,7 @@ const displayTime = computed(() => {
 }
 
 .research-report-content {
+  overflow: visible;
   color: var(--research-text-primary);
   font-size: 14px;
   line-height: 1.86;
@@ -2250,6 +2904,32 @@ const displayTime = computed(() => {
   border-radius: 5px;
   color: var(--research-danger);
   background: var(--research-block);
+}
+
+.research-report-content :deep(.research-inline-citation) {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  overflow: visible;
+  vertical-align: baseline;
+  margin: 0 3px;
+  cursor: default;
+}
+
+.research-report-content :deep(.research-inline-citation__pill) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--research-text-tertiary) 22%, var(--research-border));
+  color: var(--research-text-primary);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 600;
+  user-select: none;
 }
 
 .research-report-empty {
@@ -2388,6 +3068,11 @@ const displayTime = computed(() => {
   background: var(--research-block-hover);
 }
 
+.research-actions button:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
 .research-actions__promote {
   border-color: color-mix(in srgb, var(--research-warning) 34%, var(--research-border)) !important;
   color: var(--research-warning) !important;
@@ -2495,5 +3180,134 @@ const displayTime = computed(() => {
     width: 100%;
     margin-left: 0;
   }
+}
+</style>
+<style>
+.research-chat-record .research-report-content,
+.research-chat-record .research-inline-citation {
+  overflow: visible;
+}
+
+.research-chat-record .research-inline-citation {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: baseline;
+}
+
+.research-chat-record .research-inline-citation__tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  z-index: 998;
+  display: flex;
+  width: 240px;
+  padding: 10px 12px;
+  border: 1px solid var(--stroke-primary, rgba(0, 0, 0, 0.12));
+  border-radius: 8px;
+  background: var(--bg-float, #fff);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
+  transform: translateX(-50%);
+  white-space: normal;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.research-chat-record .research-inline-citation__tooltip::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 12px;
+}
+
+.research-chat-record .research-inline-citation:hover .research-inline-citation__tooltip,
+.research-chat-record .research-inline-citation:focus-within .research-inline-citation__tooltip {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.research-chat-record .research-inline-citation__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.research-chat-record .research-inline-citation__favicon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--brand-main-default, #00a1c2) 12%, transparent);
+  color: var(--brand-main-default, #00a1c2);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.research-chat-record .research-inline-citation__favicon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.research-chat-record .research-inline-citation__header-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.research-chat-record .research-inline-citation__site {
+  color: var(--text-tertiary, #72808a);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.research-chat-record .research-inline-citation__domain {
+  color: var(--text-tertiary, #72808a);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.research-chat-record .research-inline-citation__title {
+  color: var(--text-primary, #0f1419);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.research-chat-record .research-inline-citation__title:hover,
+.research-chat-record .research-inline-citation__jump:hover {
+  text-decoration: underline;
+}
+
+.research-chat-record .research-inline-citation__snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-secondary, #536471);
+  font-size: 11px;
+  line-height: 17px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.research-chat-record .research-inline-citation__jump {
+  color: var(--text-link, var(--brand-main-default, #00a1c2));
+  font-size: 11px;
+  line-height: 16px;
+  text-decoration: none;
 }
 </style>

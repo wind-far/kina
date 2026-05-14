@@ -6,6 +6,37 @@ import {
 
 type ResearchModelRunnerLogger = (stage: string, detail: Record<string, unknown>) => void
 
+const RESEARCH_STAGE_MODEL_TIMEOUT_MS = 90_000
+
+const resolveStageSignal = (signal: AbortSignal) => {
+  const timeoutSignal = AbortSignal.timeout(RESEARCH_STAGE_MODEL_TIMEOUT_MS)
+
+  if (typeof AbortSignal.any === 'function') {
+    return AbortSignal.any([signal, timeoutSignal])
+  }
+
+  const controller = new AbortController()
+  const abortWithReason = (reason?: unknown) => {
+    if (!controller.signal.aborted) {
+      controller.abort(reason)
+    }
+  }
+
+  const handleInputAbort = () => abortWithReason(signal.reason)
+  const handleTimeoutAbort = () => abortWithReason(new Error(`研究阶段模型调用超时 (${RESEARCH_STAGE_MODEL_TIMEOUT_MS}ms)`))
+
+  signal.addEventListener('abort', handleInputAbort, { once: true })
+  timeoutSignal.addEventListener('abort', handleTimeoutAbort, { once: true })
+
+  if (signal.aborted) {
+    abortWithReason(signal.reason)
+  } else if (timeoutSignal.aborted) {
+    handleTimeoutAbort()
+  }
+
+  return controller.signal
+}
+
 const extractJsonBlock = (text: string) => {
   const normalized = String(text || '').trim()
   if (!normalized) {
@@ -35,6 +66,7 @@ export const runResearchStageModel = async <TResult>(input: {
   stage: string
   logGenerationTask: ResearchModelRunnerLogger
 }): Promise<TResult> => {
+  const stageSignal = resolveStageSignal(input.signal)
   const providerId = String((input.payloadRequestBody || {}).providerId || '').trim()
   if (!providerId) {
     throw new Error('研究任务缺少 providerId，无法执行阶段 Prompt')
@@ -85,7 +117,7 @@ export const runResearchStageModel = async <TResult>(input: {
 
   const response = await fetchWithBurstRateRetry({
     url: upstreamUrl,
-    signal: input.signal,
+    signal: stageSignal,
     stage: `research_model_${input.stage}`,
     detail: {
       providerId,

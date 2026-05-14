@@ -81,7 +81,7 @@
             'active-aic4ZS': activeSessionId === session.id,
             'menu-open': openedSessionMenuId === session.id,
           }"
-          @click="emit('select-session', session.id)"
+          @click="handleSessionItemClick(session.id, $event)"
         >
           <div class="item-media">
             <div v-if="session.imageUrl" class="item-media-img">
@@ -98,47 +98,47 @@
           <div class="item-text-area">
             <span class="item-name">{{ session.title }}</span>
           </div>
-          <el-dropdown
-            class="more-dropdown-trigger"
-            trigger="click"
-            placement="bottom-end"
-            :offset="2"
-            popper-class="conversation-dropdown-panel"
-            @visible-change="openedSessionMenuId = $event ? session.id : ''"
-            @command="handleSessionDropdownCommand(session.id, $event)"
-          >
-            <div class="more-button" @click.stop>
+          <div class="more-dropdown-trigger" @click.stop>
+            <button
+              class="more-button"
+              type="button"
+              aria-label="会话操作"
+              @click.stop="toggleSessionMenu(session.id)"
+              @mousedown.stop
+            >
               <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                 <g>
                   <path data-follow-fill="currentColor" d="M7 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm7 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm5 2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
                 </g>
               </svg>
+            </button>
+            <div
+              v-if="openedSessionMenuId === session.id"
+              class="conversation-inline-menu"
+              @click.stop
+            >
+              <button class="conversation-inline-menu__item" type="button" @click="handleSessionDropdownCommand(session.id, 'rename')">
+                <span class="menu-item-content">
+                  <svg class="menu-item-icon" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                    <g>
+                      <path data-follow-fill="currentColor" d="M16.293 3.293a1 1 0 0 1 1.414 0l3 3a1 1 0 0 1 0 1.414l-9.5 9.5a1 1 0 0 1-.464.263l-4 1a1 1 0 0 1-1.213-1.213l1-4a1 1 0 0 1 .263-.464l9.5-9.5Zm.707 2.121-8.883 8.884-.5 2 2-.5L18.5 6.914l-1.5-1.5ZM4 20a1 1 0 0 1 1-1h15a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Z" fill="currentColor"></path>
+                    </g>
+                  </svg>
+                  <span class="menu-item-label">重命名</span>
+                </span>
+              </button>
+              <button class="conversation-inline-menu__item danger" type="button" @click="handleSessionDropdownCommand(session.id, 'delete')">
+                <span class="menu-item-content">
+                  <svg class="menu-item-icon" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+                    <g>
+                      <path data-follow-fill="currentColor" d="M9 3a1 1 0 0 0-1 1v1H5a1 1 0 1 0 0 2h1v11a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7h1a1 1 0 1 0 0-2h-3V4a1 1 0 0 0-1-1H9Zm5 2h-4V5h4V5Zm-6 2h8v11a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V7Zm2 3a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0v-4a1 1 0 0 1 1-1Zm4 0a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0v-4a1 1 0 0 1 1-1Z" fill="currentColor"></path>
+                    </g>
+                  </svg>
+                  <span class="menu-item-label">删除</span>
+                </span>
+              </button>
             </div>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item class="menu-item-IIjppP" command="rename">
-                  <span class="menu-item-content">
-                    <svg class="menu-item-icon" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
-                      <g>
-                        <path data-follow-fill="currentColor" d="M16.293 3.293a1 1 0 0 1 1.414 0l3 3a1 1 0 0 1 0 1.414l-9.5 9.5a1 1 0 0 1-.464.263l-4 1a1 1 0 0 1-1.213-1.213l1-4a1 1 0 0 1 .263-.464l9.5-9.5Zm.707 2.121-8.883 8.884-.5 2 2-.5L18.5 6.914l-1.5-1.5ZM4 20a1 1 0 0 1 1-1h15a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Z" fill="currentColor"></path>
-                      </g>
-                    </svg>
-                    <span class="menu-item-label">重命名</span>
-                  </span>
-                </el-dropdown-item>
-                <el-dropdown-item class="menu-item-IIjppP danger" command="delete">
-                  <span class="menu-item-content">
-                    <svg class="menu-item-icon" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
-                      <g>
-                        <path data-follow-fill="currentColor" d="M9 3a1 1 0 0 0-1 1v1H5a1 1 0 1 0 0 2h1v11a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7h1a1 1 0 1 0 0-2h-3V4a1 1 0 0 0-1-1H9Zm5 2h-4V5h4V5Zm-6 2h8v11a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V7Zm2 3a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0v-4a1 1 0 0 1 1-1Zm4 0a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0v-4a1 1 0 0 1 1-1Z" fill="currentColor"></path>
-                      </g>
-                    </svg>
-                    <span class="menu-item-label">删除</span>
-                  </span>
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          </div>
         </div>
       </div>
       <div class="list-scrollbar" style="display:none"></div>
@@ -213,11 +213,20 @@ const syncListScrolledState = () => {
   isListScrolled.value = (listRef.value?.scrollTop || 0) > 0
 }
 
+const handleDocumentClick = (event: MouseEvent) => {
+  const target = event.target
+  if (target instanceof HTMLElement && target.closest('.more-dropdown-trigger')) {
+    return
+  }
+  openedSessionMenuId.value = ''
+}
+
 onMounted(() => {
   nextTick(() => {
     syncListScrolledState()
     listRef.value?.addEventListener('scroll', syncListScrolledState, { passive: true })
   })
+  document.addEventListener('click', handleDocumentClick)
 })
 
 watch(listRef, (currentElement, previousElement) => {
@@ -232,6 +241,7 @@ watch(listRef, (currentElement, previousElement) => {
 
 onBeforeUnmount(() => {
   listRef.value?.removeEventListener('scroll', syncListScrolledState)
+  document.removeEventListener('click', handleDocumentClick)
 })
 
 const handleSessionCommand = (id: string, command: string | number | object) => {
@@ -248,6 +258,19 @@ const handleSessionCommand = (id: string, command: string | number | object) => 
 const handleSessionDropdownCommand = (id: string, command: string | number | object) => {
   handleSessionCommand(id, command)
   openedSessionMenuId.value = ''
+}
+
+const toggleSessionMenu = (id: string) => {
+  openedSessionMenuId.value = openedSessionMenuId.value === id ? '' : id
+}
+
+const handleSessionItemClick = (id: string, event: MouseEvent) => {
+  const target = event.target
+  if (target instanceof HTMLElement && target.closest('.more-dropdown-trigger')) {
+    return
+  }
+  openedSessionMenuId.value = ''
+  emit('select-session', id)
 }
 </script>
 
@@ -686,8 +709,12 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
 }
 
 .more-button {
+    appearance: none;
     align-items: center;
     background: transparent;
+    border: none;
+    border-radius: 8px;
+    box-shadow: none;
     color: var(--component-primary-text-button-default, #0f1419);
     cursor: pointer;
     display: flex;
@@ -711,7 +738,7 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     top: 50%;
     transform: translateY(-50%);
     width: 24px;
-    z-index: 1
+    z-index: 2
 }
 
 .more-button:hover {
@@ -732,49 +759,39 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     pointer-events: auto
 }
 
-.menu-item-IIjppP:hover {
+.conversation-inline-menu {
+    background: var(--bg-dropdown-menu, #1c1e22);
+    border: 1px solid var(--stroke-primary, rgba(204, 221, 255, .1));
+    border-radius: 12px;
+    box-shadow: var(--shadow-dropdown-menu, 0 8px 24px rgba(0, 0, 0, .24));
+    padding: 4px 0;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 160px;
+    z-index: 20
+}
+
+.conversation-inline-menu__item {
+    appearance: none;
+    align-items: stretch;
+    background: transparent;
+    border: none;
+    color: var(--text-primary, #f5fbff);
+    cursor: pointer;
+    display: flex;
+    min-height: 40px;
+    padding: 0;
+    text-align: left;
+    width: 100%
+}
+
+.conversation-inline-menu__item:hover {
     background: var(--bg-block-secondary-hover, rgba(255, 255, 255, .08))
 }
 
-.menu-item-IIjppP:active {
+.conversation-inline-menu__item:active {
     background: var(--bg-block-secondary-pressed, rgba(255, 255, 255, .12))
-}
-
-.conversation-dropdown-panel {
-    background: var(--bg-dropdown-menu, #1c1e22) !important;
-    border: 1px solid var(--stroke-primary, rgba(204, 221, 255, .1)) !important;
-    border-radius: 12px !important;
-    box-shadow: var(--shadow-dropdown-menu, 0 8px 24px rgba(0, 0, 0, .24)) !important;
-    margin-top: -2px !important;
-    min-width: 160px;
-    padding: 0 !important;
-    transform-origin: top right !important;
-}
-
-.conversation-dropdown-panel .el-popper__arrow,
-.conversation-dropdown-panel .el-popper__arrow:before {
-    display: none !important
-}
-
-.conversation-dropdown-panel .el-dropdown-menu {
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    padding: 0
-}
-
-.conversation-dropdown-panel .el-dropdown-menu__item {
-    align-items: stretch;
-    border-radius: 12px;
-    color: var(--text-primary, #f5fbff);
-    display: flex;
-    min-height: 40px;
-    padding: 0
-}
-
-.conversation-dropdown-panel .el-dropdown-menu__item:not(.is-disabled):focus {
-    background: var(--bg-block-secondary-hover, rgba(255, 255, 255, .08));
-    color: var(--text-primary, #f5fbff)
 }
 
 .menu-item-content {
@@ -800,16 +817,14 @@ const handleSessionDropdownCommand = (id: string, command: string | number | obj
     line-height: 22px
 }
 
-.conversation-dropdown-panel .danger {
+.conversation-inline-menu__item.danger {
     color: var(--text-primary, #f5fbff)
 }
 
-.conversation-dropdown-panel .el-dropdown-menu__item:hover,
-.conversation-dropdown-panel .el-dropdown-menu__item:hover .menu-item-label,
-.conversation-dropdown-panel .el-dropdown-menu__item:hover .menu-item-icon,
-.conversation-dropdown-panel .el-dropdown-menu__item:focus,
-.conversation-dropdown-panel .el-dropdown-menu__item:focus .menu-item-label,
-.conversation-dropdown-panel .el-dropdown-menu__item:focus .menu-item-icon {
+.conversation-inline-menu__item:hover .menu-item-label,
+.conversation-inline-menu__item:hover .menu-item-icon,
+.conversation-inline-menu__item:focus .menu-item-label,
+.conversation-inline-menu__item:focus .menu-item-icon {
     color: var(--text-primary, #f5fbff)
 }
 </style>

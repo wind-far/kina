@@ -9,7 +9,7 @@ import {
 } from './planner'
 import {
   buildResearchReportSections,
-  finalReviewResearchReport,
+  appendResearchReferenceAppendix,
   writeResearchSectionWithModel,
 } from './report-writer'
 import { buildResearchSectionDelta } from './report-section-format'
@@ -33,15 +33,10 @@ import {
   buildResearchGapDetectionUserPrompt,
 } from './prompts/gap-detection'
 import { buildResearchDeepReadingSystemPrompt, buildResearchDeepReadingUserPrompt } from './prompts/deep-reading'
-import { buildResearchVerificationSystemPrompt, buildResearchVerificationUserPrompt } from './prompts/verification'
 import {
   buildResearchReportPlanningSystemPrompt,
   buildResearchReportPlanningUserPrompt,
 } from './prompts/report-planning'
-import {
-  buildResearchPreWritingGateSystemPrompt,
-  buildResearchPreWritingGateUserPrompt,
-} from './prompts/pre-writing-gate'
 import type {
   ResearchEvidence,
   ResearchFact,
@@ -144,64 +139,6 @@ const resolveSourceType = (url: string) => {
   return 'search-result' as const
 }
 
-const VERIFICATION_QUERY_STOPWORDS = new Set([
-  '当前',
-  '项目',
-  '支持',
-  '采用',
-  '使用',
-  '提供',
-  '包含',
-  '基于',
-  '具备',
-  '已经',
-  '实现',
-  '用于',
-  '以及',
-  '相关',
-  '能力',
-  '模块',
-  '功能',
-  '系统',
-  '平台',
-  '工作流',
-])
-
-const normalizeSearchPhrase = (value: string) => {
-  return String(value || '')
-    .replace(/[“”"'`]/g, ' ')
-    .replace(/[^\p{L}\p{N}\s@./:_+-]+/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-const buildVerificationQueryFocus = (statement: string) => {
-  const normalized = normalizeSearchPhrase(statement)
-  if (!normalized) {
-    return ''
-  }
-
-  const priorityTokens = Array.from(new Set(
-    normalized.match(/[A-Za-z@][A-Za-z0-9./:_+-]*/g) || [],
-  ))
-
-  const tokens = normalized
-    .split(/\s+/)
-    .map(item => item.trim())
-    .filter((item) => {
-      if (!item || item.length < 2) {
-        return false
-      }
-      if (VERIFICATION_QUERY_STOPWORDS.has(item)) {
-        return false
-      }
-      return true
-    })
-
-  const merged = Array.from(new Set([...priorityTokens, ...tokens]))
-  return merged.slice(0, 8).join(' ')
-}
-
 const emitResearchStageEvent = (
   recordId: string,
   stage: ResearchStage,
@@ -221,42 +158,138 @@ const emitResearchStageEvent = (
   })
 }
 
-const buildBlockedResearchContent = (input: {
-  title: string
-  intro: string
-  searchResultCount: number
-  externalEvidenceCount: number
-  factCount: number
-  readyFactCount: number
-  unresolvedItems: string[]
-  recommendations: string[]
+const buildEmptyResearchVerificationResult = (): ResearchVerificationResult => ({
+  verdict: 'partial',
+  checkedFacts: 0,
+  passedFacts: [],
+  weakFacts: [],
+  conflictFacts: [],
+  unresolvedItems: [],
+})
+
+const normalizeManualVerificationPayload = (payload: GenerationTaskStartPayload) => {
+  const requestBody = payload.requestBody && typeof payload.requestBody === 'object'
+    ? payload.requestBody as Record<string, unknown>
+    : null
+  const manualVerification = requestBody?.manualVerification && typeof requestBody.manualVerification === 'object'
+    ? requestBody.manualVerification as Record<string, unknown>
+    : null
+
+  return {
+    enabled: Boolean(manualVerification),
+    payload: manualVerification,
+  }
+}
+
+const normalizeManualVerificationEvidences = (input: unknown): ResearchEvidence[] => {
+  if (!Array.isArray(input)) {
+    return []
+  }
+
+  return input
+    .map((item, index) => {
+      const record = item && typeof item === 'object' ? item as Record<string, unknown> : {}
+      const source = record.source && typeof record.source === 'object' ? record.source as Record<string, unknown> : {}
+      const id = String(record.id || `manual-evidence-${index + 1}`).trim() || `manual-evidence-${index + 1}`
+      const title = String(record.title || source.title || `核查信源 ${index + 1}`).trim() || `核查信源 ${index + 1}`
+      return {
+        id,
+        title,
+        summary: String(record.summary || '').trim(),
+        source: {
+          title: String(source.title || title).trim() || title,
+          url: String(source.url || '').trim() || undefined,
+          sourceType: source.sourceType === 'official' || source.sourceType === 'search-result' || source.sourceType === 'article' || source.sourceType === 'user-input' || source.sourceType === 'internal-plan'
+            ? source.sourceType
+            : 'article',
+          note: String(source.note || '').trim() || undefined,
+        },
+        confidence: record.confidence === 'high' || record.confidence === 'low' ? record.confidence : 'medium',
+        tags: Array.isArray(record.tags) ? record.tags.map(tag => String(tag || '').trim()).filter(Boolean) : [],
+        entityMatched: record.entityMatched === false ? false : true,
+        authorityHints: Array.isArray(record.authorityHints) ? record.authorityHints.map(item => String(item || '').trim()).filter(Boolean) : [],
+        freshnessSignals: Array.isArray(record.freshnessSignals) ? record.freshnessSignals.map(item => String(item || '').trim()).filter(Boolean) : [],
+        extractedFacts: Array.isArray(record.extractedFacts) ? record.extractedFacts.map(item => String(item || '').trim()).filter(Boolean) : [],
+        extractedClaims: Array.isArray(record.extractedClaims) ? record.extractedClaims.map(item => String(item || '').trim()).filter(Boolean) : [],
+        extractedNumbers: Array.isArray(record.extractedNumbers) ? record.extractedNumbers.map(item => String(item || '').trim()).filter(Boolean) : [],
+        contradictions: Array.isArray(record.contradictions) ? record.contradictions.map(item => String(item || '').trim()).filter(Boolean) : [],
+      } satisfies ResearchEvidence
+    })
+    .filter(item => item.title)
+}
+
+const normalizeManualVerificationFacts = (input: unknown): ResearchFact[] => {
+  if (!Array.isArray(input)) {
+    return []
+  }
+
+  return input
+    .map((item, index) => {
+      const record = item && typeof item === 'object' ? item as Record<string, unknown> : {}
+      const statement = String(record.statement || '').trim()
+      if (!statement) {
+        return null
+      }
+      return {
+        id: String(record.id || `manual-fact-${index + 1}`).trim() || `manual-fact-${index + 1}`,
+        statement,
+        confidence: record.confidence === 'high' || record.confidence === 'low' ? record.confidence : 'medium',
+        supportedEvidenceIds: Array.isArray(record.supportedEvidenceIds)
+          ? record.supportedEvidenceIds.map(id => String(id || '').trim()).filter(Boolean)
+          : [],
+        factType: typeof record.factType === 'string' ? record.factType as ResearchFact['factType'] : undefined,
+        factNature: record.factNature === 'hard_fact' || record.factNature === 'framework_claim' ? record.factNature : 'soft_claim',
+        numbers: Array.isArray(record.numbers) ? record.numbers.map(value => String(value || '').trim()).filter(Boolean) : [],
+        timeRefs: Array.isArray(record.timeRefs) ? record.timeRefs.map(value => String(value || '').trim()).filter(Boolean) : [],
+        directSourceDomainCount: Number.isFinite(Number(record.directSourceDomainCount)) ? Number(record.directSourceDomainCount) : undefined,
+        independentSourceDomainCount: Number.isFinite(Number(record.independentSourceDomainCount)) ? Number(record.independentSourceDomainCount) : undefined,
+        sourceDomainCount: Number.isFinite(Number(record.sourceDomainCount)) ? Number(record.sourceDomainCount) : undefined,
+        verificationStatus: record.verificationStatus === 'passed'
+          || record.verificationStatus === 'partial'
+          || record.verificationStatus === 'conflict'
+          ? record.verificationStatus
+          : 'unverified',
+        uncertaintyNote: String(record.uncertaintyNote || '').trim() || undefined,
+      } satisfies ResearchFact
+    })
+    .filter((item): item is ResearchFact => Boolean(item))
+}
+
+const buildManualVerificationContent = (input: {
+  subject: string
+  report: string
+  verification: ResearchVerificationResult
 }) => {
-  const unresolvedSection = input.unresolvedItems.length
-    ? [
-        '### 当前未解决项',
-        '',
-        ...input.unresolvedItems.slice(0, 8).map(item => `- ${item}`),
-        '',
-      ]
-    : []
+  const unresolvedItems = input.verification.unresolvedItems.slice(0, 8)
+  const weakFacts = input.verification.weakFacts.slice(0, 6)
+  const conflictFacts = input.verification.conflictFacts.slice(0, 6)
+  const passedFacts = input.verification.passedFacts.slice(0, 6)
 
   return [
-    `## ${input.title}`,
+    `## 报告核查结果：${input.subject}`,
     '',
-    input.intro,
+    `- 已核查事实：${input.verification.checkedFacts} 条`,
+    `- 通过：${input.verification.passedFacts.length} 条`,
+    `- 弱证据：${input.verification.weakFacts.length} 条`,
+    `- 冲突：${input.verification.conflictFacts.length} 条`,
     '',
-    '### 当前状态',
+    unresolvedItems.length
+      ? ['### 主要问题', '', ...unresolvedItems.map(item => `- ${item}`), ''].join('\n')
+      : '### 主要问题\n\n- 当前没有新增未解决项。\n',
+    weakFacts.length
+      ? ['### 需要重点复核的表述', '', ...weakFacts.map(item => `- ${item.statement}`), ''].join('\n')
+      : '',
+    conflictFacts.length
+      ? ['### 存在冲突的表述', '', ...conflictFacts.map(item => `- ${item.statement}`), ''].join('\n')
+      : '',
+    passedFacts.length
+      ? ['### 相对稳固的表述', '', ...passedFacts.map(item => `- ${item.statement}`), ''].join('\n')
+      : '',
+    '### 说明',
     '',
-    `- 搜索结果：${input.searchResultCount} 条`,
-    `- 外部可用信源：${input.externalEvidenceCount} 条`,
-    `- 已抽取事实：${input.factCount} 条`,
-    `- 可直接支撑写作的事实：${input.readyFactCount} 条`,
-    '',
-    ...unresolvedSection,
-    '### 建议',
-    '',
-    ...input.recommendations.map(item => `- ${item}`),
-  ].join('\n')
+    '- 这次核查是用户手动触发的独立动作，不再阻断主报告生成。',
+    `- 本次核查基于当前报告正文以及已沉淀的 ${input.report ? '报告内容 / ' : ''}证据与事实快照完成。`,
+  ].filter(Boolean).join('\n')
 }
 
 const emitReasoningSummary = (
@@ -305,60 +338,6 @@ const normalizeQueryPlanList = (items: unknown, fallback: ResearchQueryPlan[]) =
   return normalized.length ? normalized : fallback
 }
 
-const buildVerificationRepairQueries = (
-  facts: ResearchFact[],
-  evidenceStore: ResearchEvidenceStore,
-  subject: string,
-) => {
-  const queries: ResearchQueryPlan[] = []
-  const seen = new Set<string>()
-
-  for (const fact of facts) {
-    const statement = String(fact.statement || '').trim()
-    if (!statement) {
-      continue
-    }
-    const queryFocus = buildVerificationQueryFocus(statement) || normalizeSearchPhrase(statement).slice(0, 48)
-
-    const evidences = evidenceStore.getEvidenceByIds(fact.supportedEvidenceIds)
-    const sourceHints = Array.from(new Set(
-      evidences
-        .map((item) => item.source.sourceType === 'official' ? '' : item.source.title)
-        .map((item) => String(item || '').trim())
-        .filter(Boolean),
-    )).slice(0, 2)
-
-    const subjectPrefix = subject.includes('/') ? '' : `${subject} `
-
-    const queryCandidates = [
-      `${subjectPrefix}${queryFocus} 官方`,
-      `${subjectPrefix}${queryFocus} 文档`,
-      `${subjectPrefix}${queryFocus} report`,
-      `${subjectPrefix}${queryFocus} site:gov`,
-      `${subjectPrefix}${queryFocus} site:edu`,
-      sourceHints.length ? `${sourceHints.join(' ')} ${queryFocus}` : '',
-    ]
-
-    for (const candidate of queryCandidates) {
-      const query = String(candidate || '').replace(/\s+/g, ' ').trim()
-      if (!query || seen.has(query)) {
-        continue
-      }
-      seen.add(query)
-      queries.push({
-        query,
-        intent: `为弱事实补齐独立来源：${statement.slice(0, 48)}`,
-        priority: queries.length + 1,
-      })
-      if (queries.length >= 4) {
-        return queries
-      }
-    }
-  }
-
-  return queries
-}
-
 const buildSearchResultLookup = (results: ResearchSearchResultItem[]) => {
   const map = new Map<string, ResearchSearchResultItem>()
   for (const item of results) {
@@ -368,15 +347,6 @@ const buildSearchResultLookup = (results: ResearchSearchResultItem[]) => {
     }
   }
   return map
-}
-
-const hasRepairEvidenceForUrl = (evidenceStore: ResearchEvidenceStore, url: string) => {
-  const normalizedUrl = normalizeComparableUrl(url)
-  if (!normalizedUrl) {
-    return false
-  }
-
-  return evidenceStore.listEvidence().some((item) => normalizeComparableUrl(item.source.url || '') === normalizedUrl)
 }
 
 const looksLikeBlockedOrEmptyReadResult = (input: {
@@ -798,6 +768,50 @@ const isExternalResearchEvidence = (evidence: ResearchEvidence) => {
     && evidence.entityMatched !== false
 }
 
+const summarizeResearchCoverage = (evidenceStore: ResearchEvidenceStore) => {
+  const coverage = evidenceStore.getCoverageSummary()
+  const externalEvidenceCount = evidenceStore.listEvidence().filter(isExternalResearchEvidence).length
+  return {
+    evidenceCount: coverage.evidenceCount,
+    factCount: coverage.factCount,
+    domainCount: coverage.domainCount,
+    externalEvidenceCount,
+  }
+}
+
+const shouldContinueDeepReading = (
+  evidenceStore: ResearchEvidenceStore,
+  remainingTargets: number,
+) => {
+  if (remainingTargets <= 0) {
+    return false
+  }
+
+  const coverage = summarizeResearchCoverage(evidenceStore)
+  if (coverage.externalEvidenceCount < 4) {
+    return true
+  }
+  if (coverage.factCount < 8) {
+    return true
+  }
+  if (coverage.domainCount < 3) {
+    return true
+  }
+
+  return false
+}
+
+const buildResearchUnresolvedItems = (evidenceStore: ResearchEvidenceStore) => {
+  const coverage = summarizeResearchCoverage(evidenceStore)
+  return Array.from(new Set([
+    ...(coverage.externalEvidenceCount <= 0 ? ['当前未读取到稳定的外部深读信源，报告将更多依赖搜索结果与行业常识展开。'] : []),
+    ...(coverage.externalEvidenceCount > 0 && coverage.externalEvidenceCount < 3 ? ['当前外部深读信源仍然偏少，部分判断更多来自有限样本。'] : []),
+    ...(coverage.factCount <= 0 ? ['当前尚未沉淀出稳定事实条目，正文将以框架分析和趋势判断为主。'] : []),
+    ...(coverage.factCount > 0 && coverage.factCount < 6 ? ['当前已沉淀的稳定事实仍然有限，部分章节会偏向趋势判断而非高密度事实陈列。'] : []),
+    ...(coverage.domainCount > 0 && coverage.domainCount < 3 ? ['当前独立来源域名覆盖仍然偏窄，交叉印证强度有限。'] : []),
+  ]))
+}
+
 const collectSectionEvidence = (section: ResearchOutlineSection, evidences: ResearchEvidence[]) => {
   const sectionKey = `${section.title} ${section.objective} ${(section.keyQuestions || []).join(' ')}`
   const keywords = sectionKey
@@ -829,19 +843,162 @@ const collectSectionFacts = (section: ResearchOutlineSection, facts: ResearchFac
   return matched.length ? matched : facts.slice(0, 6)
 }
 
-type VerificationPromptResult = {
-  facts?: Array<{
-    factId: string
-    verificationStatus: 'passed' | 'partial' | 'conflict' | 'unverified'
-    sourceDomainCount?: number
-    numbers?: string[]
-    timeRefs?: string[]
-    uncertaintyNote?: string
-  }>
-  passedFactIds?: string[]
-  weakFactIds?: string[]
-  conflictFactIds?: string[]
-  unresolvedItems?: string[]
+const processDeepReadBatchResults = async (input: {
+  task: ResearchExecutionTask
+  payload: GenerationTaskStartPayload
+  context: ResearchTaskExecutorContext
+  modelKey: string
+  subject: string
+  goal: string
+  readBatchResults: ResearchReaderBatchResult[]
+  rankedResultLookup: Map<string, ResearchSearchResultItem>
+  rankedResults: ResearchSearchResultItem[]
+  evidenceStore: ResearchEvidenceStore
+}) => {
+  for (const item of input.readBatchResults) {
+    await input.context.ensureTaskNotAborted(input.task)
+    if (!item.readResult) {
+      continue
+    }
+    const readResult = item.readResult
+    const target = item.target
+    const currentIndex = target.batchIndex || 1
+
+    input.context.emitTaskStreamEvent(input.task.recordId, {
+      type: 'stage_changed',
+      recordId: input.task.recordId,
+      done: false,
+      stopped: false,
+      stage: 'deep_reading',
+      message: `正在分析第 ${currentIndex}/${input.rankedResults.length} 个页面`,
+      researchStage: {
+        stage: 'deep_reading',
+        message: `正在分析第 ${currentIndex}/${input.rankedResults.length} 个页面`,
+      },
+    })
+
+    try {
+      const deepReadResult = await runResearchStageModel<{
+        entityMatched?: boolean
+        pageRole?: 'framework' | 'evidence' | 'case' | 'opinion' | 'tool_tutorial' | 'noisy'
+        topicAlignment?: 'high' | 'medium' | 'low'
+        usableFor?: '主论证' | '补充案例' | '风险提示' | '不建议入正文'
+        scopeWarning?: string
+        summary?: string
+        extractedFacts?: string[]
+        extractedClaims?: string[]
+        extractedNumbers?: string[]
+        contradictions?: string[]
+        freshnessSignals?: string[]
+        authorityHints?: string[]
+      }>({
+        payloadRequestBody: input.payload.requestBody,
+        modelKey: input.modelKey,
+        systemPrompt: buildResearchDeepReadingSystemPrompt(),
+        userPrompt: buildResearchDeepReadingUserPrompt({
+          subject: input.subject,
+          goal: input.goal,
+          url: readResult.url,
+          title: readResult.title,
+          content: readResult.content,
+        }),
+        signal: input.task.abortController.signal,
+        stage: `deep_reading_${target.batchIndex || 1}`,
+        logGenerationTask: input.context.logGenerationTask,
+      })
+
+      const evidence = input.evidenceStore.addEvidence({
+        id: `evidence-read-${target.batchIndex || 1}`,
+        title: readResult.title,
+        summary: String(deepReadResult.summary || readResult.excerpt || target.snippet || '已完成网页阅读').trim(),
+        source: {
+          title: readResult.title,
+          url: readResult.url,
+          sourceType: resolveSourceType(readResult.url),
+          note: target.siteName || undefined,
+        },
+        tags: ['网页深读', input.subject],
+        entityMatched: deepReadResult.entityMatched !== false,
+        pageRole: deepReadResult.pageRole,
+        topicAlignment: deepReadResult.topicAlignment,
+        usableFor: deepReadResult.usableFor,
+        scopeWarning: String(deepReadResult.scopeWarning || '').trim() || undefined,
+        authorityHints: Array.isArray(deepReadResult.authorityHints) ? deepReadResult.authorityHints.map(item => String(item || '').trim()).filter(Boolean) : [],
+        freshnessSignals: Array.isArray(deepReadResult.freshnessSignals) ? deepReadResult.freshnessSignals.map(item => String(item || '').trim()).filter(Boolean) : [],
+        extractedFacts: Array.isArray(deepReadResult.extractedFacts) ? deepReadResult.extractedFacts.map(item => String(item || '').trim()).filter(Boolean) : [],
+        extractedClaims: Array.isArray(deepReadResult.extractedClaims) ? deepReadResult.extractedClaims.map(item => String(item || '').trim()).filter(Boolean) : [],
+        extractedNumbers: Array.isArray(deepReadResult.extractedNumbers) ? deepReadResult.extractedNumbers.map(item => String(item || '').trim()).filter(Boolean) : [],
+        contradictions: Array.isArray(deepReadResult.contradictions) ? deepReadResult.contradictions.map(item => String(item || '').trim()).filter(Boolean) : [],
+        discovery: (() => {
+          const matchedSearchResult = input.rankedResultLookup.get(normalizeComparableUrl(readResult.url))
+            || input.rankedResultLookup.get(normalizeComparableUrl(target.url))
+          return matchedSearchResult
+            ? {
+              query: matchedSearchResult.query || '',
+              provider: matchedSearchResult.provider || String((input.payload.requestBody || {}).researchSearchProvider || '').trim() || 'auto',
+              rank: input.rankedResults.findIndex(result => normalizeComparableUrl(result.url) === normalizeComparableUrl(matchedSearchResult.url)) + 1,
+              searchSources: matchedSearchResult.searchSources || [],
+            }
+            : undefined
+        })(),
+      })
+
+      if (!evidence || evidence.entityMatched === false) {
+        continue
+      }
+
+      input.context.emitTaskStreamEvent(input.task.recordId, {
+        type: 'evidence_added',
+        recordId: input.task.recordId,
+        done: false,
+        stopped: false,
+        stage: 'evidence_merge',
+        message: '已采纳新的网页证据',
+        evidence,
+      })
+
+      const factCandidates = [
+        ...(evidence.extractedFacts || []).map(statement => ({
+          statement,
+          sourceKind: 'fact' as const,
+        })),
+        ...(evidence.extractedClaims || []).map(statement => ({
+          statement,
+          sourceKind: 'claim' as const,
+        })),
+      ].filter(item => shouldKeepExtractedResearchFact(item.statement, evidence)).slice(0, 3)
+
+      for (const [factIndex, factCandidate] of factCandidates.entries()) {
+        const statement = String(factCandidate.statement || '').trim()
+        const fact = input.evidenceStore.addFact({
+          id: `fact-read-${target.batchIndex || 1}-${factIndex + 1}`,
+          statement,
+          confidence: evidence.confidence,
+          supportedEvidenceIds: [evidence.id],
+          factType: factCandidate.sourceKind === 'fact' ? 'fact' : 'claim',
+          factNature: inferResearchFactNature(statement, factCandidate.sourceKind, evidence),
+          numbers: evidence.extractedNumbers || [],
+          timeRefs: evidence.freshnessSignals || [],
+          verificationStatus: 'unverified',
+        })
+        input.context.emitTaskStreamEvent(input.task.recordId, {
+          type: 'fact_update',
+          recordId: input.task.recordId,
+          done: false,
+          stopped: false,
+          stage: 'evidence_merge',
+          message: '已更新研究事实',
+          fact,
+        })
+      }
+    } catch (error) {
+      input.context.logGenerationTask('research_reader:skip', {
+        recordId: input.task.recordId,
+        url: target.url,
+        errorMessage: error instanceof Error ? error.message : String(error || ''),
+      })
+    }
+  }
 }
 
 export const executeResearchTaskFlow = async (
@@ -851,6 +1008,89 @@ export const executeResearchTaskFlow = async (
 ) => {
   await context.syncSharedTaskRuntime(task, 'running')
   await context.ensureTaskNotAborted(task)
+
+  const manualVerificationRequest = normalizeManualVerificationPayload(payload)
+  if (manualVerificationRequest.enabled && manualVerificationRequest.payload) {
+    const evidenceStore = new ResearchEvidenceStore()
+    const subject = String(manualVerificationRequest.payload.subject || payload.prompt || '当前研究报告').trim() || '当前研究报告'
+    const report = String(manualVerificationRequest.payload.report || '').trim()
+    const evidences = normalizeManualVerificationEvidences(manualVerificationRequest.payload.evidences)
+    const facts = normalizeManualVerificationFacts(manualVerificationRequest.payload.facts)
+
+    evidences.forEach(item => {
+      evidenceStore.addEvidence(item)
+    })
+    facts.forEach(item => {
+      evidenceStore.addFact(item)
+    })
+
+    context.emitTaskProgressEvent(task.recordId, {
+      stage: 'research_verification',
+      message: '报告核查任务已启动',
+    })
+
+    context.emitTaskStreamEvent(task.recordId, {
+      type: 'begin',
+      recordId: task.recordId,
+      done: false,
+      stopped: false,
+      stage: 'fact_verification',
+      message: '报告核查开始',
+      researchBegin: {
+        taskId: task.recordId,
+        outputType: 'report',
+        title: `${subject} 报告核查`,
+        subject,
+        status: 'running',
+      },
+    })
+
+    emitResearchStageEvent(task.recordId, 'fact_verification', context)
+    const verification = verifyResearchEvidence(evidenceStore)
+    context.emitTaskStreamEvent(task.recordId, {
+      type: 'verification',
+      recordId: task.recordId,
+      done: false,
+      stopped: false,
+      stage: 'fact_verification',
+      message: '报告核查已完成',
+      verification,
+    })
+
+    const content = buildManualVerificationContent({
+      subject,
+      report,
+      verification,
+    })
+
+    await context.updateGenerationRecord(task.recordId, {
+      ...context.buildInitialRecordPayload(payload),
+      content,
+      done: true,
+      stopped: false,
+      error: '',
+    }, task.userId)
+
+    const completedRecord = await context.getGenerationRecordById(task.recordId, task.userId)
+    await context.syncSharedTaskRuntime(task, 'completed')
+    context.emitTaskStreamEvent(task.recordId, {
+      type: 'completed',
+      recordId: task.recordId,
+      done: true,
+      stopped: false,
+      record: completedRecord,
+      stage: 'completed',
+      message: '报告核查完成',
+    })
+    context.logGenerationTask('research_verification:completed', {
+      recordId: task.recordId,
+      userId: task.userId,
+      evidenceCount: evidences.length,
+      factCount: facts.length,
+      checkedFacts: verification.checkedFacts,
+    })
+    return
+  }
 
   const { config, snapshot } = buildResearchPlan({
     prompt: String(payload.prompt || ''),
@@ -1146,633 +1386,79 @@ export const executeResearchTaskFlow = async (
   const rankedResultLookup = buildSearchResultLookup(rankedResults)
 
   emitResearchStageEvent(task.recordId, 'deep_reading', context)
-  const readTargets = rankedResults.slice(0, Math.min(rankedResults.length, 6))
-  const readBatchResults = await runWebReaderBatch({
-    recordId: task.recordId,
-    targets: readTargets.map((item, index) => ({
-      callId: `reader-${index + 1}`,
-      url: item.url,
-      title: item.title,
-      stage: 'deep_reading',
-      snippet: item.snippet,
-      siteName: item.siteName,
-      siteIcon: item.siteIcon,
-      query: item.query,
-      referenceIndex: item.referenceIndex,
-      batchIndex: index + 1,
-    })),
-    signal: task.abortController.signal,
-    context,
-    toolCallMessage: (target) => `正在深度阅读：${target.title}`,
-    toolResultMessage: (_target, readResult) => `网页阅读完成：${readResult.title}`,
-  })
+  const deepReadTargets = rankedResults.map((item, index) => ({
+    callId: `reader-${index + 1}`,
+    url: item.url,
+    title: item.title,
+    stage: 'deep_reading' as const,
+    snippet: item.snippet,
+    siteName: item.siteName,
+    siteIcon: item.siteIcon,
+    query: item.query,
+    referenceIndex: item.referenceIndex,
+    batchIndex: index + 1,
+  }))
 
-  for (const item of readBatchResults) {
-    await context.ensureTaskNotAborted(task)
-    if (!item.readResult) {
-      continue
+  let nextReadTargetIndex = 0
+  const initialReadTargetCount = Math.min(deepReadTargets.length, 6)
+  while (nextReadTargetIndex < deepReadTargets.length) {
+    const isInitialBatch = nextReadTargetIndex === 0
+    const nextBatchSize = isInitialBatch
+      ? initialReadTargetCount
+      : Math.min(RESEARCH_READER_BATCH_SIZE, deepReadTargets.length - nextReadTargetIndex)
+    const batchTargets = deepReadTargets.slice(nextReadTargetIndex, nextReadTargetIndex + nextBatchSize)
+    if (!batchTargets.length) {
+      break
     }
-    const readResult = item.readResult
-    const target = item.target
-    const currentIndex = target.batchIndex || 1
 
-    context.emitTaskStreamEvent(task.recordId, {
-      type: 'stage_changed',
-      recordId: task.recordId,
-      done: false,
-      stopped: false,
-      stage: 'deep_reading',
-      message: `正在分析第 ${currentIndex}/${readBatchResults.length} 个页面`,
-      researchStage: {
-        stage: 'deep_reading',
-        message: `正在分析第 ${currentIndex}/${readBatchResults.length} 个页面`,
-      },
-    })
-
-    try {
-      const deepReadResult = await runResearchStageModel<{
-        entityMatched?: boolean
-        pageRole?: 'framework' | 'evidence' | 'case' | 'opinion' | 'tool_tutorial' | 'noisy'
-        topicAlignment?: 'high' | 'medium' | 'low'
-        usableFor?: '主论证' | '补充案例' | '风险提示' | '不建议入正文'
-        scopeWarning?: string
-        summary?: string
-        extractedFacts?: string[]
-        extractedClaims?: string[]
-        extractedNumbers?: string[]
-        contradictions?: string[]
-        freshnessSignals?: string[]
-        authorityHints?: string[]
-      }>({
-        payloadRequestBody: payload.requestBody,
-        modelKey,
-        systemPrompt: buildResearchDeepReadingSystemPrompt(),
-        userPrompt: buildResearchDeepReadingUserPrompt({
-          subject: resolvedSubject,
-          goal: resolvedGoal,
-          url: readResult.url,
-          title: readResult.title,
-          content: readResult.content,
-        }),
-        signal: task.abortController.signal,
-        stage: `deep_reading_${target.batchIndex || 1}`,
-        logGenerationTask: context.logGenerationTask,
-      })
-
-      const evidence = evidenceStore.addEvidence({
-        id: `evidence-read-${target.batchIndex || 1}`,
-        title: readResult.title,
-        summary: String(deepReadResult.summary || readResult.excerpt || target.snippet || '已完成网页阅读').trim(),
-        source: {
-          title: readResult.title,
-          url: readResult.url,
-          sourceType: resolveSourceType(readResult.url),
-          note: target.siteName || undefined,
-        },
-        tags: ['网页深读', resolvedSubject],
-        entityMatched: deepReadResult.entityMatched !== false,
-        pageRole: deepReadResult.pageRole,
-        topicAlignment: deepReadResult.topicAlignment,
-        usableFor: deepReadResult.usableFor,
-        scopeWarning: String(deepReadResult.scopeWarning || '').trim() || undefined,
-        authorityHints: Array.isArray(deepReadResult.authorityHints) ? deepReadResult.authorityHints.map(item => String(item || '').trim()).filter(Boolean) : [],
-        freshnessSignals: Array.isArray(deepReadResult.freshnessSignals) ? deepReadResult.freshnessSignals.map(item => String(item || '').trim()).filter(Boolean) : [],
-        extractedFacts: Array.isArray(deepReadResult.extractedFacts) ? deepReadResult.extractedFacts.map(item => String(item || '').trim()).filter(Boolean) : [],
-        extractedClaims: Array.isArray(deepReadResult.extractedClaims) ? deepReadResult.extractedClaims.map(item => String(item || '').trim()).filter(Boolean) : [],
-        extractedNumbers: Array.isArray(deepReadResult.extractedNumbers) ? deepReadResult.extractedNumbers.map(item => String(item || '').trim()).filter(Boolean) : [],
-        contradictions: Array.isArray(deepReadResult.contradictions) ? deepReadResult.contradictions.map(item => String(item || '').trim()).filter(Boolean) : [],
-        discovery: (() => {
-          const matchedSearchResult = rankedResultLookup.get(normalizeComparableUrl(readResult.url))
-            || rankedResultLookup.get(normalizeComparableUrl(target.url))
-          return matchedSearchResult
-            ? {
-              query: matchedSearchResult.query || '',
-              provider: matchedSearchResult.provider || String((payload.requestBody || {}).researchSearchProvider || '').trim() || 'auto',
-              rank: rankedResults.findIndex(result => normalizeComparableUrl(result.url) === normalizeComparableUrl(matchedSearchResult.url)) + 1,
-              searchSources: matchedSearchResult.searchSources || [],
-            }
-            : undefined
-        })(),
-      })
-
-      if (!evidence || evidence.entityMatched === false) {
-        continue
-      }
-
+    if (!isInitialBatch) {
+      const coverage = summarizeResearchCoverage(evidenceStore)
       context.emitTaskStreamEvent(task.recordId, {
-        type: 'evidence_added',
+        type: 'stage_changed',
         recordId: task.recordId,
         done: false,
         stopped: false,
-        stage: 'evidence_merge',
-        message: '已采纳新的网页证据',
-        evidence,
-      })
-
-      const factCandidates = [
-        ...(evidence.extractedFacts || []).map(statement => ({
-          statement,
-          sourceKind: 'fact' as const,
-        })),
-        ...(evidence.extractedClaims || []).map(statement => ({
-          statement,
-          sourceKind: 'claim' as const,
-        })),
-      ].filter(item => shouldKeepExtractedResearchFact(item.statement, evidence)).slice(0, 3)
-
-      for (const [factIndex, item] of factCandidates.entries()) {
-        const statement = String(item.statement || '').trim()
-        const fact = evidenceStore.addFact({
-          id: `fact-read-${target.batchIndex || 1}-${factIndex + 1}`,
-          statement,
-          confidence: evidence.confidence,
-          supportedEvidenceIds: [evidence.id],
-          factType: item.sourceKind === 'fact' ? 'fact' : 'claim',
-          factNature: inferResearchFactNature(statement, item.sourceKind, evidence),
-          numbers: evidence.extractedNumbers || [],
-          timeRefs: evidence.freshnessSignals || [],
-          verificationStatus: 'unverified',
-        })
-        context.emitTaskStreamEvent(task.recordId, {
-          type: 'fact_update',
-          recordId: task.recordId,
-          done: false,
-          stopped: false,
-          stage: 'evidence_merge',
-          message: '已更新研究事实',
-          fact,
-        })
-      }
-    } catch (error) {
-      context.logGenerationTask('research_reader:skip', {
-        recordId: task.recordId,
-        url: target.url,
-        errorMessage: error instanceof Error ? error.message : String(error || ''),
-      })
-    }
-  }
-
-  emitResearchStageEvent(task.recordId, 'fact_verification', context)
-  let verificationPromptResult: VerificationPromptResult = {}
-  try {
-    verificationPromptResult = await runResearchStageModel<VerificationPromptResult>({
-      payloadRequestBody: payload.requestBody,
-      modelKey,
-      systemPrompt: buildResearchVerificationSystemPrompt(),
-      userPrompt: buildResearchVerificationUserPrompt({
-        subject: resolvedSubject,
-        evidences: evidenceStore.listEvidence(),
-        facts: evidenceStore.listFacts(),
-      }),
-      signal: task.abortController.signal,
-      stage: 'fact_verification',
-      logGenerationTask: context.logGenerationTask,
-    })
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error || '')
-    context.logGenerationTask('research_verification:model_fallback', {
-      recordId: task.recordId,
-      errorMessage,
-    })
-    verificationPromptResult = {
-      unresolvedItems: [
-        `模型核查阶段暂时不可用，已降级为本地证据规则核查：${errorMessage}`,
-      ],
-    }
-  }
-
-  if (Array.isArray(verificationPromptResult.facts)) {
-    for (const item of verificationPromptResult.facts) {
-      evidenceStore.updateFact(String(item.factId || '').trim(), (current) => ({
-        ...current,
-        verificationStatus: item.verificationStatus || current.verificationStatus,
-        sourceDomainCount: Number.isFinite(Number(item.sourceDomainCount)) ? Number(item.sourceDomainCount) : current.sourceDomainCount,
-        numbers: Array.isArray(item.numbers) ? item.numbers.map(value => String(value || '').trim()).filter(Boolean) : current.numbers,
-        timeRefs: Array.isArray(item.timeRefs) ? item.timeRefs.map(value => String(value || '').trim()).filter(Boolean) : current.timeRefs,
-        uncertaintyNote: String(item.uncertaintyNote || '').trim() || current.uncertaintyNote,
-      }))
-    }
-  }
-
-  const verification = verifyResearchEvidence(evidenceStore)
-  const verificationWithPrompt: ResearchVerificationResult = {
-    ...verification,
-    unresolvedItems: Array.from(new Set([
-      ...verification.unresolvedItems,
-      ...(Array.isArray(verificationPromptResult.unresolvedItems)
-        ? verificationPromptResult.unresolvedItems.map(item => String(item || '').trim()).filter(Boolean)
-        : []),
-      ])),
-  }
-
-  const attemptedRepairQueries = new Set<string>()
-  if (verificationWithPrompt.weakFacts.length >= 2 || verificationWithPrompt.verdict === 'blocked') {
-    for (let repairRound = 0; repairRound < config.maxSearchRounds; repairRound += 1) {
-      const candidateRepairQueries = buildVerificationRepairQueries(
-        verificationWithPrompt.weakFacts.slice(0, Math.max(3, config.maxQueriesPerRound)),
-        evidenceStore,
-        resolvedSubject,
-      )
-      const repairQueries = candidateRepairQueries
-        .filter((item) => !attemptedRepairQueries.has(item.query))
-        .slice(0, config.maxQueriesPerRound)
-
-      if (!repairQueries.length) {
-        break
-      }
-      for (const queryPlan of repairQueries) {
-        attemptedRepairQueries.add(queryPlan.query)
-      }
-
-      emitResearchStageEvent(task.recordId, 'targeted_search', context)
-      emitReasoningSummary(
-        task.recordId,
-        'targeted_search',
-        resolvedGoal,
-        [
-          `当前已完成第 ${repairRound + 1} 轮补证搜索`,
-          `仍有 ${verificationWithPrompt.weakFacts.length} 条弱事实待补强`,
-        ],
-        [],
-        verificationWithPrompt.unresolvedItems.slice(0, 4),
-        repairQueries.map(item => item.query),
-        context,
-        '证据仍不足，继续补搜',
-      )
-
-      const repairSearchResults = await runSearchQueryBatch({
-        recordId: task.recordId,
-        stage: 'fact_verification',
-        queryPlans: repairQueries,
-        callIdPrefix: `search-verify-r${repairRound + 1}`,
-        requestBody: payload.requestBody,
-        config: {
-          maxSources: Math.min(config.maxSources, 6),
+        stage: 'deep_reading',
+        message: `当前证据仍不足，继续补读第 ${batchTargets[0].batchIndex}-${batchTargets[batchTargets.length - 1].batchIndex} 个页面`,
+        researchStage: {
+          stage: 'deep_reading',
+          message: `已沉淀 ${coverage.externalEvidenceCount} 条外部证据 / ${coverage.factCount} 条事实，继续补齐来源覆盖`,
         },
-        signal: task.abortController.signal,
-        context,
       })
+    }
 
-      const repairReadTargets = repairQueries.flatMap((queryPlan, index) => {
-        const repairResults = repairSearchResults.filter((item) => item.query === queryPlan.query)
-        const topRepairMatches = repairResults
-          .filter((item) => item.url && !hasRepairEvidenceForUrl(evidenceStore, item.url))
-          .slice(0, 2)
+    const readBatchResults = await runWebReaderBatch({
+      recordId: task.recordId,
+      targets: batchTargets,
+      signal: task.abortController.signal,
+      context,
+      toolCallMessage: (target) => `正在深度阅读：${target.title}`,
+      toolResultMessage: (_target, readResult) => `网页阅读完成：${readResult.title}`,
+    })
 
-        return topRepairMatches.map((matched, matchIndex) => ({
-          callId: `reader-verify-r${repairRound + 1}-${index + 1}-${matchIndex + 1}`,
-          url: matched.url,
-          title: matched.title,
-          stage: 'deep_reading' as const,
-          snippet: matched.snippet,
-          siteName: matched.siteName,
-          siteIcon: matched.siteIcon,
-          query: queryPlan.query,
-          referenceIndex: matched.referenceIndex,
-          batchIndex: index + 1,
-          provider: matched.provider || String((payload.requestBody || {}).researchSearchProvider || '').trim() || 'auto',
-          searchSources: matched.searchSources || [],
-        }))
-      })
+    await processDeepReadBatchResults({
+      task,
+      payload,
+      context,
+      modelKey,
+      subject: resolvedSubject,
+      goal: resolvedGoal,
+      readBatchResults,
+      rankedResultLookup,
+      rankedResults,
+      evidenceStore,
+    })
 
-      const repairReadResults = await runWebReaderBatch({
-        recordId: task.recordId,
-        targets: repairReadTargets,
-        signal: task.abortController.signal,
-        context,
-        toolCallMessage: (target) => `正在深度阅读补充信源：${target.title}`,
-        toolResultMessage: (_target, readResult) => `网页阅读完成：${readResult.title}`,
-      })
-
-      for (const item of repairReadResults) {
-        await context.ensureTaskNotAborted(task)
-        if (!item.readResult) {
-          continue
-        }
-
-        const readResult = item.readResult
-        const target = item.target
-        const matchTokens = String(target.callId).match(/reader-verify-r(\d+)-(\d+)-(\d+)$/)
-        const queryIndex = matchTokens ? Number(matchTokens[2]) : (target.batchIndex || 1)
-        const matchIndex = matchTokens ? Number(matchTokens[3]) : 1
-
-        context.emitTaskStreamEvent(task.recordId, {
-          type: 'stage_changed',
-          recordId: task.recordId,
-          done: false,
-          stopped: false,
-          stage: 'fact_verification',
-          message: `正在分析补证页面 ${matchIndex}/${repairReadResults.length}（第 ${repairRound + 1} 轮）`,
-          researchStage: {
-            stage: 'fact_verification',
-            message: `正在分析补证页面 ${matchIndex}/${repairReadResults.length}（第 ${repairRound + 1} 轮）`,
-          },
-        })
-
-        try {
-            if (looksLikeBlockedOrEmptyReadResult({
-              title: readResult.title,
-              content: readResult.content,
-              contentLength: readResult.contentLength,
-            })) {
-              continue
-            }
-
-            const deepReadResult = await runResearchStageModel<{
-              entityMatched?: boolean
-              pageRole?: 'framework' | 'evidence' | 'case' | 'opinion' | 'tool_tutorial' | 'noisy'
-              topicAlignment?: 'high' | 'medium' | 'low'
-              usableFor?: '主论证' | '补充案例' | '风险提示' | '不建议入正文'
-              scopeWarning?: string
-              summary?: string
-              extractedFacts?: string[]
-              extractedClaims?: string[]
-              extractedNumbers?: string[]
-              contradictions?: string[]
-              freshnessSignals?: string[]
-              authorityHints?: string[]
-            }>({
-              payloadRequestBody: payload.requestBody,
-              modelKey,
-              systemPrompt: buildResearchDeepReadingSystemPrompt(),
-              userPrompt: buildResearchDeepReadingUserPrompt({
-                subject: resolvedSubject,
-                goal: resolvedGoal,
-                url: readResult.url,
-                title: readResult.title,
-                content: readResult.content,
-              }),
-              signal: task.abortController.signal,
-              stage: `deep_reading_verify_${repairRound + 1}_${queryIndex}_${matchIndex}`,
-              logGenerationTask: context.logGenerationTask,
-            })
-
-            const evidence = evidenceStore.addEvidence({
-              id: `evidence-verify-read-${repairRound + 1}-${queryIndex}-${matchIndex}`,
-              title: readResult.title,
-              summary: String(deepReadResult.summary || readResult.excerpt || target.snippet || '已完成核查信源深读').trim(),
-              source: {
-                title: readResult.title,
-                url: readResult.url,
-                sourceType: resolveSourceType(readResult.url),
-                note: target.siteName || undefined,
-              },
-              tags: ['核查深读', resolvedSubject],
-              entityMatched: deepReadResult.entityMatched !== false,
-              pageRole: deepReadResult.pageRole,
-              topicAlignment: deepReadResult.topicAlignment,
-              usableFor: deepReadResult.usableFor,
-              scopeWarning: String(deepReadResult.scopeWarning || '').trim() || undefined,
-              authorityHints: Array.isArray(deepReadResult.authorityHints) ? deepReadResult.authorityHints.map(item => String(item || '').trim()).filter(Boolean) : [],
-              freshnessSignals: Array.isArray(deepReadResult.freshnessSignals) ? deepReadResult.freshnessSignals.map(item => String(item || '').trim()).filter(Boolean) : [],
-              extractedFacts: Array.isArray(deepReadResult.extractedFacts) ? deepReadResult.extractedFacts.map(item => String(item || '').trim()).filter(Boolean) : [],
-              extractedClaims: Array.isArray(deepReadResult.extractedClaims) ? deepReadResult.extractedClaims.map(item => String(item || '').trim()).filter(Boolean) : [],
-              extractedNumbers: Array.isArray(deepReadResult.extractedNumbers) ? deepReadResult.extractedNumbers.map(item => String(item || '').trim()).filter(Boolean) : [],
-              contradictions: Array.isArray(deepReadResult.contradictions) ? deepReadResult.contradictions.map(item => String(item || '').trim()).filter(Boolean) : [],
-              discovery: {
-                query: target.query || '',
-                provider: target.provider || String((payload.requestBody || {}).researchSearchProvider || '').trim() || 'auto',
-                rank: matchIndex,
-                searchSources: target.searchSources || [],
-              },
-            })
-
-            if (!evidence || evidence.entityMatched === false || evidence.pageRole === 'noisy' || evidence.usableFor === '不建议入正文') {
-              continue
-            }
-
-            context.emitTaskStreamEvent(task.recordId, {
-              type: 'evidence_added',
-              recordId: task.recordId,
-              done: false,
-              stopped: false,
-              stage: 'evidence_merge',
-              message: '已补充并深读新的核查信源',
-              evidence,
-            })
-
-            const factCandidates = [
-              ...(evidence.extractedFacts || []).map(statement => ({
-                statement,
-                sourceKind: 'fact' as const,
-              })),
-              ...(evidence.extractedClaims || []).map(statement => ({
-                statement,
-                sourceKind: 'claim' as const,
-              })),
-            ].filter(item => shouldKeepExtractedResearchFact(item.statement, evidence)).slice(0, 3)
-
-            for (const [factIndex, factItem] of factCandidates.entries()) {
-              const statement = String(factItem.statement || '').trim()
-              const fact = evidenceStore.addFact({
-                id: `fact-verify-read-${repairRound + 1}-${queryIndex}-${matchIndex}-${factIndex + 1}`,
-                statement,
-                confidence: evidence.confidence,
-                supportedEvidenceIds: [evidence.id],
-                factType: factItem.sourceKind === 'fact' ? 'fact' : 'claim',
-                factNature: inferResearchFactNature(statement, factItem.sourceKind, evidence),
-                numbers: evidence.extractedNumbers || [],
-                timeRefs: evidence.freshnessSignals || [],
-                verificationStatus: 'unverified',
-              })
-              context.emitTaskStreamEvent(task.recordId, {
-                type: 'fact_update',
-                recordId: task.recordId,
-                done: false,
-                stopped: false,
-                stage: 'evidence_merge',
-                message: '已更新研究事实',
-                fact,
-              })
-            }
-          } catch (error) {
-            context.logGenerationTask('research_reader:skip', {
-              recordId: task.recordId,
-              url: target.url,
-              errorMessage: error instanceof Error ? error.message : String(error || ''),
-            })
-          }
-      }
-
-      const repairedVerification = verifyResearchEvidence(evidenceStore)
-      verificationWithPrompt.verdict = repairedVerification.verdict
-      verificationWithPrompt.checkedFacts = repairedVerification.checkedFacts
-      verificationWithPrompt.passedFacts = repairedVerification.passedFacts
-      verificationWithPrompt.weakFacts = repairedVerification.weakFacts
-      verificationWithPrompt.conflictFacts = repairedVerification.conflictFacts
-      verificationWithPrompt.unresolvedItems = Array.from(new Set([
-        ...verificationWithPrompt.unresolvedItems,
-        ...repairedVerification.unresolvedItems,
-      ]))
-
-      if (verificationWithPrompt.passedFacts.length >= 2 && verificationWithPrompt.weakFacts.length <= 1) {
-        break
-      }
+    nextReadTargetIndex += batchTargets.length
+    if (!shouldContinueDeepReading(evidenceStore, deepReadTargets.length - nextReadTargetIndex)) {
+      break
     }
   }
 
-  const verifiedAfterRepair = verifyResearchEvidence(evidenceStore)
-  verificationWithPrompt.verdict = verifiedAfterRepair.verdict
-  verificationWithPrompt.checkedFacts = verifiedAfterRepair.checkedFacts
-  verificationWithPrompt.passedFacts = verifiedAfterRepair.passedFacts
-  verificationWithPrompt.weakFacts = verifiedAfterRepair.weakFacts
-  verificationWithPrompt.conflictFacts = verifiedAfterRepair.conflictFacts
-  verificationWithPrompt.unresolvedItems = Array.from(new Set([
-    ...verificationWithPrompt.unresolvedItems,
-    ...verifiedAfterRepair.unresolvedItems,
-  ]))
-
-  const externalEvidenceCount = evidenceStore.listEvidence().filter(isExternalResearchEvidence).length
-  const passedFactCount = verificationWithPrompt.passedFacts.length
-  const readyFactCount = evidenceStore.listFacts().filter((fact) => (
-    (
-      fact.factNature === 'hard_fact'
-      && fact.verificationStatus === 'passed'
-    )
-      || (
-        fact.factNature === 'hard_fact'
-        && (
-        fact.verificationStatus === 'partial'
-        && fact.sourceDomainCount !== undefined
-        && fact.sourceDomainCount >= 2
-        && !fact.uncertaintyNote
-        )
-      )
-  )).length
-
-  let preWritingGateResult: {
-    allowReportWriting?: boolean
-    confidence?: 'high' | 'medium' | 'low'
-    reason?: string
-    blockingIssues?: string[]
-    readySignals?: string[]
-    recommendedOutputMode?: 'full_report' | 'bounded_summary'
-  } = {}
-  try {
-    preWritingGateResult = await runResearchStageModel<{
-      allowReportWriting?: boolean
-      confidence?: 'high' | 'medium' | 'low'
-      reason?: string
-      blockingIssues?: string[]
-      readySignals?: string[]
-      recommendedOutputMode?: 'full_report' | 'bounded_summary'
-    }>({
-      payloadRequestBody: payload.requestBody,
-      modelKey,
-      systemPrompt: buildResearchPreWritingGateSystemPrompt(),
-      userPrompt: buildResearchPreWritingGateUserPrompt({
-        subject: resolvedSubject,
-        goal: resolvedGoal,
-        evidences: evidenceStore.listEvidence(),
-        facts: evidenceStore.listFacts(),
-        verification: verificationWithPrompt,
-      }),
-      signal: task.abortController.signal,
-      stage: 'report_planning',
-      logGenerationTask: context.logGenerationTask,
-    })
-  } catch (error) {
-    context.logGenerationTask('research_pre_writing_gate:fallback', {
-      recordId: task.recordId,
-      errorMessage: error instanceof Error ? error.message : String(error || ''),
-    })
-  }
-
-  const gateReason = String(preWritingGateResult.reason || '').trim()
-  const gateBlockingIssues = Array.isArray(preWritingGateResult.blockingIssues)
-    ? preWritingGateResult.blockingIssues.map(item => String(item || '').trim()).filter(Boolean)
-    : []
-  const gateReadySignals = Array.isArray(preWritingGateResult.readySignals)
-    ? preWritingGateResult.readySignals.map(item => String(item || '').trim()).filter(Boolean)
-    : []
-  const hasAnyUsableResearchMaterial = externalEvidenceCount > 0 && evidenceStore.listFacts().length > 0
-  const shouldBlockReportWriting = !hasAnyUsableResearchMaterial
-  const shouldUseCautiousWritingMode = (
-    hasAnyUsableResearchMaterial
-    && (
-      passedFactCount <= 0
-      || readyFactCount <= 0
-      || preWritingGateResult.allowReportWriting === false
-    )
-  )
-
-  verificationWithPrompt.unresolvedItems = Array.from(new Set([
-    ...verificationWithPrompt.unresolvedItems,
-    ...(gateReason ? [gateReason] : []),
-    ...gateBlockingIssues,
-  ]))
-
-  if (shouldBlockReportWriting) {
-    verificationWithPrompt.verdict = 'blocked'
-    verificationWithPrompt.checkedFacts = evidenceStore.listFacts().length
-    verificationWithPrompt.unresolvedItems = Array.from(new Set([
-      ...verificationWithPrompt.unresolvedItems,
-      `外部可用信源数为 ${externalEvidenceCount}，当前仍不足以启动正式写作`,
-      `通过核查的事实数为 ${passedFactCount}，当前仍不足以启动正式写作`,
-      `可直接支撑写作的事实数为 ${readyFactCount}，当前仍不足以启动正式写作`,
-    ]))
-
-    emitResearchStageEvent(task.recordId, 'final_review', context)
-    context.emitTaskStreamEvent(task.recordId, {
-      type: 'verification',
-      recordId: task.recordId,
-      done: false,
-      stopped: false,
-      stage: 'final_review',
-      message: '外部证据不足，已停止报告生成',
-      verification: verificationWithPrompt,
-    })
-
-    const blockedContent = buildBlockedResearchContent({
-      title: preWritingGateResult.recommendedOutputMode === 'bounded_summary'
-        ? '证据边界过强，已降级为边界化输出'
-        : '证据不足，已停止报告生成',
-      intro: preWritingGateResult.recommendedOutputMode === 'bounded_summary'
-        ? '本次研究已形成初步框架，但核心判断仍主要依赖弱证据、单一来源或未充分核查内容，因此没有继续生成正式长报告。'
-        : '本次研究没有获得足以支撑正式长报告的稳定证据，因此已停止报告生成。',
-      searchResultCount: initialSearchResults.length + targetedSearchResults.length,
-      externalEvidenceCount,
-      factCount: evidenceStore.listFacts().length,
-      readyFactCount,
-      unresolvedItems: verificationWithPrompt.unresolvedItems,
-      recommendations: [
-        ...gateReadySignals.slice(0, 2).map(item => `保留已形成的有效认识：${item}`),
-        '优先补充能直接支撑核心结论的独立来源，而不是继续堆积同类软判断',
-        '检查 research-report 技能的 researchSearch 配置，确认已选择搜索供应商和模型',
-        '确认搜索结果中的高价值候选页已进入深读，而不是停留在摘要页、列表页或壳页面',
-        '在核心结论拿到更多 passed facts 后，再重新运行正式研究报告',
-      ],
-    })
-
-    await context.updateGenerationRecord(task.recordId, {
-      ...context.buildInitialRecordPayload(payload),
-      content: blockedContent,
-      done: true,
-      stopped: false,
-      error: '',
-    }, task.userId)
-
-    const completedRecord = await context.getGenerationRecordById(task.recordId, task.userId)
-    await context.syncSharedTaskRuntime(task, 'completed')
-    context.emitTaskStreamEvent(task.recordId, {
-      type: 'completed',
-      recordId: task.recordId,
-      done: true,
-      stopped: false,
-      record: completedRecord,
-      stage: 'completed',
-      message: '研究证据不足，任务已结束',
-    })
-    context.logGenerationTask('research_task:blocked_insufficient_evidence', {
-      recordId: task.recordId,
-      userId: task.userId,
-      externalEvidenceCount,
-      factCount: evidenceStore.listFacts().length,
-      passedFactCount,
-      readyFactCount,
-    })
-    return
-  }
+  const unresolvedItems = buildResearchUnresolvedItems(evidenceStore)
+  const verificationWithPrompt = buildEmptyResearchVerificationResult()
+  verificationWithPrompt.unresolvedItems = unresolvedItems
+  const shouldUseCautiousWritingMode = unresolvedItems.length > 0
 
   emitResearchStageEvent(task.recordId, 'report_planning', context)
   context.emitTaskStreamEvent(task.recordId, {
@@ -1782,7 +1468,7 @@ export const executeResearchTaskFlow = async (
     stopped: false,
     stage: 'report_planning',
     message: shouldUseCautiousWritingMode
-      ? '证据未达理想阈值，转入审慎写作模式并继续生成正式报告'
+      ? '证据仍有缺口，但已具备成品化写作基础，转入强输出模式'
       : '证据已达到写作阈值，准备启动报告生成',
     toolCall: {
       id: 'start-report',
@@ -1907,46 +1593,7 @@ export const executeResearchTaskFlow = async (
     })
   }
 
-  emitResearchStageEvent(task.recordId, 'final_review', context)
-  let finalReport = fullContent
-  let finalNotes: string[] = []
-  try {
-    const finalReviewResult = await finalReviewResearchReport({
-      payloadRequestBody: payload.requestBody,
-      modelKey,
-      subject: resolvedSubject,
-      report: fullContent,
-      facts: evidenceStore.listFacts(),
-      unresolvedItems: verificationWithPrompt.unresolvedItems,
-      signal: task.abortController.signal,
-      logGenerationTask: context.logGenerationTask,
-    })
-    finalReport = String(finalReviewResult.revisedReport || fullContent).trim() || fullContent
-    finalNotes = Array.isArray(finalReviewResult.finalNotes)
-      ? finalReviewResult.finalNotes.map(item => String(item || '').trim()).filter(Boolean)
-      : []
-    if (Array.isArray(finalReviewResult.issues) && finalReviewResult.issues.length) {
-      verificationWithPrompt.unresolvedItems = Array.from(new Set([
-        ...verificationWithPrompt.unresolvedItems,
-        ...finalReviewResult.issues.map(item => String(item || '').trim()).filter(Boolean),
-      ]))
-    }
-  } catch (error) {
-    context.logGenerationTask('research_final_review:fallback', {
-      recordId: task.recordId,
-      errorMessage: error instanceof Error ? error.message : String(error || ''),
-    })
-  }
-
-  context.emitTaskStreamEvent(task.recordId, {
-    type: 'verification',
-    recordId: task.recordId,
-    done: false,
-    stopped: false,
-    stage: 'final_review',
-    message: '研究报告已完成最终核查',
-    verification: verificationWithPrompt,
-  })
+  const finalReport = appendResearchReferenceAppendix(fullContent, evidenceStore.listEvidence())
 
   const tokenUsage = {
     inputTokens: Math.ceil(String(payload.prompt || '').length / 2),
@@ -1958,7 +1605,7 @@ export const executeResearchTaskFlow = async (
     recordId: task.recordId,
     done: false,
     stopped: false,
-    stage: 'final_review',
+    stage: 'report_writing',
     message: '研究任务 token 统计已生成',
     tokenUsage,
   })

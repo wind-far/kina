@@ -118,6 +118,8 @@ export const stopGenerationTask = async (taskId: string, options: RequestOptions
 // 订阅任务的实时状态事件流，页面切换回来后可直接重连。
 // 已内置自动重连（指数退避）+ watchdog（30s 无消息视为断流）。
 const ALLOWED_STREAM_EVENT_TYPES = new Set([
+  'message',
+  'text', 'end',
   'connected', 'snapshot', 'progress', 'content_delta', 'thinking_delta',
   'agent_event',
   'begin', 'stage_changed', 'reasoning_summary', 'tool_call', 'tool_result',
@@ -125,7 +127,7 @@ const ALLOWED_STREAM_EVENT_TYPES = new Set([
   'section_delta', 'token_usage',
   'completed', 'failed', 'stopped',
 ])
-const TERMINAL_EVENT_TYPES = new Set(['completed', 'failed', 'stopped'])
+const TERMINAL_EVENT_TYPES = new Set(['completed', 'failed', 'stopped', 'end'])
 const RETRY_DELAYS_MS = [1000, 2000, 5000, 10000, 30000]
 const WATCHDOG_TIMEOUT_MS = 30000
 const WATCHDOG_CHECK_INTERVAL_MS = 5000
@@ -183,10 +185,13 @@ export const subscribeGenerationTaskEvents = async (
         lastActivityAt = Date.now()
         // 心跳事件仅用于刷新 watchdog，不向上派发
         if (message.event === 'ping') return
-        if (!ALLOWED_STREAM_EVENT_TYPES.has(message.event)) return
 
         try {
-          const parsed = JSON.parse(message.data) as GenerationTaskStreamEvent
+          const parsed = JSON.parse(message.data) as GenerationTaskStreamEvent & { type?: string }
+          const normalizedEventType = message.event === 'message'
+            ? String(parsed?.type || '').trim()
+            : message.event
+          if (!ALLOWED_STREAM_EVENT_TYPES.has(normalizedEventType)) return
           // 跟踪 lastEventId（优先 SSE 协议层 id，其次 payload.id）
           const incomingId = message.id
             ? Number.parseInt(message.id, 10)
@@ -194,8 +199,8 @@ export const subscribeGenerationTaskEvents = async (
           if (Number.isFinite(incomingId) && incomingId > lastEventId) {
             lastEventId = incomingId
           }
-          options.onEvent(parsed)
-          if (TERMINAL_EVENT_TYPES.has(parsed.type)) {
+          options.onEvent(parsed as GenerationTaskStreamEvent)
+          if (TERMINAL_EVENT_TYPES.has(normalizedEventType)) {
             terminated = true
           }
         } catch {

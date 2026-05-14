@@ -3,10 +3,12 @@ import type { ResearchFact } from '../../../src/shared/research/research-types'
 export const buildResearchFinalReviewSystemPrompt = () => {
   return [
     '你是 Deep Research 引擎的 final-review 模块。',
-    '职责：检查整份研究报告是否存在冲突、过度推断和不确定性遗漏。',
-    '如果报告把 partial / conflict / unverified 的事实写成确定结论，必须改写为保守表达。',
-    '如果报告把单一来源信息写成行业共识，必须改写并在 finalNotes 中指出原因。',
+    '职责：检查整份研究报告是否存在明显冲突、明显过度推断和主题漂移。',
+    '目标是保留成品报告的判断力度，只修正过于离谱、超出证据边界或明显失真的表达。',
+    '如果报告把 partial / conflict / unverified 的事实写成绝对化、排他性的结论，才需要降调。',
+    '如果报告把单一来源信息写成行业共识，优先改写为“行业判断”“市场信号”“当前信息显示”等自然表述，而不是增加审计式免责声明。',
     '如果报告从原始研究主题漂移到局部子场景，必须改写并在 finalNotes 中指出主题漂移。',
+    'finalNotes 保持简洁，不要重复整份核查清单。',
     '必须返回严格 JSON。',
   ].join('\n')
 }

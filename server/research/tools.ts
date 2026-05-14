@@ -1,10 +1,15 @@
-import { resolveGatewayProviderUpstream } from '../provider-config/service'
-import { joinUpstreamUrl } from '../ai-gateway/shared'
-import { extractChatTextFromJsonPayload } from '../generation-tasks/upstream-helpers'
 import { getResearchReaderCache, getResearchSearchCache } from './fetch-cache'
+import {
+  resolveSearchProviderUpstream,
+  resolveSearchStrategy,
+} from './search-providers'
+// 副作用 import 确保所有内置策略已注册。
+import './search-providers'
+import type { ResearchSearchProvider } from './search-providers'
+import type { ResearchModelUsage } from './runtime/usage-accumulator'
 import type { ResearchSearchSource } from '../../src/shared/research/research-types'
 
-export interface ResearchSearchResultItem {
+export type ResearchSearchResultItem = {
   title: string
   url: string
   snippet: string
@@ -18,7 +23,7 @@ export interface ResearchSearchResultItem {
   searchSources?: ResearchSearchSource[]
 }
 
-export type ResearchSearchProvider = 'grok2api'
+export type { ResearchSearchProvider }
 
 export interface ResearchReadResult {
   url: string
@@ -37,13 +42,6 @@ const DEFAULT_SEARCH_TIMEOUT_MS = Number.parseInt(process.env.RESEARCH_SEARCH_TI
 const DEFAULT_READER_TIMEOUT_MS = Number.parseInt(process.env.RESEARCH_READER_TIMEOUT_MS || '20000', 10)
 const DEFAULT_MAX_SEARCH_RESULTS = Number.parseInt(process.env.RESEARCH_MAX_SEARCH_RESULTS || '8', 10)
 const DEFAULT_MAX_PAGE_CHARS = Number.parseInt(process.env.RESEARCH_MAX_PAGE_CHARS || '40000', 10)
-
-type ResearchSearchUpstreamConfig = {
-  baseUrl: string
-  apiKey: string
-  model: string
-  endpoint: string
-}
 
 type ResearchSearchProviderErrorHandler = (input: {
   provider: string
@@ -112,7 +110,7 @@ const decodeHtmlEntities = (value: string) => {
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, '\'')
     .replace(/&#x27;/gi, '\'')
-  .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(Number(num)))
+    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(Number(num)))
 }
 
 const normalizeCharset = (value: string) => {
@@ -213,261 +211,17 @@ const pickExcerpt = (text: string, maxLength = 240) => {
   return `${normalized.slice(0, maxLength).trim()}...`
 }
 
-const normalizeSearchReferenceIndex = (value: unknown) => {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined
-}
-
-const normalizeSearchSources = (payload: any, maxResults: number): ResearchSearchSource[] => {
-  const sourceItems = Array.isArray(payload?.search_sources)
-    ? payload.search_sources
-    : Array.isArray(payload?.output?.[0]?.search_sources)
-      ? payload.output[0].search_sources
-      : []
-
-  return sourceItems
-    .map((item: any) => ({
-      title: String(item?.title || item?.url || '').trim(),
-      url: String(item?.url || '').trim(),
-      snippet: String(item?.snippet || item?.summary || '').trim(),
-      siteName: (() => {
-        const explicitSite = String(item?.siteName || item?.site || '').trim()
-        if (explicitSite) {
-          return explicitSite
-        }
-        try {
-          return new URL(String(item?.url || '')).hostname.replace(/^www\./i, '')
-        } catch {
-          return ''
-        }
-      })(),
-      publishedTime: String(item?.publishedTime || item?.published_at || '').trim(),
-      datePublished: String(item?.datePublished || item?.date_published || item?.publishedTime || item?.published_at || '').trim(),
-      siteIcon: String(item?.siteIcon || item?.favicon || item?.icon || '').trim(),
-      referenceIndex: normalizeSearchReferenceIndex(item?.referenceIndex),
-      type: String(item?.type || 'web').trim(),
-    }))
-    .filter((item: ResearchSearchSource) => item.title && item.url)
-    .slice(0, maxResults)
-}
-
-const extractJsonBlock = (text: string) => {
-  const normalized = String(text || '').trim()
-  if (!normalized) {
-    return ''
-  }
-
-  const fencedMatch = normalized.match(/```json\s*([\s\S]*?)```/i) || normalized.match(/```\s*([\s\S]*?)```/i)
-  if (fencedMatch?.[1]) {
-    return fencedMatch[1].trim()
-  }
-
-  const firstBraceIndex = normalized.indexOf('{')
-  const lastBraceIndex = normalized.lastIndexOf('}')
-  if (firstBraceIndex >= 0 && lastBraceIndex > firstBraceIndex) {
-    return normalized.slice(firstBraceIndex, lastBraceIndex + 1)
-  }
-
-  return normalized
-}
-
-const extractSearchResponseText = (payload: any): string => {
-  const upstreamText = extractChatTextFromJsonPayload(payload)
-  if (upstreamText.trim()) {
-    return upstreamText.trim()
-  }
-
-  if (typeof payload?.output_text === 'string' && payload.output_text.trim()) {
-    return payload.output_text.trim()
-  }
-
-  const outputItems = Array.isArray(payload?.output) ? payload.output : []
-  const chunks: string[] = []
-
-  for (const item of outputItems) {
-    const contentItems = Array.isArray(item?.content) ? item.content : []
-    for (const contentItem of contentItems) {
-      if (typeof contentItem?.text === 'string' && contentItem.text.trim()) {
-        chunks.push(contentItem.text)
-      }
-      if (typeof contentItem?.content === 'string' && contentItem.content.trim()) {
-        chunks.push(contentItem.content)
-      }
-    }
-  }
-
-  return chunks.join('\n').trim()
-}
-
-const normalizeProviderSearchResults = (payload: any, maxResults: number): ResearchSearchResultItem[] => {
-  const searchSources = normalizeSearchSources(payload, maxResults)
-
-  const text = extractSearchResponseText(payload)
-  const jsonText = extractJsonBlock(text)
-  let resultItems: any[] = []
-  try {
-    const parsed = JSON.parse(jsonText)
-    resultItems = Array.isArray(parsed?.results) ? parsed.results : []
-  } catch {
-    resultItems = []
-  }
-
-  if (!resultItems.length && searchSources.length) {
-    return searchSources.map((item) => ({
-      title: item.title,
-      url: item.url,
-	      snippet: item.snippet || '',
-	      siteName: item.siteName || '',
-	      siteIcon: item.siteIcon || '',
-	      publishedTime: item.publishedTime || '',
-	      datePublished: item.datePublished || item.publishedTime || '',
-	      referenceIndex: item.referenceIndex,
-	      provider: 'grok2api',
-	      searchSources,
-	    }))
-  }
-
-  return resultItems
-    .map((item: any) => ({
-      title: String(item?.title || '').trim(),
-      url: String(item?.url || '').trim(),
-	      snippet: String(item?.snippet || '').trim(),
-	      siteName: String(item?.siteName || item?.site || '').trim(),
-	      publishedTime: String(item?.publishedTime || item?.published_at || '').trim(),
-	      datePublished: String(item?.datePublished || item?.date_published || item?.publishedTime || item?.published_at || '').trim(),
-	      siteIcon: String(item?.siteIcon || item?.favicon || item?.icon || '').trim(),
-	      referenceIndex: normalizeSearchReferenceIndex(item?.referenceIndex),
-	      provider: 'grok2api',
-	      searchSources: searchSources.length ? searchSources : [{
-	        url: String(item?.url || '').trim(),
-	        title: String(item?.title || '').trim(),
-	        type: 'web',
-	        snippet: String(item?.snippet || '').trim(),
-	        siteName: String(item?.siteName || item?.site || '').trim(),
-	        publishedTime: String(item?.publishedTime || item?.published_at || '').trim(),
-	        datePublished: String(item?.datePublished || item?.date_published || item?.publishedTime || item?.published_at || '').trim(),
-	        siteIcon: String(item?.siteIcon || item?.favicon || item?.icon || '').trim(),
-	        referenceIndex: normalizeSearchReferenceIndex(item?.referenceIndex),
-	      }],
-	    }))
-    .filter((item: ResearchSearchResultItem) => item.title && item.url)
-    .slice(0, maxResults)
-}
-
-const resolveProviderBackedSearchUpstream = async (input: {
-  providerId?: string
-  model?: string
-}): Promise<ResearchSearchUpstreamConfig | null> => {
-  const providerId = String(input.providerId || '').trim()
-  if (!providerId) {
-    return null
-  }
-
-  const modelKey = String(input.model || '').trim()
-  if (!modelKey) {
-    throw new Error('深度搜索需要在后台技能配置中选择搜索模型')
-  }
-
-  const upstream = await resolveGatewayProviderUpstream({
-    providerId,
-    endpointType: 'chat',
-    modelKey,
-  })
-
-  return {
-    baseUrl: upstream.baseUrl,
-    apiKey: upstream.apiKey,
-    endpoint: upstream.endpoint,
-    model: modelKey,
-  }
-}
-
-const runGrok2ApiSearch = async (input: {
-  query: string
-  count: number
-  signal: AbortSignal
-  providerId?: string
-  model?: string
-}): Promise<ResearchSearchResultItem[]> => {
-  const providerBackedUpstream = await resolveProviderBackedSearchUpstream({
-    providerId: input.providerId,
-    model: input.model,
-  })
-  if (!providerBackedUpstream) {
-    throw new Error('深度搜索需要在后台技能配置中选择搜索供应商')
-  }
-
-  const baseUrl = String(providerBackedUpstream.baseUrl).trim().replace(/\/+$/, '')
-  const apiKey = String(providerBackedUpstream.apiKey).trim()
-  const model = String(providerBackedUpstream.model).trim()
-  const endpoint = String(providerBackedUpstream?.endpoint || '/chat/completions').trim() || '/chat/completions'
-
-  if (!baseUrl || !apiKey || !model) {
-    throw new Error('深度搜索供应商缺少 Base URL、API Key 或模型配置')
-  }
-
-  const { signal, cleanup } = withTimeoutSignal(input.signal, DEFAULT_SEARCH_TIMEOUT_MS)
-  try {
-    const prompt = [
-      `请使用联网搜索能力搜索：${input.query}`,
-      `返回最多 ${input.count} 条结果。`,
-      '优先返回带来源的结果，并保留可追踪的 search_sources 或等价引用信息。',
-      '你必须返回严格 JSON，不要输出 Markdown，不要补充解释。',
-      'JSON 结构如下：',
-      '{',
-      '  "results": [',
-      '    {',
-      '      "title": "字符串",',
-      '      "url": "字符串",',
-      '      "snippet": "字符串",',
-      '      "siteName": "字符串",',
-      '      "publishedTime": "字符串"',
-      '    }',
-      '  ]',
-      '}',
-    ].join('\n')
-
-    const requestBody: Record<string, unknown> = {
-      model,
-      stream: false,
-      temperature: 0.2,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    }
-
-    const response = await fetch(joinUpstreamUrl(baseUrl, endpoint), {
-      method: 'POST',
-      signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        'User-Agent': RESEARCH_FETCH_USER_AGENT,
-      },
-      body: JSON.stringify(requestBody),
-    })
-
-    if (!response.ok) {
-      throw new Error(`Grok2API 搜索请求失败 (${response.status})`)
-    }
-
-    const payload = await response.json().catch(() => null)
-    return normalizeProviderSearchResults(payload, input.count)
-  } finally {
-    cleanup()
-  }
-}
-
+// 通过 search-providers 注册表执行搜索；
+// 旧调用方仍可只传 query，provider 默认走 grok2api 保持向后兼容。
 export const runWebSearch = async (input: {
   query: string
   count?: number
   signal: AbortSignal
+  provider?: string
   providerId?: string
   model?: string
   onProviderError?: ResearchSearchProviderErrorHandler
+  onUsage?: (usage: ResearchModelUsage) => void
 }): Promise<ResearchSearchResultItem[]> => {
   const query = String(input.query || '').trim()
   if (!query) {
@@ -475,9 +229,9 @@ export const runWebSearch = async (input: {
   }
 
   const count = Math.min(Math.max(Number(input.count || DEFAULT_MAX_SEARCH_RESULTS), 1), 20)
-  const provider: ResearchSearchProvider = 'grok2api'
+  const providerKey = String(input.provider || 'grok2api').trim() as ResearchSearchProvider
   const cacheKey = [
-    provider,
+    providerKey,
     String(input.providerId || '').trim(),
     String(input.model || '').trim(),
     query,
@@ -488,17 +242,31 @@ export const runWebSearch = async (input: {
     return cached as ResearchSearchResultItem[]
   }
 
-  const results = await runGrok2ApiSearch({
-    query,
-    count,
-    signal: input.signal,
-    providerId: input.providerId,
-    model: input.model,
-  }).catch((error) => handleSearchProviderError(input.onProviderError, 'grok2api', error))
+  let results: ResearchSearchResultItem[] = []
+  try {
+    const strategy = resolveSearchStrategy(providerKey)
+    const upstream = await resolveSearchProviderUpstream({
+      providerId: String(input.providerId || ''),
+      modelKey: input.model,
+      requireModel: strategy.requiresModel,
+    })
+
+    results = await strategy.runSearch({
+      query,
+      count,
+      signal: input.signal,
+      upstream,
+      userAgent: RESEARCH_FETCH_USER_AGENT,
+      timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS,
+      onUsage: input.onUsage,
+    })
+  } catch (error) {
+    return handleSearchProviderError(input.onProviderError, providerKey, error)
+  }
 
   const normalizedResults = results.map((item) => ({
     ...item,
-    provider: item.provider || provider,
+    provider: item.provider || providerKey,
   }))
 
   getResearchSearchCache().set(cacheKey, normalizedResults)

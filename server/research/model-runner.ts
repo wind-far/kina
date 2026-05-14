@@ -3,8 +3,19 @@ import {
   extractChatTextFromJsonPayload,
   fetchWithBurstRateRetry,
 } from '../generation-tasks/upstream-helpers'
+import {
+  extractResearchUsageFromPayload,
+  type ResearchModelUsage,
+} from './runtime/usage-accumulator'
 
 type ResearchModelRunnerLogger = (stage: string, detail: Record<string, unknown>) => void
+
+export type { ResearchModelUsage }
+
+export interface ResearchStageModelResult<TResult> {
+  data: TResult
+  usage: ResearchModelUsage | null
+}
 
 const RESEARCH_STAGE_MODEL_TIMEOUT_MS = 90_000
 
@@ -65,7 +76,7 @@ export const runResearchStageModel = async <TResult>(input: {
   signal: AbortSignal
   stage: string
   logGenerationTask: ResearchModelRunnerLogger
-}): Promise<TResult> => {
+}): Promise<ResearchStageModelResult<TResult>> => {
   const stageSignal = resolveStageSignal(input.signal)
   const providerId = String((input.payloadRequestBody || {}).providerId || '').trim()
   if (!providerId) {
@@ -140,8 +151,12 @@ export const runResearchStageModel = async <TResult>(input: {
   const responseJson = await response.json().catch(() => null)
   const text = extractChatTextFromJsonPayload(responseJson)
   const jsonText = extractJsonBlock(text)
+  const usage = extractResearchUsageFromPayload(responseJson)
   try {
-    return JSON.parse(jsonText) as TResult
+    return {
+      data: JSON.parse(jsonText) as TResult,
+      usage,
+    }
   } catch (error) {
     input.logGenerationTask('research_model:parse_failed', {
       stage: input.stage,

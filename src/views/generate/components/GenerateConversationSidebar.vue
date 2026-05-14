@@ -42,7 +42,7 @@
         >
           <div class="item-media">
             <div v-if="defaultSession.imageUrl" class="item-media-img">
-              <img :src="defaultSession.imageUrl" :alt="defaultSession.title" crossorigin="anonymous">
+              <img :src="defaultSession.imageUrl" :alt="defaultSession.title" >
             </div>
             <div v-else class="item-media-icon">
               <svg class="media-icon-svg" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -85,7 +85,7 @@
         >
           <div class="item-media">
             <div v-if="session.imageUrl" class="item-media-img">
-              <img :src="session.imageUrl" :alt="session.title" crossorigin="anonymous">
+              <img :src="session.imageUrl" :alt="session.title" >
             </div>
             <div v-else class="item-media-icon">
               <svg class="media-icon-svg" width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">

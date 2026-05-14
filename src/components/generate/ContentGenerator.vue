@@ -808,7 +808,7 @@ onUnmounted(() => {
                     class="reference generator-reference-card"
                     :style="{ '--rotate': getImageReferenceCardRotate(imageIndex) }"
                   >
-                    <img :src="imageUrl" alt="参考图" class="image-iZ3_fA reference-image-FbuFFj generator-reference-preview-image" crossorigin="anonymous" draggable="false">
+                    <img :src="imageUrl" alt="参考图" class="image-iZ3_fA reference-image-FbuFFj generator-reference-preview-image"  draggable="false">
                     <div class="remove-button-container">
                       <button type="button" class="remove-button generator-reference-clear-btn" @click.stop="removeImageReference(imageIndex)">
                         <svg width="8" height="8" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

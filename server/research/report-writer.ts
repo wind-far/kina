@@ -223,7 +223,10 @@ export const writeResearchSectionWithModel = async (input: {
     stage: `report_writing_${input.section.id}`,
     logGenerationTask: input.logGenerationTask,
   })
-  return String(result.content || '').trim()
+  return {
+    content: String(result.data.content || '').trim(),
+    usage: result.usage,
+  }
 }
 
 export const appendResearchReferenceAppendix = (report: string, evidences: ResearchEvidence[]) => {

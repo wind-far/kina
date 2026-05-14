@@ -3083,6 +3083,7 @@ onUnmounted(() => {
                 />
                 <ResearchReportRecord
                     v-else-if="isResearchReportRecord(record)"
+                    :record-id="String(record.dbId || record.id)"
                     :prompt="record.prompt"
                     :content="record.content"
                     :done="record.done"

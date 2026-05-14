@@ -3,6 +3,7 @@ import { readApiData } from './response'
 import type { PersistedGenerationRecord } from './generation-records'
 import { consumeSseStream, type SseMessage } from '@/utils/sse'
 import type { GenerationTaskStreamEventBase } from '@/shared/generation-task-stream'
+import type { ResearchTaskConfig } from '@/shared/research/research-types'
 import { resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 
 // 重新导出失败码，便于业务代码 import { GenerationTaskFailureCode } from '@/api/generation-tasks'
@@ -11,7 +12,7 @@ export type { GenerationTaskFailureCode } from '@/shared/generation-task-stream'
 export interface GenerationTaskStartPayload {
   sessionId?: string
   source?: string
-  type: 'image' | 'agent'
+  type: 'image' | 'agent' | 'research'
   requestMode?: 'image-generation' | 'image-edit'
   prompt: string
   model?: string
@@ -22,6 +23,7 @@ export interface GenerationTaskStartPayload {
   feature?: string
   skill?: string
   referenceImages?: string[]
+  researchConfig?: Partial<ResearchTaskConfig> | null
   requestBody?: Record<string, unknown>
 }
 
@@ -116,10 +118,16 @@ export const stopGenerationTask = async (taskId: string, options: RequestOptions
 // 订阅任务的实时状态事件流，页面切换回来后可直接重连。
 // 已内置自动重连（指数退避）+ watchdog（30s 无消息视为断流）。
 const ALLOWED_STREAM_EVENT_TYPES = new Set([
+  'message',
+  'text', 'end',
   'connected', 'snapshot', 'progress', 'content_delta', 'thinking_delta',
-  'agent_event', 'completed', 'failed', 'stopped',
+  'agent_event',
+  'begin', 'stage_changed', 'reasoning_summary', 'tool_call', 'tool_result',
+  'evidence_added', 'fact_update', 'verification', 'outline_ready',
+  'section_delta', 'token_usage',
+  'completed', 'failed', 'stopped',
 ])
-const TERMINAL_EVENT_TYPES = new Set(['completed', 'failed', 'stopped'])
+const TERMINAL_EVENT_TYPES = new Set(['completed', 'failed', 'stopped', 'end'])
 const RETRY_DELAYS_MS = [1000, 2000, 5000, 10000, 30000]
 const WATCHDOG_TIMEOUT_MS = 30000
 const WATCHDOG_CHECK_INTERVAL_MS = 5000
@@ -177,10 +185,13 @@ export const subscribeGenerationTaskEvents = async (
         lastActivityAt = Date.now()
         // 心跳事件仅用于刷新 watchdog，不向上派发
         if (message.event === 'ping') return
-        if (!ALLOWED_STREAM_EVENT_TYPES.has(message.event)) return
 
         try {
-          const parsed = JSON.parse(message.data) as GenerationTaskStreamEvent
+          const parsed = JSON.parse(message.data) as GenerationTaskStreamEvent & { type?: string }
+          const normalizedEventType = message.event === 'message'
+            ? String(parsed?.type || '').trim()
+            : message.event
+          if (!ALLOWED_STREAM_EVENT_TYPES.has(normalizedEventType)) return
           // 跟踪 lastEventId（优先 SSE 协议层 id，其次 payload.id）
           const incomingId = message.id
             ? Number.parseInt(message.id, 10)
@@ -188,8 +199,8 @@ export const subscribeGenerationTaskEvents = async (
           if (Number.isFinite(incomingId) && incomingId > lastEventId) {
             lastEventId = incomingId
           }
-          options.onEvent(parsed)
-          if (TERMINAL_EVENT_TYPES.has(parsed.type)) {
+          options.onEvent(parsed as GenerationTaskStreamEvent)
+          if (TERMINAL_EVENT_TYPES.has(normalizedEventType)) {
             terminated = true
           }
         } catch {

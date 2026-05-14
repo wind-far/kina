@@ -136,6 +136,7 @@ const typeOptions: Array<{ label: string; value: GenerationTypeFilter }> = [
   { label: '图片', value: 'image' },
   { label: '视频', value: 'video' },
   { label: '智能体', value: 'agent' },
+  { label: '深度研究', value: 'research' },
   { label: '数字人', value: 'digital-human' },
   { label: '动态内容', value: 'motion' },
 ]

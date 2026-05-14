@@ -235,6 +235,37 @@ const handleScroll = () => {
   emit('scroll-state', { scrollTop: currentScrollTop, isAtBottom, isScrollingUp })
 }
 
+const scrollToElementById = (elementId: string) => {
+  const container = scrollContainerRef.value
+  if (!container || !elementId) {
+    return false
+  }
+
+  const target = document.getElementById(elementId)
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  const containerRect = container.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  const targetCenter = targetRect.top + targetRect.height / 2
+  const viewportCenter = containerRect.top + container.clientHeight / 2
+  const delta = targetCenter - viewportCenter
+  const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight)
+  const nextTop = Math.max(0, Math.min(maxScrollTop, container.scrollTop - delta))
+
+  container.scrollTo({
+    top: nextTop,
+    behavior: 'smooth',
+  })
+
+  return true
+}
+
+defineExpose({
+  scrollToElementById,
+})
+
 onMounted(() => {
   const target = scrollContainerRef.value
   if (!target) return

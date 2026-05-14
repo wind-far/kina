@@ -290,6 +290,43 @@ const BUILT_IN_SKILL_SEEDS: BuiltInSkillSeedDefinition[] = [
   },
   {
     payload: {
+      skillKey: 'research-report',
+      label: '深度研究报告',
+      description: '联网搜索、深度阅读、证据核查并生成结构化研究报告',
+      iconType: 'search',
+      category: 'research',
+      uiMode: 'PLAIN_CHAT',
+      executionMode: 'CHAT_ONLY',
+      workflowType: '',
+      plannerModelCategory: 'CHAT',
+      expectedImageCount: 0,
+      isEnabled: true,
+      isBuiltIn: true,
+      sortOrder: 10,
+      configJson: {
+        researchModelBinding: {
+          modelKey: 'minimax-m2.5',
+        },
+        researchSearch: {
+          provider: 'grok2api',
+        },
+      },
+      dependencySkillKeys: [],
+      promptTemplates: [
+        {
+          scene: 'CHAT',
+          systemPrompt: '你是一个中文深度研究助手。你需要围绕用户主题进行问题拆解、联网搜索、深度阅读、证据核查，并输出结构清晰、标注不确定性的研究报告。',
+          userPromptTemplate: '{{input}}',
+          isEnabled: true,
+        },
+      ],
+      workflowTemplates: [],
+      planTemplates: [],
+      stageTemplates: [],
+    },
+  },
+  {
+    payload: {
       skillKey: 'marketing-video',
       label: '营销视频',
       description: '一句话帮你生成营销推广视频',

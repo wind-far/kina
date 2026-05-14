@@ -108,6 +108,7 @@ const shouldSkipGenerationRecordLog = (stage: string, detail: Record<string, unk
 const mapGenerationType = (type: string) => {
   switch (String(type || '').trim()) {
     case 'agent':
+    case 'research':
       return 'AGENT'
     case 'image':
       return 'IMAGE'
@@ -185,7 +186,7 @@ const collectOutputs = (payload: GenerationRecordPayload): GenerationOutputPaylo
         }))
     : []
 
-  const textOutputs = payload.content && payload.type === 'agent' && !payload.agentRun
+  const textOutputs = payload.content && (payload.type === 'agent' || payload.type === 'research') && !payload.agentRun
     ? [{
         outputType: 'text' as const,
         textContent: payload.content,
@@ -696,18 +697,33 @@ const resolveGenerationRecordSource = (metaJson: unknown) => {
   return 'generate'
 }
 
+const resolveResearchRuntimeMeta = (metaJson: unknown) => {
+  const research = (metaJson as any)?.research
+  return research && typeof research === 'object' && !Array.isArray(research)
+    ? research
+    : null
+}
+
+const resolveSerializedGenerationRecordType = (record: any) => {
+  if (String(record.skill || '').trim() === 'research-report') {
+    return 'research'
+  }
+  return String(record.type || '').toLowerCase().replace('_', '-')
+}
+
 // 将数据库记录序列化为前端可直接消费的结构
 const serializeGenerationRecord = (record: any) => ({
   id: record.id,
   sessionId: record.sessionId,
   sessionTitle: record.session?.title || '',
   source: resolveGenerationRecordSource(record.metaJson),
-  type: String(record.type || '').toLowerCase().replace('_', '-'),
+  type: resolveSerializedGenerationRecordType(record),
   prompt: record.prompt,
   content: record.content || '',
   thinkingContent: typeof (record.metaJson as any)?.thinkingContent === 'string'
     ? (record.metaJson as any).thinkingContent
     : '',
+  research: resolveResearchRuntimeMeta(record.metaJson),
   error: record.errorMessage || '',
   model: record.modelLabel || '',
   modelKey: record.modelKey || '',
@@ -892,6 +908,9 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
             referenceImages: normalizedReferenceImages,
             ...(typeof payload.thinkingContent === 'string'
               ? { thinkingContent: payload.thinkingContent }
+              : {}),
+            ...(payload.research && typeof payload.research === 'object'
+              ? { research: payload.research }
               : {}),
           },
           startedAt: new Date(),
@@ -1146,6 +1165,9 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
               : {}),
             ...(typeof payload.thinkingContent === 'string'
               ? { thinkingContent: payload.thinkingContent }
+              : {}),
+            ...(payload.research && typeof payload.research === 'object'
+              ? { research: payload.research }
               : {}),
           },
           finishedAt: payload.done ? new Date() : null,

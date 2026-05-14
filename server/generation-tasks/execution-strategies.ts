@@ -28,6 +28,7 @@ export interface GenerationTaskExecutionStrategyContext {
   executeImageGenerationTask: (task: SettlementTask, payload: GenerationTaskStartPayload) => Promise<void>
   executeAgentChatTask: (task: SettlementTask, payload: GenerationTaskStartPayload) => Promise<void>
   executeAgentWorkspaceTask: (task: SettlementTask, payload: GenerationTaskStartPayload) => Promise<void>
+  executeResearchReportTask: (task: SettlementTask, payload: GenerationTaskStartPayload) => Promise<void>
   refundTaskPointsIfNeeded: (task: SettlementTask, reason: string) => Promise<void>
   markTaskExecutionState: (task: SettlementTask, input: {
     lastErrorAt?: string
@@ -313,10 +314,90 @@ const agentWorkspaceTaskExecutionStrategy: GenerationTaskExecutionStrategy = {
   },
 }
 
+const researchReportTaskExecutionStrategy: GenerationTaskExecutionStrategy = {
+  key: 'research-report',
+  execute(task, payload, context) {
+    return context.executeResearchReportTask(task, payload)
+  },
+  async handleStopped(task, payload, context) {
+    await context.refundTaskPointsIfNeeded(task, 'task_aborted')
+    await context.markTaskExecutionState(task, {
+      lastErrorAt: new Date().toISOString(),
+      lastErrorMessage: '研究任务已收到停止指令',
+    })
+    context.emitTaskProgressEvent(task.recordId, {
+      stage: 'stopping',
+      stopped: true,
+      message: '研究任务已收到停止指令，正在收口状态',
+    })
+    const currentRecord = await context.getGenerationRecordById(task.recordId, task.userId)
+    await context.updateGenerationRecord(task.recordId, {
+      ...context.buildInitialRecordPayload(payload),
+      content: String(currentRecord.content || ''),
+      done: true,
+      stopped: true,
+      error: '',
+    }, task.userId)
+    const stoppedRecord = await context.getGenerationRecordById(task.recordId, task.userId)
+    await context.syncSharedTaskRuntime(task, 'stopped')
+    context.emitTaskStreamEvent(task.recordId, {
+      type: 'stopped',
+      recordId: task.recordId,
+      done: true,
+      stopped: true,
+      record: stoppedRecord,
+      stage: 'stopped',
+      message: '研究任务已停止',
+    })
+  },
+  async handleFailed(task, payload, error, errorMessage, context) {
+    await context.refundTaskPointsIfNeeded(task, 'task_failed')
+    await context.markTaskExecutionState(task, {
+      lastErrorAt: new Date().toISOString(),
+      lastErrorMessage: errorMessage,
+    })
+    context.emitTaskProgressEvent(task.recordId, {
+      stage: 'failing',
+      message: '研究任务执行异常，正在写入失败状态',
+    })
+    const currentRecord = await context.getGenerationRecordById(task.recordId, task.userId)
+    await context.updateGenerationRecord(task.recordId, {
+      ...context.buildInitialRecordPayload(payload),
+      content: String(currentRecord.content || ''),
+      done: true,
+      stopped: false,
+      error: errorMessage,
+    }, task.userId)
+    const failedRecord = await context.getGenerationRecordById(task.recordId, task.userId)
+    await context.syncSharedTaskRuntime(task, 'failed')
+    context.emitTaskStreamEvent(task.recordId, {
+      type: 'failed',
+      recordId: task.recordId,
+      done: true,
+      stopped: false,
+      record: failedRecord,
+      stage: 'failed',
+      message: errorMessage,
+    })
+    context.logGenerationTaskError('research_task:failed', error, {
+      recordId: task.recordId,
+      userId: task.userId,
+    })
+  },
+  resolveFailureMessage(error, abortReason, context) {
+    if (abortReason === 'execution_lock_lost') {
+      return '研究任务执行锁已失效，系统已中断本次任务'
+    }
+
+    return context.normalizeGenerationErrorMessage(error, '研究报告生成失败')
+  },
+}
+
 const EXECUTION_STRATEGY_REGISTRY: Record<GenerationTaskStrategyKey, GenerationTaskExecutionStrategy> = {
   image: imageTaskExecutionStrategy,
   'agent-chat': agentChatTaskExecutionStrategy,
   'agent-workspace': agentWorkspaceTaskExecutionStrategy,
+  'research-report': researchReportTaskExecutionStrategy,
 }
 
 // 按策略键获取执行策略；当前优先承接停止/失败收口逻辑。

@@ -122,7 +122,9 @@ interface TaskLifecycleContext {
 export const buildInitialRecordPayload = (payload: GenerationTaskStartPayload): GenerationRecordPayload => ({
   sessionId: String(payload.sessionId || '').trim() || undefined,
   source: String(payload.source || 'generate').trim() || 'generate',
-  type: payload.type,
+  type: payload.type === 'research' || String(payload.skill || '').trim() === 'research-report'
+    ? 'research'
+    : payload.type,
   prompt: String(payload.prompt || '').trim(),
   content: '',
   error: '',
@@ -218,7 +220,7 @@ export const startGenerationTask = async (
   let concurrencySlots: ConcurrencySlot[] = []
 
   try {
-    if (strategy.key === 'agent-chat') {
+    if (strategy.key === 'agent-chat' || strategy.key === 'research-report') {
       concurrencySlots = await context.acquireTaskConcurrencySlots({
         userId: currentUserId,
         providerId,
@@ -244,7 +246,7 @@ export const startGenerationTask = async (
           modelName: billingDetail.modelName,
           metaJson: {
             source: 'generation-task',
-            taskType: 'agent-chat',
+            taskType: strategy.key,
           },
         })
         : null
@@ -262,7 +264,7 @@ export const startGenerationTask = async (
       const task: RunningGenerationTask = {
         recordId: createdRecord.id,
         userId: currentUserId,
-        type: 'agent',
+        type: payload.type,
         strategyKey: strategy.key,
         abortController: new AbortController(),
         associationNo,

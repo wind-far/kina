@@ -1,4 +1,5 @@
 import { prisma } from '../db/prisma'
+import { buildPageResult, resolvePagination } from '../shared/pagination'
 import type { AdminGenerationSessionsQuery } from './shared'
 
 const MAX_GENERATION_SESSION_TITLE_LENGTH = 120
@@ -241,8 +242,10 @@ const buildSessionWhereInput = (query: AdminGenerationSessionsQuery) => {
 export const listAdminGenerationSessions = async (query: AdminGenerationSessionsQuery) => {
   const where = buildSessionWhereInput(query)
   const totalCount = await prisma.generationSession.count({ where })
-  const totalPages = Math.max(1, Math.ceil(totalCount / query.pageSize))
-  const page = Math.min(Math.max(1, query.page), totalPages)
+  const pagination = resolvePagination(query, totalCount, {
+    defaultPageSize: 12,
+    maxPageSize: 100,
+  })
   const sessions = await prisma.generationSession.findMany({
     where,
     select: {
@@ -267,6 +270,7 @@ export const listAdminGenerationSessions = async (query: AdminGenerationSessions
         },
       },
       records: {
+        take: 1,
         select: {
           id: true,
           type: true,
@@ -301,8 +305,8 @@ export const listAdminGenerationSessions = async (query: AdminGenerationSessions
       { updatedAt: 'desc' },
       { createdAt: 'desc' },
     ],
-    skip: (page - 1) * query.pageSize,
-    take: query.pageSize,
+    skip: pagination.skip,
+    take: pagination.pageSize,
   })
 
   const sessionIds = sessions.map(session => session.id)
@@ -360,15 +364,7 @@ export const listAdminGenerationSessions = async (query: AdminGenerationSessions
     completedRecordCount: Number(completedMap.get(session.id) || 0),
   }))
 
-  return {
-    items,
-    summary: {
-      totalCount,
-      totalPages,
-      page,
-      pageSize: query.pageSize,
-    },
-  }
+  return buildPageResult(items, pagination)
 }
 
 // 查询后台会话详情，包含用户信息与会话统计。
@@ -482,8 +478,10 @@ export const listAdminGenerationSessionRecords = async (id: string, page: number
   const totalCount = await prisma.generationRecord.count({
     where: { sessionId },
   })
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
-  const safePage = Math.min(Math.max(1, page), totalPages)
+  const pagination = resolvePagination({ page, pageSize }, totalCount, {
+    defaultPageSize: 10,
+    maxPageSize: 100,
+  })
 
   const records = await prisma.generationRecord.findMany({
     where: { sessionId },
@@ -491,19 +489,11 @@ export const listAdminGenerationSessionRecords = async (id: string, page: number
     orderBy: {
       createdAt: 'desc',
     },
-    skip: (safePage - 1) * pageSize,
-    take: pageSize,
+    skip: pagination.skip,
+    take: pagination.pageSize,
   })
 
-  return {
-    items: records.map(serializeGenerationRecord),
-    summary: {
-      totalCount,
-      totalPages,
-      page: safePage,
-      pageSize,
-    },
-  }
+  return buildPageResult(records.map(serializeGenerationRecord), pagination)
 }
 
 // 后台重命名会话。

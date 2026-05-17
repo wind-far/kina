@@ -13,7 +13,18 @@
       <AdminStatCard label="默认会话" :value="defaultSessionCount" hint="当前筛选结果中的默认会话数量" />
     </div>
 
-    <AdminFilterToolbar>
+    <AdminFilterToolbar
+      title="筛选条件"
+      description="按会话内容、用户与最近记录类型定位全站创作会话。"
+      :active-count="activeFilterCount"
+      :disabled="loading"
+      show-reset
+      show-apply
+      reset-label="重置"
+      apply-label="搜索"
+      @reset="resetFilters"
+      @apply="handleSearch"
+    >
       <template #search>
         <div class="admin-conversations__search-row">
           <input
@@ -43,10 +54,6 @@
           <em v-if="activeFilterCount">，已启用 {{ activeFilterCount }} 个筛选</em>
         </span>
       </template>
-      <template #actions>
-        <button class="admin-button admin-button--secondary" type="button" :disabled="loading" @click="resetFilters">重置</button>
-        <button class="admin-button admin-button--primary" type="button" :disabled="loading" @click="handleSearch">搜索</button>
-      </template>
     </AdminFilterToolbar>
 
     <div class="admin-card">
@@ -60,77 +67,103 @@
         <div v-if="loading" class="admin-empty">正在加载会话列表...</div>
         <div v-else-if="sessions.length === 0" class="admin-empty">当前筛选条件下还没有会话记录。</div>
         <div v-else class="admin-conversation-list">
-          <div v-for="session in sessions" :key="session.id" class="admin-conversation-card">
-            <div v-if="conversationSettings.listDisplay.showCoverImage" class="admin-conversation-card__preview">
-              <img
-                v-if="session.coverImageUrl"
-                :src="session.coverImageUrl"
-                :alt="session.title"
-                class="admin-conversation-card__image"
-              >
-              <div v-else class="admin-conversation-card__image admin-conversation-card__image--empty">
-                {{ getSessionFallbackText(session.title) }}
-              </div>
+          <div class="admin-conversation-table">
+            <div class="admin-conversation-table__head">
+              <span>会话</span>
+              <span>状态</span>
+              <span>记录概览</span>
+              <span>活跃时间</span>
+              <span>操作</span>
             </div>
 
-            <div class="admin-conversation-card__body">
-              <div class="admin-conversation-card__head">
-                <div>
-                  <div class="admin-conversation-card__title-row">
-                    <span class="admin-conversation-card__title">{{ session.title || '未命名会话' }}</span>
-                    <span v-if="session.isDefault" class="admin-chip">默认会话</span>
-                  </div>
-                  <div v-if="conversationSettings.listDisplay.showUserInfo" class="admin-conversation-card__meta">
-                    用户：{{ formatUserName(session.user.name) || '未命名用户' }}
-                    <template v-if="session.user.email">（{{ formatUserEmail(session.user.email) }}）</template>
-                    · 用户 ID：{{ formatUserId(session.user.id) }}
-                  </div>
-                </div>
-                <div class="admin-conversation-card__tags">
-                  <span class="admin-status" :class="getSessionStatusClass(session)">
-                    {{ getSessionStatusLabel(session) }}
-                  </span>
-                  <span class="admin-chip">记录 {{ session.recordCount }}</span>
-                </div>
-              </div>
-
-              <div v-if="conversationSettings.listDisplay.showLatestPrompt" class="admin-conversation-card__prompt">
-                {{ session.latestRecord?.prompt || '当前会话下还没有生成记录。' }}
-              </div>
-
-              <div v-if="conversationSettings.listDisplay.showStatusStats || conversationSettings.listDisplay.showLastRecordTime" class="admin-conversation-card__stats">
-                <span v-if="conversationSettings.listDisplay.showStatusStats">完成：{{ session.completedRecordCount }}</span>
-                <span v-if="conversationSettings.listDisplay.showStatusStats">失败：{{ session.failedRecordCount }}</span>
-                <span v-if="conversationSettings.listDisplay.showStatusStats">进行中：{{ session.runningRecordCount }}</span>
-                <span v-if="conversationSettings.listDisplay.showLastRecordTime">最近活跃：{{ formatDate(session.lastRecordAt || session.updatedAt) }}</span>
-              </div>
-
-              <div v-if="session.latestRecord?.error" class="admin-conversation-card__error">
-                <strong>最近错误：</strong>{{ session.latestRecord.error }}
-              </div>
-
-              <div class="admin-conversation-card__footer">
-                <div v-if="conversationSettings.listDisplay.showSessionId" class="admin-conversation-card__meta">
-                  会话 ID：{{ session.id }}
-                </div>
-                <div class="admin-list-item__actions">
-                  <button class="admin-inline-button" type="button" :disabled="detailLoading" @click="handleOpenDetail(session.id)">
-                    查看记录
-                  </button>
-                  <button class="admin-inline-button" type="button" :disabled="detailLoading || !conversationSettings.basicRules.allowAdminRename" @click="handleRename(session)">
-                    重命名
-                  </button>
-                  <button
-                    class="admin-inline-button admin-inline-button--danger"
-                    type="button"
-                    :disabled="detailLoading || !conversationSettings.basicRules.allowAdminDelete || (!conversationSettings.basicRules.allowDeleteDefaultSession && session.isDefault)"
-                    @click="handleDelete(session)"
+            <article v-for="session in sessions" :key="session.id" class="admin-conversation-row">
+              <div class="admin-conversation-row__main">
+                <div v-if="conversationSettings.listDisplay.showCoverImage" class="admin-conversation-row__preview">
+                  <img
+                    v-if="session.coverImageUrl"
+                    :src="session.coverImageUrl"
+                    :alt="session.title"
+                    class="admin-conversation-row__image"
                   >
-                    删除
-                  </button>
+                  <div v-else class="admin-conversation-row__image admin-conversation-row__image--empty">
+                    {{ getSessionFallbackText(session.title) }}
+                  </div>
+                </div>
+
+                <div class="admin-conversation-row__identity">
+                  <div class="admin-conversation-row__title-line">
+                    <button class="admin-conversation-row__title" type="button" :disabled="detailLoading" @click="handleOpenDetail(session.id)">
+                      {{ session.title || '未命名会话' }}
+                    </button>
+                    <span v-if="session.isDefault" class="admin-chip">默认</span>
+                    <span v-if="session.latestRecord" class="admin-conversation-row__type">{{ getRecordTypeLabel(session.latestRecord.type) }}</span>
+                  </div>
+
+                  <div v-if="conversationSettings.listDisplay.showUserInfo" class="admin-conversation-row__user">
+                    {{ formatUserName(session.user.name) || '未命名用户' }}
+                    <template v-if="session.user.email"> · {{ formatUserEmail(session.user.email) }}</template>
+                    <template v-if="session.user.id"> · {{ formatUserId(session.user.id) }}</template>
+                  </div>
+
+                  <div v-if="conversationSettings.listDisplay.showLatestPrompt" class="admin-conversation-row__prompt">
+                    {{ session.latestRecord?.prompt || '当前会话下还没有生成记录。' }}
+                  </div>
+
+                  <div v-if="conversationSettings.listDisplay.showSessionId" class="admin-conversation-row__id">
+                    ID {{ session.id }}
+                  </div>
                 </div>
               </div>
-            </div>
+
+              <div class="admin-conversation-row__status">
+                <span class="admin-status" :class="getSessionStatusClass(session)">
+                  {{ getSessionStatusLabel(session) }}
+                </span>
+                <span v-if="session.latestRecord?.error" class="admin-conversation-row__error-dot">最近有错误</span>
+              </div>
+
+              <div class="admin-conversation-row__metrics">
+                <div class="admin-conversation-metric">
+                  <span class="admin-conversation-metric__value">{{ session.recordCount }}</span>
+                  <span class="admin-conversation-metric__label">总记录</span>
+                </div>
+                <div v-if="conversationSettings.listDisplay.showStatusStats" class="admin-conversation-metric">
+                  <span class="admin-conversation-metric__value">{{ session.completedRecordCount }}</span>
+                  <span class="admin-conversation-metric__label">完成</span>
+                </div>
+                <div v-if="conversationSettings.listDisplay.showStatusStats" class="admin-conversation-metric" :class="{ 'is-danger': session.failedRecordCount > 0 }">
+                  <span class="admin-conversation-metric__value">{{ session.failedRecordCount }}</span>
+                  <span class="admin-conversation-metric__label">失败</span>
+                </div>
+                <div v-if="conversationSettings.listDisplay.showStatusStats" class="admin-conversation-metric" :class="{ 'is-warning': session.runningRecordCount > 0 }">
+                  <span class="admin-conversation-metric__value">{{ session.runningRecordCount }}</span>
+                  <span class="admin-conversation-metric__label">运行中</span>
+                </div>
+              </div>
+
+              <div class="admin-conversation-row__activity">
+                <span v-if="conversationSettings.listDisplay.showLastRecordTime">{{ formatDate(session.lastRecordAt || session.updatedAt) }}</span>
+                <span v-else>{{ formatDate(session.updatedAt) }}</span>
+                <small>创建 {{ formatDate(session.createdAt) }}</small>
+              </div>
+
+              <div class="admin-conversation-row__actions">
+                <button class="admin-inline-button" type="button" :disabled="detailLoading" @click="handleOpenDetail(session.id)">
+                  记录
+                </button>
+                <button class="admin-inline-button" type="button" :disabled="detailLoading || !conversationSettings.basicRules.allowAdminRename" @click="handleRename(session)">
+                  重命名
+                </button>
+                <button
+                  class="admin-inline-button admin-inline-button--danger"
+                  type="button"
+                  :disabled="detailLoading || !conversationSettings.basicRules.allowAdminDelete || (!conversationSettings.basicRules.allowDeleteDefaultSession && session.isDefault)"
+                  @click="handleDelete(session)"
+                >
+                  删除
+                </button>
+              </div>
+            </article>
           </div>
 
           <AdminPagination
@@ -147,47 +180,77 @@
     <el-drawer
       v-model="detailVisible"
       title="会话详情"
-      size="860px"
+      size="min(1080px, 92vw)"
       destroy-on-close
       class="admin-session-detail-drawer"
       @closed="handleClosedDetail"
     >
       <div v-if="selectedSession" class="admin-session-drawer">
-        <div class="admin-session-drawer__summary">
-          <div class="admin-session-drawer__summary-main">
+        <section class="admin-session-drawer__hero">
+          <div class="admin-session-drawer__profile">
             <div class="admin-session-drawer__title-row">
               <h3 class="admin-session-drawer__title">{{ selectedSession.title || '未命名会话' }}</h3>
+              <span class="admin-status" :class="getSessionStatusClass(selectedSession)">
+                {{ getSessionStatusLabel(selectedSession) }}
+              </span>
               <span v-if="selectedSession.isDefault" class="admin-chip">默认会话</span>
             </div>
-            <div class="admin-session-drawer__meta">
-              用户：{{ formatUserName(selectedSession.user.name) || '未命名用户' }}
-              <template v-if="selectedSession.user.email">（{{ formatUserEmail(selectedSession.user.email) }}）</template>
-              · 用户 ID：{{ formatUserId(selectedSession.user.id) }}
+
+            <div class="admin-session-drawer__owner">
+              <span>{{ formatUserName(selectedSession.user.name) || '未命名用户' }}</span>
+              <span v-if="selectedSession.user.email">{{ formatUserEmail(selectedSession.user.email) }}</span>
+              <span>{{ formatUserId(selectedSession.user.id) }}</span>
             </div>
-            <div class="admin-session-drawer__meta">
-              创建时间：{{ formatDate(selectedSession.createdAt) }} · 最近活跃：{{ formatDate(selectedSession.lastRecordAt || selectedSession.updatedAt) }}
+
+            <div class="admin-session-drawer__meta-grid">
+              <div>
+                <span>会话 ID</span>
+                <strong>{{ selectedSession.id }}</strong>
+              </div>
+              <div>
+                <span>创建时间</span>
+                <strong>{{ formatDate(selectedSession.createdAt) }}</strong>
+              </div>
+              <div>
+                <span>最近活跃</span>
+                <strong>{{ formatDate(selectedSession.lastRecordAt || selectedSession.updatedAt) }}</strong>
+              </div>
             </div>
           </div>
-          <div class="admin-session-drawer__summary-stats">
-            <span class="admin-chip">记录 {{ selectedSession.recordCount }}</span>
-            <span class="admin-chip">完成 {{ selectedSession.completedRecordCount }}</span>
-            <span class="admin-chip">失败 {{ selectedSession.failedRecordCount }}</span>
-            <span class="admin-chip">运行中 {{ selectedSession.runningRecordCount }}</span>
+
+          <div class="admin-session-drawer__stats-panel">
+            <div class="admin-session-drawer__stat">
+              <span>总记录</span>
+              <strong>{{ selectedSession.recordCount }}</strong>
+            </div>
+            <div class="admin-session-drawer__stat">
+              <span>完成</span>
+              <strong>{{ selectedSession.completedRecordCount }}</strong>
+            </div>
+            <div class="admin-session-drawer__stat" :class="{ 'is-danger': selectedSession.failedRecordCount > 0 }">
+              <span>失败</span>
+              <strong>{{ selectedSession.failedRecordCount }}</strong>
+            </div>
+            <div class="admin-session-drawer__stat" :class="{ 'is-warning': selectedSession.runningRecordCount > 0 }">
+              <span>运行中</span>
+              <strong>{{ selectedSession.runningRecordCount }}</strong>
+            </div>
           </div>
-        </div>
+        </section>
 
         <div class="admin-card admin-card--drawer">
           <div class="admin-card__header">
             <div>
               <h4 class="admin-card__title">会话记录</h4>
-              <div class="admin-card__desc">展示该会话下的生成记录、模型、输出结果与错误详情。</div>
+              <div class="admin-card__desc">按时间倒序展示生成记录、模型参数、输出数量与异常原因。</div>
             </div>
+            <span class="admin-skill-toolbar__summary">共 {{ detailSummary.totalCount }} 条</span>
           </div>
           <div class="admin-card__content">
             <div v-if="detailLoading" class="admin-empty">正在加载会话记录...</div>
             <div v-else-if="detailRecords.length === 0" class="admin-empty">该会话下暂无生成记录。</div>
             <div v-else class="admin-session-record-list">
-              <div v-for="record in detailRecords" :key="record.id" class="admin-session-record-card">
+              <article v-for="record in detailRecords" :key="record.id" class="admin-session-record-card">
                 <div class="admin-session-record-card__preview">
                   <img
                     v-if="getRecordPreviewUrl(record)"
@@ -199,14 +262,15 @@
                     {{ getRecordTypeLabel(record.type) }}
                   </div>
                 </div>
+
                 <div class="admin-session-record-card__body">
                   <div class="admin-session-record-card__head">
-                    <div>
+                    <div class="admin-session-record-card__identity">
                       <div class="admin-session-record-card__title">
                         {{ buildRecordTitle(record) }}
                       </div>
                       <div class="admin-session-record-card__meta">
-                        类型：{{ getRecordTypeLabel(record.type) }} · 创建于 {{ formatDate(record.createdAt) }}
+                        {{ getRecordTypeLabel(record.type) }} · {{ formatDate(record.createdAt) }} · ID {{ record.id }}
                       </div>
                     </div>
                     <div class="admin-session-record-card__tags">
@@ -216,28 +280,52 @@
                     </div>
                   </div>
 
-                  <div class="admin-session-record-card__prompt">{{ record.prompt || '暂无提示词' }}</div>
+                  <div class="admin-session-record-card__prompt">
+                    {{ record.prompt || '暂无提示词' }}
+                  </div>
 
-                  <div class="admin-session-record-card__stats">
-                    <span>模型：{{ record.model || record.modelKey || '未记录' }}</span>
-                    <span>技能：{{ record.skill || '未记录' }}</span>
-                    <span>比例：{{ record.ratio || '未记录' }}</span>
-                    <span>输出：{{ record.outputs.length || record.images.length }}</span>
+                  <div class="admin-session-record-card__specs">
+                    <div>
+                      <span>模型</span>
+                      <strong>{{ record.model || record.modelKey || '未记录' }}</strong>
+                    </div>
+                    <div>
+                      <span>技能</span>
+                      <strong>{{ record.skill || '未记录' }}</strong>
+                    </div>
+                    <div>
+                      <span>比例</span>
+                      <strong>{{ record.ratio || '未记录' }}</strong>
+                    </div>
+                    <div>
+                      <span>输出</span>
+                      <strong>{{ record.outputs.length || record.images.length }}</strong>
+                    </div>
                   </div>
 
                   <div v-if="record.error" class="admin-session-record-card__error">
-                    <strong>错误信息：</strong>{{ formatGenerationError(record.error, '任务执行失败') }}
+                    <span>错误信息</span>
+                    <strong>{{ formatGenerationError(record.error, '任务执行失败') }}</strong>
                   </div>
 
                   <div v-else-if="record.content && record.type === 'agent'" class="admin-session-record-card__content-preview">
-                    <strong>文本结果：</strong>{{ record.content }}
-                  </div>
-
-                  <div class="admin-session-record-card__meta">
-                    记录 ID：{{ record.id }}
+                    <div class="admin-session-record-card__content-head">
+                      <span>文本结果</span>
+                      <button
+                        v-if="isLongRecordContent(record.content)"
+                        class="admin-session-record-card__toggle"
+                        type="button"
+                        @click="toggleRecordContent(record.id)"
+                      >
+                        {{ expandedRecordContentMap[record.id] ? '收起' : '展开全文' }}
+                      </button>
+                    </div>
+                    <strong :class="{ 'is-collapsed': isLongRecordContent(record.content) && !expandedRecordContentMap[record.id] }">
+                      {{ record.content }}
+                    </strong>
                   </div>
                 </div>
-              </div>
+              </article>
 
               <AdminPagination
                 v-model:page="detailPagination.page"
@@ -251,17 +339,48 @@
         </div>
       </div>
     </el-drawer>
+
+    <div v-if="renameDialogVisible" class="admin-dialog-mask admin-session-rename-mask" @click="closeRenameDialog">
+      <div class="admin-dialog admin-session-rename-dialog" @click.stop>
+        <div class="admin-dialog__header">
+          <div>
+            <h3 class="admin-dialog__title">重命名会话</h3>
+            <div class="admin-dialog__desc">调整后台展示与用户侧会话标题，保存后会同步刷新当前列表和详情。</div>
+          </div>
+          <button class="admin-dialog__close" type="button" :disabled="renameSubmitting" @click="closeRenameDialog">×</button>
+        </div>
+        <form class="admin-form admin-dialog__body" @submit.prevent="handleSubmitRename">
+          <label class="admin-form__field">
+            <span class="admin-form__label">会话名称</span>
+            <input
+              v-model.trim="renameTitle"
+              class="admin-input"
+              type="text"
+              placeholder="请输入会话名称"
+              :disabled="renameSubmitting"
+              autofocus
+            >
+          </label>
+          <div class="admin-form__footer">
+            <button class="admin-button admin-button--secondary" type="button" :disabled="renameSubmitting" @click="closeRenameDialog">取消</button>
+            <button class="admin-button admin-button--primary" type="submit" :disabled="renameSubmitting || !renameTitle.trim()">
+              {{ renameSubmitting ? '保存中...' : '保存' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </AdminPageContainer>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessageBox } from 'element-plus'
 import AdminFilterChips, { type AdminFilterChipGroup } from '@/components/admin/common/AdminFilterChips.vue'
 import AdminFilterToolbar from '@/components/admin/common/AdminFilterToolbar.vue'
 import AdminPagination from '@/components/admin/common/AdminPagination.vue'
 import AdminStatCard from '@/components/admin/common/AdminStatCard.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
+import { useAdminConfirm } from '@/composables/admin/useAdminConfirm'
 import { useAdminListFilters } from '@/composables/useAdminListFilters'
 import { useAdminPagination } from '@/composables/useAdminPagination'
 import {
@@ -285,6 +404,7 @@ import { normalizeGenerationErrorMessage } from '@/shared/generation-error'
 const loading = ref(false)
 const detailLoading = ref(false)
 const sessions = ref<AdminGenerationSessionItem[]>([])
+const { confirmDanger } = useAdminConfirm()
 const formatGenerationError = (message?: string | null, fallback = '任务执行失败') => {
   return normalizeGenerationErrorMessage(String(message || '').trim(), fallback)
 }
@@ -327,6 +447,11 @@ const { pagination } = useAdminPagination({
 const detailVisible = ref(false)
 const selectedSession = ref<AdminGenerationSessionItem | null>(null)
 const detailRecords = ref<AdminSessionRecordItem[]>([])
+const expandedRecordContentMap = reactive<Record<string, boolean>>({})
+const renameDialogVisible = ref(false)
+const renameSubmitting = ref(false)
+const renamingSession = ref<AdminGenerationSessionItem | null>(null)
+const renameTitle = ref('')
 const detailSummary = reactive({
   totalCount: 0,
   totalPages: 1,
@@ -493,6 +618,9 @@ const handleClosedDetail = () => {
   selectedSession.value = null
   detailRecords.value = []
   detailPagination.page = 1
+  Object.keys(expandedRecordContentMap).forEach((recordId) => {
+    delete expandedRecordContentMap[recordId]
+  })
 }
 
 const handleDetailPaginationChange = (payload: { page: number; pageSize: number }) => {
@@ -508,22 +636,41 @@ const handleRename = async (session: AdminGenerationSessionItem) => {
     return
   }
 
-  const { value } = await ElMessageBox.prompt('请输入新的会话名称', '重命名会话', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    inputValue: session.title,
-    inputPlaceholder: '请输入会话名称',
-    inputValidator: (inputValue) => {
-      return String(inputValue || '').trim() ? true : '会话名称不能为空'
-    },
-  })
+  renamingSession.value = session
+  renameTitle.value = session.title || ''
+  renameDialogVisible.value = true
+}
 
-  await updateAdminGenerationSession(session.id, String(value || '').trim())
-  await loadSessions()
-
-  if (selectedSession.value?.id === session.id) {
-    await loadSessionDetail(session.id)
+const closeRenameDialog = () => {
+  if (renameSubmitting.value) {
+    return
   }
+  renameDialogVisible.value = false
+  renamingSession.value = null
+  renameTitle.value = ''
+}
+
+const handleSubmitRename = async () => {
+  const session = renamingSession.value
+  const nextTitle = renameTitle.value.trim()
+  if (!session || !nextTitle) {
+    return
+  }
+
+  renameSubmitting.value = true
+  try {
+    await updateAdminGenerationSession(session.id, nextTitle)
+    await loadSessions()
+
+    if (selectedSession.value?.id === session.id) {
+      await loadSessionDetail(session.id)
+    }
+
+  } finally {
+    renameSubmitting.value = false
+  }
+
+  closeRenameDialog()
 }
 
 const handleDelete = async (session: AdminGenerationSessionItem) => {
@@ -531,15 +678,11 @@ const handleDelete = async (session: AdminGenerationSessionItem) => {
     return
   }
 
-  await ElMessageBox.confirm(
-    `确定删除会话“${session.title}”吗？该会话下的生成记录也会一并移除。`,
-    '删除会话',
-    {
-      confirmButtonText: '确定删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    },
-  )
+  await confirmDanger({
+    title: '删除会话',
+    message: `确定删除会话“${session.title}”吗？该会话下的生成记录也会一并移除。`,
+    confirmText: '确定删除',
+  })
 
   await deleteAdminGenerationSession(session.id)
 
@@ -673,6 +816,14 @@ const buildRecordTitle = (record: AdminSessionRecordItem) => {
   return record.prompt?.trim() || `${getRecordTypeLabel(record.type)}记录`
 }
 
+const isLongRecordContent = (value?: string | null) => {
+  return String(value || '').trim().length > 180
+}
+
+const toggleRecordContent = (recordId: string) => {
+  expandedRecordContentMap[recordId] = !expandedRecordContentMap[recordId]
+}
+
 onMounted(() => {
   void (async () => {
     await loadConversationSettings()
@@ -709,7 +860,7 @@ onMounted(() => {
 }
 
 :deep(.admin-session-detail-drawer .el-drawer__body) {
-  padding: 24px;
+  padding: 20px;
   background: var(--bg-surface);
 }
 
@@ -726,33 +877,233 @@ onMounted(() => {
   gap: 16px;
 }
 
-.admin-conversation-card,
-.admin-session-record-card {
+.admin-conversation-table {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
-  gap: 16px;
-  padding: 18px;
-  border: 1px solid var(--line-divider, #00000014);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--bg-surface) 90%, var(--bg-block-secondary-default));
+  gap: 8px;
 }
 
-.admin-conversation-card__preview,
+.admin-conversation-table__head,
+.admin-conversation-row {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) 128px minmax(220px, 0.7fr) 190px 172px;
+  gap: 16px;
+  align-items: center;
+}
+
+.admin-conversation-table__head {
+  min-height: 38px;
+  padding: 0 16px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-conversation-row {
+  min-height: 112px;
+  padding: 16px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-surface) 92%, var(--bg-block-secondary-default));
+  transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease;
+}
+
+.admin-conversation-row:hover {
+  border-color: color-mix(in srgb, var(--brand-main-default) 24%, var(--line-divider, #00000014));
+  background: color-mix(in srgb, var(--bg-surface) 96%, var(--bg-block-secondary-default));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.admin-conversation-row__main {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  gap: 14px;
+}
+
+.admin-conversation-row__preview {
+  flex: 0 0 72px;
+}
+
+.admin-conversation-row__image {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line-divider, #00000014);
+  background: color-mix(in srgb, var(--bg-block-secondary-default) 84%, transparent);
+}
+
+.admin-conversation-row__image--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-conversation-row__identity {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-conversation-row__title-line {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.admin-conversation-row__title {
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.45;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-conversation-row__title:hover {
+  color: var(--brand-main-default);
+}
+
+.admin-conversation-row__type {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.admin-conversation-row__user,
+.admin-conversation-row__id,
+.admin-conversation-row__activity,
+.admin-conversation-row__error-dot {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.admin-conversation-row__user,
+.admin-conversation-row__id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-conversation-row__prompt {
+  display: -webkit-box;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.admin-conversation-row__status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.admin-conversation-row__error-dot {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.admin-conversation-row__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(44px, 1fr));
+  gap: 8px;
+}
+
+.admin-conversation-metric {
+  min-width: 0;
+  padding: 8px 6px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-block-secondary-default) 72%, transparent);
+  text-align: center;
+}
+
+.admin-conversation-metric.is-danger {
+  background: color-mix(in srgb, #ff5f57 12%, var(--bg-block-secondary-default));
+}
+
+.admin-conversation-metric.is-warning {
+  background: color-mix(in srgb, #f59e0b 12%, var(--bg-block-secondary-default));
+}
+
+.admin-conversation-metric__value {
+  display: block;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.admin-conversation-metric__label {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.admin-conversation-row__activity {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-conversation-row__activity span {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.admin-conversation-row__activity small {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.admin-conversation-row__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-session-record-card {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-surface) 94%, var(--bg-block-secondary-default));
+}
+
 .admin-session-record-card__preview {
   display: flex;
   align-items: stretch;
 }
 
-.admin-conversation-card__image,
 .admin-session-record-card__image {
   width: 100%;
-  height: 96px;
+  height: 112px;
   object-fit: cover;
-  border-radius: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line-divider, #00000014);
   background: color-mix(in srgb, var(--bg-block-secondary-default) 84%, transparent);
 }
 
-.admin-conversation-card__image--empty,
 .admin-session-record-card__image--empty {
   display: flex;
   align-items: center;
@@ -762,15 +1113,12 @@ onMounted(() => {
   font-weight: 600;
 }
 
-.admin-conversation-card__body,
 .admin-session-record-card__body {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 12px;
   min-width: 0;
 }
 
-.admin-conversation-card__head,
 .admin-session-record-card__head {
   display: flex;
   align-items: flex-start;
@@ -778,7 +1126,10 @@ onMounted(() => {
   gap: 12px;
 }
 
-.admin-conversation-card__title-row,
+.admin-session-record-card__identity {
+  min-width: 0;
+}
+
 .admin-session-drawer__title-row {
   display: flex;
   align-items: center;
@@ -786,25 +1137,23 @@ onMounted(() => {
   gap: 8px;
 }
 
-.admin-conversation-card__title,
 .admin-session-record-card__title,
 .admin-session-drawer__title {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
   word-break: break-word;
 }
 
-.admin-conversation-card__meta,
 .admin-session-record-card__meta,
-.admin-session-drawer__meta {
+.admin-session-drawer__meta,
+.admin-session-drawer__owner {
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.6;
   word-break: break-word;
 }
 
-.admin-conversation-card__tags,
 .admin-session-record-card__tags {
   display: flex;
   align-items: center;
@@ -812,48 +1161,115 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
-.admin-conversation-card__prompt,
 .admin-session-record-card__prompt {
+  display: -webkit-box;
   color: var(--text-primary);
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.65;
+  overflow: hidden;
   word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
-.admin-conversation-card__stats,
-.admin-session-record-card__stats,
-.admin-session-drawer__summary-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 16px;
-  color: var(--text-secondary);
-  font-size: 13px;
+.admin-session-record-card__specs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.admin-conversation-card__error,
-.admin-session-record-card__error {
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: color-mix(in srgb, #ff5f57 12%, transparent);
+.admin-session-record-card__specs div,
+.admin-session-drawer__meta-grid div,
+.admin-session-drawer__stat {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-block-secondary-default) 70%, transparent);
+}
+
+.admin-session-record-card__specs span,
+.admin-session-drawer__meta-grid span,
+.admin-session-drawer__stat span {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.admin-session-record-card__specs strong,
+.admin-session-drawer__meta-grid strong,
+.admin-session-drawer__stat strong {
+  display: block;
+  margin-top: 4px;
   color: var(--text-primary);
   font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-session-record-card__error,
+.admin-session-record-card__content-preview {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
   line-height: 1.7;
+}
+
+.admin-session-record-card__error {
+  background: color-mix(in srgb, #ff5f57 12%, transparent);
+  color: var(--text-primary);
 }
 
 .admin-session-record-card__content-preview {
-  padding: 10px 12px;
-  border-radius: 12px;
   background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
   color: var(--text-primary);
-  font-size: 13px;
-  line-height: 1.7;
 }
 
-.admin-conversation-card__footer {
+.admin-session-record-card__error span,
+.admin-session-record-card__content-preview span {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.admin-session-record-card__error strong,
+.admin-session-record-card__content-preview strong {
+  display: block;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.admin-session-record-card__content-preview strong.is-collapsed {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.admin-session-record-card__content-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  margin-bottom: 4px;
+}
+
+.admin-session-record-card__toggle {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--brand-main-default);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-session-record-card__toggle:hover {
+  text-decoration: underline;
 }
 
 .admin-session-drawer {
@@ -863,22 +1279,56 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
-.admin-session-drawer__summary {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+.admin-session-drawer__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 16px;
-  padding: 18px;
-  border: 1px solid var(--line-divider, #00000014);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--bg-surface) 92%, var(--bg-block-secondary-default));
+  align-items: stretch;
 }
 
-.admin-session-drawer__summary-main {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.admin-session-drawer__profile,
+.admin-session-drawer__stats-panel {
+  padding: 16px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-surface) 94%, var(--bg-block-secondary-default));
+}
+
+.admin-session-drawer__profile {
+  display: grid;
+  gap: 12px;
   min-width: 0;
+}
+
+.admin-session-drawer__owner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.admin-session-drawer__meta-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-session-drawer__stats-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-session-drawer__stat strong {
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.admin-session-drawer__stat.is-danger {
+  background: color-mix(in srgb, #ff5f57 12%, var(--bg-block-secondary-default));
+}
+
+.admin-session-drawer__stat.is-warning {
+  background: color-mix(in srgb, #f59e0b 12%, var(--bg-block-secondary-default));
 }
 
 .admin-card--drawer {
@@ -886,22 +1336,66 @@ onMounted(() => {
   background: color-mix(in srgb, var(--bg-surface) 94%, var(--bg-block-secondary-default));
 }
 
+.admin-session-rename-mask {
+  z-index: 3000;
+}
+
+.admin-session-rename-dialog {
+  width: min(520px, 100%);
+}
+
 @media (max-width: 960px) {
   .admin-conversations__search-row {
     grid-template-columns: 1fr;
   }
 
-  .admin-conversation-card,
+  .admin-conversation-table__head {
+    display: none;
+  }
+
+  .admin-conversation-row {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .admin-conversation-row__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-conversation-row__actions {
+    justify-content: flex-start;
+  }
+
   .admin-session-record-card {
     grid-template-columns: 1fr;
   }
 
-  .admin-conversation-card__footer,
-  .admin-session-drawer__summary,
-  .admin-conversation-card__head,
   .admin-session-record-card__head {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .admin-session-drawer__hero,
+  .admin-session-drawer__meta-grid,
+  .admin-session-record-card__specs {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-session-drawer__stats-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1280px) and (min-width: 961px) {
+  .admin-conversation-table__head,
+  .admin-conversation-row {
+    grid-template-columns: minmax(280px, 1fr) 116px minmax(180px, 0.65fr) 172px;
+  }
+
+  .admin-conversation-table__head span:last-child,
+  .admin-conversation-row__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 }
 </style>

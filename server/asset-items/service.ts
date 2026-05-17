@@ -118,6 +118,16 @@ const buildPublishStateWhereInput = (publishState: AssetListQuery['publishState'
   if (publishState === 'draft') {
     return {
       publishStatus: 'DRAFT' as const,
+      reviewStatus: {
+        not: 'PENDING' as const,
+      },
+    }
+  }
+
+  if (publishState === 'pending') {
+    return {
+      publishStatus: 'DRAFT' as const,
+      reviewStatus: 'PENDING' as const,
     }
   }
 
@@ -172,6 +182,7 @@ const serializeAssetItem = (record: any) => {
     previewUrl,
     coverUrl: record.coverUrl || '',
     thumbnailUrl: record.thumbnailUrl || '',
+    fileSizeBytes: record.fileSizeBytes ? Number(record.fileSizeBytes) : undefined,
     promptText: record.promptText || '',
     modelLabel: record.modelLabel || '',
     aspectRatio: record.aspectRatio || '',
@@ -184,7 +195,11 @@ const serializeAssetItem = (record: any) => {
     visibility: String(record.visibility || '').toLowerCase(),
     publishStatus: String(record.publishStatus || '').toLowerCase(),
     reviewStatus: String(record.reviewStatus || '').toLowerCase(),
+    source: String(record.source || '').toLowerCase(),
+    generationRecordId: record.generationRecordId || '',
+    generationOutputId: record.generationOutputId || '',
     createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
     publishedAt: record.publishedAt,
     owner: serializeOwner(record.user),
     sourceMeta: record.sourceMetaJson || {},
@@ -377,11 +392,30 @@ export const applyAssetAction = async (payload: AssetActionPayload, currentUserI
     }
 
     case 'publish': {
+      if (payload.scope !== 'all' || !isAdminUser) {
+        const result = await prisma.assetItem.updateMany({
+          where,
+          data: {
+            visibility: 'PRIVATE',
+            publishStatus: 'DRAFT',
+            reviewStatus: 'PENDING',
+            publishedAt: null,
+          },
+        })
+
+        await invalidateRelatedCaches()
+        return {
+          action: payload.action,
+          affectedCount: result.count,
+        }
+      }
+
       const result = await prisma.assetItem.updateMany({
         where,
         data: {
           visibility: 'PUBLIC',
           publishStatus: 'PUBLISHED',
+          reviewStatus: 'APPROVED',
           publishedAt: new Date(),
         },
       })
@@ -399,6 +433,7 @@ export const applyAssetAction = async (payload: AssetActionPayload, currentUserI
         data: {
           visibility: 'PRIVATE',
           publishStatus: 'DRAFT',
+          reviewStatus: 'APPROVED',
           publishedAt: null,
         },
       })

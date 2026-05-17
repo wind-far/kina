@@ -29,11 +29,6 @@ export const adminNavGroups: AdminNavGroup[] = [
         description: '管理图片、视频与发布状态',
       },
       {
-        label: '生成记录',
-        path: '/admin/generations',
-        description: '查看生成历史与异常记录',
-      },
-      {
         label: '营销中心',
         path: '/admin/marketing',
         description: '管理会员订阅、积分充值与奖励活动',
@@ -87,6 +82,11 @@ export const adminNavGroups: AdminNavGroup[] = [
         label: 'Redis 管理',
         path: '/admin/redis',
         description: '查看 Redis 健康状态、缓存数量与任务运行态',
+      },
+      {
+        label: '审计日志',
+        path: '/admin/audit-logs',
+        description: '查看后台关键操作、操作者与变更摘要',
       },
       {
         label: '主题配置',

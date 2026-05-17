@@ -2,7 +2,7 @@ import { readJsonBody, sendJson } from '../ai-gateway/shared'
 
 export type AssetScope = 'feed' | 'mine' | 'all'
 export type AssetKind = 'image' | 'video'
-export type AssetPublishState = 'all' | 'published' | 'draft'
+export type AssetPublishState = 'all' | 'published' | 'pending' | 'draft'
 
 export interface AssetListQuery {
   scope: AssetScope
@@ -53,6 +53,8 @@ export const readAssetListQuery = (requestUrl: string) => {
     : normalizedTake
   const publishState = rawPublishState === 'published'
     ? 'published'
+    : rawPublishState === 'pending'
+      ? 'pending'
     : rawPublishState === 'draft'
       ? 'draft'
       : 'all'

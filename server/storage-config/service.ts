@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { prisma } from '../db/prisma'
 import {
   decryptStorageAccessKey,
@@ -124,6 +124,39 @@ const serializeStorageConfig = (record: any) => {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   }
+}
+
+const buildStorageClientFromRecord = (record: any) => {
+  const endpoint = normalizeObjectStorageEndpoint(String(record.endpoint || ''))
+  const region = resolveObjectStorageRegion(record.region, endpoint)
+  const accessKey = decryptStorageAccessKey(record.accessKeyEncrypted)
+  const secretKey = decryptStorageSecretKey(record.secretKeyEncrypted)
+
+  return {
+    endpoint,
+    region,
+    bucket: String(record.bucket || '').trim(),
+    sensitiveValues: [accessKey, secretKey],
+    client: new S3Client({
+      region: region || 'auto',
+      endpoint,
+      forcePathStyle: shouldForcePathStyleForS3Endpoint(endpoint),
+      credentials: {
+        accessKeyId: accessKey,
+        secretAccessKey: secretKey,
+      },
+    }),
+  }
+}
+
+const redactStorageSensitiveValues = (value: string, sensitiveValues: string[]) => {
+  return sensitiveValues.reduce((result, sensitiveValue) => {
+    const normalizedValue = String(sensitiveValue || '').trim()
+    if (!normalizedValue) {
+      return result
+    }
+    return result.split(normalizedValue).join('[REDACTED]')
+  }, value)
 }
 
 // 规范化对象存储编码。
@@ -305,6 +338,90 @@ export const activateObjectStorageConfig = async (id: string) => {
   })
 
   return serializeStorageConfig(updated)
+}
+
+export const testObjectStorageConfig = async (id: string) => {
+  const existing = await prisma.objectStorageConfig.findUnique({
+    where: { id },
+  })
+
+  if (!existing) {
+    throw new Error('对象存储配置不存在')
+  }
+
+  const { client, bucket, endpoint, region, sensitiveValues } = buildStorageClientFromRecord(existing)
+  if (!bucket) {
+    throw new Error('Bucket 不能为空')
+  }
+
+  const objectKey = `health-check/connection-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`
+  const startedAt = Date.now()
+  const steps: Array<{ name: string; ok: boolean; durationMs: number; error: string }> = []
+
+  const uploadStartedAt = Date.now()
+  try {
+    await client.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: objectKey,
+      Body: Buffer.from('storage connection test\n', 'utf8'),
+      ContentType: 'text/plain; charset=utf-8',
+    }))
+    steps.push({ name: 'upload', ok: true, durationMs: Date.now() - uploadStartedAt, error: '' })
+  } catch (error: any) {
+    steps.push({
+      name: 'upload',
+      ok: false,
+      durationMs: Date.now() - uploadStartedAt,
+      error: redactStorageSensitiveValues(String(error?.message || error || '上传测试失败'), sensitiveValues),
+    })
+    return {
+      config: {
+        id: existing.id,
+        code: existing.code,
+        name: existing.name,
+        endpoint,
+        bucket,
+        region,
+      },
+      ok: false,
+      objectKey,
+      testedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAt,
+      steps,
+    }
+  }
+
+  const deleteStartedAt = Date.now()
+  try {
+    await client.send(new DeleteObjectCommand({
+      Bucket: bucket,
+      Key: objectKey,
+    }))
+    steps.push({ name: 'delete', ok: true, durationMs: Date.now() - deleteStartedAt, error: '' })
+  } catch (error: any) {
+    steps.push({
+      name: 'delete',
+      ok: false,
+      durationMs: Date.now() - deleteStartedAt,
+      error: redactStorageSensitiveValues(String(error?.message || error || '删除测试文件失败'), sensitiveValues),
+    })
+  }
+
+  return {
+    config: {
+      id: existing.id,
+      code: existing.code,
+      name: existing.name,
+      endpoint,
+      bucket,
+      region,
+    },
+    ok: steps.every(step => step.ok),
+    objectKey,
+    testedAt: new Date().toISOString(),
+    durationMs: Date.now() - startedAt,
+    steps,
+  }
 }
 
 // 获取当前生效的对象存储配置。

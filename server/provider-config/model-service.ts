@@ -145,6 +145,84 @@ const resolveProviderModelsUrl = (baseUrl: string) => {
   return `${baseUrl}/v1/models`
 }
 
+const resolveProviderEndpointUrl = (baseUrl: string, endpoint: string) => {
+  const normalizedEndpoint = String(endpoint || '').trim()
+  if (/^https?:\/\//i.test(normalizedEndpoint)) {
+    return normalizedEndpoint
+  }
+  return `${baseUrl.replace(/\/+$/, '')}/${normalizedEndpoint.replace(/^\/+/, '')}`
+}
+
+const readResponseErrorText = async (response: Response) => {
+  const text = await response.text().catch(() => '')
+  if (!text) {
+    return `HTTP ${response.status}`
+  }
+  return text.slice(0, 500)
+}
+
+const redactSensitiveValues = (value: string, sensitiveValues: string[]) => {
+  return sensitiveValues.reduce((result, sensitiveValue) => {
+    const normalizedValue = String(sensitiveValue || '').trim()
+    if (!normalizedValue) {
+      return result
+    }
+    return result.split(normalizedValue).join('[REDACTED]')
+  }, value)
+}
+
+const runTimedProviderTest = async (
+  name: string,
+  runner: (signal: AbortSignal) => Promise<unknown>,
+  sensitiveValues: string[] = [],
+) => {
+  const startedAt = Date.now()
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 12000)
+
+  try {
+    const detail = await runner(controller.signal)
+    return {
+      name,
+      ok: true,
+      durationMs: Date.now() - startedAt,
+      detail: detail || null,
+      error: '',
+    }
+  } catch (error: any) {
+    return {
+      name,
+      ok: false,
+      durationMs: Date.now() - startedAt,
+      detail: null,
+      error: error?.name === 'AbortError'
+        ? '请求超时'
+        : redactSensitiveValues(String(error?.message || error || '测试失败'), sensitiveValues),
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+const findFirstEnabledModelKey = async (providerId: string, category: ModelCategory) => {
+  const record = await prisma.aiModel.findFirst({
+    where: {
+      providerId,
+      category,
+      isEnabled: true,
+    },
+    orderBy: [
+      { sortOrder: 'asc' },
+      { createdAt: 'asc' },
+    ],
+    select: {
+      modelKey: true,
+    },
+  })
+
+  return String(record?.modelKey || '').trim()
+}
+
 const buildProviderDiscoverCacheKey = (providerId: string) => redisKeys.cache('provider-model-discover', providerId)
 
 // 读取上游 /v1/models 结果，供后台批量选择导入。
@@ -206,6 +284,119 @@ export const invalidateProviderDiscoverModelsCache = async (providerId?: string)
   }
 
   await invalidateRedisCaches([buildProviderDiscoverCacheKey(normalizedProviderId)])
+}
+
+export const testProviderConnectivity = async (providerId: string) => {
+  const normalizedProviderId = await assertProviderExists(providerId)
+  const { baseUrl, apiKey, provider } = await getProviderRuntimeConnection(normalizedProviderId)
+  const supportedTypes = Array.isArray(provider.supportedTypes) ? provider.supportedTypes : []
+  const tests: Array<ReturnType<typeof runTimedProviderTest>> = []
+
+  tests.push(runTimedProviderTest('models', async (signal) => {
+    const requestUrl = resolveProviderModelsUrl(baseUrl)
+    const response = await fetch(requestUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal,
+    })
+    if (!response.ok) {
+      throw new Error(await readResponseErrorText(response))
+    }
+    const data = await response.json().catch(() => null) as Record<string, any> | null
+    return {
+      requestUrl,
+      modelCount: Array.isArray(data?.data) ? data!.data.length : 0,
+    }
+  }, [apiKey]))
+
+  if (supportedTypes.includes('CHAT')) {
+    tests.push(runTimedProviderTest('chat', async (signal) => {
+      const modelKey = provider.defaultChatModel || await findFirstEnabledModelKey(normalizedProviderId, 'CHAT')
+      if (!modelKey) {
+        throw new Error('未配置可用对话模型')
+      }
+      const response = await fetch(resolveProviderEndpointUrl(baseUrl, provider.chatEndpoint), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: modelKey,
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 1,
+          stream: false,
+        }),
+        signal,
+      })
+      if (!response.ok) {
+        throw new Error(await readResponseErrorText(response))
+      }
+      return { modelKey }
+    }, [apiKey]))
+  }
+
+  if (supportedTypes.includes('IMAGE')) {
+    tests.push(runTimedProviderTest('image', async (signal) => {
+      const modelKey = await findFirstEnabledModelKey(normalizedProviderId, 'IMAGE')
+      if (!modelKey) {
+        throw new Error('未配置可用图片模型')
+      }
+      const response = await fetch(resolveProviderEndpointUrl(baseUrl, provider.imageEndpoint), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: modelKey,
+          prompt: 'connection test',
+          n: 1,
+          size: '256x256',
+        }),
+        signal,
+      })
+      if (!response.ok) {
+        throw new Error(await readResponseErrorText(response))
+      }
+      return { modelKey }
+    }, [apiKey]))
+
+    tests.push(runTimedProviderTest('imageEdit', async (signal) => {
+      const modelKey = await findFirstEnabledModelKey(normalizedProviderId, 'IMAGE')
+      if (!modelKey) {
+        throw new Error('未配置可用图片编辑模型')
+      }
+      const png1x1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=', 'base64')
+      const form = new FormData()
+      form.append('model', modelKey)
+      form.append('prompt', 'connection test')
+      form.append('image', new Blob([png1x1], { type: 'image/png' }), 'connection-test.png')
+      const response = await fetch(resolveProviderEndpointUrl(baseUrl, provider.imageEditEndpoint), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: form,
+        signal,
+      })
+      if (!response.ok) {
+        throw new Error(await readResponseErrorText(response))
+      }
+      return { modelKey }
+    }, [apiKey]))
+  }
+
+  const results = await Promise.all(tests)
+  return {
+    provider: {
+      id: provider.id,
+      code: provider.code,
+      name: provider.name,
+      baseUrl,
+    },
+    ok: results.every(item => item.ok),
+    testedAt: new Date().toISOString(),
+    results,
+  }
 }
 
 export const listProviderModels = async (providerId: string) => {

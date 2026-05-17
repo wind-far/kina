@@ -45,6 +45,26 @@ export interface AdminProviderPayload {
   sortOrder: number
 }
 
+export interface AdminProviderConnectivityStep {
+  name: string
+  ok: boolean
+  durationMs: number
+  detail: Record<string, any> | null
+  error: string
+}
+
+export interface AdminProviderConnectivityResult {
+  provider: {
+    id: string
+    code: string
+    name: string
+    baseUrl: string
+  }
+  ok: boolean
+  testedAt: string
+  results: AdminProviderConnectivityStep[]
+}
+
 const PROVIDERS_API_PATH = '/api/provider-config/providers'
 
 // 查询后台厂商列表。
@@ -113,5 +133,18 @@ export const deleteAdminProvider = async (id: string) => {
   return readApiData<{ id: string; deletedModelCount: number }>(response, {
     showSuccessMessage: true,
     successMessage: '厂商已删除',
+  })
+}
+
+// 测试厂商上游 models/chat/image/image edit 连通性。
+export const testAdminProviderConnectivity = async (id: string) => {
+  const response = await fetch(buildApiUrl(`${PROVIDERS_API_PATH}/${encodeURIComponent(id)}/test`), {
+    method: 'POST',
+    credentials: 'include',
+  })
+
+  return readApiData<AdminProviderConnectivityResult>(response, {
+    showSuccessMessage: true,
+    showErrorMessage: true,
   })
 }

@@ -6,16 +6,25 @@
       </button>
     </template>
 
-    <div class="admin-filter-bar">
-      <AdminFilterChips :groups="filterChipGroups" @select="handleChipSelect" />
-      <div class="admin-list-item__meta">当前基于已有记录接口做前端筛选，后续如数据量变大再升级成分页查询。</div>
-    </div>
+    <AdminFilterToolbar
+      title="筛选条件"
+      description="当前展示全站生成记录，筛选与分页均由服务端完成。"
+      :active-count="activeFilterCount"
+      collapsible
+    >
+      <template #filters>
+        <AdminFilterChips :groups="filterChipGroups" compact @select="handleChipSelect" />
+      </template>
+      <template #meta>
+        <span class="admin-skill-toolbar__summary">共 {{ pagination.total }} 条记录</span>
+      </template>
+    </AdminFilterToolbar>
 
     <div class="admin-grid admin-grid--stats">
-      <AdminStatCard label="记录总数" :value="records.length" hint="当前账号可见的全部生成记录" />
-      <AdminStatCard label="筛选结果" :value="filteredRecords.length" hint="当前筛选条件命中的记录数" />
-      <AdminStatCard label="成功完成" :value="completedCount" hint="done=true 且无错误的记录数" />
-      <AdminStatCard label="失败记录" :value="failedCount" hint="优先用来排查厂商、落盘和入库问题" />
+      <AdminStatCard label="记录总数" :value="pagination.total" hint="当前筛选条件命中的全站记录数" />
+      <AdminStatCard label="当前页" :value="records.length" hint="当前页加载的生成记录数" />
+      <AdminStatCard label="成功完成" :value="completedCount" hint="当前页已完成且无错误的记录数" />
+      <AdminStatCard label="失败记录" :value="failedCount" hint="当前页优先用于排查厂商、落盘和入库问题" />
     </div>
 
     <div class="admin-card">
@@ -27,9 +36,9 @@
       </div>
       <div class="admin-card__content">
         <div v-if="loading" class="admin-empty">正在加载生成记录...</div>
-        <div v-else-if="filteredRecords.length === 0" class="admin-empty">当前筛选条件下还没有生成记录。</div>
+        <div v-else-if="records.length === 0" class="admin-empty">当前筛选条件下还没有生成记录。</div>
         <div v-else class="admin-generation-list">
-          <div v-for="record in paginatedRecords" :key="record.id" class="admin-generation-card">
+          <div v-for="record in records" :key="record.id" class="admin-generation-card">
             <div class="admin-generation-card__preview">
               <img
                 v-if="getPreviewUrl(record)"
@@ -47,13 +56,11 @@
                 <div>
                   <div class="admin-generation-card__title">{{ buildRecordTitle(record) }}</div>
                   <div class="admin-generation-card__meta">
-                    类型：{{ record.type || 'unknown' }} · 创建于 {{ formatDate(record.createdAt) }}
+                    用户：{{ record.user?.name || record.user?.email || record.user?.phone || '未知用户' }} · 类型：{{ record.type || 'unknown' }} · 创建于 {{ formatDate(record.createdAt) }}
                   </div>
                 </div>
                 <div class="admin-generation-card__tags">
-                  <span class="admin-status" :class="getStatusClass(record)">
-                    {{ getStatusLabel(record) }}
-                  </span>
+                  <AdminStatusBadge category="generationStatus" :value="getRecordStatus(record)" />
                   <span class="admin-chip">模型：{{ record.model || record.modelKey || '未记录' }}</span>
                 </div>
               </div>
@@ -91,8 +98,9 @@
           <AdminPagination
             v-model:page="pagination.page"
             v-model:page-size="pagination.pageSize"
-            :total="filteredRecords.length"
+            :total="pagination.total"
             :disabled="loading"
+            @change="handlePaginationChange"
           />
         </div>
       </div>
@@ -101,20 +109,25 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive } from 'vue'
 import AdminFilterChips, { type AdminFilterChipGroup } from '@/components/admin/common/AdminFilterChips.vue'
+import AdminFilterToolbar from '@/components/admin/common/AdminFilterToolbar.vue'
 import AdminPagination from '@/components/admin/common/AdminPagination.vue'
 import AdminStatCard from '@/components/admin/common/AdminStatCard.vue'
+import AdminStatusBadge from '@/components/admin/common/AdminStatusBadge.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
-import { useAdminPagination } from '@/composables/useAdminPagination'
-import { listGenerationRecords, type PersistedGenerationRecord } from '@/api/generation-records'
+import { useAdminList } from '@/composables/admin/useAdminList'
+import { resolveAdminDictionaryItem } from '@/config/adminDictionaries'
+import {
+  listAdminGenerationRecords,
+  type AdminGenerationRecordItem,
+  type AdminGenerationRecordStatusFilter,
+  type AdminGenerationRecordTypeFilter,
+} from '@/api/admin-generation-records'
 import { normalizeGenerationErrorMessage } from '@/shared/generation-error'
 
-type GenerationStatusFilter = 'all' | 'completed' | 'failed' | 'running'
-type GenerationTypeFilter = 'all' | PersistedGenerationRecord['type']
-
-const loading = ref(false)
-const records = ref<PersistedGenerationRecord[]>([])
+type GenerationStatusFilter = AdminGenerationRecordStatusFilter
+type GenerationTypeFilter = AdminGenerationRecordTypeFilter
 
 const formatGenerationError = (message?: string | null, fallback = '任务执行失败') => {
   return normalizeGenerationErrorMessage(String(message || '').trim(), fallback)
@@ -127,8 +140,22 @@ const filters = reactive<{
   type: 'all',
   status: 'all',
 })
-const { pagination, resetPage, sliceItems } = useAdminPagination({
+
+const {
+  loading,
+  items: records,
+  pagination,
+  loadList: loadRecords,
+  resetAndLoad,
+  handlePaginationChange,
+} = useAdminList<AdminGenerationRecordItem>({
   initialPageSize: 10,
+  fetcher: ({ page, pageSize }) => listAdminGenerationRecords({
+    type: filters.type,
+    status: filters.status,
+    page,
+    pageSize,
+  }),
 })
 
 const typeOptions: Array<{ label: string; value: GenerationTypeFilter }> = [
@@ -143,9 +170,9 @@ const typeOptions: Array<{ label: string; value: GenerationTypeFilter }> = [
 
 const statusOptions: Array<{ label: string; value: GenerationStatusFilter }> = [
   { label: '全部状态', value: 'all' },
-  { label: '已完成', value: 'completed' },
-  { label: '失败', value: 'failed' },
-  { label: '进行中', value: 'running' },
+  { label: resolveAdminDictionaryItem('generationStatus', 'completed').label, value: 'completed' },
+  { label: resolveAdminDictionaryItem('generationStatus', 'failed').label, value: 'failed' },
+  { label: resolveAdminDictionaryItem('generationStatus', 'running').label, value: 'running' },
 ]
 
 const filterChipGroups = computed<AdminFilterChipGroup[]>(() => [
@@ -163,7 +190,7 @@ const filterChipGroups = computed<AdminFilterChipGroup[]>(() => [
   },
 ])
 
-const getRecordStatus = (record: PersistedGenerationRecord): GenerationStatusFilter => {
+const getRecordStatus = (record: AdminGenerationRecordItem): GenerationStatusFilter => {
   if (record.error) {
     return 'failed'
   }
@@ -175,48 +202,23 @@ const getRecordStatus = (record: PersistedGenerationRecord): GenerationStatusFil
   return 'running'
 }
 
-const filteredRecords = computed(() => {
-  return records.value.filter((record) => {
-    if (filters.type !== 'all' && record.type !== filters.type) {
-      return false
-    }
-
-    if (filters.status !== 'all' && getRecordStatus(record) !== filters.status) {
-      return false
-    }
-
-    return true
-  })
-})
-
-const paginatedRecords = computed(() => {
-  return sliceItems(filteredRecords.value)
-})
-
 const completedCount = computed(() => records.value.filter((record) => getRecordStatus(record) === 'completed').length)
 const failedCount = computed(() => records.value.filter((record) => getRecordStatus(record) === 'failed').length)
-
-const loadRecords = async () => {
-  loading.value = true
-  try {
-    const list = await listGenerationRecords()
-    records.value = [...list].sort((first, second) => {
-      return new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()
-    })
-    resetPage()
-  } finally {
-    loading.value = false
-  }
-}
+const activeFilterCount = computed(() => {
+  return [
+    filters.type !== 'all',
+    filters.status !== 'all',
+  ].filter(Boolean).length
+})
 
 const setType = (type: GenerationTypeFilter) => {
   filters.type = type
-  resetPage()
+  void resetAndLoad()
 }
 
 const setStatus = (status: GenerationStatusFilter) => {
   filters.status = status
-  resetPage()
+  void resetAndLoad()
 }
 
 const handleChipSelect = (payload: { groupKey: string; value: string }) => {
@@ -230,7 +232,7 @@ const handleChipSelect = (payload: { groupKey: string; value: string }) => {
   }
 }
 
-const getPreviewUrl = (record: PersistedGenerationRecord) => {
+const getPreviewUrl = (record: AdminGenerationRecordItem) => {
   const imageOutput = record.outputs.find((output) => output.outputType === 'image' && output.url)
   if (imageOutput?.url) {
     return imageOutput.url
@@ -244,27 +246,7 @@ const getPreviewUrl = (record: PersistedGenerationRecord) => {
   return record.images[0] || ''
 }
 
-const getStatusLabel = (record: PersistedGenerationRecord) => {
-  const status = getRecordStatus(record)
-  switch (status) {
-    case 'completed':
-      return '已完成'
-    case 'failed':
-      return '失败'
-    default:
-      return '进行中'
-  }
-}
-
-const getStatusClass = (record: PersistedGenerationRecord) => {
-  return getRecordStatus(record) === 'completed'
-    ? 'admin-status--success'
-    : getRecordStatus(record) === 'failed'
-      ? 'admin-status--danger'
-      : 'admin-status--warning'
-}
-
-const buildRecordTitle = (record: PersistedGenerationRecord) => {
+const buildRecordTitle = (record: AdminGenerationRecordItem) => {
   if (record.model) {
     return `${record.model} 生成记录`
   }
@@ -276,7 +258,7 @@ const buildRecordTitle = (record: PersistedGenerationRecord) => {
   return '生成记录'
 }
 
-const buildOutputSummary = (record: PersistedGenerationRecord) => {
+const buildOutputSummary = (record: AdminGenerationRecordItem) => {
   const outputTypes = record.outputs.map((output) => output.outputType)
   if (outputTypes.length) {
     return `输出类型：${outputTypes.join(' / ')}`

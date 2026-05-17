@@ -2,6 +2,8 @@ import type { PointActionType, UserRole, UserStatus } from '@prisma/client'
 import { sendJson, readRawBody } from '../ai-gateway/shared'
 import { isPrismaConfigured } from '../db/prisma'
 import { requireAdminSessionUser } from '../auth/session'
+import { readPaginationQuery } from '../shared/pagination'
+import { recordAdminAuditLog } from '../shared/admin-audit'
 import { ADMIN_USERS_BASE_PATH } from './constants'
 import {
   adjustAdminUserMembership,
@@ -137,11 +139,17 @@ const readAdminUserListQuery = (req: any): ListAdminUsersOptions => {
   const keyword = url.searchParams.get('keyword') || ''
   const role = String(url.searchParams.get('role') || 'ALL').toUpperCase()
   const status = String(url.searchParams.get('status') || 'ALL').toUpperCase()
+  const pagination = readPaginationQuery(url.searchParams, {
+    defaultPageSize: 10,
+    maxPageSize: 100,
+  })
 
   return {
     keyword,
     role: role === 'ADMIN' || role === 'USER' ? role : 'ALL',
     status: status === 'ANONYMOUS' || status === 'ACTIVE' || status === 'DISABLED' ? status : 'ALL',
+    page: pagination.page,
+    pageSize: pagination.pageSize,
   }
 }
 
@@ -187,16 +195,35 @@ export const handleAdminUsersRequest = async (req: any, res: any) => {
         currentUserId: currentUser.id,
         ...payload,
       })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_user_create',
+        targetType: 'app_user',
+        targetId: data.id,
+        beforeJson: null,
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '用户已创建' })
       return
     }
 
     if (req.method === 'PATCH' && suffix && !action) {
       const payload = await readAdminUserUpdateBody(req)
+      const before = await getAdminUserDetail(targetUserId)
       const data = await updateAdminUserRole({
         targetUserId,
         role: payload.role,
         currentUserId: currentUser.id,
+      })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_user_role_update',
+        targetType: 'app_user',
+        targetId: targetUserId,
+        beforeJson: before,
+        afterJson: data,
       })
       sendJson(res, 200, { data, message: '用户角色已更新' })
       return
@@ -210,10 +237,22 @@ export const handleAdminUsersRequest = async (req: any, res: any) => {
 
     if (req.method === 'PUT' && targetUserId && action === 'profile') {
       const payload = await readAdminUserProfileBody(req)
+      const before = await getAdminUserDetail(targetUserId)
       const data = await updateAdminUserProfile({
         targetUserId,
         currentUserId: currentUser.id,
         ...payload,
+      })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: payload.status === 'DISABLED' || before.status !== data.status
+          ? 'admin_user_status_update'
+          : 'admin_user_profile_update',
+        targetType: 'app_user',
+        targetId: targetUserId,
+        beforeJson: before,
+        afterJson: data,
       })
       sendJson(res, 200, { data, message: '用户资料已更新' })
       return
@@ -226,6 +265,17 @@ export const handleAdminUsersRequest = async (req: any, res: any) => {
         currentUserId: currentUser.id,
         ...payload,
       })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_user_points_adjust',
+        targetType: 'app_user',
+        targetId: targetUserId,
+        beforeJson: {
+          request: payload,
+        },
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '用户积分已调整' })
       return
     }
@@ -236,6 +286,17 @@ export const handleAdminUsersRequest = async (req: any, res: any) => {
         targetUserId,
         currentUserId: currentUser.id,
         ...payload,
+      })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_user_membership_grant',
+        targetType: 'app_user',
+        targetId: targetUserId,
+        beforeJson: {
+          request: payload,
+        },
+        afterJson: data,
       })
       sendJson(res, 200, { data, message: '会员权益已调整' })
       return
@@ -252,14 +313,33 @@ export const handleAdminUsersRequest = async (req: any, res: any) => {
         targetUserId,
         currentUserId: currentUser.id,
       })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_user_reset_login_state',
+        targetType: 'app_user',
+        targetId: targetUserId,
+        beforeJson: null,
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '已清空该用户的登录会话' })
       return
     }
 
     if (req.method === 'DELETE' && targetUserId && !action) {
+      const before = await getAdminUserDetail(targetUserId)
       const data = await deleteAdminUser({
         targetUserId,
         currentUserId: currentUser.id,
+      })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_user_delete',
+        targetType: 'app_user',
+        targetId: targetUserId,
+        beforeJson: before,
+        afterJson: { deleted: data },
       })
       sendJson(res, 200, { data, message: '用户已删除' })
       return

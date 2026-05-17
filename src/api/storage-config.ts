@@ -37,6 +37,29 @@ export interface StorageConfigPayload {
   isDefault?: boolean
 }
 
+export interface StorageConnectivityStep {
+  name: string
+  ok: boolean
+  durationMs: number
+  error: string
+}
+
+export interface StorageConnectivityResult {
+  config: {
+    id: string
+    code: string
+    name: string
+    endpoint: string
+    bucket: string
+    region: string
+  }
+  ok: boolean
+  objectKey: string
+  testedAt: string
+  durationMs: number
+  steps: StorageConnectivityStep[]
+}
+
 // 对象存储配置接口基础路径。
 const STORAGE_CONFIGS_API_PATH = '/api/storage/configs'
 
@@ -93,6 +116,18 @@ export const activateStorageConfig = async (id: string) => {
     credentials: 'include',
   })
   return readApiData<StorageConfigItem>(response, {
+    showSuccessMessage: true,
+    showErrorMessage: true,
+  })
+}
+
+// 测试对象存储上传与删除链路。
+export const testStorageConfig = async (id: string) => {
+  const response = await fetch(buildApiUrl(`${STORAGE_CONFIGS_API_PATH}/${encodeURIComponent(id)}/test`), {
+    method: 'POST',
+    credentials: 'include',
+  })
+  return readApiData<StorageConnectivityResult>(response, {
     showSuccessMessage: true,
     showErrorMessage: true,
   })

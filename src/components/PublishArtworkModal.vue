@@ -138,7 +138,7 @@
                     type="button"
                     @click="handleSubmit"
                   >
-                    <span>{{ submitting ? '发布中' : '发布' }}</span>
+                    <span>{{ submitting ? '提交中' : '提交审核' }}</span>
                   </button>
                 </div>
               </div>

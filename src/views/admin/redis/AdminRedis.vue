@@ -522,9 +522,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessageBox } from 'element-plus'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
 import AdminStatCard from '@/components/admin/common/AdminStatCard.vue'
+import { useAdminConfirm } from '@/composables/admin/useAdminConfirm'
 import AdminSystemRedisPanel from '@/views/admin/system/components/AdminSystemRedisPanel.vue'
 import {
   clearRedisCacheScope,
@@ -540,6 +540,7 @@ import {
 const loading = ref(false)
 const actionLoading = ref(false)
 const overview = ref<RedisAdminOverviewConfig | null>(null)
+const { confirmDanger } = useAdminConfirm()
 const detailLoading = ref(false)
 const recordIdKeyword = ref('')
 const taskDetail = ref<RedisTaskDetailConfig | null>(null)
@@ -765,15 +766,11 @@ const handleClearRedisScope = async (scope: 'provider-model-catalog' | 'skill-ru
       ? '技能缓存'
       : '任务运行态'
 
-  await ElMessageBox.confirm(
-    `确认清理 Redis 中的${scopeLabel}吗？该操作会直接删除对应缓存或运行态 Key。`,
-    '清理确认',
-    {
-      confirmButtonText: '确认清理',
-      cancelButtonText: '取消',
-      type: 'warning',
-    },
-  )
+  await confirmDanger({
+    title: '清理确认',
+    message: `确认清理 Redis 中的${scopeLabel}吗？该操作会直接删除对应缓存或运行态 Key。`,
+    confirmText: '确认清理',
+  })
 
   actionLoading.value = true
   try {

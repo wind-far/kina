@@ -370,6 +370,16 @@
   color: var(--functional-success);
 }
 
+.admin-status--info {
+  background: rgba(58, 123, 255, 0.12);
+  color: #2f6bff;
+}
+
+.admin-status--neutral {
+  background: var(--bg-block-secondary-default);
+  color: var(--text-secondary);
+}
+
 .admin-status--warning {
   background: rgba(255, 162, 30, 0.14);
   color: var(--functional-warning);

@@ -3,7 +3,7 @@ import { readApiData, type ApiMessageOptions } from './response'
 
 export type AssetScope = 'feed' | 'mine' | 'all'
 export type AssetKind = 'image' | 'video'
-export type AssetPublishState = 'all' | 'published' | 'draft'
+export type AssetPublishState = 'all' | 'published' | 'pending' | 'draft'
 export type AssetActionType = 'delete' | 'publish' | 'unpublish' | 'favorite' | 'view' | 'download'
 
 export interface PersistedAssetItem {
@@ -15,6 +15,7 @@ export interface PersistedAssetItem {
   previewUrl: string
   coverUrl: string
   thumbnailUrl: string
+  fileSizeBytes?: number
   promptText: string
   modelLabel: string
   aspectRatio: string
@@ -27,7 +28,11 @@ export interface PersistedAssetItem {
   visibility: string
   publishStatus: string
   reviewStatus: string
+  source: string
+  generationRecordId: string
+  generationOutputId: string
   createdAt: string
+  updatedAt?: string
   publishedAt?: string
   owner: {
     id: string

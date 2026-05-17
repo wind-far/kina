@@ -11,6 +11,10 @@ import { isAdminUsersPath } from './admin-users/constants'
 import { handleAdminUsersRequest } from './admin-users/request-handler'
 import { isAdminGenerationSessionsPath } from './admin-generation-sessions/constants'
 import { handleAdminGenerationSessionsRequest } from './admin-generation-sessions/request-handler'
+import { isAdminGenerationRecordsPath } from './admin-generation-records/constants'
+import { handleAdminGenerationRecordsRequest } from './admin-generation-records/request-handler'
+import { isAdminAuditLogsPath } from './admin-audit-logs/constants'
+import { handleAdminAuditLogsRequest } from './admin-audit-logs/request-handler'
 import { isAdminConversationSettingsPath } from './conversation-settings/constants'
 import { handleAdminConversationSettingsRequest } from './conversation-settings/request-handler'
 import { isAdminDashboardPath } from './admin-dashboard/constants'
@@ -460,6 +464,22 @@ const REQUEST_ROUTE_STRATEGIES: RequestRouteStrategy[] = [
     match: isAdminGenerationSessionsPath,
     handle: async (req, res) => {
       await handleAdminGenerationSessionsRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'admin-generation-records',
+    match: isAdminGenerationRecordsPath,
+    handle: async (req, res) => {
+      await handleAdminGenerationRecordsRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'admin-audit-logs',
+    match: isAdminAuditLogsPath,
+    handle: async (req, res) => {
+      await handleAdminAuditLogsRequest(req, res)
       return true
     },
   },

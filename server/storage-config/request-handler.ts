@@ -1,12 +1,14 @@
 import { sendJson } from '../ai-gateway/shared'
 import { isPrismaConfigured } from '../db/prisma'
 import { requireAdminSessionUser } from '../auth/session'
+import { recordAdminAuditLog } from '../shared/admin-audit'
 import { STORAGE_CONFIGS_BASE_PATH } from './constants'
 import { readStorageConfigBody, sendStorageConfigError } from './shared'
 import {
   activateObjectStorageConfig,
   createObjectStorageConfig,
   listObjectStorageConfigs,
+  testObjectStorageConfig,
   updateObjectStorageConfig,
 } from './service'
 
@@ -28,8 +30,11 @@ export const handleStorageConfigRequest = async (req: any, res: any) => {
       ? requestUrl.slice(STORAGE_CONFIGS_BASE_PATH.length + 1)
       : ''
     const isActivatePath = suffix.endsWith('/activate')
+    const isTestPath = suffix.endsWith('/test')
     const configId = isActivatePath
       ? decodeURIComponent(suffix.slice(0, -('/activate'.length)))
+      : isTestPath
+        ? decodeURIComponent(suffix.slice(0, -('/test'.length)))
       : decodeURIComponent(suffix)
 
     if (req.method === 'GET' && requestUrl === STORAGE_CONFIGS_BASE_PATH) {
@@ -41,20 +46,53 @@ export const handleStorageConfigRequest = async (req: any, res: any) => {
     if (req.method === 'POST' && requestUrl === STORAGE_CONFIGS_BASE_PATH) {
       const payload = await readStorageConfigBody(req)
       const data = await createObjectStorageConfig(payload)
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_storage_config_create',
+        targetType: 'object_storage_config',
+        targetId: data.id,
+        beforeJson: null,
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '对象存储已创建' })
       return
     }
 
-    if (req.method === 'PUT' && configId && !isActivatePath) {
+    if (req.method === 'PUT' && configId && !isActivatePath && !isTestPath) {
       const payload = await readStorageConfigBody(req)
       const data = await updateObjectStorageConfig(configId, payload)
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_storage_config_update',
+        targetType: 'object_storage_config',
+        targetId: configId,
+        beforeJson: { request: payload },
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '对象存储已更新' })
       return
     }
 
     if (req.method === 'POST' && configId && isActivatePath) {
       const data = await activateObjectStorageConfig(configId)
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_storage_config_activate',
+        targetType: 'object_storage_config',
+        targetId: configId,
+        beforeJson: null,
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '对象存储已启用' })
+      return
+    }
+
+    if (req.method === 'POST' && configId && isTestPath) {
+      const data = await testObjectStorageConfig(configId)
+      sendJson(res, 200, { data, message: data.ok ? '对象存储连通性测试通过' : '对象存储连通性测试存在失败项' })
       return
     }
 

@@ -1,14 +1,14 @@
 import { sendJson, readJsonBody } from '../ai-gateway/shared'
 import { isPrismaConfigured } from '../db/prisma'
 import { requireAdminSessionUser } from '../auth/session'
-import { invalidateAdminDashboardOverviewCache } from '../admin-dashboard/service'
 import { REDIS_CONFIG, consumeFixedWindowRateLimit, getRedisRuntimeSettings } from '../redis'
+import { recordAdminAuditLog } from '../shared/admin-audit'
+import { invalidateAdminCaches } from '../shared/admin-cache'
 import {
   createAdminProvider,
   deleteAdminProvider,
   getAdminProviderDetail,
   getPublicModelCatalog,
-  invalidatePublicModelCatalogCache,
   listAdminProviders,
   updateAdminProvider,
 } from './service'
@@ -17,8 +17,8 @@ import {
   createProviderModel,
   deleteProviderModel,
   discoverProviderModels,
-  invalidateProviderDiscoverModelsCache,
   listProviderModels,
+  testProviderConnectivity,
   updateProviderModel,
 } from './model-service'
 import { ProviderConfigRequestError, sendProviderRuntimeError } from './shared'
@@ -80,6 +80,17 @@ const matchProviderModelBatchUpsertPath = (requestPath: string) => {
   }
 }
 
+const matchProviderTestPath = (requestPath: string) => {
+  const matched = requestPath.match(/^\/api\/provider-config\/providers\/([^/]+)\/test$/)
+  if (!matched) {
+    return null
+  }
+
+  return {
+    providerId: decodeURIComponent(matched[1]),
+  }
+}
+
 // 处理厂商配置与模型配置请求。
 export const handleProviderConfigRequest = async (req: any, res: any) => {
   try {
@@ -94,6 +105,7 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
     const providerModelDetailMatch = matchProviderModelDetailPath(requestPath)
     const providerModelDiscoverMatch = matchProviderModelDiscoverPath(requestPath)
     const providerModelBatchUpsertMatch = matchProviderModelBatchUpsertPath(requestPath)
+    const providerTestMatch = matchProviderTestPath(requestPath)
 
     if (req.method === 'GET' && requestPath === PROVIDER_CONFIG_CATALOG_PATH) {
       const data = await getPublicModelCatalog()
@@ -131,8 +143,16 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await createAdminProvider(payload as any)
-      await invalidatePublicModelCatalogCache()
-      await invalidateAdminDashboardOverviewCache()
+      await invalidateAdminCaches({ dashboard: true, modelCatalog: true })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_provider_create',
+        targetType: 'ai_provider',
+        targetId: data.id,
+        beforeJson: null,
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '厂商已创建' })
       return
     }
@@ -144,10 +164,21 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       }
 
       const payload = await readJsonBody(req)
+      const before = await getAdminProviderDetail(providerDetailMatch.providerId)
       const data = await updateAdminProvider(providerDetailMatch.providerId, payload as any)
-      await invalidatePublicModelCatalogCache()
-      await invalidateProviderDiscoverModelsCache(providerDetailMatch.providerId)
-      await invalidateAdminDashboardOverviewCache()
+      await invalidateAdminCaches({ dashboard: true, modelCatalog: true, providerDiscover: providerDetailMatch.providerId })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_provider_update',
+        targetType: 'ai_provider',
+        targetId: providerDetailMatch.providerId,
+        beforeJson: before,
+        afterJson: {
+          request: payload,
+          saved: data,
+        },
+      })
       sendJson(res, 200, { data, message: '厂商已更新' })
       return
     }
@@ -158,10 +189,18 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
         return
       }
 
+      const before = await getAdminProviderDetail(providerDetailMatch.providerId)
       const data = await deleteAdminProvider(providerDetailMatch.providerId)
-      await invalidatePublicModelCatalogCache()
-      await invalidateProviderDiscoverModelsCache(providerDetailMatch.providerId)
-      await invalidateAdminDashboardOverviewCache()
+      await invalidateAdminCaches({ dashboard: true, modelCatalog: true, providerDiscover: providerDetailMatch.providerId })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_provider_delete',
+        targetType: 'ai_provider',
+        targetId: providerDetailMatch.providerId,
+        beforeJson: before,
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '厂商已删除' })
       return
     }
@@ -203,6 +242,17 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       return
     }
 
+    if (req.method === 'POST' && providerTestMatch) {
+      const currentUser = await requireAdminSessionUser(req, res)
+      if (!currentUser) {
+        return
+      }
+
+      const data = await testProviderConnectivity(providerTestMatch.providerId)
+      sendJson(res, 200, { data, message: data.ok ? '厂商连通性测试通过' : '厂商连通性测试存在失败项' })
+      return
+    }
+
     if (req.method === 'POST' && providerModelsMatch) {
       const currentUser = await requireAdminSessionUser(req, res)
       if (!currentUser) {
@@ -211,9 +261,19 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await createProviderModel(providerModelsMatch.providerId, payload as any)
-      await invalidatePublicModelCatalogCache()
-      await invalidateProviderDiscoverModelsCache(providerModelsMatch.providerId)
-      await invalidateAdminDashboardOverviewCache()
+      await invalidateAdminCaches({ dashboard: true, modelCatalog: true, providerDiscover: providerModelsMatch.providerId })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_provider_model_create',
+        targetType: 'ai_model',
+        targetId: data.id,
+        beforeJson: {
+          providerId: providerModelsMatch.providerId,
+          request: payload,
+        },
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '模型已创建' })
       return
     }
@@ -226,9 +286,19 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await batchUpsertProviderModels(providerModelBatchUpsertMatch.providerId, payload as any)
-      await invalidatePublicModelCatalogCache()
-      await invalidateProviderDiscoverModelsCache(providerModelBatchUpsertMatch.providerId)
-      await invalidateAdminDashboardOverviewCache()
+      await invalidateAdminCaches({ dashboard: true, modelCatalog: true, providerDiscover: providerModelBatchUpsertMatch.providerId })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_provider_model_batch_upsert',
+        targetType: 'ai_model',
+        targetId: providerModelBatchUpsertMatch.providerId,
+        beforeJson: {
+          providerId: providerModelBatchUpsertMatch.providerId,
+          request: payload,
+        },
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '模型已批量导入' })
       return
     }
@@ -241,9 +311,19 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await updateProviderModel(providerModelDetailMatch.providerId, providerModelDetailMatch.modelId, payload as any)
-      await invalidatePublicModelCatalogCache()
-      await invalidateProviderDiscoverModelsCache(providerModelDetailMatch.providerId)
-      await invalidateAdminDashboardOverviewCache()
+      await invalidateAdminCaches({ dashboard: true, modelCatalog: true, providerDiscover: providerModelDetailMatch.providerId })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_provider_model_update',
+        targetType: 'ai_model',
+        targetId: providerModelDetailMatch.modelId,
+        beforeJson: {
+          providerId: providerModelDetailMatch.providerId,
+          request: payload,
+        },
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '模型已更新' })
       return
     }
@@ -255,9 +335,18 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
       }
 
       const data = await deleteProviderModel(providerModelDetailMatch.providerId, providerModelDetailMatch.modelId)
-      await invalidatePublicModelCatalogCache()
-      await invalidateProviderDiscoverModelsCache(providerModelDetailMatch.providerId)
-      await invalidateAdminDashboardOverviewCache()
+      await invalidateAdminCaches({ dashboard: true, modelCatalog: true, providerDiscover: providerModelDetailMatch.providerId })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_provider_model_delete',
+        targetType: 'ai_model',
+        targetId: providerModelDetailMatch.modelId,
+        beforeJson: {
+          providerId: providerModelDetailMatch.providerId,
+        },
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '模型已删除' })
       return
     }

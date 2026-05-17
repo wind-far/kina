@@ -12,6 +12,7 @@ import { invalidateRedisCachePatterns, invalidateRedisCaches } from '../redis/ca
 import { getOrSetJsonCache } from '../redis/json-cache'
 import { redisKeys } from '../redis/keys'
 import { isValidEmail, isValidPhone, maskEmail, maskPhone } from '../auth/service'
+import { buildPageResult, resolvePagination } from '../shared/pagination'
 
 interface AdminUserRecord {
   id: string
@@ -30,10 +31,30 @@ interface AdminUserCountMap {
   generationRecordCount: number
 }
 
+interface AdminUserOperationalSummary {
+  authIdentityCount: number
+  verifiedAuthIdentityCount: number
+  sessionCount: number
+  currentPointBalance: number
+  activeSubscription: {
+    id: string
+    status: string
+    startTime: string
+    endTime: string
+    level: {
+      id: string
+      name: string
+      level: number
+    } | null
+  } | null
+}
+
 export interface ListAdminUsersOptions {
   keyword?: string
   role?: 'ALL' | 'USER' | 'ADMIN'
   status?: 'ALL' | 'ANONYMOUS' | 'ACTIVE' | 'DISABLED'
+  page?: number
+  pageSize?: number
 }
 
 const ADMIN_USERS_LIST_SCOPE = 'admin-users-list'
@@ -47,6 +68,8 @@ const buildAdminUsersListCacheKey = (options: ListAdminUsersOptions = {}) => {
       keyword: String(options.keyword || '').trim(),
       role: String(options.role || 'ALL').trim(),
       status: String(options.status || 'ALL').trim(),
+      page: Number(options.page || 1),
+      pageSize: Number(options.pageSize || 10),
     }))
     .digest('hex')
   return redisKeys.cache(ADMIN_USERS_LIST_SCOPE, hash)
@@ -306,7 +329,135 @@ const getUserCountMaps = async (userIds: string[]) => {
   return countMap
 }
 
-const buildAdminUserItem = (user: AdminUserRecord, countMap?: AdminUserCountMap) => {
+const getUserOperationalSummaryMaps = async (userIds: string[]) => {
+  const summaryMap = new Map<string, AdminUserOperationalSummary>()
+  for (const userId of userIds) {
+    summaryMap.set(userId, {
+      authIdentityCount: 0,
+      verifiedAuthIdentityCount: 0,
+      sessionCount: 0,
+      currentPointBalance: 0,
+      activeSubscription: null,
+    })
+  }
+
+  if (!userIds.length) {
+    return summaryMap
+  }
+
+  const [authIdentityGroups, verifiedAuthIdentityGroups, sessionGroups, activeSubscriptions, pointLogs] = await Promise.all([
+    prisma.appUserAuthIdentity.groupBy({
+      by: ['userId'],
+      where: {
+        userId: { in: userIds },
+      },
+      _count: { _all: true },
+    }),
+    prisma.appUserAuthIdentity.groupBy({
+      by: ['userId'],
+      where: {
+        userId: { in: userIds },
+        isVerified: true,
+      },
+      _count: { _all: true },
+    }),
+    prisma.appSession.groupBy({
+      by: ['userId'],
+      where: {
+        userId: { in: userIds },
+        revokedAt: null,
+      },
+      _count: { _all: true },
+    }),
+    prisma.userSubscription.findMany({
+      where: {
+        userId: { in: userIds },
+        status: 'ACTIVE',
+      },
+      orderBy: [
+        { endTime: 'desc' },
+        { createdAt: 'desc' },
+      ],
+      include: {
+        level: {
+          select: {
+            id: true,
+            name: true,
+            level: true,
+          },
+        },
+      },
+    }),
+    Promise.all(userIds.map(async (userId) => {
+      const latestLog = await prisma.pointAccountLog.findFirst({
+        where: { userId },
+        orderBy: [
+          { createdAt: 'desc' },
+          { id: 'desc' },
+        ],
+        select: {
+          userId: true,
+          balanceAfter: true,
+        },
+      })
+      return latestLog
+    })),
+  ])
+
+  for (const item of authIdentityGroups) {
+    const current = summaryMap.get(item.userId)
+    if (current) {
+      current.authIdentityCount = item._count._all
+    }
+  }
+
+  for (const item of verifiedAuthIdentityGroups) {
+    const current = summaryMap.get(item.userId)
+    if (current) {
+      current.verifiedAuthIdentityCount = item._count._all
+    }
+  }
+
+  for (const item of sessionGroups) {
+    const current = summaryMap.get(item.userId)
+    if (current) {
+      current.sessionCount = item._count._all
+    }
+  }
+
+  for (const item of activeSubscriptions) {
+    const current = summaryMap.get(item.userId)
+    if (current && !current.activeSubscription) {
+      current.activeSubscription = {
+        id: item.id,
+        status: item.status,
+        startTime: item.startTime.toISOString(),
+        endTime: item.endTime.toISOString(),
+        level: item.level
+          ? {
+              id: item.level.id,
+              name: item.level.name,
+              level: item.level.level,
+            }
+          : null,
+      }
+    }
+  }
+
+  for (const item of pointLogs) {
+    if (!item) {
+      continue
+    }
+    const current = summaryMap.get(item.userId)
+    if (current) {
+      current.currentPointBalance = Number(item.balanceAfter || 0)
+    }
+  }
+
+  return summaryMap
+}
+
+const buildAdminUserItem = (user: AdminUserRecord, countMap?: AdminUserCountMap, operationalSummary?: AdminUserOperationalSummary) => {
   const email = String(user.email || '').trim()
   const phone = String(user.phone || '').trim()
 
@@ -324,6 +475,11 @@ const buildAdminUserItem = (user: AdminUserRecord, countMap?: AdminUserCountMap)
     updatedAt: user.updatedAt.toISOString(),
     generationRecordCount: countMap?.generationRecordCount || 0,
     assetCount: countMap?.assetCount || 0,
+    authIdentityCount: operationalSummary?.authIdentityCount || 0,
+    verifiedAuthIdentityCount: operationalSummary?.verifiedAuthIdentityCount || 0,
+    sessionCount: operationalSummary?.sessionCount || 0,
+    currentPointBalance: operationalSummary?.currentPointBalance || 0,
+    activeSubscription: operationalSummary?.activeSubscription || null,
   }
 }
 
@@ -447,9 +603,24 @@ const ensureNotSelfDangerousAction = (currentUserId: string, targetUserId: strin
 }
 
 const buildAdminUserDetail = async (targetUserId: string) => {
-  const [user, countMap, authIdentities, activeSubscription, membershipOrders, sessionCount, currentPointBalance] = await Promise.all([
+  const [
+    user,
+    countMap,
+    operationalSummaryMap,
+    authIdentities,
+    activeSubscription,
+    membershipOrders,
+    sessionCount,
+    currentPointBalance,
+    recentSessions,
+    recentPointLogs,
+    assetPublishGroups,
+    assetReviewGroups,
+    generationStatusGroups,
+  ] = await Promise.all([
     findAdminUserOrThrow(targetUserId),
     getUserCountMaps([targetUserId]),
+    getUserOperationalSummaryMaps([targetUserId]),
     prisma.appUserAuthIdentity.findMany({
       where: { userId: targetUserId },
       orderBy: [
@@ -505,15 +676,99 @@ const buildAdminUserDetail = async (targetUserId: string) => {
       },
     }),
     readCurrentPointBalance(targetUserId),
+    prisma.appSession.findMany({
+      where: { userId: targetUserId },
+      orderBy: [
+        { lastActiveAt: 'desc' },
+        { createdAt: 'desc' },
+      ],
+      take: 6,
+      select: {
+        id: true,
+        authMethodType: true,
+        identifierSnapshot: true,
+        ipAddress: true,
+        userAgent: true,
+        expiresAt: true,
+        revokedAt: true,
+        lastActiveAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.pointAccountLog.findMany({
+      where: { userId: targetUserId },
+      orderBy: [
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
+      take: 8,
+      select: {
+        id: true,
+        accountNo: true,
+        changeType: true,
+        action: true,
+        changeAmount: true,
+        balanceAfter: true,
+        availableAmount: true,
+        sourceType: true,
+        associationNo: true,
+        remark: true,
+        expireAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.assetItem.groupBy({
+      by: ['publishStatus'],
+      where: {
+        userId: targetUserId,
+        isDeleted: false,
+      },
+      _count: { _all: true },
+    }),
+    prisma.assetItem.groupBy({
+      by: ['reviewStatus'],
+      where: {
+        userId: targetUserId,
+        isDeleted: false,
+      },
+      _count: { _all: true },
+    }),
+    prisma.generationRecord.groupBy({
+      by: ['status'],
+      where: { userId: targetUserId },
+      _count: { _all: true },
+    }),
   ])
 
+  const buildGroupCount = <TKey extends string>(items: Array<Record<TKey, string> & { _count: { _all: number } }>, key: TKey, value: string) => {
+    return items.find(item => item[key] === value)?._count._all || 0
+  }
+
   return serializeAdminUserRecord({
-    ...buildAdminUserItem(user, countMap.get(targetUserId)),
+    ...buildAdminUserItem(user, countMap.get(targetUserId), operationalSummaryMap.get(targetUserId)),
     currentPointBalance,
     sessionCount,
     authIdentities,
     activeSubscription,
     membershipOrders,
+    recentSessions,
+    recentPointLogs,
+    assetBreakdown: {
+      published: buildGroupCount(assetPublishGroups, 'publishStatus', 'PUBLISHED'),
+      draft: buildGroupCount(assetPublishGroups, 'publishStatus', 'DRAFT'),
+      hidden: buildGroupCount(assetPublishGroups, 'publishStatus', 'HIDDEN'),
+      pendingReview: buildGroupCount(assetReviewGroups, 'reviewStatus', 'PENDING'),
+      approved: buildGroupCount(assetReviewGroups, 'reviewStatus', 'APPROVED'),
+      rejected: buildGroupCount(assetReviewGroups, 'reviewStatus', 'REJECTED'),
+    },
+    generationBreakdown: {
+      pending: buildGroupCount(generationStatusGroups, 'status', 'PENDING'),
+      running: buildGroupCount(generationStatusGroups, 'status', 'RUNNING'),
+      completed: buildGroupCount(generationStatusGroups, 'status', 'COMPLETED'),
+      failed: buildGroupCount(generationStatusGroups, 'status', 'FAILED'),
+    },
   })
 }
 
@@ -536,8 +791,17 @@ export const listAdminUsers = async (options: ListAdminUsersOptions = {}) => {
     key: buildAdminUsersListCacheKey(options),
     ttlSeconds: 120,
     factory: async () => {
+      const where = buildUserWhereInput(options)
+      const totalCount = await prisma.appUser.count({ where })
+      const pagination = resolvePagination({
+        page: Number(options.page || 1),
+        pageSize: Number(options.pageSize || 10),
+      }, totalCount, {
+        defaultPageSize: 10,
+        maxPageSize: 100,
+      })
       const users = await prisma.appUser.findMany({
-        where: buildUserWhereInput(options),
+        where,
         select: {
           id: true,
           name: true,
@@ -553,12 +817,17 @@ export const listAdminUsers = async (options: ListAdminUsersOptions = {}) => {
           { createdAt: 'desc' },
           { id: 'desc' },
         ],
+        skip: pagination.skip,
+        take: pagination.pageSize,
       })
 
       const userIds = users.map(item => item.id)
-      const countMap = await getUserCountMaps(userIds)
+      const [countMap, operationalSummaryMap] = await Promise.all([
+        getUserCountMaps(userIds),
+        getUserOperationalSummaryMaps(userIds),
+      ])
 
-      return users.map(user => buildAdminUserItem(user, countMap.get(user.id)))
+      return buildPageResult(users.map(user => buildAdminUserItem(user, countMap.get(user.id), operationalSummaryMap.get(user.id))), pagination)
     },
   })
 }

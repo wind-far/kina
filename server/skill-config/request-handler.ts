@@ -1,12 +1,13 @@
 import { requireAdminSessionUser } from '../auth/session'
 import { isPrismaConfigured } from '../db/prisma'
 import { readJsonBody, sendJson } from '../ai-gateway/shared'
+import { invalidateAdminCaches } from '../shared/admin-cache'
+import { recordAdminAuditLog } from '../shared/admin-audit'
 import { SKILL_CONFIG_CATALOG_PATH, SKILL_CONFIG_SKILLS_PATH } from './constants'
 import {
   createAdminSkill,
   deleteAdminSkill,
   getSkillDefinitionDetail,
-  invalidateSkillRuntimeCache,
   listAdminSkills,
   listPublicEnabledSkills,
   setAdminSkillEnabled,
@@ -81,7 +82,16 @@ export const handleSkillConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await createAdminSkill(payload as any)
-      await invalidateSkillRuntimeCache(data?.skill?.skillKey)
+      await invalidateAdminCaches({ skills: data?.skill?.skillKey })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_skill_create',
+        targetType: 'skill_definition',
+        targetId: data?.skill?.skillKey || '',
+        beforeJson: null,
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '技能已创建' })
       return
     }
@@ -94,7 +104,16 @@ export const handleSkillConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await updateAdminSkill(skillDetailMatch.skillKey, payload as any)
-      await invalidateSkillRuntimeCache(skillDetailMatch.skillKey)
+      await invalidateAdminCaches({ skills: skillDetailMatch.skillKey })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_skill_update',
+        targetType: 'skill_definition',
+        targetId: skillDetailMatch.skillKey,
+        beforeJson: { request: payload },
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '技能已更新' })
       return
     }
@@ -107,7 +126,16 @@ export const handleSkillConfigRequest = async (req: any, res: any) => {
 
       const payload = await readJsonBody(req)
       const data = await setAdminSkillEnabled(skillDetailMatch.skillKey, Boolean((payload as any)?.isEnabled))
-      await invalidateSkillRuntimeCache(skillDetailMatch.skillKey)
+      await invalidateAdminCaches({ skills: skillDetailMatch.skillKey })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_skill_enabled_update',
+        targetType: 'skill_definition',
+        targetId: skillDetailMatch.skillKey,
+        beforeJson: { request: payload },
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '技能状态已更新' })
       return
     }
@@ -119,7 +147,16 @@ export const handleSkillConfigRequest = async (req: any, res: any) => {
       }
 
       const data = await deleteAdminSkill(skillDetailMatch.skillKey)
-      await invalidateSkillRuntimeCache(skillDetailMatch.skillKey)
+      await invalidateAdminCaches({ skills: skillDetailMatch.skillKey })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_skill_delete',
+        targetType: 'skill_definition',
+        targetId: skillDetailMatch.skillKey,
+        beforeJson: null,
+        afterJson: data,
+      })
       sendJson(res, 200, { data, message: '技能已删除' })
       return
     }

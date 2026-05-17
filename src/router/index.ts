@@ -27,6 +27,7 @@ const AdminSystem = () => import('../views/admin/system/AdminSystem.vue')
 const AdminRedis = () => import('../views/admin/redis/AdminRedis.vue')
 const AdminTheme = () => import('../views/admin/theme/AdminTheme.vue')
 const AdminUsers = () => import('../views/admin/users/AdminUsers.vue')
+const AdminAuditLogs = () => import('../views/admin/audit/AdminAuditLogs.vue')
 const AdminAccessDenied = () => import('../views/admin/AdminAccessDenied.vue')
 
 const routes: RouteRecordRaw[] = [
@@ -214,6 +215,15 @@ const routes: RouteRecordRaw[] = [
         path: 'redis',
         name: 'AdminRedis',
         component: AdminRedis,
+        meta: {
+          requiresAuth: true,
+          requiresAdmin: true,
+        },
+      },
+      {
+        path: 'audit-logs',
+        name: 'AdminAuditLogs',
+        component: AdminAuditLogs,
         meta: {
           requiresAuth: true,
           requiresAdmin: true,

@@ -1,4 +1,5 @@
 import { readJsonBody, sendJson } from '../ai-gateway/shared'
+import { readPaginationQuery } from '../shared/pagination'
 
 export type AdminGenerationSessionStatusFilter = 'ALL' | 'HAS_ERROR' | 'RUNNING' | 'COMPLETED' | 'EMPTY'
 export type AdminGenerationSessionTypeFilter = 'ALL' | 'IMAGE' | 'VIDEO' | 'AGENT' | 'DIGITAL_HUMAN' | 'MOTION'
@@ -23,8 +24,10 @@ export const readAdminGenerationSessionsQuery = (requestUrl: string): AdminGener
   const userKeyword = String(url.searchParams.get('userKeyword') || '').trim()
   const rawStatus = String(url.searchParams.get('status') || 'ALL').trim().toUpperCase()
   const rawType = String(url.searchParams.get('type') || 'ALL').trim().toUpperCase()
-  const rawPage = Number(url.searchParams.get('page') || 1)
-  const rawPageSize = Number(url.searchParams.get('pageSize') || 12)
+  const pagination = readPaginationQuery(url.searchParams, {
+    defaultPageSize: 12,
+    maxPageSize: 100,
+  })
 
   return {
     keyword,
@@ -35,8 +38,8 @@ export const readAdminGenerationSessionsQuery = (requestUrl: string): AdminGener
     type: rawType === 'IMAGE' || rawType === 'VIDEO' || rawType === 'AGENT' || rawType === 'DIGITAL_HUMAN' || rawType === 'MOTION'
       ? rawType
       : 'ALL',
-    page: Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1,
-    pageSize: Number.isFinite(rawPageSize) && rawPageSize > 0 ? Math.min(Math.floor(rawPageSize), 100) : 12,
+    page: pagination.page,
+    pageSize: pagination.pageSize,
   }
 }
 

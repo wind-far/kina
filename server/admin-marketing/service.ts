@@ -367,32 +367,7 @@ const buildAdminPointLogItem = (input: {
   } satisfies AdminPointLogListItem
 }
 
-// 查询后台积分流水明细，支持按动作、来源、终端类型、退款状态和关键词筛选。
-export const listAdminPointLogs = async (query: MarketingPointLogQueryPayload = {}) => {
-  const days = Math.min(180, Math.max(1, toInt(query.days, 30)))
-  const page = Math.max(1, toInt(query.page, 1))
-  const pageSize = Math.min(100, Math.max(10, toInt(query.pageSize, 10)))
-  const startTime = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
-  const action = toStringValue(query.action).toUpperCase()
-  const sourceType = toStringValue(query.sourceType).toUpperCase()
-  const endpointType = normalizeEndpointType(query.endpointType)
-  const refundStatus = toStringValue(query.refundStatus).toLowerCase()
-  const keyword = toStringValue(query.keyword).toLowerCase()
-
-  const pointLogs = await prisma.pointAccountLog.findMany({
-    where: {
-      createdAt: {
-        gte: startTime,
-      },
-      ...(action ? { action: action as any } : {}),
-      ...(sourceType ? { sourceType: sourceType as any } : {}),
-    },
-    orderBy: [
-      { createdAt: 'desc' },
-      { id: 'desc' },
-    ],
-  })
-
+const buildAdminPointLogItems = async (pointLogs: any[]) => {
   const associationNos = Array.from(new Set(
     pointLogs
       .map((item) => String(item.associationNo || item.sourceId || '').trim())
@@ -463,69 +438,146 @@ export const listAdminPointLogs = async (query: MarketingPointLogQueryPayload = 
     : []
   const userMap = new Map(users.map((item) => [item.id, item]))
 
-  const filteredItems = pointLogs
-    .map((pointLog) => {
-      const generationRecordId = String(readPointLogMeta(pointLog.metaJson).generationRecordId || '').trim()
-      const userId = String(pointLog.userId || '').trim()
-      return buildAdminPointLogItem({
-        pointLog,
-        refundedAssociationNos,
-        user: userId ? userMap.get(userId) || null : null,
-        generationRecord: generationRecordId ? generationRecordMap.get(generationRecordId) || null : null,
-      })
+  return pointLogs.map((pointLog) => {
+    const generationRecordId = String(readPointLogMeta(pointLog.metaJson).generationRecordId || '').trim()
+    const userId = String(pointLog.userId || '').trim()
+    return buildAdminPointLogItem({
+      pointLog,
+      refundedAssociationNos,
+      user: userId ? userMap.get(userId) || null : null,
+      generationRecord: generationRecordId ? generationRecordMap.get(generationRecordId) || null : null,
     })
-    .filter((item) => {
-      if (endpointType && item.endpointType !== endpointType) {
-        return false
-      }
-      if (refundStatus === 'compensable' && !item.canCompensate) {
-        return false
-      }
-      if (refundStatus === 'refunded' && !item.refunded) {
-        return false
-      }
-      if (refundStatus === 'unrefunded' && item.refunded) {
-        return false
-      }
-      if (keyword) {
-        const haystack = [
-          item.accountNo,
-          item.associationNo,
-          item.sourceId,
-          item.userId,
-          item.userName,
-          item.userEmail,
-          item.userPhone,
-          item.remark,
-          item.modelName,
-          item.modelKey,
-          item.generationPrompt,
-          item.generationErrorMessage,
-        ].join(' ').toLowerCase()
-        if (!haystack.includes(keyword)) {
-          return false
-        }
-      }
-      return true
-    })
+  })
+}
 
-  const totalCount = filteredItems.length
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+const matchesAdminPointLogFilters = (
+  item: AdminPointLogListItem,
+  filters: {
+    endpointType: ReturnType<typeof normalizeEndpointType>
+    refundStatus: string
+    keyword: string
+  },
+) => {
+  if (filters.endpointType && item.endpointType !== filters.endpointType) {
+    return false
+  }
+  if (filters.refundStatus === 'compensable' && !item.canCompensate) {
+    return false
+  }
+  if (filters.refundStatus === 'refunded' && !item.refunded) {
+    return false
+  }
+  if (filters.refundStatus === 'unrefunded' && item.refunded) {
+    return false
+  }
+  if (filters.keyword) {
+    const haystack = [
+      item.accountNo,
+      item.associationNo,
+      item.sourceId,
+      item.userId,
+      item.userName,
+      item.userEmail,
+      item.userPhone,
+      item.remark,
+      item.modelName,
+      item.modelKey,
+      item.generationPrompt,
+      item.generationErrorMessage,
+    ].join(' ').toLowerCase()
+    if (!haystack.includes(filters.keyword)) {
+      return false
+    }
+  }
+  return true
+}
+
+// 查询后台积分流水明细，支持按动作、来源、终端类型、退款状态和关键词筛选。
+export const listAdminPointLogs = async (query: MarketingPointLogQueryPayload = {}) => {
+  const days = Math.min(180, Math.max(1, toInt(query.days, 30)))
+  const page = Math.max(1, toInt(query.page, 1))
+  const pageSize = Math.min(100, Math.max(10, toInt(query.pageSize, 10)))
+  const startTime = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+  const action = toStringValue(query.action).toUpperCase()
+  const sourceType = toStringValue(query.sourceType).toUpperCase()
+  const endpointType = normalizeEndpointType(query.endpointType)
+  const refundStatus = toStringValue(query.refundStatus).toLowerCase()
+  const keyword = toStringValue(query.keyword).toLowerCase()
+
+  const baseWhere = {
+    createdAt: {
+      gte: startTime,
+    },
+    ...(action ? { action: action as any } : {}),
+    ...(sourceType ? { sourceType: sourceType as any } : {}),
+  }
+  const filters = { endpointType, refundStatus, keyword }
+  const batchSize = Math.max(100, Math.min(500, pageSize * 10))
+  const baseCount = await prisma.pointAccountLog.count({ where: baseWhere })
+
+  const scanPointLogs = async (options: { page?: number } = {}) => {
+    let totalCount = 0
+    let compensableCount = 0
+    let refundCount = 0
+    const pageItems: AdminPointLogListItem[] = []
+    const startIndex = options.page ? (options.page - 1) * pageSize : -1
+    const endIndex = options.page ? startIndex + pageSize : -1
+
+    for (let skip = 0; skip < baseCount; skip += batchSize) {
+      const pointLogs = await prisma.pointAccountLog.findMany({
+        where: baseWhere,
+        orderBy: [
+          { createdAt: 'desc' },
+          { id: 'desc' },
+        ],
+        skip,
+        take: batchSize,
+      })
+      const batchItems = await buildAdminPointLogItems(pointLogs)
+      for (const item of batchItems) {
+        if (!matchesAdminPointLogFilters(item, filters)) {
+          continue
+        }
+        if (item.canCompensate) {
+          compensableCount += 1
+        }
+        if (item.refunded) {
+          refundCount += 1
+        }
+        if (options.page && totalCount >= startIndex && totalCount < endIndex) {
+          pageItems.push(item)
+        }
+        totalCount += 1
+      }
+      if (options.page && pageItems.length >= pageSize) {
+        break
+      }
+    }
+
+    return {
+      totalCount,
+      compensableCount,
+      refundCount,
+      items: pageItems,
+    }
+  }
+
+  const summaryScan = await scanPointLogs()
+  const totalPages = Math.max(1, Math.ceil(summaryScan.totalCount / pageSize))
   const currentPage = Math.min(page, totalPages)
-  const startIndex = (currentPage - 1) * pageSize
-  const items = filteredItems.slice(startIndex, startIndex + pageSize)
+  const pageScan = await scanPointLogs({ page: currentPage })
 
   return serializeMarketingRecord({
     summary: {
-      totalCount,
-      compensableCount: filteredItems.filter((item) => item.canCompensate).length,
-      refundCount: filteredItems.filter((item) => item.refunded).length,
+      totalCount: summaryScan.totalCount,
+      compensableCount: summaryScan.compensableCount,
+      refundCount: summaryScan.refundCount,
       windowDays: days,
       page: currentPage,
       pageSize,
       totalPages,
     },
-    items,
+    items: pageScan.items,
   })
 }
 

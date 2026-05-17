@@ -88,7 +88,7 @@ const emit = defineEmits<{
 const resolvedPageSizeOptions = computed(() => {
   const options = Array.isArray(props.pageSizeOptions) ? props.pageSizeOptions : []
   return Array.from(new Set(
-    options
+    [props.pageSize, ...options]
       .map((item) => Number(item))
       .filter((item) => Number.isFinite(item) && item > 0),
   )).sort((first, second) => first - second)

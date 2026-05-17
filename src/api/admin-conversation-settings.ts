@@ -1,5 +1,4 @@
-import { buildApiUrl } from './http'
-import { readApiData } from './response'
+import { adminGet, adminPut } from './admin-request'
 import {
   createDefaultGenerationProgressSettings,
   createDefaultConversationSettings,
@@ -16,30 +15,15 @@ export interface AdminConversationSettingsBundle {
 
 // 获取后台会话配置。
 export const getAdminConversationSettings = async () => {
-  const response = await fetch(buildApiUrl(ADMIN_CONVERSATION_SETTINGS_API_PATH), {
-    method: 'GET',
-    credentials: 'include',
-    cache: 'no-store',
-  })
-
-  return readApiData<AdminConversationSettingsBundle>(response)
+  return adminGet<AdminConversationSettingsBundle>(ADMIN_CONVERSATION_SETTINGS_API_PATH)
 }
 
 // 保存后台会话配置。
 export const saveAdminConversationSettings = async (payload: AdminConversationSettingsBundle) => {
-  const response = await fetch(buildApiUrl(ADMIN_CONVERSATION_SETTINGS_API_PATH), {
-    method: 'PUT',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      conversationSettings: payload.conversationSettings,
-      generationProgressSettings: payload.generationProgressSettings,
-    }),
-  })
-
-  return readApiData<AdminConversationSettingsBundle>(response, {
+  return adminPut<AdminConversationSettingsBundle>(ADMIN_CONVERSATION_SETTINGS_API_PATH, {
+    conversationSettings: payload.conversationSettings,
+    generationProgressSettings: payload.generationProgressSettings,
+  }, {
     showSuccessMessage: true,
     showErrorMessage: true,
     successMessage: '会话配置已保存',

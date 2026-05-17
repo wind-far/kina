@@ -158,7 +158,9 @@ import {
   createDefaultHomeLayoutSettings,
   createDefaultHomeSideMenuSettings,
   getAdminSystemConfig,
-  saveAdminSystemConfig,
+  saveAdminHomeLayoutSettings,
+  saveAdminPolicySettings,
+  saveAdminSiteInfoSettings,
   type SystemConfigPayload,
 } from '@/api/system-config'
 import { useSystemSettingsStore } from '@/stores/system-settings'
@@ -382,10 +384,36 @@ const buildSystemPayload = (): SystemConfigPayload => ({
   homeLayoutSettings: JSON.parse(JSON.stringify(systemForm.homeLayoutSettings)),
 })
 
+const buildSiteInfoPayload = (): Pick<SystemConfigPayload, 'siteInfo'> => ({
+  siteInfo: buildSystemPayload().siteInfo,
+})
+
+const buildPolicyPayload = (): Pick<SystemConfigPayload, 'policySettings'> => ({
+  policySettings: buildSystemPayload().policySettings,
+})
+
+const buildHomeLayoutPayload = (): Pick<SystemConfigPayload, 'homeSideMenuSettings' | 'homeLayoutSettings'> => {
+  const payload = buildSystemPayload()
+  return {
+    homeSideMenuSettings: payload.homeSideMenuSettings,
+    homeLayoutSettings: payload.homeLayoutSettings,
+  }
+}
+
+const saveCurrentSystemGroup = () => {
+  if (currentTab.value === 'site') {
+    return saveAdminSiteInfoSettings(buildSiteInfoPayload())
+  }
+  if (currentTab.value === 'policy') {
+    return saveAdminPolicySettings(buildPolicyPayload())
+  }
+  return saveAdminHomeLayoutSettings(buildHomeLayoutPayload())
+}
+
 const handleSaveSystemSettings = async () => {
   systemSaving.value = true
   try {
-    const saved = await saveAdminSystemConfig(buildSystemPayload())
+    const saved = await saveCurrentSystemGroup()
     applySystemForm(saved)
     applyPublicSystemSettings(saved)
   } finally {

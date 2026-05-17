@@ -289,7 +289,7 @@ const handleBatchPublish = async () => {
 
   await applyAssetAction('publish', itemIds)
   await loadImageAssets()
-  ElMessage.success(`已发布 ${itemIds.length} 项内容`)
+  ElMessage.success(`已提交 ${itemIds.length} 项内容，等待管理员审核`)
 }
 
 const handleBatchFavorite = async () => {
@@ -345,7 +345,7 @@ const handlePublishArtworkSubmit = async ({
     publishArtworkVisible.value = false
     publishTargetImage.value = null
     await loadImageAssets()
-    ElMessage.success('已发布图片')
+    ElMessage.success('已提交审核，管理员通过后将公开展示')
   } finally {
     publishSubmitting.value = false
   }

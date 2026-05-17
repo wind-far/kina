@@ -154,7 +154,8 @@ import {
   createDefaultHomeLayoutSettings,
   createDefaultHomeSideMenuSettings,
   getAdminSystemConfig,
-  saveAdminSystemConfig,
+  saveAdminHomeLayoutSettings,
+  saveAdminThemeSettings,
   type SystemConfigPayload,
 } from '@/api/system-config'
 import { useSystemSettingsStore } from '@/stores/system-settings'
@@ -724,7 +725,15 @@ const loadThemeSettings = async () => {
 const handleSave = async () => {
   saving.value = true
   try {
-    const result = await saveAdminSystemConfig(cloneSystemForm(systemForm))
+    const payload = cloneSystemForm(systemForm)
+    const result = activeConfigTab.value === 'layout'
+      ? await saveAdminHomeLayoutSettings({
+        homeSideMenuSettings: payload.homeSideMenuSettings,
+        homeLayoutSettings: payload.homeLayoutSettings,
+      })
+      : await saveAdminThemeSettings({
+        globalThemeSettings: payload.globalThemeSettings,
+      })
     assignSystemForm(result || systemForm)
     applyPublicSystemSettings(result || systemForm)
   } finally {

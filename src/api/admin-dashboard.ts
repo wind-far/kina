@@ -1,5 +1,4 @@
-import { buildApiUrl } from './http'
-import { readApiData } from './response'
+import { adminGet } from './admin-request'
 
 export interface DashboardTrendPoint {
   label: string
@@ -33,11 +32,5 @@ const ADMIN_DASHBOARD_OVERVIEW_PATH = '/api/admin/dashboard/overview'
 
 // 查询后台仪表盘概览数据。
 export const getAdminDashboardOverview = async () => {
-  const response = await fetch(buildApiUrl(ADMIN_DASHBOARD_OVERVIEW_PATH), {
-    method: 'GET',
-    credentials: 'include',
-    cache: 'no-store',
-  })
-
-  return readApiData<AdminDashboardOverview>(response)
+  return adminGet<AdminDashboardOverview>(ADMIN_DASHBOARD_OVERVIEW_PATH)
 }

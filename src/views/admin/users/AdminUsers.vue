@@ -7,10 +7,10 @@
     </template>
 
     <div class="admin-grid admin-grid--stats">
-      <AdminStatCard label="当前结果" :value="users.length" hint="当前筛选结果中的用户数量" />
-      <AdminStatCard label="管理员" :value="adminCount" hint="当前筛选结果中的管理员数量" />
-      <AdminStatCard label="普通用户" :value="userCount" hint="当前筛选结果中的普通用户数量" />
-      <AdminStatCard label="已激活" :value="activeCount" hint="当前筛选结果中的激活用户数量" />
+      <AdminStatCard label="当前结果" :value="pagination.total" hint="当前筛选条件命中的用户数量" />
+      <AdminStatCard label="当前页" :value="users.length" hint="当前页加载的用户数量" />
+      <AdminStatCard label="管理员" :value="adminCount" hint="当前页中的管理员数量" />
+      <AdminStatCard label="已激活" :value="activeCount" hint="当前页中的激活用户数量" />
     </div>
 
     <AdminFilterToolbar>
@@ -29,7 +29,7 @@
       </template>
       <template #meta>
         <span class="admin-skill-toolbar__summary">
-          共 {{ users.length }} 个用户
+          共 {{ pagination.total }} 个用户
           <em v-if="activeFilterCount">，已启用 {{ activeFilterCount }} 个筛选</em>
         </span>
       </template>
@@ -57,7 +57,7 @@
               <span class="admin-user-create-card__desc">支持后台新建用户，并直接绑定邮箱验证码或手机验证码登录身份。</span>
             </button>
 
-            <article v-for="user in paginatedUsers" :key="user.id" class="admin-user-card admin-user-card--panel" @click="openUserDetail(user)">
+            <article v-for="user in users" :key="user.id" class="admin-user-card admin-user-card--panel" @click="openUserDetail(user)">
               <div class="admin-user-card__panel-top">
                 <div class="admin-user-card__identity">
                   <div class="admin-user-card__avatar admin-user-card__avatar--square">
@@ -150,8 +150,8 @@
 
                     <div class="admin-user-card__id-row">
                       <span class="admin-user-card__id-label">{{ buildUserDisplayNo(user.id) }}</span>
-                      <span class="admin-status" :class="getStatusTone(user.status)">{{ getStatusLabel(user.status) }}</span>
-                      <span class="admin-chip">{{ user.role === 'ADMIN' ? '管理员' : '普通用户' }}</span>
+                      <AdminStatusBadge category="userStatus" :value="user.status" />
+                      <AdminStatusBadge category="userRole" :value="user.role" />
                     </div>
                   </div>
                 </div>
@@ -197,8 +197,9 @@
           <AdminPagination
             v-model:page="pagination.page"
             v-model:page-size="pagination.pageSize"
-            :total="users.length"
+            :total="pagination.total"
             :disabled="loading"
+            @change="handlePaginationChange"
           />
         </template>
       </div>
@@ -213,38 +214,58 @@
     >
       <div v-if="detailLoading" class="admin-empty">正在加载用户详情...</div>
       <div v-else-if="selectedUserDetail" class="admin-user-drawer">
-        <div class="admin-user-drawer__summary">
-          <div class="admin-user-drawer__summary-main">
-            <div class="admin-user-drawer__identity">
-              <div class="admin-user-card__avatar admin-user-card__avatar--drawer">
-                <img v-if="selectedUserDetail.avatarUrl" :src="selectedUserDetail.avatarUrl" :alt="selectedUserDetail.name || '用户头像'" class="admin-user-card__avatar-image">
-                <div v-else class="admin-user-card__avatar-fallback">{{ getUserInitial(selectedUserDetail.name || selectedUserDetail.maskedEmail || selectedUserDetail.maskedPhone || 'U') }}</div>
+        <div class="admin-user-profile-hero">
+          <div class="admin-user-profile-hero__identity">
+            <div class="admin-user-card__avatar admin-user-card__avatar--drawer">
+              <img v-if="selectedUserDetail.avatarUrl" :src="selectedUserDetail.avatarUrl" :alt="selectedUserDetail.name || '用户头像'" class="admin-user-card__avatar-image">
+              <div v-else class="admin-user-card__avatar-fallback">{{ getUserInitial(selectedUserDetail.name || selectedUserDetail.maskedEmail || selectedUserDetail.maskedPhone || 'U') }}</div>
+            </div>
+            <div class="admin-user-profile-hero__main">
+              <div class="admin-user-drawer__title-row">
+                <h3 class="admin-user-drawer__title">{{ selectedUserDetail.name || '未命名用户' }}</h3>
+                <AdminStatusBadge category="userStatus" :value="selectedUserDetail.status" />
+                <AdminStatusBadge category="userRole" :value="selectedUserDetail.role" />
               </div>
-              <div>
-                <div class="admin-user-drawer__title-row">
-                  <h3 class="admin-user-drawer__title">{{ selectedUserDetail.name || '未命名用户' }}</h3>
-                  <span class="admin-status" :class="getStatusTone(selectedUserDetail.status)">{{ getStatusLabel(selectedUserDetail.status) }}</span>
-                  <span class="admin-chip">{{ selectedUserDetail.role === 'ADMIN' ? '管理员' : '普通用户' }}</span>
-                </div>
-                <div class="admin-user-drawer__meta">用户编号：{{ buildUserDisplayNo(selectedUserDetail.id) }}</div>
-                <div class="admin-user-drawer__meta">用户 ID：{{ selectedUserDetail.id }}</div>
-              </div>
+              <div class="admin-user-profile-hero__meta">{{ buildUserDisplayNo(selectedUserDetail.id) }} · {{ selectedUserDetail.maskedEmail || selectedUserDetail.maskedPhone || '未绑定登录标识' }}</div>
+              <div class="admin-user-profile-hero__id">{{ selectedUserDetail.id }}</div>
             </div>
           </div>
-          <div class="admin-user-drawer__summary-stats">
-            <span class="admin-chip">资源 {{ selectedUserDetail.assetCount }}</span>
-            <span class="admin-chip">生成 {{ selectedUserDetail.generationRecordCount }}</span>
-            <span class="admin-chip">积分 {{ selectedUserDetail.currentPointBalance }}</span>
-            <span class="admin-chip">会话 {{ selectedUserDetail.sessionCount }}</span>
+          <div class="admin-user-profile-hero__actions">
+            <button class="admin-button admin-button--secondary" type="button" @click="openEditDialog(selectedUserDetail)">编辑资料</button>
+            <button class="admin-button admin-button--secondary" type="button" @click="openMembershipDialog(selectedUserDetail)">调整会员</button>
+            <button class="admin-button admin-button--secondary" type="button" @click="openPointDialog(selectedUserDetail)">调整积分</button>
           </div>
         </div>
 
-        <div class="admin-grid admin-grid--two admin-user-drawer__grid">
-          <div class="admin-card admin-card--drawer">
+        <div class="admin-user-profile-metrics">
+          <div class="admin-user-profile-metric">
+            <span>当前积分</span>
+            <strong>{{ selectedUserDetail.currentPointBalance }}</strong>
+          </div>
+          <div class="admin-user-profile-metric">
+            <span>有效会话</span>
+            <strong>{{ selectedUserDetail.sessionCount }}</strong>
+          </div>
+          <div class="admin-user-profile-metric">
+            <span>认证身份</span>
+            <strong>{{ selectedUserDetail.verifiedAuthIdentityCount }}/{{ selectedUserDetail.authIdentityCount }}</strong>
+          </div>
+          <div class="admin-user-profile-metric">
+            <span>资源资产</span>
+            <strong>{{ selectedUserDetail.assetCount }}</strong>
+          </div>
+          <div class="admin-user-profile-metric">
+            <span>生成记录</span>
+            <strong>{{ selectedUserDetail.generationRecordCount }}</strong>
+          </div>
+        </div>
+
+        <div class="admin-user-profile-grid">
+          <div class="admin-card admin-card--drawer admin-user-profile-card">
             <div class="admin-card__header">
               <div>
                 <h4 class="admin-card__title">账号信息</h4>
-                <div class="admin-card__desc">查看基础资料、联系方式与当前账号状态。</div>
+                <div class="admin-card__desc">来自 app_users 的基础资料、状态和生命周期字段。</div>
               </div>
             </div>
             <div class="admin-card__content admin-user-drawer__content">
@@ -261,17 +282,29 @@
                 <strong class="admin-user-drawer__field-value">{{ selectedUserDetail.maskedPhone || '未绑定手机号' }}</strong>
               </div>
               <div class="admin-user-drawer__field">
+                <span class="admin-user-drawer__field-label">账号角色</span>
+                <strong class="admin-user-drawer__field-value">{{ selectedUserDetail.role === 'ADMIN' ? '管理员' : '普通用户' }}</strong>
+              </div>
+              <div class="admin-user-drawer__field">
+                <span class="admin-user-drawer__field-label">账号状态</span>
+                <strong class="admin-user-drawer__field-value">{{ getUserStatusLabel(selectedUserDetail.status) }}</strong>
+              </div>
+              <div class="admin-user-drawer__field">
+                <span class="admin-user-drawer__field-label">创建时间</span>
+                <strong class="admin-user-drawer__field-value">{{ formatDate(selectedUserDetail.createdAt) }}</strong>
+              </div>
+              <div class="admin-user-drawer__field">
                 <span class="admin-user-drawer__field-label">最近更新时间</span>
                 <strong class="admin-user-drawer__field-value">{{ formatDate(selectedUserDetail.updatedAt) }}</strong>
               </div>
             </div>
           </div>
 
-          <div class="admin-card admin-card--drawer">
+          <div class="admin-card admin-card--drawer admin-user-profile-card">
             <div class="admin-card__header">
               <div>
-                <h4 class="admin-card__title">当前订阅</h4>
-                <div class="admin-card__desc">查看当前会员等级、有效期与最近订阅来源。</div>
+                <h4 class="admin-card__title">会员权益</h4>
+                <div class="admin-card__desc">来自 user_subscriptions 与 membership_orders 的当前权益。</div>
               </div>
             </div>
             <div class="admin-card__content admin-user-drawer__content">
@@ -284,12 +317,20 @@
                   </strong>
                 </div>
                 <div class="admin-user-drawer__field">
+                  <span class="admin-user-drawer__field-label">订阅状态</span>
+                  <strong class="admin-user-drawer__field-value">{{ selectedUserDetail.activeSubscription.status }}</strong>
+                </div>
+                <div class="admin-user-drawer__field">
                   <span class="admin-user-drawer__field-label">开始时间</span>
                   <strong class="admin-user-drawer__field-value">{{ formatDate(selectedUserDetail.activeSubscription.startTime) }}</strong>
                 </div>
                 <div class="admin-user-drawer__field">
                   <span class="admin-user-drawer__field-label">结束时间</span>
                   <strong class="admin-user-drawer__field-value">{{ formatDate(selectedUserDetail.activeSubscription.endTime) }}</strong>
+                </div>
+                <div class="admin-user-drawer__field">
+                  <span class="admin-user-drawer__field-label">月赠积分</span>
+                  <strong class="admin-user-drawer__field-value">{{ selectedUserDetail.activeSubscription.level?.monthlyBonusPoints ?? 0 }}</strong>
                 </div>
                 <div class="admin-user-drawer__field">
                   <span class="admin-user-drawer__field-label">订阅来源</span>
@@ -301,11 +342,57 @@
           </div>
         </div>
 
+        <div class="admin-user-profile-grid">
+          <div class="admin-card admin-card--drawer admin-user-profile-card">
+            <div class="admin-card__header">
+              <div>
+                <h4 class="admin-card__title">内容沉淀</h4>
+                <div class="admin-card__desc">资源发布审核与生成任务状态，用于判断创作活跃和风险。</div>
+              </div>
+            </div>
+            <div class="admin-card__content">
+              <div class="admin-user-profile-breakdown">
+                <div><span>已发布</span><strong>{{ selectedUserDetail.assetBreakdown.published }}</strong></div>
+                <div><span>草稿</span><strong>{{ selectedUserDetail.assetBreakdown.draft }}</strong></div>
+                <div><span>待审核</span><strong>{{ selectedUserDetail.assetBreakdown.pendingReview }}</strong></div>
+                <div><span>审核通过</span><strong>{{ selectedUserDetail.assetBreakdown.approved }}</strong></div>
+                <div><span>生成成功</span><strong>{{ selectedUserDetail.generationBreakdown.completed }}</strong></div>
+                <div><span>生成失败</span><strong>{{ selectedUserDetail.generationBreakdown.failed }}</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="admin-card admin-card--drawer admin-user-profile-card">
+            <div class="admin-card__header">
+              <div>
+                <h4 class="admin-card__title">最近会话</h4>
+                <div class="admin-card__desc">来自 app_sessions 的登录方式、IP、有效期与活跃时间。</div>
+              </div>
+              <button class="admin-button admin-button--secondary" type="button" @click="handleResetLoginState(selectedUserDetail)">清空登录态</button>
+            </div>
+            <div class="admin-card__content">
+              <div v-if="!selectedUserDetail.recentSessions.length" class="admin-empty admin-empty--inline">暂无会话记录。</div>
+              <div v-else class="admin-user-timeline">
+                <div v-for="session in selectedUserDetail.recentSessions" :key="session.id" class="admin-user-timeline__item">
+                  <div>
+                    <div class="admin-user-timeline__title">{{ getAuthMethodLabel(session.authMethodType) }} · {{ session.ipAddress || '未知 IP' }}</div>
+                    <div class="admin-user-timeline__meta">{{ session.identifierSnapshot || '无登录标识快照' }}</div>
+                  </div>
+                  <div class="admin-user-timeline__side">
+                    <span class="admin-status" :class="session.revokedAt ? 'admin-status--danger' : 'admin-status--success'">{{ session.revokedAt ? '已失效' : '有效' }}</span>
+                    <span>{{ formatDate(session.lastActiveAt || session.createdAt) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="admin-card admin-card--drawer">
           <div class="admin-card__header">
             <div>
               <h4 class="admin-card__title">登录身份</h4>
-              <div class="admin-card__desc">当前项目使用验证码 / OAuth 方式登录，因此这里展示的是登录身份绑定，而不是密码体系。</div>
+              <div class="admin-card__desc">来自 app_user_auth_identities，展示验证码和 OAuth 身份绑定。</div>
             </div>
           </div>
           <div class="admin-card__content">
@@ -321,6 +408,30 @@
                     {{ identity.isVerified ? '已验证' : '未验证' }}
                   </span>
                   <span class="admin-user-identity-item__meta">{{ formatDate(identity.verifiedAt || identity.createdAt) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-card admin-card--drawer">
+          <div class="admin-card__header">
+            <div>
+              <h4 class="admin-card__title">积分流水</h4>
+              <div class="admin-card__desc">展示最近 8 条 point_account_logs，用于核对后台调整、充值和权益赠送。</div>
+            </div>
+          </div>
+          <div class="admin-card__content">
+            <div v-if="!selectedUserDetail.recentPointLogs.length" class="admin-empty admin-empty--inline">暂无积分流水。</div>
+            <div v-else class="admin-user-timeline">
+              <div v-for="item in selectedUserDetail.recentPointLogs" :key="item.id" class="admin-user-timeline__item">
+                <div>
+                  <div class="admin-user-timeline__title">{{ getPointActionLabel(item.action) }} {{ item.changeAmount }} 积分 · 余额 {{ item.balanceAfter }}</div>
+                  <div class="admin-user-timeline__meta">{{ item.accountNo }} · {{ item.sourceType }}<template v-if="item.remark"> · {{ item.remark }}</template></div>
+                </div>
+                <div class="admin-user-timeline__side">
+                  <span class="admin-status" :class="item.action === 'DECREASE' ? 'admin-status--warning' : 'admin-status--success'">{{ item.changeType }}</span>
+                  <span>{{ formatDate(item.createdAt) }}</span>
                 </div>
               </div>
             </div>
@@ -371,15 +482,13 @@
       </div>
     </el-drawer>
 
-    <div v-if="editDialogVisible" class="admin-dialog-mask" @click="closeEditDialog">
-      <div class="admin-dialog admin-dialog--provider-form admin-user-manage-dialog" @click.stop>
-        <div class="admin-dialog__header">
-          <div>
-            <h3 class="admin-dialog__title">{{ isCreateMode ? '创建用户' : '编辑用户' }}</h3>
-            <div class="admin-dialog__desc">{{ isCreateMode ? '填写基础资料并绑定至少一种登录身份。' : '更新昵称、联系方式和账号状态。' }}</div>
-          </div>
-          <button class="admin-dialog__close" type="button" @click="closeEditDialog">×</button>
-        </div>
+    <AdminDialog
+      :visible="editDialogVisible"
+      :title="isCreateMode ? '创建用户' : '编辑用户'"
+      :description="isCreateMode ? '填写基础资料并绑定至少一种登录身份。' : '更新昵称、联系方式和账号状态。'"
+      panel-class="admin-dialog--provider-form admin-user-manage-dialog"
+      @close="closeEditDialog"
+    >
         <form class="admin-dialog__body admin-form" @submit.prevent="handleSubmitEdit">
           <div class="admin-user-dialog-hero">
             <span class="admin-chip">{{ isCreateMode ? '创建账号' : '资料编辑' }}</span>
@@ -392,7 +501,7 @@
             </div>
             <div class="admin-user-dialog-summary__item">
               <span class="admin-user-dialog-summary__label">账号状态</span>
-              <strong class="admin-user-dialog-summary__value">{{ getStatusLabel(editForm.status) }}</strong>
+              <strong class="admin-user-dialog-summary__value">{{ getUserStatusLabel(editForm.status) }}</strong>
             </div>
           </div>
           <div class="admin-form__grid">
@@ -428,23 +537,22 @@
               <input v-model.trim="editForm.avatarUrl" class="admin-input" type="text" placeholder="https://...">
             </div>
           </div>
-          <div class="admin-form__footer">
-            <button class="admin-button admin-button--secondary" type="button" @click="closeEditDialog">取消</button>
-            <button class="admin-button admin-button--primary" type="submit" :disabled="submitting">{{ submitting ? (isCreateMode ? '创建中...' : '保存中...') : (isCreateMode ? '创建用户' : '保存资料') }}</button>
-          </div>
+          <AdminFormActions
+            :submit-text="isCreateMode ? '创建用户' : '保存资料'"
+            :submitting-text="isCreateMode ? '创建中...' : '保存中...'"
+            :submitting="submitting"
+            @cancel="closeEditDialog"
+          />
         </form>
-      </div>
-    </div>
+    </AdminDialog>
 
-    <div v-if="pointDialogVisible" class="admin-dialog-mask" @click="closePointDialog">
-      <div class="admin-dialog admin-dialog--provider-form admin-user-manage-dialog" @click.stop>
-        <div class="admin-dialog__header">
-          <div>
-            <h3 class="admin-dialog__title">调整积分</h3>
-            <div class="admin-dialog__desc">直接增加或扣减用户积分，变更会记入统一积分流水。</div>
-          </div>
-          <button class="admin-dialog__close" type="button" @click="closePointDialog">×</button>
-        </div>
+    <AdminDialog
+      :visible="pointDialogVisible"
+      title="调整积分"
+      description="直接增加或扣减用户积分，变更会记入统一积分流水。"
+      panel-class="admin-dialog--provider-form admin-user-manage-dialog"
+      @close="closePointDialog"
+    >
         <form class="admin-dialog__body admin-form" @submit.prevent="handleSubmitPointAdjust">
           <div class="admin-user-dialog-hero">
             <span class="admin-chip">积分账本</span>
@@ -494,23 +602,22 @@
               <textarea v-model.trim="pointForm.remark" class="admin-textarea" rows="4" placeholder="请输入调整原因，例如：活动补发积分"></textarea>
             </div>
           </div>
-          <div class="admin-form__footer">
-            <button class="admin-button admin-button--secondary" type="button" @click="closePointDialog">取消</button>
-            <button class="admin-button admin-button--primary" type="submit" :disabled="submitting">{{ submitting ? '处理中...' : '确认调整' }}</button>
-          </div>
+          <AdminFormActions
+            submit-text="确认调整"
+            submitting-text="处理中..."
+            :submitting="submitting"
+            @cancel="closePointDialog"
+          />
         </form>
-      </div>
-    </div>
+    </AdminDialog>
 
-    <div v-if="membershipDialogVisible" class="admin-dialog-mask" @click="closeMembershipDialog">
-      <div class="admin-dialog admin-dialog--provider-form admin-user-manage-dialog" @click.stop>
-        <div class="admin-dialog__header">
-          <div>
-            <h3 class="admin-dialog__title">调整会员</h3>
-            <div class="admin-dialog__desc">直接为用户发放会员权益，并可同步赠送积分。</div>
-          </div>
-          <button class="admin-dialog__close" type="button" @click="closeMembershipDialog">×</button>
-        </div>
+    <AdminDialog
+      :visible="membershipDialogVisible"
+      title="调整会员"
+      description="直接为用户发放会员权益，并可同步赠送积分。"
+      panel-class="admin-dialog--provider-form admin-user-manage-dialog"
+      @close="closeMembershipDialog"
+    >
         <form class="admin-dialog__body admin-form" @submit.prevent="handleSubmitMembershipAdjust">
           <div class="admin-user-dialog-hero">
             <span class="admin-chip">会员发放</span>
@@ -592,23 +699,22 @@
               <textarea v-model.trim="membershipForm.remark" class="admin-textarea" rows="4" placeholder="请输入会员发放备注"></textarea>
             </div>
           </div>
-          <div class="admin-form__footer">
-            <button class="admin-button admin-button--secondary" type="button" @click="closeMembershipDialog">取消</button>
-            <button class="admin-button admin-button--primary" type="submit" :disabled="submitting">{{ submitting ? '处理中...' : '确认发放' }}</button>
-          </div>
+          <AdminFormActions
+            submit-text="确认发放"
+            submitting-text="处理中..."
+            :submitting="submitting"
+            @cancel="closeMembershipDialog"
+          />
         </form>
-      </div>
-    </div>
+    </AdminDialog>
 
-    <div v-if="membershipOrdersDialogVisible" class="admin-dialog-mask" @click="closeMembershipOrdersDialog">
-      <div class="admin-dialog admin-dialog--provider-form admin-user-manage-dialog admin-user-manage-dialog--wide" @click.stop>
-        <div class="admin-dialog__header">
-          <div>
-            <h3 class="admin-dialog__title">订阅记录</h3>
-            <div class="admin-dialog__desc">查看该用户的会员订单历史与后台调整记录。</div>
-          </div>
-          <button class="admin-dialog__close" type="button" @click="closeMembershipOrdersDialog">×</button>
-        </div>
+    <AdminDialog
+      :visible="membershipOrdersDialogVisible"
+      title="订阅记录"
+      description="查看该用户的会员订单历史与后台调整记录。"
+      panel-class="admin-dialog--provider-form admin-user-manage-dialog admin-user-manage-dialog--wide"
+      @close="closeMembershipOrdersDialog"
+    >
         <div class="admin-dialog__body admin-form">
           <div class="admin-user-dialog-hero">
             <span class="admin-chip">订阅记录</span>
@@ -644,22 +750,25 @@
             <button class="admin-button admin-button--secondary" type="button" @click="closeMembershipOrdersDialog">关闭</button>
           </div>
         </div>
-      </div>
-    </div>
+    </AdminDialog>
   </AdminPageContainer>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { Coin, Delete, DocumentCopy, Edit, Key, Lightning, MoreFilled, Star, Tickets, User } from '@element-plus/icons-vue'
 import AdminFilterChips, { type AdminFilterChipGroup } from '@/components/admin/common/AdminFilterChips.vue'
 import AdminFilterToolbar from '@/components/admin/common/AdminFilterToolbar.vue'
+import AdminDialog from '@/components/admin/common/AdminDialog.vue'
+import AdminFormActions from '@/components/admin/common/AdminFormActions.vue'
 import AdminPagination from '@/components/admin/common/AdminPagination.vue'
 import AdminStatCard from '@/components/admin/common/AdminStatCard.vue'
+import AdminStatusBadge from '@/components/admin/common/AdminStatusBadge.vue'
 import AdminPageContainer from '@/components/admin/layout/AdminPageContainer.vue'
+import { useAdminConfirm } from '@/composables/admin/useAdminConfirm'
 import { useAdminListFilters } from '@/composables/useAdminListFilters'
-import { useAdminPagination } from '@/composables/useAdminPagination'
+import { resolveAdminDictionaryItem } from '@/config/adminDictionaries'
 import {
   adjustAdminUserMembership,
   adjustAdminUserPoints,
@@ -689,6 +798,7 @@ const detailVisible = ref(false)
 const selectedUserDetail = ref<AdminUserDetail | null>(null)
 const membershipOrders = ref<AdminUserMembershipOrderItem[]>([])
 const selectedUserId = ref('')
+const { confirmDanger } = useAdminConfirm()
 
 const editDialogVisible = ref(false)
 const editMode = ref<'create' | 'edit'>('edit')
@@ -716,8 +826,10 @@ const { activeFilterCount, resetFilters: resetFilterValues } = useAdminListFilte
   filters,
   defaults: filterDefaults,
 })
-const { pagination, sliceItems, resetPage } = useAdminPagination({
-  initialPageSize: 10,
+const pagination = reactive({
+  page: 1,
+  pageSize: 10,
+  total: 0,
 })
 
 const editForm = reactive({
@@ -748,15 +860,15 @@ const membershipForm = reactive({
 
 const roleOptions: Array<{ label: string; value: 'ALL' | 'USER' | 'ADMIN' }> = [
   { label: '全部角色', value: 'ALL' },
-  { label: '管理员', value: 'ADMIN' },
-  { label: '普通用户', value: 'USER' },
+  { label: resolveAdminDictionaryItem('userRole', 'ADMIN').label, value: 'ADMIN' },
+  { label: resolveAdminDictionaryItem('userRole', 'USER').label, value: 'USER' },
 ]
 
 const statusOptions: Array<{ label: string; value: 'ALL' | 'ANONYMOUS' | 'ACTIVE' | 'DISABLED' }> = [
   { label: '全部状态', value: 'ALL' },
-  { label: '匿名', value: 'ANONYMOUS' },
-  { label: '已激活', value: 'ACTIVE' },
-  { label: '已禁用', value: 'DISABLED' },
+  { label: resolveAdminDictionaryItem('userStatus', 'ANONYMOUS').label, value: 'ANONYMOUS' },
+  { label: resolveAdminDictionaryItem('userStatus', 'ACTIVE').label, value: 'ACTIVE' },
+  { label: resolveAdminDictionaryItem('userStatus', 'DISABLED').label, value: 'DISABLED' },
 ]
 
 const filterChipGroups = computed((): AdminFilterChipGroup[] => [
@@ -775,9 +887,7 @@ const filterChipGroups = computed((): AdminFilterChipGroup[] => [
 ])
 
 const adminCount = computed(() => users.value.filter(user => user.role === 'ADMIN').length)
-const userCount = computed(() => users.value.filter(user => user.role !== 'ADMIN').length)
 const activeCount = computed(() => users.value.filter(user => user.status === 'ACTIVE').length)
-const paginatedUsers = computed(() => sliceItems(users.value))
 const isCreateMode = computed(() => editMode.value === 'create')
 const pointCurrentBalance = computed(() => {
   if (selectedUserDetail.value?.id === pointForm.id) {
@@ -822,7 +932,15 @@ const currentMembershipLevelLabel = computed(() => {
 const loadUsers = async () => {
   loading.value = true
   try {
-    users.value = await listAdminUsers(filters)
+    const result = await listAdminUsers({
+      ...filters,
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+    })
+    users.value = result.items
+    pagination.page = result.summary.page
+    pagination.pageSize = result.summary.pageSize
+    pagination.total = result.summary.totalCount
   } finally {
     loading.value = false
   }
@@ -870,6 +988,7 @@ const handleQuickRoleToggle = async (user: AdminUserItem) => {
 }
 
 const handleSearch = () => {
+  pagination.page = 1
   void loadUsers()
 }
 
@@ -878,6 +997,7 @@ const setRole = (role: 'ALL' | 'USER' | 'ADMIN') => {
     return
   }
   filters.role = role
+  pagination.page = 1
   void loadUsers()
 }
 
@@ -886,6 +1006,7 @@ const setStatus = (status: 'ALL' | 'ANONYMOUS' | 'ACTIVE' | 'DISABLED') => {
     return
   }
   filters.status = status
+  pagination.page = 1
   void loadUsers()
 }
 
@@ -901,12 +1022,15 @@ const handleChipSelect = (payload: { groupKey: string; value: string }) => {
 
 const resetFilters = () => {
   resetFilterValues()
+  pagination.page = 1
   void loadUsers()
 }
 
-watch(() => pagination.pageSize, () => {
-  resetPage()
-})
+const handlePaginationChange = (payload: { page: number; pageSize: number }) => {
+  pagination.page = payload.page
+  pagination.pageSize = payload.pageSize
+  void loadUsers()
+}
 
 const getUserInitial = (value: string) => {
   return String(value || 'U').trim().slice(0, 1).toUpperCase() || 'U'
@@ -924,22 +1048,7 @@ const getUserSecondaryLabel = (user: AdminUserItem) => {
   return user.maskedEmail || user.maskedPhone || '未绑定邮箱/手机号'
 }
 
-const getStatusTone = (status: string) => {
-  if (status === 'ACTIVE') {
-    return 'admin-status--success'
-  }
-  if (status === 'DISABLED') {
-    return 'admin-status--danger'
-  }
-  return 'admin-status--warning'
-}
-
-const getStatusLabel = (status: string) => {
-  if (status === 'ACTIVE') return '已激活'
-  if (status === 'DISABLED') return '已禁用'
-  if (status === 'ANONYMOUS') return '匿名'
-  return status || '未知'
-}
+const getUserStatusLabel = (status: string) => resolveAdminDictionaryItem('userStatus', status).label
 
 const getAuthMethodLabel = (methodType: string) => {
   if (methodType === 'ADMIN_PASSWORD') return '管理员账号密码'
@@ -950,6 +1059,13 @@ const getAuthMethodLabel = (methodType: string) => {
   if (methodType === 'GOOGLE_OAUTH') return 'Google 登录'
   if (methodType === 'CUSTOM_OAUTH') return '自定义 OAuth'
   return methodType || '未知方式'
+}
+
+const getPointActionLabel = (action: string) => {
+  if (action === 'DECREASE') return '扣减'
+  if (action === 'FREEZE') return '冻结'
+  if (action === 'UNFREEZE') return '解冻'
+  return '增加'
 }
 
 const resolveDurationUnitLabel = (value: string) => {
@@ -1168,10 +1284,10 @@ const handleSubmitMembershipAdjust = async () => {
 }
 
 const handleDeleteUser = async (user: AdminUserItem | AdminUserDetail) => {
-  await ElMessageBox.confirm(`确定删除用户“${user.name || buildUserDisplayNo(user.id)}”吗？该操作不可恢复。`, '删除确认', {
-    type: 'warning',
-    confirmButtonText: '确认删除',
-    cancelButtonText: '取消',
+  await confirmDanger({
+    title: '删除确认',
+    message: `确定删除用户“${user.name || buildUserDisplayNo(user.id)}”吗？该操作不可恢复。`,
+    confirmText: '确认删除',
   })
   submitting.value = true
   try {
@@ -1187,10 +1303,10 @@ const handleDeleteUser = async (user: AdminUserItem | AdminUserDetail) => {
 }
 
 const handleResetLoginState = async (user: AdminUserItem | AdminUserDetail) => {
-  await ElMessageBox.confirm(`确定清空用户“${user.name || buildUserDisplayNo(user.id)}”的当前登录会话吗？执行后该用户需要重新登录。`, '清空登录态', {
-    type: 'warning',
-    confirmButtonText: '确认清空',
-    cancelButtonText: '取消',
+  await confirmDanger({
+    title: '清空登录态',
+    message: `确定清空用户“${user.name || buildUserDisplayNo(user.id)}”的当前登录会话吗？执行后该用户需要重新登录。`,
+    confirmText: '确认清空',
   })
   submitting.value = true
   try {
@@ -1252,6 +1368,263 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.admin-user-table {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-user-table__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-block-secondary-default) 74%, transparent);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.admin-user-table__head,
+.admin-user-row {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) 150px minmax(220px, 0.7fr) minmax(190px, 0.65fr) 130px 184px 150px;
+  gap: 16px;
+  align-items: center;
+}
+
+.admin-user-table__head {
+  min-height: 38px;
+  padding: 0 16px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-user-row {
+  min-height: 132px;
+  padding: 16px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-surface) 94%, var(--bg-block-secondary-default));
+  cursor: pointer;
+  transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease;
+}
+
+.admin-user-row:hover {
+  border-color: color-mix(in srgb, var(--brand-main-default) 24%, var(--line-divider, #00000014));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.admin-user-row__identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.admin-user-row__identity-main,
+.admin-user-row__status,
+.admin-user-row__times {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-user-row__title {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user-row__meta,
+.admin-user-row__id,
+.admin-user-row__status span,
+.admin-user-row__times {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.admin-user-row__id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user-row__badges,
+.admin-user-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-user-row__actions {
+  justify-content: flex-end;
+}
+
+.admin-user-row__contact,
+.admin-user-row__benefits,
+.admin-user-row__metrics {
+  display: grid;
+  gap: 7px;
+}
+
+.admin-user-row__contact div,
+.admin-user-row__benefits div,
+.admin-user-row__metrics div {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-block-secondary-default) 74%, transparent);
+}
+
+.admin-user-row__contact span,
+.admin-user-row__benefits span,
+.admin-user-row__metrics span,
+.admin-user-profile-metric span,
+.admin-user-profile-breakdown span {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.admin-user-row__contact strong,
+.admin-user-row__benefits strong,
+.admin-user-row__metrics strong {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user-profile-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px;
+  border: 1px solid var(--line-divider, #00000014);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-surface) 94%, var(--bg-block-secondary-default));
+}
+
+.admin-user-profile-hero__identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.admin-user-profile-hero__main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-user-profile-hero__meta,
+.admin-user-profile-hero__id,
+.admin-user-timeline__meta,
+.admin-user-timeline__side {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.admin-user-profile-hero__id {
+  overflow: hidden;
+  max-width: 520px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user-profile-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.admin-user-profile-metrics,
+.admin-user-profile-breakdown {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-user-profile-metric,
+.admin-user-profile-breakdown div {
+  min-height: 76px;
+  padding: 13px;
+  border: 1px solid var(--line-divider, #00000012);
+  border-radius: 10px;
+  background: var(--bg-block-secondary-default);
+}
+
+.admin-user-profile-metric strong,
+.admin-user-profile-breakdown strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.admin-user-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.admin-user-profile-breakdown {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-user-timeline {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-user-timeline__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 58px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--bg-block-secondary-default);
+}
+
+.admin-user-timeline__title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.admin-user-timeline__meta {
+  margin-top: 3px;
+  word-break: break-word;
+}
+
+.admin-user-timeline__side {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
 .admin-users-board--compact {
   border-radius: 16px;
 }
@@ -1759,23 +2132,134 @@ onMounted(async () => {
   min-height: 120px;
 }
 
-:deep(.admin-user-detail-drawer .el-drawer) {
-  background: var(--bg-body);
+:global(.admin-user-detail-drawer.el-drawer),
+:global(.admin-user-detail-drawer .el-drawer) {
+  --admin-user-detail-bg: var(--bg-body);
+  --admin-user-detail-card: var(--bg-surface);
+  --admin-user-detail-panel: var(--bg-block-secondary-default);
+  --admin-user-detail-border: var(--line-divider, rgba(15, 23, 42, 0.10));
+  --admin-user-detail-primary: var(--text-primary);
+  --admin-user-detail-secondary: var(--text-secondary);
+  --admin-user-detail-tertiary: var(--text-tertiary);
+  background: var(--admin-user-detail-bg);
+  color: var(--admin-user-detail-primary);
 }
 
-:deep(.admin-user-detail-drawer .el-drawer__header) {
+:global(html[data-theme='dark'] .admin-user-detail-drawer.el-drawer),
+:global(html[data-theme='dark'] .admin-user-detail-drawer .el-drawer),
+:global(body[lv-theme='dark'] .admin-user-detail-drawer.el-drawer),
+:global(body[lv-theme='dark'] .admin-user-detail-drawer .el-drawer) {
+  --admin-user-detail-bg: #121217;
+  --admin-user-detail-card: #1b1c21;
+  --admin-user-detail-panel: #22242b;
+  --admin-user-detail-border: rgba(224, 245, 255, 0.14);
+  --admin-user-detail-primary: rgba(245, 251, 255, 0.94);
+  --admin-user-detail-secondary: rgba(224, 245, 255, 0.62);
+  --admin-user-detail-tertiary: rgba(224, 245, 255, 0.42);
+}
+
+:global(html[data-theme='light'] .admin-user-detail-drawer.el-drawer),
+:global(html[data-theme='light'] .admin-user-detail-drawer .el-drawer),
+:global(body[lv-theme='light'] .admin-user-detail-drawer.el-drawer),
+:global(body[lv-theme='light'] .admin-user-detail-drawer .el-drawer) {
+  --admin-user-detail-bg: #f7f8fb;
+  --admin-user-detail-card: #ffffff;
+  --admin-user-detail-panel: #f8fafc;
+  --admin-user-detail-border: #e5e7eb;
+  --admin-user-detail-primary: #111827;
+  --admin-user-detail-secondary: #667085;
+  --admin-user-detail-tertiary: #8a94a6;
+}
+
+:global(.admin-user-detail-drawer.el-drawer .el-drawer__header),
+:global(.admin-user-detail-drawer .el-drawer__header) {
   margin-bottom: 0;
   padding: 22px 24px 0;
 }
 
-:deep(.admin-user-detail-drawer .el-drawer__title) {
-  color: var(--text-primary);
+:global(.admin-user-detail-drawer.el-drawer .el-drawer__title),
+:global(.admin-user-detail-drawer .el-drawer__title) {
+  color: var(--admin-user-detail-primary);
   font-size: 18px;
   font-weight: 700;
 }
 
-:deep(.admin-user-detail-drawer .el-drawer__body) {
+:global(.admin-user-detail-drawer.el-drawer .el-drawer__close-btn),
+:global(.admin-user-detail-drawer .el-drawer__close-btn) {
+  color: var(--admin-user-detail-primary);
+}
+
+:global(.admin-user-detail-drawer.el-drawer .el-drawer__body),
+:global(.admin-user-detail-drawer .el-drawer__body) {
   padding: 20px 24px 24px;
+}
+
+.admin-user-drawer {
+  color: var(--admin-user-detail-primary);
+}
+
+.admin-user-drawer .admin-user-profile-hero,
+.admin-user-drawer .admin-card--drawer {
+  border-color: var(--admin-user-detail-border);
+  background: var(--admin-user-detail-card);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+}
+
+:global(html[data-theme='dark']) .admin-user-drawer .admin-user-profile-hero,
+:global(html[data-theme='dark']) .admin-user-drawer .admin-card--drawer,
+:global(body[lv-theme='dark']) .admin-user-drawer .admin-user-profile-hero,
+:global(body[lv-theme='dark']) .admin-user-drawer .admin-card--drawer {
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.24);
+}
+
+.admin-user-drawer .admin-user-profile-metric,
+.admin-user-drawer .admin-user-profile-breakdown div,
+.admin-user-drawer .admin-user-timeline__item,
+.admin-user-drawer .admin-user-identity-item,
+.admin-user-drawer .admin-user-order-item,
+.admin-user-drawer .admin-empty--inline {
+  border-color: var(--admin-user-detail-border);
+  background: var(--admin-user-detail-panel);
+}
+
+.admin-user-drawer .admin-user-profile-hero__meta,
+.admin-user-drawer .admin-user-profile-hero__id,
+.admin-user-drawer .admin-user-drawer__meta,
+.admin-user-drawer .admin-user-timeline__meta,
+.admin-user-drawer .admin-user-timeline__side,
+.admin-user-drawer .admin-card__desc,
+.admin-user-drawer .admin-empty {
+  color: var(--admin-user-detail-secondary);
+}
+
+.admin-user-drawer .admin-user-drawer__title,
+.admin-user-drawer .admin-card__title,
+.admin-user-drawer .admin-user-drawer__field-value,
+.admin-user-drawer .admin-user-profile-metric strong,
+.admin-user-drawer .admin-user-profile-breakdown strong,
+.admin-user-drawer .admin-user-timeline__title,
+.admin-user-drawer .admin-user-identity-item__title,
+.admin-user-drawer .admin-user-order-item__title {
+  color: var(--admin-user-detail-primary);
+}
+
+.admin-user-drawer .admin-user-drawer__field-label,
+.admin-user-drawer .admin-user-profile-metric span,
+.admin-user-drawer .admin-user-profile-breakdown span,
+.admin-user-drawer .admin-user-identity-item__meta,
+.admin-user-drawer .admin-user-order-item__meta {
+  color: var(--admin-user-detail-tertiary);
+}
+
+.admin-user-drawer .admin-button--secondary {
+  border-color: var(--admin-user-detail-border);
+  background: var(--admin-user-detail-panel);
+  color: var(--admin-user-detail-primary);
+}
+
+.admin-user-drawer .admin-button--secondary:hover {
+  border-color: color-mix(in srgb, var(--admin-user-detail-primary) 20%, var(--admin-user-detail-border));
+  background: color-mix(in srgb, var(--admin-user-detail-panel) 78%, var(--admin-user-detail-primary));
 }
 
 :deep(.admin-user-card-dropdown.el-popper) {
@@ -1818,6 +2302,28 @@ onMounted(async () => {
   color: #ff5a5f;
 }
 
+@media (max-width: 1360px) and (min-width: 961px) {
+  .admin-user-table__head,
+  .admin-user-row {
+    grid-template-columns: minmax(300px, 1fr) 144px minmax(210px, 0.8fr) minmax(180px, 0.7fr);
+  }
+
+  .admin-user-table__head span:nth-child(n + 5),
+  .admin-user-row__metrics,
+  .admin-user-row__times,
+  .admin-user-row__actions {
+    grid-column: 1 / -1;
+  }
+
+  .admin-user-row__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-user-row__actions {
+    justify-content: flex-start;
+  }
+}
+
 @media (min-width: 640px) {
   .admin-user-list--grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1843,6 +2349,34 @@ onMounted(async () => {
 }
 
 @media (max-width: 960px) {
+  .admin-user-table__toolbar,
+  .admin-user-profile-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-user-table__head {
+    display: none;
+  }
+
+  .admin-user-row,
+  .admin-user-profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-user-row__contact,
+  .admin-user-row__benefits,
+  .admin-user-row__metrics,
+  .admin-user-profile-metrics,
+  .admin-user-profile-breakdown {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-user-row__actions,
+  .admin-user-profile-hero__actions {
+    justify-content: flex-start;
+  }
+
   .admin-user-dialog-summary,
   .admin-user-option-grid,
   .admin-user-balance-preview {
@@ -1861,9 +2395,25 @@ onMounted(async () => {
 
   .admin-user-drawer__summary-stats,
   .admin-user-identity-item__side,
-  .admin-user-order-item__side {
+  .admin-user-order-item__side,
+  .admin-user-timeline__side {
     justify-content: flex-start;
     align-items: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-user-row__contact,
+  .admin-user-row__benefits,
+  .admin-user-row__metrics,
+  .admin-user-profile-metrics,
+  .admin-user-profile-breakdown {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-user-timeline__item {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>

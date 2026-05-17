@@ -1,6 +1,7 @@
 import { sendJson } from '../ai-gateway/shared'
 import { requireAdminSessionUser } from '../auth/session'
 import { isPrismaConfigured } from '../db/prisma'
+import { recordAdminAuditLog } from '../shared/admin-audit'
 import { readSystemConfigBody, sendSystemConfigError } from '../system-config/shared'
 import { ADMIN_CONVERSATION_SETTINGS_PATH } from './constants'
 import { getAdminConversationSettings, saveAdminConversationSettings } from './service'
@@ -35,6 +36,15 @@ export const handleAdminConversationSettingsRequest = async (req: any, res: any)
       const data = await saveAdminConversationSettings({
         conversationSettings: payload.conversationSettings || {},
         generationProgressSettings: payload.generationProgressSettings,
+      })
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: currentUser.id,
+        action: 'admin_conversation_settings_update',
+        targetType: 'conversation_settings',
+        targetId: 'global',
+        beforeJson: null,
+        afterJson: data,
       })
       sendJson(res, 200, { data, message: '会话配置已保存' })
       return

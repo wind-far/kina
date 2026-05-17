@@ -46,7 +46,7 @@
                           <path data-follow-fill="currentColor" d="M17.523 8.332a1 1 0 0 1-1.415 0L13 5.223v9.357a1 1 0 1 1-2 0V5.223L7.892 8.332a1 1 0 1 1-1.415-1.415l4.816-4.815a1 1 0 0 1 1.414 0l4.816 4.816a1 1 0 0 1 0 1.414ZM4.439 14.58a1 1 0 1 0-2 0v2.35a4 4 0 0 0 4 4h11.122a4 4 0 0 0 4-4v-2.35a1 1 0 0 0-2 0v2.35a2 2 0 0 1-2 2H6.439a2 2 0 0 1-2-2v-2.35Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor" />
                         </g>
                       </svg>
-                      <span class="text-5vo">发布</span>
+                      <span class="text-5vo">提交审核</span>
                     </div>
                   </button>
                   <button class="btn-7n1 btn-secondary-y4e btn-rec btn-3qb" type="button" :disabled="selectedCount === 0" @click="emit('batch-favorite')">

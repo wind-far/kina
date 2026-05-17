@@ -74,6 +74,10 @@
                 <span class="admin-provider-menu__icon"><el-icon><Setting /></el-icon></span>
                 <span>管理模型</span>
               </button>
+              <button class="admin-provider-menu__item" type="button" @click="handleProviderMenuTest(provider)">
+                <span class="admin-provider-menu__icon">测</span>
+                <span>{{ testingProviderId === provider.id ? '测试中...' : '测试连接' }}</span>
+              </button>
               <div class="admin-provider-menu__divider"></div>
               <button class="admin-provider-menu__item admin-provider-menu__item--danger" type="button" @click="handleProviderMenuDelete(provider)">
                 <span class="admin-provider-menu__icon"><el-icon><Delete /></el-icon></span>
@@ -91,6 +95,18 @@
 
         <div class="admin-provider-tile__chips">
           <span v-for="type in provider.supportedTypes" :key="type" class="admin-chip">{{ getSupportedTypeLabel(type) }}</span>
+        </div>
+
+        <div v-if="providerTestResults[provider.id]" class="admin-storage-card__info">
+          <div>
+            <span class="admin-storage-card__label">连接测试</span>
+            <span :class="providerTestResults[provider.id].ok ? 'admin-status admin-status--success' : 'admin-status admin-status--warning'">
+              {{ providerTestResults[provider.id].ok ? '通过' : '失败' }}
+            </span>
+          </div>
+          <div v-for="step in providerTestResults[provider.id].results" :key="step.name">
+            <span class="admin-storage-card__label">{{ step.name }}</span>{{ formatConnectivityStep(step) }}
+          </div>
         </div>
 
         <div class="admin-provider-tile__footer">
@@ -514,7 +530,10 @@ import {
   deleteAdminProvider,
   getAdminProviderDetail,
   listAdminProviders,
+  testAdminProviderConnectivity,
   updateAdminProvider,
+  type AdminProviderConnectivityStep,
+  type AdminProviderConnectivityResult,
   type AdminProviderDetail,
   type AdminProviderItem,
   type AdminProviderPayload,
@@ -559,6 +578,7 @@ const providerLoading = ref(false)
 const providerSaving = ref(false)
 const modelLoading = ref(false)
 const modelSaving = ref(false)
+const testingProviderId = ref('')
 
 const providerFilters = reactive({
   keyword: '',
@@ -569,6 +589,7 @@ const providerFilterDefaults = {
   status: 'ALL' as 'ALL' | 'ENABLED' | 'DISABLED',
 }
 const providers = ref<AdminProviderItem[]>([])
+const providerTestResults = reactive<Record<string, AdminProviderConnectivityResult>>({})
 const selectedProvider = ref<AdminProviderItem | null>(null)
 const providerDialogVisible = ref(false)
 const modelManagerVisible = ref(false)
@@ -935,6 +956,18 @@ const handleProviderMenuManageModels = async (provider: AdminProviderItem) => {
   await openModelManager(provider)
 }
 
+const handleProviderMenuTest = async (provider: AdminProviderItem) => {
+  closeProviderMenu()
+  testingProviderId.value = provider.id
+  try {
+    providerTestResults[provider.id] = await testAdminProviderConnectivity(provider.id)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '测试连接失败')
+  } finally {
+    testingProviderId.value = ''
+  }
+}
+
 const handleProviderMenuDelete = async (provider: AdminProviderItem) => {
   closeProviderMenu()
   await handleDeleteProvider(provider)
@@ -1135,6 +1168,11 @@ const readModelPrice = (model: AdminProviderModelItem) => {
   const defaultParams = (model.defaultParamsJson || {}) as Record<string, any>
   const billingRule = (defaultParams.billingRule || {}) as Record<string, any>
   return Number(billingRule.power || 0) || 0
+}
+
+const formatConnectivityStep = (step: AdminProviderConnectivityStep) => {
+  const statusText = step.ok ? '通过' : step.error || '失败'
+  return `${statusText} · ${step.durationMs}ms`
 }
 
 const handleSaveModel = async () => {

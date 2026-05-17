@@ -863,6 +863,77 @@ export const saveAdminSystemConfig = async (payload: SystemConfigPayload) => {
   return normalized
 }
 
+type SystemConfigSectionKey = keyof Pick<
+  SystemConfigPayload,
+  | 'siteInfo'
+  | 'policySettings'
+  | 'loginSettings'
+  | 'generationProgressSettings'
+  | 'conversationSettings'
+  | 'globalThemeSettings'
+  | 'homeSideMenuSettings'
+  | 'homeLayoutSettings'
+>
+
+const upsertSystemConfigSection = async (
+  executor: RawExecutor,
+  normalized: ReturnType<typeof normalizeSystemConfig>,
+  section: SystemConfigSectionKey,
+) => {
+  if (section === 'siteInfo') {
+    await upsertSystemConfigItem(executor, SYSTEM_CONFIG_CODES.siteInfo, normalized.siteInfo)
+    return
+  }
+  if (section === 'policySettings') {
+    await upsertSystemConfigItem(executor, SYSTEM_CONFIG_CODES.policySettings, normalized.policySettings)
+    return
+  }
+  if (section === 'loginSettings') {
+    await upsertSystemConfigItem(executor, SYSTEM_CONFIG_CODES.loginSettings, normalized.loginSettings)
+    return
+  }
+  if (section === 'generationProgressSettings') {
+    await upsertSystemConfigItem(executor, SYSTEM_CONFIG_CODES.generationProgressSettings, normalized.generationProgressSettings)
+    return
+  }
+  if (section === 'conversationSettings') {
+    await upsertSystemConfigItem(executor, SYSTEM_CONFIG_CODES.conversationSettings, normalized.conversationSettings)
+    return
+  }
+  if (section === 'globalThemeSettings') {
+    await upsertSystemConfigItem(executor, SYSTEM_CONFIG_CODES.globalThemeSettings, normalized.globalThemeSettings)
+    return
+  }
+  if (section === 'homeSideMenuSettings') {
+    await upsertSystemConfigItem(executor, SYSTEM_CONFIG_CODES.homeSideMenuSettings, normalized.homeSideMenuSettings)
+    return
+  }
+  if (section === 'homeLayoutSettings') {
+    await upsertSystemConfigItem(executor, SYSTEM_CONFIG_CODES.homeLayoutSettings, normalized.homeLayoutSettings)
+  }
+}
+
+export const saveAdminSystemConfigSections = async (
+  payload: Partial<SystemConfigPayload>,
+  sections: SystemConfigSectionKey[],
+) => {
+  const current = await getAdminSystemConfig()
+  const normalized = normalizeSystemConfig({
+    ...current,
+    ...payload,
+  })
+  const uniqueSections = Array.from(new Set(sections))
+
+  await prisma.$transaction(async (tx) => {
+    for (const section of uniqueSections) {
+      await upsertSystemConfigSection(tx, normalized, section)
+    }
+  })
+
+  await invalidateSystemConfigCaches()
+  return normalized
+}
+
 export const getAdminRedisRuntimeSettings = async () => {
   return getOrSetJsonCache({
     key: REDIS_RUNTIME_SETTINGS_CACHE_KEY,

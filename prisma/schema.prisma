@@ -50,6 +50,26 @@ model AppUser {
   @@map("app_users")
 }
 
+/// 后台关键操作审计日志。
+/// 用于追踪管理员对用户、营销配置、厂商配置和运行态缓存的关键变更。
+model AdminAuditLog {
+  id             String   @id @default(cuid()) @db.VarChar(36)
+  operatorUserId String   @map("operator_user_id") @db.VarChar(36)
+  action         String   @db.VarChar(100)
+  targetType     String   @map("target_type") @db.VarChar(100)
+  targetId       String?  @map("target_id") @db.VarChar(100)
+  beforeJson     Json?    @map("before_json")
+  afterJson      Json?    @map("after_json")
+  ipAddress      String?  @map("ip_address") @db.VarChar(100)
+  userAgent      String?  @map("user_agent") @db.VarChar(500)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([operatorUserId, createdAt], map: "idx_admin_audit_logs_operator_created_at")
+  @@index([targetType, targetId, createdAt], map: "idx_admin_audit_logs_target_created_at")
+  @@index([action, createdAt], map: "idx_admin_audit_logs_action_created_at")
+  @@map("admin_audit_logs")
+}
+
 /// 通用验证码记录表。
 /// 手机、邮箱以及后续其他验证通道都复用该表。
 model AuthVerificationCode {

@@ -3,6 +3,12 @@ export const SYSTEM_CONFIG_PUBLIC_PATH = '/api/system-config/public'
 
 // 系统设置后台管理接口。
 export const SYSTEM_CONFIG_ADMIN_PATH = '/api/system-config/admin'
+export const SYSTEM_CONFIG_ADMIN_SITE_INFO_PATH = '/api/system-config/admin/site-info'
+export const SYSTEM_CONFIG_ADMIN_POLICIES_PATH = '/api/system-config/admin/policies'
+export const SYSTEM_CONFIG_ADMIN_LOGIN_PATH = '/api/system-config/admin/login'
+export const SYSTEM_CONFIG_ADMIN_THEME_PATH = '/api/system-config/admin/theme'
+export const SYSTEM_CONFIG_ADMIN_HOME_LAYOUT_PATH = '/api/system-config/admin/home-layout'
+export const SYSTEM_CONFIG_ADMIN_CONVERSATION_PATH = '/api/system-config/admin/conversation'
 
 // Redis 健康检查接口，供后台确认缓存与任务运行态能力是否可用。
 export const SYSTEM_CONFIG_REDIS_HEALTH_PATH = '/api/system-config/admin/redis-health'
@@ -15,6 +21,12 @@ export const SYSTEM_CONFIG_REDIS_SETTINGS_PATH = '/api/system-config/admin/redis
 export const isSystemConfigPath = (requestPath: string) => {
   return requestPath === SYSTEM_CONFIG_PUBLIC_PATH
     || requestPath === SYSTEM_CONFIG_ADMIN_PATH
+    || requestPath === SYSTEM_CONFIG_ADMIN_SITE_INFO_PATH
+    || requestPath === SYSTEM_CONFIG_ADMIN_POLICIES_PATH
+    || requestPath === SYSTEM_CONFIG_ADMIN_LOGIN_PATH
+    || requestPath === SYSTEM_CONFIG_ADMIN_THEME_PATH
+    || requestPath === SYSTEM_CONFIG_ADMIN_HOME_LAYOUT_PATH
+    || requestPath === SYSTEM_CONFIG_ADMIN_CONVERSATION_PATH
     || requestPath === SYSTEM_CONFIG_REDIS_HEALTH_PATH
     || requestPath === SYSTEM_CONFIG_REDIS_OVERVIEW_PATH
     || requestPath === SYSTEM_CONFIG_REDIS_ACTIONS_PATH

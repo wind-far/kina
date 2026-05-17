@@ -105,7 +105,10 @@
             </div>
           </div>
           <div class="admin-provider-tile__actions">
-            <button class="admin-inline-button" type="button" :disabled="submitting || activatingId !== ''" @click="openEditDialog(config)">编辑</button>
+            <button class="admin-inline-button" type="button" :disabled="submitting || activatingId !== '' || testingId !== ''" @click="handleTest(config.id)">
+              {{ testingId === config.id ? '测试中...' : '测试' }}
+            </button>
+            <button class="admin-inline-button" type="button" :disabled="submitting || activatingId !== '' || testingId !== ''" @click="openEditDialog(config)">编辑</button>
           </div>
         </div>
 
@@ -129,6 +132,17 @@
           <div><span class="admin-storage-card__label">Bucket</span>{{ config.bucket || '未配置' }}</div>
           <div><span class="admin-storage-card__label">Region</span>{{ config.region || '未配置' }}</div>
           <div><span class="admin-storage-card__label">Domain</span>{{ config.domain || '未配置' }}</div>
+          <template v-if="testResults[config.id]">
+            <div>
+              <span class="admin-storage-card__label">连接测试</span>
+              <span :class="testResults[config.id].ok ? 'admin-status admin-status--success' : 'admin-status admin-status--warning'">
+                {{ testResults[config.id].ok ? '通过' : '失败' }}
+              </span>
+            </div>
+            <div v-for="step in testResults[config.id].steps" :key="step.name">
+              <span class="admin-storage-card__label">{{ step.name }}</span>{{ formatStorageTestStep(step) }}
+            </div>
+          </template>
         </div>
 
         <div class="admin-provider-tile__chips">
@@ -252,7 +266,10 @@ import {
   activateStorageConfig,
   createStorageConfig,
   listStorageConfigs,
+  testStorageConfig,
   updateStorageConfig,
+  type StorageConnectivityResult,
+  type StorageConnectivityStep,
   type StorageConfigItem,
   type StorageConfigPayload,
 } from '@/api/storage-config'
@@ -260,9 +277,11 @@ import {
 const loading = ref(false)
 const submitting = ref(false)
 const activatingId = ref('')
+const testingId = ref('')
 const editingId = ref('')
 const dialogVisible = ref(false)
 const configs = ref<StorageConfigItem[]>([])
+const testResults = reactive<Record<string, StorageConnectivityResult>>({})
 const filters = reactive({
   keyword: '',
   status: 'ALL' as 'ALL' | 'DEFAULT' | 'ENABLED' | 'DISABLED',
@@ -424,8 +443,21 @@ const handleActivate = async (id: string) => {
   }
 }
 
+const handleTest = async (id: string) => {
+  testingId.value = id
+  try {
+    testResults[id] = await testStorageConfig(id)
+  } finally {
+    testingId.value = ''
+  }
+}
+
 const getStorageInitial = (value: string) => String(value || '').trim().slice(0, 1).toUpperCase() || 'S'
 const formatDate = (value: string) => String(value || '').replace('T', ' ').slice(0, 16) || '未知时间'
+const formatStorageTestStep = (step: StorageConnectivityStep) => {
+  const statusText = step.ok ? '通过' : step.error || '失败'
+  return `${statusText} · ${step.durationMs}ms`
+}
 
 onMounted(() => {
   void loadConfigs()

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useSystemInitStore } from '../stores/system-init'
+import { useLoadingStore } from '../stores/loading'
 
 // 核心页面懒加载，避免全部进入主 bundle 拖慢首屏
 const Home = () => import('../views/home/home.vue')
@@ -259,6 +260,9 @@ const router = createRouter({
 
 // 对需要登录的页面做统一拦截，未登录时回到首页显示登录入口。
 router.beforeEach(async (to) => {
+  // 路由切换开启全局进度条
+  useLoadingStore().start('route')
+
   const systemInitStore = useSystemInitStore()
   if (!systemInitStore.systemInitInitialized.value || systemInitStore.systemInitLoading.value) {
     await systemInitStore.loadStatus()
@@ -308,6 +312,15 @@ router.beforeEach(async (to) => {
   }
 
   return true
+})
+
+// 路由结束/失败时关闭进度条
+router.afterEach(() => {
+  useLoadingStore().stop('route')
+})
+
+router.onError(() => {
+  useLoadingStore().stop('route')
 })
 
 export default router

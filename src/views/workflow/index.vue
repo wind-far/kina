@@ -10,6 +10,7 @@ import { VueFlow, useVueFlow, type Connection } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { MiniMap } from '@vue-flow/minimap'
 import { useAsyncAction } from '@/composables'
+import { useLoadingStore } from '@/stores/loading'
 import {
   nodes, edges, addNode, addEdge, updateNode, applyCanvasSnapshot,
   canvasViewport, updateViewport,
@@ -474,8 +475,9 @@ const handlePromptSend = async (
   }
 }
 
-// 返回首页
-const goBack = async () => {
+// 返回首页：保存草稿 → 跳转。globalKey:'blocking' 期间会弹遮罩"正在保存草稿…"，
+// 避免用户感觉点了没反应。useAsyncAction 自身防止重复点击。
+const goBackAction = useAsyncAction(async () => {
   await flushAutosave()
 
   const returnTo = String(route.query.returnTo || '').trim()
@@ -485,6 +487,12 @@ const goBack = async () => {
   }
 
   await router.push('/')
+}, { globalKey: 'blocking', globalText: '正在保存草稿…' })
+
+const goBackLoading = goBackAction.loading
+
+const goBack = () => {
+  void goBackAction.run()
 }
 
 const {
@@ -647,8 +655,16 @@ watch(() => route.query.workflowId, (workflowId) => {
   })
 })
 
+// 浏览器后退、地址栏跳走等场景：同样让用户看到"正在保存草稿…"，
+// 避免脏 canvas 触发 flushAutosave 时几秒无反馈
+const loadingStore = useLoadingStore()
 onBeforeRouteLeave(async (_to, _from, next) => {
-  await flushAutosave()
+  loadingStore.start('blocking', '正在保存草稿…')
+  try {
+    await flushAutosave()
+  } finally {
+    loadingStore.stop('blocking')
+  }
   next()
 })
 
@@ -685,7 +701,7 @@ watch(currentCanvasSnapshot, () => {
 
         <header class="workflow-header">
           <div class="workflow-header-left">
-            <button class="wf-btn wf-btn-sm" @click="goBack" title="返回">
+            <button class="wf-btn wf-btn-sm" :disabled="goBackLoading" @click="goBack" title="返回">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>

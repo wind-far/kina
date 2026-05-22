@@ -4,7 +4,7 @@
  */
 import { ref, computed } from 'vue'
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, useVueFlow } from '@vue-flow/core'
-import { edges } from '../../composables/useWorkflowCanvas'
+import { edges, removeEdge } from '../../composables/useWorkflowCanvas'
 
 const { updateEdgeData } = useVueFlow()
 
@@ -24,6 +24,7 @@ const props = defineProps<{
 }>()
 
 const showMenu = ref(false)
+const isHover = ref(false)
 
 const orderLabels = [
   { label: '① 第一个', key: 1 },
@@ -68,12 +69,22 @@ const handleSelect = (newOrder: number) => {
     <div
       :style="{ position: 'absolute', transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`, pointerEvents: 'all' }"
       class="nodrag nopan"
+      @mouseenter="isHover = true"
+      @mouseleave="isHover = false"
     >
       <button
         @click="showMenu = !showMenu"
         style="width: 24px; height: 24px; border-radius: 50%; background: #10b981; color: white; border: 2px solid var(--canvas-bg, #0f0f12); font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.15s;"
         @mouseenter="$el.style.transform='scale(1.15)'" @mouseleave="$el.style.transform='scale(1)'"
       >{{ currentOrder }}</button>
+      <button
+        v-show="isHover"
+        @click.stop="removeEdge(id)"
+        title="删除连线"
+        style="position: absolute; top: -8px; right: -8px; width: 16px; height: 16px; border-radius: 50%; background: #ef4444; color: white; border: 1.5px solid var(--canvas-bg, #0f0f12); font-size: 10px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; z-index: 101;"
+      >
+        <svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+      </button>
       <div v-if="showMenu" style="position: absolute; top: 28px; left: 50%; transform: translateX(-50%); background: var(--canvas-float-block-default, rgba(32,33,39,0.92)); backdrop-filter: blur(20px); border: 0.5px solid var(--stroke-tertiary); border-radius: 8px; padding: 4px; z-index: 100; min-width: 100px;">
         <div
           v-for="opt in orderOptions" :key="opt.key"

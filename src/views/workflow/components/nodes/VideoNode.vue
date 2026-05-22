@@ -10,6 +10,7 @@ import {
   duplicateNode,
   type WorkflowVideoNodeData,
 } from '../../composables/useWorkflowCanvas'
+import WfNodeTitle from '../WfNodeTitle.vue'
 
 const props = defineProps<{
   id: string
@@ -71,7 +72,7 @@ const handleDuplicate = () => {
               <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </span>
-          <span class="wf-node-header-title">{{ data.label || '视频' }}</span>
+          <WfNodeTitle :node-id="id" :label="data.label" placeholder="视频" />
         </div>
         <button class="wf-btn wf-btn-sm" @click="handleDelete">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>

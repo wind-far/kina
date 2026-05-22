@@ -16,6 +16,7 @@ import {
   type WorkflowCanvasNode,
   type WorkflowImageConfigNodeData,
 } from '../../composables/useWorkflowCanvas'
+import WfNodeTitle from '../WfNodeTitle.vue'
 import { BANANA_SIZE_OPTIONS, SEEDREAM_SIZE_OPTIONS, getAllImageModels, loadPublicModelCatalog, getDefaultImageModelKey, getModelByName } from '@/config/models'
 import { createGenerationTask, resolveGenerationTaskModel, subscribeGenerationTaskEvents } from '@/api/generation-tasks'
 import WfSelect from '@/components/common/WfSelect.vue'
@@ -340,7 +341,7 @@ watch(
               <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </span>
-          <span class="wf-node-header-title">{{ data.label || '文生图' }}</span>
+          <WfNodeTitle :node-id="id" :label="data.label" placeholder="文生图" />
         </div>
         <button class="wf-btn wf-btn-sm" @click="handleDelete">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none">

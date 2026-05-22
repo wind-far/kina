@@ -665,6 +665,7 @@ watch(currentCanvasSnapshot, () => {
           :max-zoom="2"
           :snap-to-grid="true"
           :snap-grid="[20, 20]"
+          :delete-key-code="['Delete', 'Backspace']"
           @connect="onConnect"
           @pane-click="onPaneClick"
           @viewport-change="handleViewportChange"

@@ -507,6 +507,18 @@
   color: var(--text-secondary, rgba(224, 245, 255, 0.6));
 }
 
+/* 连线删除按钮淡入过渡 */
+.wf-edge-delete-enter-active,
+.wf-edge-delete-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.wf-edge-delete-enter-from,
+.wf-edge-delete-leave-to {
+  opacity: 0;
+  transform: scale(0.6);
+}
+
 .wf-node-body {
   padding: 10px 12px;
 }

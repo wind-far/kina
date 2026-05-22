@@ -33,6 +33,9 @@
 
 <script setup lang="ts">
 import { ElMessageBox } from 'element-plus'
+// 显式引入 message-box 样式入口（含 base + input + button + overlay + message-box）：
+// 程序化 API 调用时 AutoImport 不一定能注入侧效 CSS，导致弹窗未带样式
+import 'element-plus/es/components/message-box/style/css'
 import { nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
@@ -45,6 +48,7 @@ import {
   type WorkflowDefinitionSummary,
   updateWorkflowDefinition,
 } from '@/views/workflow/api/definitions'
+import { useAsyncAction } from '@/composables'
 import './agentic-assets-canvas.css'
 
 interface GeneratorSendOptions {
@@ -175,7 +179,14 @@ const handleOpenWorkflow = (workflow: WorkflowDefinitionSummary) => {
   })
 }
 
+const renameWorkflowAction = useAsyncAction(async (workflowId: string, nextName: string) => {
+  await updateWorkflowDefinition(workflowId, { name: nextName })
+  const loadedItemCount = workflowList.value.length
+  await refillWorkflowListAfterMutation(loadedItemCount)
+}, { globalKey: 'blocking', globalText: '正在保存…' })
+
 const handleRenameWorkflow = async (workflow: WorkflowDefinitionSummary) => {
+  let nextName: string
   try {
     const { value } = await ElMessageBox.prompt('请输入新的项目名称', '重命名项目', {
       confirmButtonText: '确定',
@@ -186,22 +197,24 @@ const handleRenameWorkflow = async (workflow: WorkflowDefinitionSummary) => {
         return String(inputValue || '').trim() ? true : '项目名称不能为空'
       },
     })
-
-    const nextName = String(value || '').trim()
-    if (!nextName || nextName === workflow.name) {
-      return
-    }
-
-    await updateWorkflowDefinition(workflow.id, {
-      name: nextName,
-    })
-
-    const loadedItemCount = workflowList.value.length
-    await refillWorkflowListAfterMutation(loadedItemCount)
+    nextName = String(value || '').trim()
   } catch {
-    // 用户取消时不提示错误。
+    // 用户取消
+    return
   }
+
+  if (!nextName || nextName === workflow.name) {
+    return
+  }
+
+  await renameWorkflowAction.run(workflow.id, nextName)
 }
+
+const deleteWorkflowAction = useAsyncAction(async (workflowId: string) => {
+  const nextExpectedCount = Math.max(workflowList.value.length - 1, workflowListPageSize)
+  await deleteWorkflowDefinition(workflowId)
+  await refillWorkflowListAfterMutation(nextExpectedCount)
+}, { globalKey: 'blocking', globalText: '正在删除…' })
 
 const handleDeleteWorkflow = async (workflow: WorkflowDefinitionSummary) => {
   try {
@@ -218,9 +231,7 @@ const handleDeleteWorkflow = async (workflow: WorkflowDefinitionSummary) => {
     return
   }
 
-  const nextExpectedCount = Math.max(workflowList.value.length - 1, workflowListPageSize)
-  await deleteWorkflowDefinition(workflow.id)
-  await refillWorkflowListAfterMutation(nextExpectedCount)
+  await deleteWorkflowAction.run(workflow.id)
 }
 
 const handleSend = (message: string, type: CreationType, options?: GeneratorSendOptions) => {

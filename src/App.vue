@@ -12,6 +12,7 @@
         :visible="marketingModalVisible"
         @update:visible="setMarketingModalVisible"
       />
+      <GlobalLoadingOverlay />
     </div>
   </ElConfigProvider>
 </template>
@@ -22,6 +23,7 @@ import { ElConfigProvider } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import RouteProgressBar from '@/components/common/RouteProgressBar.vue'
+import GlobalLoadingOverlay from '@/components/common/GlobalLoadingOverlay.vue'
 // 登录与营销弹窗首屏不可见，懒加载到弹出时再下载，缩小主入口体积
 const LoginModal = defineAsyncComponent(() => import('@/components/LoginModal.vue'))
 const MarketingModal = defineAsyncComponent(() => import('@/components/MarketingModal.vue'))

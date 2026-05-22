@@ -1,5 +1,8 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+// 显式引入 message 样式入口（含 base + badge + message 三层）：
+// .ts 文件里 AutoImport 不会自动注入侧效 CSS，需要走 components/message/style/css 才能拿到完整样式
+import 'element-plus/es/components/message/style/css'
 import { useLoadingStore } from '@/stores/loading'
 
 interface UseAsyncActionOptions {
@@ -9,10 +12,19 @@ interface UseAsyncActionOptions {
    */
   globalKey?: string
   /**
-   * 出错时显示的固定文案。不设置则尝试读取 error.message。
-   * 设为 false 完全静默（业务自行处理错误）。
+   * 与 globalKey 配合使用：全屏遮罩展示的文案。
    */
-  errorMessage?: string | false
+  globalText?: string
+  /**
+   * 错误提示策略：
+   *   - undefined（默认）：不主动 toast；本项目接口层 `readApiData` 在响应失败时已经
+   *     自动调用 ElMessage.error，再次 toast 会双弹。
+   *   - 传入字符串：用该字符串覆盖默认提示（即便 API 层已 toast，也会再加一条业务文案）。
+   *   - 传入 false：完全静默（同 undefined 但语义更明确）。
+   *   - 传入 true：使用 `error.message` 强制 toast 一次（用于不走 readApiData 的场景，
+   *     例如纯前端校验抛错或第三方库错误）。
+   */
+  errorMessage?: string | boolean
   /**
    * 是否在 loading 期间忽略后续调用，防止重复点击。默认 true。
    */
@@ -48,6 +60,7 @@ export const useAsyncAction = <Args extends unknown[], Result>(
   const store = useLoadingStore()
   const {
     globalKey,
+    globalText,
     errorMessage,
     ignoreReentry = true,
     rethrow = false,
@@ -58,15 +71,32 @@ export const useAsyncAction = <Args extends unknown[], Result>(
       return undefined
     }
     loading.value = true
-    if (globalKey) store.start(globalKey)
+    if (globalKey) store.start(globalKey, globalText)
+
+    // 包装 cleanup，避免 finally 与 catch 里重复 stop 引发引用计数漂移
+    let cleanedUp = false
+    const cleanup = () => {
+      if (cleanedUp) return
+      cleanedUp = true
+      loading.value = false
+      if (globalKey) store.stop(globalKey)
+    }
 
     try {
       return await fn(...args)
     } catch (error) {
-      if (errorMessage !== false) {
+      // 关键：先清理 loading/overlay，再弹 toast，否则 ElMessage 会被全屏遮罩盖住
+      cleanup()
+
+      // 仅在显式声明 errorMessage 时才弹 toast，避免与 readApiData 的自动 toast 双弹
+      const shouldToast =
+        typeof errorMessage === 'string'
+        || errorMessage === true
+      if (shouldToast) {
+        const rawMessage = (error as { message?: unknown } | null)?.message
         const message = typeof errorMessage === 'string' && errorMessage
           ? errorMessage
-          : (error instanceof Error && error.message) || '操作失败，请重试'
+          : (typeof rawMessage === 'string' && rawMessage) || '操作失败，请重试'
         ElMessage.error(message)
       }
       // eslint-disable-next-line no-console
@@ -74,8 +104,7 @@ export const useAsyncAction = <Args extends unknown[], Result>(
       if (rethrow) throw error
       return undefined
     } finally {
-      loading.value = false
-      if (globalKey) store.stop(globalKey)
+      cleanup()
     }
   }
 

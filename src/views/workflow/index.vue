@@ -9,6 +9,7 @@ import { ElMessage } from 'element-plus'
 import { VueFlow, useVueFlow, type Connection } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { MiniMap } from '@vue-flow/minimap'
+import { useAsyncAction } from '@/composables'
 import {
   nodes, edges, addNode, addEdge, updateNode, applyCanvasSnapshot,
   canvasViewport, updateViewport,
@@ -84,11 +85,9 @@ const workflowCode = ref('')
 const workflowDescription = ref('')
 const workflowCategory = ref('')
 const workflowListKeyword = ref('')
-const workflowListLoading = ref(false)
 const workflowLoadingByRoute = ref(false)
 const initialCanvasBaselineSnapshot = ref('')
 const selectedWorkflowVersionId = ref('')
-const libraryDetailLoading = ref(false)
 const selectedLibraryWorkflowId = ref('')
 const selectedLibraryWorkflowDetail = ref<null | {
   definition: WorkflowDefinitionSummary
@@ -302,7 +301,7 @@ const resetWorkflowDraftForm = () => {
   workflowCategory.value = ''
 }
 
-const handleCreateWorkflow = async () => {
+const createWorkflowAction = useAsyncAction(async () => {
   await flushAutosave()
 
   resetCurrentWorkflowState()
@@ -325,6 +324,10 @@ const handleCreateWorkflow = async () => {
   await nextTick()
   fitView({ padding: 0.24 })
   ElMessage.success('已新建空白工作流')
+}, { globalKey: 'blocking', globalText: '正在新建工作流…' })
+
+const handleCreateWorkflow = () => {
+  void createWorkflowAction.run()
 }
 
 // 添加工作流模板
@@ -484,20 +487,17 @@ const goBack = async () => {
   await router.push('/')
 }
 
-const handleRefreshWorkflowList = async () => {
-  workflowListLoading.value = true
+const {
+  run: handleRefreshWorkflowList,
+  loading: workflowListLoading,
+} = useAsyncAction(async () => {
+  await reloadWorkflowList({
+    scene: 'WORKFLOW_CANVAS',
+    keyword: workflowListKeyword.value || undefined,
+  })
+})
 
-  try {
-    await reloadWorkflowList({
-      scene: 'WORKFLOW_CANVAS',
-      keyword: workflowListKeyword.value || undefined,
-    })
-  } finally {
-    workflowListLoading.value = false
-  }
-}
-
-const handleLoadWorkflow = async (workflow: WorkflowDefinitionSummary) => {
+const loadWorkflowAction = useAsyncAction(async (workflow: WorkflowDefinitionSummary) => {
   const versionId = selectedLibraryWorkflowId.value === workflow.id
     ? selectedWorkflowVersionId.value || selectedLibraryWorkflowDetail.value?.definition.currentVersionId || ''
     : ''
@@ -505,25 +505,32 @@ const handleLoadWorkflow = async (workflow: WorkflowDefinitionSummary) => {
   await syncWorkflowRouteQuery(workflow.id)
   showWorkflowLibraryPanel.value = false
   ElMessage.success(`已打开工作流：${workflow.name}`)
+}, { globalKey: 'blocking', globalText: '正在加载工作流…' })
+
+const handleLoadWorkflow = (workflow: WorkflowDefinitionSummary) => {
+  void loadWorkflowAction.run(workflow)
 }
 
-const handleSelectLibraryWorkflow = async (workflow: WorkflowDefinitionSummary) => {
+const selectLibraryAction = useAsyncAction(async (workflow: WorkflowDefinitionSummary) => {
+  selectedLibraryWorkflowDetail.value = await fetchWorkflowDetail(workflow.id)
+})
+const libraryDetailLoading = selectLibraryAction.loading
+
+const handleSelectLibraryWorkflow = (workflow: WorkflowDefinitionSummary) => {
   selectedLibraryWorkflowId.value = workflow.id
   selectedLibraryWorkflowDetail.value = null
-  libraryDetailLoading.value = true
-
-  try {
-    selectedLibraryWorkflowDetail.value = await fetchWorkflowDetail(workflow.id)
-  } finally {
-    libraryDetailLoading.value = false
-  }
+  void selectLibraryAction.run(workflow)
 }
 
-const handleLoadWorkflowVersion = async (workflow: WorkflowDefinitionSummary, versionId: string) => {
+const loadWorkflowVersionAction = useAsyncAction(async (workflow: WorkflowDefinitionSummary, versionId: string) => {
   await tryLoadWorkflowByRoute(workflow.id, { versionId })
   await syncWorkflowRouteQuery(workflow.id)
   showWorkflowLibraryPanel.value = false
   ElMessage.success(`已打开 ${workflow.name} 的指定版本`)
+}, { globalKey: 'blocking', globalText: '正在加载版本…' })
+
+const handleLoadWorkflowVersion = (workflow: WorkflowDefinitionSummary, versionId: string) => {
+  void loadWorkflowVersionAction.run(workflow, versionId)
 }
 
 const performAutosave = async () => {

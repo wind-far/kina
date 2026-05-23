@@ -47,6 +47,13 @@
   overflow-y: auto;
 }
 
+/* 同一分组内的菜单项之间留 4px 间距，让 hover/active 色块与相邻项之间有视觉呼吸。 */
+.admin-sidebar__nav > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .admin-sidebar__group-title {
   margin: 8px 0 4px;
   padding: 0 10px;

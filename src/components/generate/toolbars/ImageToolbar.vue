@@ -55,6 +55,10 @@ const storedToolbarState = readStoredImageToolbarState()
 const validImageModelValues = modelVersions.value.map(item => item.value)
 const validImageSizeValues = sizeOptions.map(item => item.value)
 
+const IMAGE_COUNT_MIN = 1
+const IMAGE_COUNT_MAX = 10
+const IMAGE_COUNT_DEFAULT = 1
+
 // 当前选中的模型版本
 const currentModelVersion = ref(
   validImageModelValues.includes(storedToolbarState?.model) ? storedToolbarState.model : getDefaultImageModelKey(),
@@ -64,6 +68,29 @@ const currentModelVersion = ref(
 const currentSize = ref(
   validImageSizeValues.includes(storedToolbarState?.size) ? storedToolbarState.size : '1:1',
 )
+
+// 当前生成数量：用户每次打开都从 1 开始，不记忆历史值
+const currentCount = ref<number>(IMAGE_COUNT_DEFAULT)
+
+const clampCount = (value: number) => {
+  if (!Number.isFinite(value)) return IMAGE_COUNT_DEFAULT
+  return Math.min(IMAGE_COUNT_MAX, Math.max(IMAGE_COUNT_MIN, Math.floor(value)))
+}
+
+const decreaseCount = (e: Event) => {
+  e.stopPropagation()
+  currentCount.value = clampCount(currentCount.value - 1)
+}
+
+const increaseCount = (e: Event) => {
+  e.stopPropagation()
+  currentCount.value = clampCount(currentCount.value + 1)
+}
+
+const handleCountInput = (e: Event) => {
+  const value = Number((e.target as HTMLInputElement).value)
+  currentCount.value = clampCount(value)
+}
 
 // 弹窗状态
 const isModelSelectOpen = ref(false)
@@ -139,7 +166,8 @@ defineExpose({
   currentModelVersion,
   currentModelLabel,
   currentSize,
-  currentSizeConfig
+  currentSizeConfig,
+  currentCount,
 })
 </script>
 
@@ -260,6 +288,49 @@ defineExpose({
       </ul>
     </SelectPopup>
 
+    <!-- 生成数量步进器 -->
+    <div
+      class="image-count-stepper"
+      :class="{ 'compact': iconOnly }"
+      :title="iconOnly ? `生成数量：${currentCount} 张` : '生成数量'"
+      @click.stop
+    >
+      <button
+        type="button"
+        class="image-count-step-btn"
+        :disabled="currentCount <= 1"
+        aria-label="减少生成数量"
+        @click="decreaseCount"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M5 12h14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+        </svg>
+      </button>
+      <input
+        v-if="!iconOnly"
+        type="number"
+        class="image-count-value"
+        :min="1"
+        :max="10"
+        :step="1"
+        :value="currentCount"
+        @input="handleCountInput"
+        @click.stop
+      />
+      <span v-else class="image-count-value image-count-value-readonly">{{ currentCount }}</span>
+      <button
+        type="button"
+        class="image-count-step-btn"
+        :disabled="currentCount >= 10"
+        aria-label="增加生成数量"
+        @click="increaseCount"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+
     <!-- 文字工具按钮 -->
     <button class="lv-btn lv-btn-secondary lv-btn-size-default lv-btn-shape-square lv-btn-icon-only button-lc3WzE toolbar-button-FhFnQ_ toolbar-button-pEFNv9"
             type="button">
@@ -281,5 +352,78 @@ defineExpose({
 /* 样式已在 generate.css 中定义 */
 .image-toolbar {
   display: contents;
+}
+
+/* 生成数量步进器 */
+.image-count-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--bg-block-secondary-default, rgba(204, 221, 255, 0.04));
+  border: 0.5px solid var(--stroke-tertiary, rgba(255, 255, 255, 0.12));
+}
+
+.image-count-stepper.compact {
+  height: 28px;
+  gap: 0;
+  padding: 0 2px;
+}
+
+.image-count-step-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary, #e0f5ff);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.image-count-step-btn:hover:not(:disabled) {
+  background: var(--bg-block-primary-hover, rgba(204, 221, 255, 0.12));
+}
+
+.image-count-step-btn:active:not(:disabled) {
+  background: var(--bg-block-primary-pressed, rgba(204, 221, 255, 0.16));
+}
+
+.image-count-step-btn:disabled {
+  color: var(--text-disabled, rgba(224, 245, 255, 0.3));
+  cursor: not-allowed;
+}
+
+.image-count-value {
+  width: 28px;
+  height: 22px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #e0f5ff);
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 0;
+  -moz-appearance: textfield;
+}
+
+.image-count-value::-webkit-outer-spin-button,
+.image-count-value::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.image-count-value-readonly {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
 }
 </style>

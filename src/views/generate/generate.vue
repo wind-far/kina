@@ -94,6 +94,8 @@ interface GeneratingRecord {
   duration: string
   feature: string
   skill: string
+  /** 文生图/图生图本次任务希望生成的张数，对应上游 n 参数。仅图片任务有意义 */
+  count?: number
   content: string
   /** 模型的思考过程（reasoning_content / thinking block）。从 record.metaJson.thinkingContent 回填。 */
   thinkingContent?: string
@@ -1080,6 +1082,7 @@ const handleRegenerateImageRecord = async (record: GeneratingRecord) => {
     feature: record.feature,
     skill: record.skill,
     referenceImages: [...(record.referenceImages || [])],
+    count: record.count && record.count > 0 ? record.count : 1,
   })
 }
 
@@ -2552,7 +2555,7 @@ const syncSessionMetaFromRecord = (record: GeneratingRecord, saved: PersistedGen
 }
 
 // 处理发送事件
-const handleSend = async (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string, referenceImages?: string[], capabilityFlags?: ModelCapabilityFlags }) => {
+const handleSend = async (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string, referenceImages?: string[], count?: number, capabilityFlags?: ModelCapabilityFlags }) => {
   if (!authStore.isLoggedIn.value) {
     openLoginModal('generate-send-guard')
     return
@@ -2588,6 +2591,7 @@ const handleSend = async (message: string, type: CreationType, options?: { model
     duration: options?.duration || '',
     feature: options?.feature || '',
     skill: normalizedSkill,
+    count: recordType === 'image' ? (options?.count && options.count > 0 ? options.count : 1) : undefined,
     capabilityFlags: options?.capabilityFlags || undefined,
     content: recordType === 'image' ? '[[queued]]任务已创建，等待服务端执行' : '',
     images: [],
@@ -2640,6 +2644,7 @@ const handleSend = async (message: string, type: CreationType, options?: { model
       void startGeneralAgentTask(generatingRecords.value[0])
     }
   } else if (record.type === 'image') {
+    // 一次对话内按用户设定的 count 生成 N 张图：单条 record 携带 N 个 GenerationOutput。
     void startImageGenerationTask(generatingRecords.value[0])
   }
 }
@@ -2822,10 +2827,13 @@ const startImageGenerationTask = async (record: GeneratingRecord) => {
         ? (modelConfig.sizes.find((sizeItem: string) => sizeItem.includes(record.ratio.replace(':', 'x'))) || modelConfig.defaultParams?.size || '')
         : (record.ratio ? record.ratio.replace(':', 'x') : '')
     const hasReferenceImages = Array.isArray(record.referenceImages) && record.referenceImages.length > 0
+    const requestCount = record.count && record.count > 0 ? Math.min(10, Math.max(1, Math.floor(record.count))) : 1
     let data: any = {
       model: requestModelKey,
       prompt: record.prompt,
-      n: 1,
+      // n：文生图直传上游；count：图生图 FormData 归一化时使用。后端按场景取用其一。
+      n: requestCount,
+      count: requestCount,
       providerId,
     }
     if (size) {

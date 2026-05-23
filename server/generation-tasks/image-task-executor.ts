@@ -37,6 +37,7 @@ export interface ImageTaskExecutorContext {
     modelKey: string
     prompt: string
     size?: string
+    count?: number
     referenceImages: string[]
     onRetry?: (retryState: ImageTaskRetryState) => Promise<void> | void
   }) => Promise<{ upstreamUrl: string; imageUrls: string[] }>
@@ -93,6 +94,11 @@ export const executeImageTask = async (
     message: '已开始请求上游图片模型',
   })
 
+  const requestImageCount = Math.max(
+    1,
+    Math.floor(Number((requestBody as Record<string, unknown>).count) || Number((requestBody as Record<string, unknown>).n) || 1),
+  )
+
   const { upstreamUrl, imageUrls } = requestMode === 'image-edit'
     ? await context.requestImageEdit({
       signal: task.abortController.signal,
@@ -100,6 +106,7 @@ export const executeImageTask = async (
       modelKey,
       prompt: String(requestBody.prompt || payload.prompt || '').trim(),
       size: String(requestBody.size || '').trim() || undefined,
+      count: requestImageCount,
       referenceImages,
       onRetry: (retryState) => context.markTaskRetryState(task, retryState),
     })

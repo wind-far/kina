@@ -45,6 +45,14 @@ export const normalizeImageGenerationRequestBody = (input: {
 
   delete normalizedBody.providerId
 
+  // 剥离所有 _ 前缀的客户端内部字段（项目约定：调试/追踪/幂等等内部字段统一用 _ 前缀承载）。
+  // 这里作为通用清洗的安全网，避免内部字段意外透传到上游。
+  for (const key of Object.keys(normalizedBody)) {
+    if (key.startsWith('_')) {
+      delete normalizedBody[key]
+    }
+  }
+
   const prompt = normalizeStringValue(normalizedBody.prompt)
   if (prompt) {
     normalizedBody.prompt = prompt

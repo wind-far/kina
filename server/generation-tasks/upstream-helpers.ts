@@ -36,6 +36,20 @@ export {
 } from '../../src/shared/upstream-stream-parser'
 
 const BURST_RATE_RETRY_DELAYS = [1200, 2600, 5200]
+// 网络层错误（TypeError: fetch failed / socket reset / TLS abort 等）的重试节奏。
+// 与 BURST_RATE 分开计数：429 是上游显式拒绝，网络错是底层失败，二者重试策略不耦合。
+const NETWORK_ERROR_RETRY_DELAYS = [1500, 4000]
+// 单次上游请求的硬超时基线（毫秒）。单张文生图/图生图正常 5-30s，基线 90s 给慢模型留余量。
+// 一次请求 n>1 时由 resolveUpstreamFetchTimeoutMs 按张数线性放宽，避免 N 张被一刀 90s 截断。
+const UPSTREAM_FETCH_TIMEOUT_BASE_MS = 90_000
+const UPSTREAM_FETCH_TIMEOUT_PER_IMAGE_MS = 60_000
+const UPSTREAM_FETCH_TIMEOUT_MAX_MS = 600_000
+
+const resolveUpstreamFetchTimeoutMs = (imageCount?: number) => {
+  const normalizedCount = Math.max(1, Math.floor(Number(imageCount) || 1))
+  const computed = UPSTREAM_FETCH_TIMEOUT_BASE_MS + (normalizedCount - 1) * UPSTREAM_FETCH_TIMEOUT_PER_IMAGE_MS
+  return Math.min(computed, UPSTREAM_FETCH_TIMEOUT_MAX_MS)
+}
 const UPLOADS_PUBLIC_PATH_PREFIX = '/uploads/'
 
 type RetryState = {
@@ -56,6 +70,8 @@ type FetchWithBurstRateRetryInput = {
   detail: Record<string, unknown>
   onRetry?: (retryState: RetryState) => Promise<void> | void
   logGenerationTask: UpstreamLogger
+  // 单次请求的硬超时毫秒；缺省走基线 90s。多张图请求由调用方按 n 估算后传入。
+  timeoutMs?: number
 }
 
 type RequestImageGenerationInput = {
@@ -73,6 +89,7 @@ type RequestImageEditInput = {
   modelKey: string
   prompt: string
   size?: string
+  count?: number
   referenceImages: string[]
   onRetry?: (retryState: RetryState) => Promise<void> | void
   fetchWithBurstRateRetry: (input: Omit<FetchWithBurstRateRetryInput, 'logGenerationTask'>) => Promise<Response>
@@ -179,11 +196,100 @@ const isBurstRateLimitedResponse = (status: number, responseText: string) => {
 }
 
 export const fetchWithBurstRateRetry = async (input: FetchWithBurstRateRetryInput) => {
+  let networkErrorAttempt = 0
+
   for (let attemptIndex = 0; attemptIndex <= BURST_RATE_RETRY_DELAYS.length; attemptIndex += 1) {
-    const response = await fetch(input.url, {
-      ...input.init,
-      signal: input.signal,
-    })
+    // 超时只覆盖"等响应头"阶段：
+    //   - fetch 返回 Response 之前若超过 headersTimeoutMs 仍未拿到头，主动 abort、按网络错重试。
+    //   - fetch 返回后立即 clearTimeout，让 response.body 的流式读取可以慢慢走，避免 SSE 大模型
+    //     n>1 顺序生成时 body 读到一半被同一 timer 误杀。
+    //   - 外部 signal（用户停止任务）通过事件转发持续生效，body 阶段仍能被中断。
+    const headersTimeoutMs = input.timeoutMs ?? UPSTREAM_FETCH_TIMEOUT_BASE_MS
+    const fetchController = new AbortController()
+    const forwardExternalAbort = () => fetchController.abort(input.signal.reason)
+    if (input.signal.aborted) {
+      forwardExternalAbort()
+    } else {
+      input.signal.addEventListener('abort', forwardExternalAbort, { once: true })
+    }
+
+    let headersTimedOut = false
+    const headersTimeoutHandle = setTimeout(() => {
+      headersTimedOut = true
+      fetchController.abort(new DOMException(
+        `等待响应头超过 ${headersTimeoutMs} ms`,
+        'TimeoutError',
+      ))
+    }, headersTimeoutMs)
+
+    let response: Response
+    try {
+      response = await fetch(input.url, {
+        ...input.init,
+        signal: fetchController.signal,
+      })
+    } catch (error) {
+      clearTimeout(headersTimeoutHandle)
+      // 区分三种异常：
+      //   1) 外部主动 abort（用户停止任务）→ 直接抛出，不重试
+      //   2) headers 阶段超时 → 视作网络错误，按 NETWORK_ERROR_RETRY_DELAYS 重试
+      //   3) socket reset / TLS abort 等 TypeError → 同上
+      if (input.signal.aborted) {
+        throw error
+      }
+
+      const isTimeout = headersTimedOut
+      const isNetworkError = isTimeout
+        || error instanceof TypeError
+        || (error instanceof DOMException && error.name === 'TimeoutError')
+
+      if (!isNetworkError || networkErrorAttempt >= NETWORK_ERROR_RETRY_DELAYS.length) {
+        throw error
+      }
+
+      const baseDelayMs = NETWORK_ERROR_RETRY_DELAYS[networkErrorAttempt]
+      const jitterMs = Math.floor(Math.random() * 400)
+      const waitDurationMs = baseDelayMs + jitterMs
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      // undici 把真实底层错（ECONNRESET / UND_ERR_SOCKET / UND_ERR_HEADERS_TIMEOUT / EPROTO …）
+      // 包在 TypeError.cause 里，仅看 message 永远只能看到 "fetch failed"。
+      const causeRaw = (error as { cause?: unknown })?.cause
+      const causeError = causeRaw instanceof Error ? causeRaw : null
+      const causeCode = causeError && typeof (causeError as { code?: unknown }).code === 'string'
+        ? String((causeError as { code?: unknown }).code)
+        : null
+      const causePreview = causeError
+        ? `${causeError.name}: ${causeError.message}`
+        : (causeRaw ? String(causeRaw) : null)
+
+      input.logGenerationTask(`${input.stage}:network_error_retry`, {
+        ...input.detail,
+        attempt: networkErrorAttempt + 1,
+        waitDurationMs,
+        isTimeout,
+        errorPreview: errorMessage.slice(0, 240),
+        causeCode,
+        causePreview: causePreview ? causePreview.slice(0, 240) : null,
+      })
+
+      await input.onRetry?.({
+        attempt: networkErrorAttempt + 1,
+        waitDurationMs,
+        status: 0,
+        errorPreview: [errorMessage, causePreview].filter(Boolean).join(' | ').slice(0, 240),
+        stage: input.stage,
+      })
+
+      await sleepWithAbortSignal(input.signal, waitDurationMs)
+      networkErrorAttempt += 1
+      // 网络错重试时不消耗 burst rate 重试预算
+      attemptIndex -= 1
+      continue
+    }
+
+    // 拿到 Response 后立即关闭 headers timer；保留 external→fetchController 的转发，
+    // 让 body 读取阶段仍能被用户停止任务中断。
+    clearTimeout(headersTimeoutHandle)
 
     if (response.ok) {
       return response
@@ -306,15 +412,18 @@ export const requestImageGeneration = async (input: RequestImageGenerationInput)
     modelKey: input.modelKey,
   })
 
+  const upstreamImageCount = Math.max(1, Math.floor(Number((requestBody as Record<string, unknown>).n) || 1))
   const upstreamUrl = `${upstream.baseUrl.replace(/\/+$/, '')}/${upstream.endpoint.replace(/^\/+/, '')}`
   const response = await input.fetchWithBurstRateRetry({
     url: upstreamUrl,
     signal: input.signal,
     stage: 'image_generation',
+    timeoutMs: resolveUpstreamFetchTimeoutMs(upstreamImageCount),
     detail: {
       providerId: input.providerId,
       modelKey: input.modelKey,
       endpointType: 'image',
+      imageCount: upstreamImageCount,
     },
     onRetry: input.onRetry,
     init: {
@@ -352,10 +461,12 @@ export const requestImageEdit = async (input: RequestImageEditInput) => {
     endpointType: 'image-edit',
     modelKey: input.modelKey,
   })
+  const editImageCount = Math.max(1, Math.floor(Number(input.count) || 1))
   const formData = await buildImageEditRequestFormData({
     modelKey: input.modelKey,
     prompt: input.prompt,
     size: input.size,
+    count: editImageCount,
     referenceImages: input.referenceImages,
     fileNamePrefix: 'reference',
     resolveReferenceImageBlob: resolveServerReferenceImageBlob,
@@ -371,11 +482,13 @@ export const requestImageEdit = async (input: RequestImageEditInput) => {
     url: upstreamUrl,
     signal: input.signal,
     stage: 'image_edit',
+    timeoutMs: resolveUpstreamFetchTimeoutMs(editImageCount),
     detail: {
       providerId: input.providerId,
       modelKey: input.modelKey,
       endpointType: 'image-edit',
       referenceImageCount: input.referenceImages.length,
+      imageCount: editImageCount,
     },
     onRetry: input.onRetry,
     init: {

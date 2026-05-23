@@ -194,6 +194,7 @@ import type { AuthMethodType } from '@/api/auth'
 import { createOAuthAuthorizeUrl, requestAuthVerificationCode } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { useSystemSettingsStore } from '@/stores/system-settings'
+import { useAsyncAction } from '@/composables'
 
 const props = defineProps<{
   visible: boolean
@@ -233,9 +234,6 @@ const countdown = ref(0)
 
 // 是否正在发送验证码。
 const isSendingCode = ref(false)
-
-// 是否正在提交登录。
-const isSubmitting = ref(false)
 
 // 定时器句柄。
 let countdownTimer: number | null = null
@@ -453,7 +451,26 @@ const handleSendCode = async () => {
 }
 
 // 提交验证码登录。
-const handleSubmit = async () => {
+// useAsyncAction 会在调用前将 loading=true，因此把表单合法性校验放在 wrapper 外执行，
+// 避免依赖 isSubmitting 的 canSubmit 因 loading=true 被打回。
+const submitLoginAction = useAsyncAction(async () => {
+  if (!currentPrimaryMethod.value) return
+  await authStore.login({
+    methodType: currentPrimaryMethod.value.methodType,
+    target: targetValue.value.trim(),
+    code: currentCodeMethod.value ? codeValue.value.trim() : undefined,
+    password: currentPasswordMethod.value ? passwordValue.value : undefined,
+  })
+  ElMessage.success('登录成功')
+  close()
+}, {
+  globalKey: 'blocking',
+  globalText: '登录中…',
+})
+
+const isSubmitting = submitLoginAction.loading
+
+const handleSubmit = () => {
   if (!currentPrimaryMethod.value || !canSubmit.value) return
 
   if (currentCodeMethod.value && issuedCode.value && codeValue.value.trim() !== issuedCode.value) {
@@ -461,21 +478,7 @@ const handleSubmit = async () => {
     return
   }
 
-  try {
-    isSubmitting.value = true
-    await authStore.login({
-      methodType: currentPrimaryMethod.value.methodType,
-      target: targetValue.value.trim(),
-      code: currentCodeMethod.value ? codeValue.value.trim() : undefined,
-      password: currentPasswordMethod.value ? passwordValue.value : undefined,
-    })
-    ElMessage.success('登录成功')
-    close()
-  } catch (error: any) {
-    ElMessage.error(error?.message || '登录失败')
-  } finally {
-    isSubmitting.value = false
-  }
+  void submitLoginAction.run()
 }
 
 // 发起第三方 OAuth 登录。

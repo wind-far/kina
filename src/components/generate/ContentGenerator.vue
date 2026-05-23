@@ -52,6 +52,8 @@ interface GeneratorSendOptions {
   feature?: string
   skill?: string
   referenceImages?: string[]
+  /** 文生图/图生图的生成数量，对应上游 n 参数。仅图片模式有意义 */
+  count?: number
   /** Agent 模式下当前模型支持的扩展能力开关（联网搜索 / 深度思考） */
   capabilityFlags?: ModelCapabilityFlags
 }
@@ -71,6 +73,7 @@ interface GeneratorDraftPayload {
 interface ExposedImageToolbarInstance {
   currentModelVersion: string
   currentSize: string
+  currentCount: number
 }
 
 interface ExposedVideoToolbarInstance {
@@ -308,6 +311,7 @@ const handleSubmit = () => {
       ratio: toolbar?.currentSize || '',
       resolution: sizeConfig?.quality || '',
       referenceImages: [...imageReferenceImages.value],
+      count: toolbar?.currentCount || 1,
     }
     emit('send', message, currentType.value, sendOptions)
   } else if (currentType.value === 'video' && videoToolbarRef.value) {

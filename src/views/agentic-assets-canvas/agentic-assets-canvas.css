@@ -234,7 +234,7 @@
 }
 
 .agentic-assets-canvas-page .dropdown-menu-XkzXxP {
-  background: var(--bg-block-primary-default);
+  background: var(--bg-body, #121217);
   border-radius: 12px;
   bottom: -93px;
   padding: 0;

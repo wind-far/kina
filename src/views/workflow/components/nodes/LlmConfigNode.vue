@@ -14,6 +14,7 @@ import {
   type WorkflowCanvasNode,
   type WorkflowLlmConfigNodeData,
 } from '../../composables/useWorkflowCanvas'
+import WfNodeTitle from '../WfNodeTitle.vue'
 import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
 import { createGenerationTask, resolveGenerationTaskModel, subscribeGenerationTaskEvents } from '@/api/generation-tasks'
 import WfSelect from '@/components/common/WfSelect.vue'
@@ -253,7 +254,7 @@ const handleDuplicate = () => {
               <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </span>
-          <span class="wf-node-header-title">{{ data.label || 'LLM 文本生成' }}</span>
+          <WfNodeTitle :node-id="id" :label="data.label" placeholder="LLM 文本生成" />
         </div>
         <button class="wf-btn wf-btn-sm" @click="handleDelete">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>

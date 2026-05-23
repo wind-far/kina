@@ -5,8 +5,9 @@
 import { ref, computed } from 'vue'
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, useVueFlow } from '@vue-flow/core'
 import { edges } from '../../composables/useWorkflowCanvas'
+import EdgeDeleteButton from '../EdgeDeleteButton.vue'
 
-const { updateEdgeData } = useVueFlow()
+const { updateEdgeData, onEdgeMouseEnter, onEdgeMouseLeave } = useVueFlow()
 
 const props = defineProps<{
   id: string
@@ -24,6 +25,10 @@ const props = defineProps<{
 }>()
 
 const showMenu = ref(false)
+const isHover = ref(false)
+
+onEdgeMouseEnter(({ edge }) => { if (edge.id === props.id) isHover.value = true })
+onEdgeMouseLeave(({ edge }) => { if (edge.id === props.id) isHover.value = false })
 
 const orderLabels = [
   { label: '① 第一张', key: 1 },
@@ -68,12 +73,15 @@ const handleSelect = (newOrder: number) => {
     <div
       :style="{ position: 'absolute', transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`, pointerEvents: 'all' }"
       class="nodrag nopan"
+      @mouseenter="isHover = true"
+      @mouseleave="isHover = false"
     >
       <button
         @click="showMenu = !showMenu"
         style="width: 24px; height: 24px; border-radius: 50%; background: #3b82f6; color: white; border: 2px solid var(--canvas-bg, #0f0f12); font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.15s;"
         @mouseenter="$el.style.transform='scale(1.15)'" @mouseleave="$el.style.transform='scale(1)'"
       >{{ currentOrder }}</button>
+      <EdgeDeleteButton :edge-id="id" :visible="isHover" />
       <div v-if="showMenu" style="position: absolute; top: 28px; left: 50%; transform: translateX(-50%); background: var(--canvas-float-block-default, rgba(32,33,39,0.92)); backdrop-filter: blur(20px); border: 0.5px solid var(--stroke-tertiary); border-radius: 8px; padding: 4px; z-index: 100; min-width: 100px;">
         <div
           v-for="opt in orderOptions" :key="opt.key"

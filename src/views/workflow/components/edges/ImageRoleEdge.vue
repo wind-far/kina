@@ -5,8 +5,9 @@
 import { ref, computed } from 'vue'
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, useVueFlow } from '@vue-flow/core'
 import { edges } from '../../composables/useWorkflowCanvas'
+import EdgeDeleteButton from '../EdgeDeleteButton.vue'
 
-const { updateEdgeData } = useVueFlow()
+const { updateEdgeData, onEdgeMouseEnter, onEdgeMouseLeave } = useVueFlow()
 
 const props = defineProps<{
   id: string
@@ -24,6 +25,10 @@ const props = defineProps<{
 }>()
 
 const showMenu = ref(false)
+const isHover = ref(false)
+
+onEdgeMouseEnter(({ edge }) => { if (edge.id === props.id) isHover.value = true })
+onEdgeMouseLeave(({ edge }) => { if (edge.id === props.id) isHover.value = false })
 
 const roleOptions = [
   { label: '首帧', key: 'first_frame_image' },
@@ -66,6 +71,8 @@ const handleSelect = (role: string) => {
     <div
       :style="{ position: 'absolute', transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`, pointerEvents: 'all' }"
       class="nodrag nopan"
+      @mouseenter="isHover = true"
+      @mouseleave="isHover = false"
     >
       <button
         @click="showMenu = !showMenu"
@@ -75,6 +82,7 @@ const handleSelect = (role: string) => {
         {{ currentRoleLabel }}
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
+      <EdgeDeleteButton :edge-id="id" :visible="isHover" />
       <div v-if="showMenu" style="position: absolute; top: 28px; left: 50%; transform: translateX(-50%); background: var(--canvas-float-block-default, rgba(32,33,39,0.92)); backdrop-filter: blur(20px); border: 0.5px solid var(--stroke-tertiary); border-radius: 8px; padding: 4px; z-index: 100; min-width: 80px;">
         <div
           v-for="opt in roleOptions" :key="opt.key"

@@ -13,6 +13,7 @@ import {
   nodes,
   type WorkflowTextNodeData,
 } from '../../composables/useWorkflowCanvas'
+import WfNodeTitle from '../WfNodeTitle.vue'
 import { streamChatCompletions } from '../../api/chat'
 import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
 import WfSelect from '@/components/common/WfSelect.vue'
@@ -139,7 +140,7 @@ const createVideoConfig = () => {
               <path d="M4 6h16M4 12h8m-8 6h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
           </span>
-          <span class="wf-node-header-title">{{ data.label || '文本输入' }}</span>
+          <WfNodeTitle :node-id="id" :label="data.label" placeholder="文本输入" />
         </div>
         <button class="wf-btn wf-btn-sm" @click="handleDelete">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none">

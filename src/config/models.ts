@@ -42,6 +42,13 @@ export interface ImageModel extends BaseCatalogModel {
   tips?: string
   qualities?: QualityOption[]
   getSizesByQuality?: (quality: string) => SizeOption[]
+  /**
+   * 单次请求最多返回多少张图（对应上游 n 参数的硬上限）。
+   * 由后台配置在 capabilityJson.maxImagesPerRequest 中提供；
+   * 不同上游限制不一样（gpt-image-2 = 4，部分模型 = 1，少数 = 10）。
+   * 前端步进器与后端 normalize 均会以此为上限 clamp。
+   */
+  maxImagesPerRequest: number
 }
 
 export interface VideoModel extends BaseCatalogModel {
@@ -178,6 +185,14 @@ const toImageModel = (item: PublicModelCatalogItem): ImageModel => {
     ? SEEDREAM_SIZE_OPTIONS.map(option => option.key)
     : BANANA_SIZE_OPTIONS.map(option => option.key)
 
+  // 单次出图最大张数：从 capabilityJson.maxImagesPerRequest 读取，未配置时缺省 1（最保守，
+  // 防止跨上游误差直接打穿；管理员可在后台模型配置里覆写为对应上游的真实上限）。
+  const capability = (item.capabilityJson || {}) as Record<string, unknown>
+  const rawMaxImages = Number(capability.maxImagesPerRequest)
+  const maxImagesPerRequest = Number.isFinite(rawMaxImages) && rawMaxImages >= 1
+    ? Math.floor(rawMaxImages)
+    : 1
+
   return {
     id: item.id,
     key: item.selectionKey,
@@ -192,6 +207,7 @@ const toImageModel = (item: PublicModelCatalogItem): ImageModel => {
     sortOrder: item.sortOrder,
     isDefault: item.isDefault,
     sizes,
+    maxImagesPerRequest,
     qualities: hasSeedreamSize ? SEEDREAM_QUALITY_OPTIONS : undefined,
     getSizesByQuality: hasSeedreamSize
       ? (quality: string) => quality === '4k' ? SEEDREAM_4K_SIZE_OPTIONS : SEEDREAM_SIZE_OPTIONS

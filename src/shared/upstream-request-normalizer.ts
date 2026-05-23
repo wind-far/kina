@@ -43,7 +43,26 @@ export const normalizeImageGenerationRequestBody = (input: {
     model: normalizeStringValue(input.modelKey),
   }
 
+  // 把 n / count 归一为单一字段 n，并保证为正整数下限 1。
+  // 上限不在此层 clamp，由 image-task-executor 根据模型 capabilityJson.maxImagesPerRequest 做可信兜底，
+  // 否则在 normalize 层硬编码上限会绑死一个上游的特性。
+  const rawN = Number(normalizedBody.n)
+  const rawCount = Number((normalizedBody as Record<string, unknown>).count)
+  const desiredCount = Number.isFinite(rawN) && rawN > 0
+    ? rawN
+    : (Number.isFinite(rawCount) && rawCount > 0 ? rawCount : 1)
+  normalizedBody.n = Math.max(1, Math.floor(desiredCount))
+  delete (normalizedBody as Record<string, unknown>).count
+
   delete normalizedBody.providerId
+
+  // 剥离所有 _ 前缀的客户端内部字段（项目约定：调试/追踪/幂等等内部字段统一用 _ 前缀承载）。
+  // 这里作为通用清洗的安全网，避免内部字段意外透传到上游。
+  for (const key of Object.keys(normalizedBody)) {
+    if (key.startsWith('_')) {
+      delete normalizedBody[key]
+    }
+  }
 
   const prompt = normalizeStringValue(normalizedBody.prompt)
   if (prompt) {
@@ -98,7 +117,9 @@ export const buildImageEditRequestFormData = async (input: {
 
   if (modelKey) formData.append('model', modelKey)
   if (prompt) formData.append('prompt', prompt)
-  formData.append('n', String(Number(input.count) > 0 ? Number(input.count) : 1))
+  // 仅保证下限：上限由 image-task-executor 按模型 capabilityJson.maxImagesPerRequest 兜底。
+  const desiredCount = Math.max(1, Math.floor(Number(input.count) > 0 ? Number(input.count) : 1))
+  formData.append('n', String(desiredCount))
   if (size) formData.append('size', size)
   if (quality) formData.append('quality', quality)
 

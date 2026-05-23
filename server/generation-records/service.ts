@@ -44,6 +44,7 @@ const GENERATION_RECORD_STAGE_LABELS: Record<string, string> = {
   'create_generation_record:agent_run': '创建记录时写入智能体运行态',
   'create_generation_record:transaction': '创建记录事务执行',
   'create_generation_record:reload_record': '创建记录后重新读取记录',
+  'create_generation_record:update_session_last_record_at': '创建记录后更新会话最近记录时间',
   'update_generation_record:normalize_assets': '更新记录时整理资源',
   'update_generation_record:create_output_invalid': '更新记录时写入输出结果',
   'update_generation_record:sync_asset_items': '更新记录时同步资产项',
@@ -51,6 +52,8 @@ const GENERATION_RECORD_STAGE_LABELS: Record<string, string> = {
   'update_generation_record:agent_run': '更新记录时写入智能体运行态',
   'update_generation_record:transaction': '更新记录事务执行',
   'update_generation_record:reload_record': '更新记录后重新读取记录',
+  'update_generation_record:refresh_old_session_last_record_at': '更新记录后刷新原会话最近记录时间',
+  'update_generation_record:update_new_session_last_record_at': '更新记录后写入新会话最近记录时间',
 }
 
 const translateGenerationRecordStage = (stage: string) => {
@@ -882,6 +885,8 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
   }
 
   let created: { id: string }
+  let sessionIdForLastRecordUpdate: string | null = null
+  let lastRecordAtForUpdate: Date | null = null
   try {
     created = await prisma.$transaction(async (tx) => {
       const session = await resolveGenerationSessionForUser(tx, currentUserId, payload.sessionId)
@@ -1041,12 +1046,9 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
         }
       }
 
-      await tx.generationSession.update({
-        where: { id: session.id },
-        data: {
-          lastRecordAt: createdRecord.createdAt,
-        },
-      })
+      // 会话最近记录时间挪到事务外更新，避免并发创建时争抢同一会话行触发死锁。
+      sessionIdForLastRecordUpdate = session.id
+      lastRecordAtForUpdate = createdRecord.createdAt
 
       return createdRecord
     })
@@ -1057,6 +1059,22 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
       outputCount: outputs.length,
     })
     throw error
+  }
+
+  if (sessionIdForLastRecordUpdate && lastRecordAtForUpdate) {
+    try {
+      await prisma.generationSession.update({
+        where: { id: sessionIdForLastRecordUpdate },
+        data: { lastRecordAt: lastRecordAtForUpdate },
+      })
+    } catch (error) {
+      // 会话时间戳为弱一致字段，更新失败不影响主流程。
+      logGenerationRecordError('create_generation_record:update_session_last_record_at', error, {
+        currentUserId,
+        generationRecordId: created.id,
+        sessionId: sessionIdForLastRecordUpdate,
+      })
+    }
   }
 
   let record: any
@@ -1118,6 +1136,9 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
     throw error
   }
 
+  let oldSessionIdForRefresh: string | null = null
+  let newSessionIdForLastRecordUpdate: string | null = null
+  let lastRecordAtForNewSession: Date | null = null
   try {
     await prisma.$transaction(async (tx) => {
       const existingRecord = await tx.generationRecord.findUnique({
@@ -1175,13 +1196,10 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
       })
 
       if (existingRecord.sessionId !== session.id) {
-        await refreshGenerationSessionLastRecordAt(tx, existingRecord.sessionId)
-        await tx.generationSession.update({
-          where: { id: session.id },
-          data: {
-            lastRecordAt: existingRecord.createdAt,
-          },
-        })
+        // 会话最近记录时间挪到事务外更新，避免并发更新时争抢同一会话行触发死锁。
+        oldSessionIdForRefresh = existingRecord.sessionId
+        newSessionIdForLastRecordUpdate = session.id
+        lastRecordAtForNewSession = existingRecord.createdAt
       }
 
       await tx.generationOutput.deleteMany({
@@ -1368,6 +1386,34 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
       outputCount: outputs.length,
     })
     throw error
+  }
+
+  if (oldSessionIdForRefresh) {
+    try {
+      await refreshGenerationSessionLastRecordAt(prisma, oldSessionIdForRefresh)
+    } catch (error) {
+      // 会话时间戳为弱一致字段，刷新失败不影响主流程。
+      logGenerationRecordError('update_generation_record:refresh_old_session_last_record_at', error, {
+        currentUserId,
+        generationRecordId: id,
+        sessionId: oldSessionIdForRefresh,
+      })
+    }
+  }
+
+  if (newSessionIdForLastRecordUpdate && lastRecordAtForNewSession) {
+    try {
+      await prisma.generationSession.update({
+        where: { id: newSessionIdForLastRecordUpdate },
+        data: { lastRecordAt: lastRecordAtForNewSession },
+      })
+    } catch (error) {
+      logGenerationRecordError('update_generation_record:update_new_session_last_record_at', error, {
+        currentUserId,
+        generationRecordId: id,
+        sessionId: newSessionIdForLastRecordUpdate,
+      })
+    }
   }
 
   let record: any

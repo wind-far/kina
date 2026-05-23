@@ -396,33 +396,107 @@ const addNewNode = (type: WorkflowNodeType) => {
   showNodeMenu.value = false
 }
 
-// 处理连接
-const onConnect = (params: Connection) => {
-  if (!params.source || !params.target) return
+// 快速连线（Dify 同款）：按住 Shift 点击节点 A，再按住 Shift 点击节点 B，自动连线。
+const quickLinkSourceId = ref<string | null>(null)
 
-  const normalizedParams: WorkflowAddEdgeParams = {
-    source: params.source,
-    target: params.target,
-    sourceHandle: params.sourceHandle ?? undefined,
-    targetHandle: params.targetHandle ?? undefined,
-  }
-
+// 把"按节点类型推断 edge type"的逻辑抽出来，拖拽连线（onConnect）与快速连线共用。
+const applyTypedEdgeConnection = (params: WorkflowAddEdgeParams) => {
   const sourceNode = nodes.value.find(n => n.id === params.source)
   const targetNode = nodes.value.find(n => n.id === params.target)
 
   if (sourceNode?.type === 'text' && targetNode?.type === 'imageConfig') {
     const existing = edges.value.filter(e => e.target === params.target && e.type === 'promptOrder')
-    addEdge({ ...normalizedParams, type: 'promptOrder', data: { promptOrder: existing.length + 1 } })
+    addEdge({ ...params, type: 'promptOrder', data: { promptOrder: existing.length + 1 } })
   } else if (sourceNode?.type === 'image' && targetNode?.type === 'imageConfig') {
     const existing = edges.value.filter(e => e.target === params.target && e.type === 'imageOrder')
-    addEdge({ ...normalizedParams, type: 'imageOrder', data: { imageOrder: existing.length + 1 } })
+    addEdge({ ...params, type: 'imageOrder', data: { imageOrder: existing.length + 1 } })
   } else if (sourceNode?.type === 'image' && targetNode?.type === 'videoConfig') {
-    addEdge({ ...normalizedParams, type: 'imageRole', data: { imageRole: 'first_frame_image' } })
+    addEdge({ ...params, type: 'imageRole', data: { imageRole: 'first_frame_image' } })
   } else if (sourceNode?.type === 'text' && targetNode?.type === 'videoConfig') {
-    addEdge({ ...normalizedParams, type: 'promptOrder', data: { promptOrder: 1 } })
+    addEdge({ ...params, type: 'promptOrder', data: { promptOrder: 1 } })
   } else {
-    addEdge(normalizedParams)
+    addEdge(params)
   }
+}
+
+// 处理连接
+const onConnect = (params: Connection) => {
+  if (!params.source || !params.target) return
+
+  applyTypedEdgeConnection({
+    source: params.source,
+    target: params.target,
+    sourceHandle: params.sourceHandle ?? undefined,
+    targetHandle: params.targetHandle ?? undefined,
+  })
+}
+
+const hasExistingEdge = (source: string, target: string, sourceHandle?: string, targetHandle?: string) => {
+  return edges.value.some(edge =>
+    edge.source === source
+    && edge.target === target
+    && (edge.sourceHandle || undefined) === sourceHandle
+    && (edge.targetHandle || undefined) === targetHandle,
+  )
+}
+
+const handleNodeClick = (payload: { event: MouseEvent | TouchEvent; node: { id: string } }) => {
+  const originalEvent = payload.event as MouseEvent
+  // 只在按住 Shift 时介入；其他点击一律交回 vue-flow 默认行为。
+  if (!(originalEvent && 'shiftKey' in originalEvent && originalEvent.shiftKey)) {
+    return
+  }
+
+  const targetNodeId = payload.node?.id
+  if (!targetNodeId) return
+
+  if (!quickLinkSourceId.value) {
+    quickLinkSourceId.value = targetNodeId
+    return
+  }
+
+  if (quickLinkSourceId.value === targetNodeId) {
+    quickLinkSourceId.value = null
+    return
+  }
+
+  // 沿用 vue-flow 默认 handle 命名（与拖拽连线一致）：右出左入。
+  const sourceHandle = 'right'
+  const targetHandle = 'left'
+  if (!hasExistingEdge(quickLinkSourceId.value, targetNodeId, sourceHandle, targetHandle)) {
+    applyTypedEdgeConnection({
+      source: quickLinkSourceId.value,
+      target: targetNodeId,
+      sourceHandle,
+      targetHandle,
+    })
+  }
+  quickLinkSourceId.value = null
+  originalEvent.preventDefault?.()
+  originalEvent.stopPropagation?.()
+}
+
+// 给挂起源节点动态打 .wf-quick-link-source class，提示"A 已选中，下一次 Shift+点击的节点为目标"。
+// 这是整个快速连线流程仅保留的视觉反馈，跟挂起状态同生同灭。
+const resolveNodeClass = (node: { id: string }) => {
+  return node.id === quickLinkSourceId.value ? 'wf-quick-link-source' : undefined
+}
+
+// 顶部提示横幅用：挂起源节点的可读名称
+const quickLinkSourceLabel = computed(() => {
+  const sourceId = quickLinkSourceId.value
+  if (!sourceId) return ''
+  const node = nodes.value.find(n => n.id === sourceId)
+  if (!node) return ''
+  const label = (node.data as { label?: string })?.label
+  if (label) return label
+  const typeOption = nodeTypeOptions.find(opt => opt.type === node.type)
+  const idSuffix = sourceId.replace(/^node_/, '')
+  return `${typeOption?.name || node.type} #${idSuffix}`
+})
+
+const cancelQuickLink = () => {
+  quickLinkSourceId.value = null
 }
 
 // 处理视口变化
@@ -601,6 +675,12 @@ const flushAutosave = async () => {
 
 // 键盘快捷键
 const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && quickLinkSourceId.value) {
+    e.preventDefault()
+    quickLinkSourceId.value = null
+    return
+  }
+
   if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
     e.preventDefault()
     e.shiftKey ? redo() : undo()
@@ -689,7 +769,10 @@ watch(currentCanvasSnapshot, () => {
           :snap-to-grid="true"
           :snap-grid="[20, 20]"
           :delete-key-code="['Delete', 'Backspace']"
+          :connect-on-click="false"
+          :node-class-name="resolveNodeClass"
           @connect="onConnect"
+          @node-click="handleNodeClick"
           @pane-click="onPaneClick"
           @viewport-change="handleViewportChange"
           @edges-change="onEdgesChange"
@@ -716,6 +799,27 @@ watch(currentCanvasSnapshot, () => {
             </div>
           </div>
         </header>
+
+        <!-- 快速连线状态横幅：Shift+点击挂起源节点后顶部提示 -->
+        <Transition name="wf-quick-link-banner">
+          <div v-if="quickLinkSourceId" class="wf-quick-link-banner" role="status" aria-live="polite">
+            <span class="wf-quick-link-banner__dot" aria-hidden="true"></span>
+            <span class="wf-quick-link-banner__text">
+              正在连线：<strong>{{ quickLinkSourceLabel }}</strong> → 按住 Shift 点击目标节点完成
+            </span>
+            <span class="wf-quick-link-banner__hint">Esc 取消</span>
+            <button
+              class="wf-quick-link-banner__close"
+              type="button"
+              aria-label="取消快速连线"
+              @click="cancelQuickLink"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+        </Transition>
 
         <nav class="workflow-left-toolbar">
           <div class="workflow-left-toolbar-container">

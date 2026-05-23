@@ -1232,3 +1232,111 @@
     transform: scale(1);
   }
 }
+
+/* 快速连线（Shift + 点击）唯一的视觉反馈：被挂起为源的节点 */
+.vue-flow__node.wf-quick-link-source {
+  outline: 2px dashed rgba(59, 130, 246, 0.85);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.18);
+  animation: wf-quick-link-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes wf-quick-link-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.08);
+  }
+}
+
+/* 顶部状态横幅：仅在挂起源时出现 */
+.wf-quick-link-banner {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px 8px 14px;
+  border-radius: 999px;
+  background: rgba(13, 27, 60, 0.92);
+  border: 1px solid rgba(59, 130, 246, 0.55);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
+  color: var(--text-primary, #e0f5ff);
+  font-size: 12px;
+  line-height: 1;
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+
+.wf-quick-link-banner__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.25);
+  animation: wf-quick-link-dot 1.2s ease-in-out infinite;
+}
+
+@keyframes wf-quick-link-dot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.7;
+  }
+}
+
+.wf-quick-link-banner__text {
+  white-space: nowrap;
+}
+
+.wf-quick-link-banner__text strong {
+  color: #93c5fd;
+  font-weight: 600;
+  padding: 0 2px;
+}
+
+.wf-quick-link-banner__hint {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(224, 245, 255, 0.7);
+  font-size: 11px;
+}
+
+.wf-quick-link-banner__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 2px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: rgba(224, 245, 255, 0.7);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.wf-quick-link-banner__close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary, #e0f5ff);
+}
+
+.wf-quick-link-banner-enter-active,
+.wf-quick-link-banner-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.wf-quick-link-banner-enter-from,
+.wf-quick-link-banner-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -8px);
+}

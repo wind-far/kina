@@ -590,3 +590,30 @@ export const deleteProviderModel = async (providerId: string, id: string) => {
     id: normalizedId,
   }
 }
+
+// 单次最大出图张数：从 IMAGE 类别模型的 capabilityJson.maxImagesPerRequest 读取。
+// 用于上游请求前的"可信兜底 clamp"，避免前端越界值打穿上游。
+export const resolveImageModelMaxImagesPerRequest = async (
+  providerId: string,
+  modelKey: string,
+): Promise<number> => {
+  const normalizedProviderId = String(providerId || '').trim()
+  const normalizedModelKey = String(modelKey || '').trim()
+  if (!normalizedProviderId || !normalizedModelKey) {
+    return 1
+  }
+
+  const record = await prisma.aiModel.findFirst({
+    where: {
+      providerId: normalizedProviderId,
+      modelKey: normalizedModelKey,
+      category: 'IMAGE',
+      isEnabled: true,
+    },
+    select: { capabilityJson: true },
+  })
+
+  const capability = (record?.capabilityJson || {}) as Record<string, unknown>
+  const raw = Number(capability.maxImagesPerRequest)
+  return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 1
+}

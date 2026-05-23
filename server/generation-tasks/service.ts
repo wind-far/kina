@@ -2,6 +2,7 @@ import { getGenerationRecordById, createGenerationRecord, updateGenerationRecord
 import type { GenerationRecordPayload } from '../generation-records/shared'
 import type { GenerationTaskStartPayload, GenerationTaskStreamEvent } from './shared'
 import { resolveGatewayProviderUpstream } from '../provider-config/service'
+import { resolveImageModelMaxImagesPerRequest } from '../provider-config/model-service'
 import {
   attachGenerationPointRecordId,
   consumeGenerationPoints,
@@ -198,6 +199,7 @@ const executeImageGenerationTask = async (task: RunningGenerationTask, payload: 
     ensureTaskNotAborted: (runningTask) => ensureTaskNotAborted(runningTask, { abortTaskWithReason }),
     emitTaskProgressEvent: (recordId, input) => emitTaskProgressEvent(recordId, input, taskEventEmitterContext),
     markTaskRetryState,
+    resolveImageMaxImagesPerRequest: (providerId, modelKey) => resolveImageModelMaxImagesPerRequest(providerId, modelKey),
     requestImageGeneration: (input) => requestImageGeneration({
       ...input,
       fetchWithBurstRateRetry: (retryInput) => fetchWithBurstRateRetry({

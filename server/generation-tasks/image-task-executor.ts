@@ -24,6 +24,11 @@ export interface ImageTaskExecutorContext {
     message?: string
   }) => void
   markTaskRetryState: (task: ImageExecutionTask, input: ImageTaskRetryState) => Promise<void>
+  /**
+   * 从模型配置查询单次允许的最大出图张数（capabilityJson.maxImagesPerRequest）。
+   * 用于在调上游前做"可信兜底 clamp"，不依赖前端发的字段，避免被绕过。
+   */
+  resolveImageMaxImagesPerRequest: (providerId: string, modelKey: string) => Promise<number>
   requestImageGeneration: (input: {
     signal: AbortSignal
     providerId: string
@@ -94,10 +99,30 @@ export const executeImageTask = async (
     message: '已开始请求上游图片模型',
   })
 
-  const requestImageCount = Math.max(
+  // 可信兜底：以模型配置的 maxImagesPerRequest 为上限 clamp，前端任何越界都会被截到合规范围内。
+  const modelMaxImages = Math.max(1, Math.floor(
+    await context.resolveImageMaxImagesPerRequest(providerId, modelKey),
+  ))
+  const desiredImageCount = Math.max(
     1,
     Math.floor(Number((requestBody as Record<string, unknown>).count) || Number((requestBody as Record<string, unknown>).n) || 1),
   )
+  const requestImageCount = Math.min(modelMaxImages, desiredImageCount)
+  // 写回 requestBody，让文生图链路 normalize 后透传给上游的 n 也是 clamp 后的值。
+  ;(requestBody as Record<string, unknown>).n = requestImageCount
+  delete (requestBody as Record<string, unknown>).count
+
+  if (desiredImageCount > requestImageCount) {
+    context.logGenerationTask('image_task:clamp_image_count', {
+      recordId: task.recordId,
+      userId: task.userId,
+      modelKey,
+      providerId,
+      desiredImageCount,
+      modelMaxImages,
+      appliedImageCount: requestImageCount,
+    })
+  }
 
   const { upstreamUrl, imageUrls } = requestMode === 'image-edit'
     ? await context.requestImageEdit({

@@ -2827,7 +2827,13 @@ const startImageGenerationTask = async (record: GeneratingRecord) => {
         ? (modelConfig.sizes.find((sizeItem: string) => sizeItem.includes(record.ratio.replace(':', 'x'))) || modelConfig.defaultParams?.size || '')
         : (record.ratio ? record.ratio.replace(':', 'x') : '')
     const hasReferenceImages = Array.isArray(record.referenceImages) && record.referenceImages.length > 0
-    const requestCount = record.count && record.count > 0 ? Math.min(10, Math.max(1, Math.floor(record.count))) : 1
+    // 单次 n 上限来自 capabilityJson.maxImagesPerRequest（后台可配置；不同上游限制不一致：
+    // gpt-image-2 = 4，dall-e-3 = 1，dall-e-2 = 10）。未配置时落到保守值 1。
+    const modelMaxImages = Number((modelConfig as { maxImagesPerRequest?: number } | null)?.maxImagesPerRequest)
+    const upperBound = Number.isFinite(modelMaxImages) && modelMaxImages >= 1 ? Math.floor(modelMaxImages) : 1
+    const requestCount = record.count && record.count > 0
+      ? Math.min(upperBound, Math.max(1, Math.floor(record.count)))
+      : 1
     let data: any = {
       model: requestModelKey,
       prompt: record.prompt,

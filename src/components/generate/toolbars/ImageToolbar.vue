@@ -5,7 +5,7 @@
 
 import { ref, computed, watch, onMounted } from 'vue'
 import SelectPopup from '../common/SelectPopup.vue'
-import { getAllImageModels, getDefaultImageModelKey, loadPublicModelCatalog } from '@/config/models'
+import { getAllImageModels, getDefaultImageModelKey, loadPublicModelCatalog, type ImageModel } from '@/config/models'
 
 // 弹出方向类型
 type Placement = 'top' | 'bottom' | 'auto'
@@ -56,7 +56,9 @@ const validImageModelValues = modelVersions.value.map(item => item.value)
 const validImageSizeValues = sizeOptions.map(item => item.value)
 
 const IMAGE_COUNT_MIN = 1
-const IMAGE_COUNT_MAX = 10
+// 当模型未配置 maxImagesPerRequest 时使用的最保守上限：1。
+// 各上游真实上限由 capabilityJson.maxImagesPerRequest 提供，管理员后台可配置。
+const IMAGE_COUNT_FALLBACK_MAX = 1
 const IMAGE_COUNT_DEFAULT = 1
 
 // 当前选中的模型版本
@@ -72,9 +74,17 @@ const currentSize = ref(
 // 当前生成数量：用户每次打开都从 1 开始，不记忆历史值
 const currentCount = ref<number>(IMAGE_COUNT_DEFAULT)
 
+// 当前模型允许的单次最大出图张数（由后台 capabilityJson.maxImagesPerRequest 配置，未配置时落到保守值 1）
+const currentImageMax = computed(() => {
+  const all = getAllImageModels() as ImageModel[]
+  const model = all.find(item => item.key === currentModelVersion.value)
+  const value = Number(model?.maxImagesPerRequest)
+  return Number.isFinite(value) && value >= IMAGE_COUNT_MIN ? Math.floor(value) : IMAGE_COUNT_FALLBACK_MAX
+})
+
 const clampCount = (value: number) => {
   if (!Number.isFinite(value)) return IMAGE_COUNT_DEFAULT
-  return Math.min(IMAGE_COUNT_MAX, Math.max(IMAGE_COUNT_MIN, Math.floor(value)))
+  return Math.min(currentImageMax.value, Math.max(IMAGE_COUNT_MIN, Math.floor(value)))
 }
 
 const decreaseCount = (e: Event) => {
@@ -148,6 +158,13 @@ watch(
   },
   { immediate: true },
 )
+
+// 切换模型时，若新模型的最大张数小于当前 count，自动夹紧，避免用户提交超限被上游 422。
+watch(currentImageMax, (max) => {
+  if (currentCount.value > max) {
+    currentCount.value = max
+  }
+})
 
 onMounted(() => {
   void loadPublicModelCatalog()
@@ -311,7 +328,7 @@ defineExpose({
         type="number"
         class="image-count-value"
         :min="1"
-        :max="10"
+        :max="currentImageMax"
         :step="1"
         :value="currentCount"
         @input="handleCountInput"
@@ -321,7 +338,7 @@ defineExpose({
       <button
         type="button"
         class="image-count-step-btn"
-        :disabled="currentCount >= 10"
+        :disabled="currentCount >= currentImageMax"
         aria-label="增加生成数量"
         @click="increaseCount"
       >

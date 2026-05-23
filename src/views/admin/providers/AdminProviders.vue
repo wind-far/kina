@@ -497,6 +497,24 @@
             <div class="admin-form__hint">单次请求附带的历史消息上限</div>
           </div>
 
+          <!-- 图片模型专属：单次最大出图张数（写入 capabilityJson.maxImagesPerRequest） -->
+          <div v-if="modelForm.category === 'IMAGE'" class="admin-form__field">
+            <label class="admin-form__label" for="model-max-images-per-request">单次最大出图张数</label>
+            <input
+              id="model-max-images-per-request"
+              v-model.number="modelForm.maxImagesPerRequest"
+              class="admin-input"
+              type="number"
+              min="1"
+              max="20"
+              step="1"
+              placeholder="1"
+            >
+            <div class="admin-form__hint">
+              对应上游 n 参数的硬上限。不同上游限制不一致（gpt-image-2 = 4，dall-e-3 = 1，dall-e-2 = 10），未配置时按 1 保守处理。
+            </div>
+          </div>
+
           <div class="admin-form__field admin-form__field--full">
             <label class="admin-form__label" for="model-default-params">默认参数 JSON</label>
             <textarea id="model-default-params" v-model="modelForm.defaultParamsJsonText" class="admin-textarea" placeholder='例如 {"temperature": 0.7}'></textarea>
@@ -657,6 +675,9 @@ const modelForm = reactive({
   membershipLevelsText: '',
   maxContext: 3,
   isDefault: false,
+  // 单次最大出图张数（仅 IMAGE 类别有意义）。最终落入 capabilityJson.maxImagesPerRequest。
+  // 不同上游限制不同：gpt-image-2 = 4，dall-e-3 = 1，dall-e-2 = 10。
+  maxImagesPerRequest: 1,
 })
 
 const discoverBatchSettings = reactive({
@@ -798,6 +819,7 @@ const resetModelForm = () => {
   modelForm.membershipLevelsText = ''
   modelForm.maxContext = 3
   modelForm.isDefault = false
+  modelForm.maxImagesPerRequest = 1
 }
 
 // 编辑模型时统一回填，避免能力字段和默认参数丢失。
@@ -823,6 +845,11 @@ const applyModelForm = (model: AdminProviderModelItem) => {
     : ''
   modelForm.maxContext = Number(defaultParamsJson.maxContext || 3) || 3
   modelForm.isDefault = Boolean(defaultParamsJson.isDefault)
+  // 从 capabilityJson.maxImagesPerRequest 回填；非法/缺失时落到 1
+  const storedMaxImages = Number(capabilityJson.maxImagesPerRequest)
+  modelForm.maxImagesPerRequest = Number.isFinite(storedMaxImages) && storedMaxImages >= 1
+    ? Math.floor(storedMaxImages)
+    : 1
 }
 
 const loadProviders = async () => {
@@ -1151,6 +1178,18 @@ const mergeModelDefaultParams = () => {
 
 const buildModelPayload = (): AdminProviderModelPayload => {
   const capabilityJson = { ...(modelForm.capabilityJson || {}) }
+
+  // 仅在 IMAGE 类别保留单次最大出图张数；其它类别去掉，避免无关字段污染。
+  if (modelForm.category === 'IMAGE') {
+    const value = Number(modelForm.maxImagesPerRequest)
+    if (Number.isFinite(value) && value >= 1) {
+      capabilityJson.maxImagesPerRequest = Math.floor(value)
+    } else {
+      delete capabilityJson.maxImagesPerRequest
+    }
+  } else {
+    delete capabilityJson.maxImagesPerRequest
+  }
 
   return {
     category: modelForm.category,

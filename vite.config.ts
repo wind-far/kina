@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
@@ -63,7 +64,10 @@ const createMockAgentRawPlugin = () => ({
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
-    vue(),
+    // Vue 插件仅处理 .vue 文件，避免与 React JSX 互扰
+    vue({ include: [/\.vue$/] }),
+    // React 插件仅处理 .jsx/.tsx，承载 Cutia React UI（src-cutia/ 目录）
+    react({ include: /\.(jsx|tsx)$/ }),
     tailwindcss(),
     // Element Plus 按需引入：自动注入命名导入（ElMessage/ElMessageBox 等）的样式
     AutoImport({
@@ -122,6 +126,11 @@ export default defineConfig({
       '@utils': path.resolve(__dirname, 'src/utils'),
       '@api': path.resolve(__dirname, 'src/api'),
       '@types': path.resolve(__dirname, 'src/types'),
+      // Cutia React 代码根别名（详见 docs/cutia-集成-目录结构设计.md）
+      '@cutia': path.resolve(__dirname, 'src-cutia'),
+      // Shim：拦截 Cutia 源码对 next.js 版 i18n 工具包的引用，指向本地 stub
+      // 详见 src-cutia/shims/i18next-toolkit/index.ts
+      '@i18next-toolkit/nextjs-approuter': path.resolve(__dirname, 'src-cutia/shims/i18next-toolkit/index.ts'),
     },
   },
 
@@ -143,6 +152,10 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes('node_modules')) {
             return
+          }
+          // React 运行时单独成 chunk，便于浏览器长效缓存
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
+            return 'react-vendor'
           }
           // Vue Flow 仅工作流页用到，单独成 chunk
           if (id.includes('@vue-flow')) {

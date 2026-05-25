@@ -31,6 +31,11 @@ const AdminUsers = () => import('../views/admin/users/AdminUsers.vue')
 const AdminAuditLogs = () => import('../views/admin/audit/AdminAuditLogs.vue')
 const AdminAccessDenied = () => import('../views/admin/AdminAccessDenied.vue')
 
+// POC：验证 React JSX 与 Vue 共存（Cutia 集成预研）
+// TODO: POC 通过后删除此路由及 src/views/poc/、src-cutia/poc/
+const PocReactInVue = () => import('../views/poc/PocPage.vue')
+const PocFullEditor = () => import('../views/poc/FullEditorPage.vue')
+
 const routes: RouteRecordRaw[] = [
   {
     path: '/install',
@@ -84,6 +89,16 @@ const routes: RouteRecordRaw[] = [
     path: '/policies/:type',
     name: 'PolicyDetail',
     component: PolicyDetail,
+  },
+  {
+    path: '/poc/react-in-vue',
+    name: 'PocReactInVue',
+    component: PocReactInVue,
+  },
+  {
+    path: '/poc/full-editor',
+    name: 'PocFullEditor',
+    component: PocFullEditor,
   },
   {
     path: '/admin-forbidden',

@@ -22,9 +22,12 @@ import {
   Upload,
   MagicStick,
   Document,
+  FullScreen,
+  Grid,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
+import CanvasNodeTopToolbar, { type NodeTopToolbarItem } from '@/components/canvas/CanvasNodeTopToolbar.vue'
 import CanvasPromptInput from '@/components/canvas/CanvasPromptInput.vue'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
@@ -217,6 +220,57 @@ const emptyMenuItems = [
   { id: 'reverse-prompt', label: '图片反推提示词', icon: MagicStick, onClick: handleReversePrompt },
 ]
 
+// 富文本工具栏（参照 RunningHUB .format-toolbar）：仅 selected + 有内容时显示
+
+const applyMarkdownWrap = (prefix: string, suffix: string = prefix) => {
+  const ta = textareaRef.value
+  if (!ta) return
+  const start = ta.selectionStart ?? content.value.length
+  const end = ta.selectionEnd ?? start
+  const before = content.value.slice(0, start)
+  const middle = content.value.slice(start, end)
+  const after = content.value.slice(end)
+  const next = `${before}${prefix}${middle}${suffix}${after}`
+  content.value = next
+  updateNode(props.id, { content: next })
+}
+const applyLinePrefix = (prefix: string) => {
+  const ta = textareaRef.value
+  if (!ta) return
+  const start = ta.selectionStart ?? 0
+  const lineStart = content.value.lastIndexOf('\n', Math.max(0, start - 1)) + 1
+  const before = content.value.slice(0, lineStart)
+  const after = content.value.slice(lineStart)
+  const next = `${before}${prefix}${after}`
+  content.value = next
+  updateNode(props.id, { content: next })
+}
+const handleCopyText = async () => {
+  try {
+    await navigator.clipboard.writeText(content.value)
+    ElMessage.success('已复制到剪贴板')
+  } catch {
+    ElMessage.warning('复制失败，请手动选择')
+  }
+}
+const handleFullScreen = () => ElMessage.info('全屏编辑：接入中')
+const handleTablePicker = () => ElMessage.info('插入表格：接入中')
+
+const topToolbarItems = computed<NodeTopToolbarItem[]>(() => [
+  { id: 'bold', label: '粗体', textMark: 'B', onClick: () => applyMarkdownWrap('**') },
+  { id: 'italic', label: '斜体', textMark: 'I', onClick: () => applyMarkdownWrap('*') },
+  { id: 'underline', label: '下划线', textMark: 'U', onClick: () => applyMarkdownWrap('<u>', '</u>') },
+  { type: 'divider' },
+  { id: 'h1', label: '标题 1', textMark: 'H₁', onClick: () => applyLinePrefix('# ') },
+  { id: 'h2', label: '标题 2', textMark: 'H₂', onClick: () => applyLinePrefix('## ') },
+  { id: 'h3', label: '标题 3', textMark: 'H₃', onClick: () => applyLinePrefix('### ') },
+  { type: 'divider' },
+  { id: 'paragraph', label: '自动排版', textMark: '¶', onClick: () => ElMessage.info('自动排版：接入中') },
+  { id: 'copy-text', label: '复制', icon: CopyDocument, iconOnly: true, onClick: handleCopyText },
+  { id: 'fullscreen', label: '全屏', icon: FullScreen, iconOnly: true, onClick: handleFullScreen },
+  { id: 'table', label: '插入表格', icon: Grid, iconOnly: true, onClick: handleTablePicker },
+])
+
 // 选中态下方浮层 prompt：仅在节点被选中时显示
 const promptText = ref('')
 const promptModelOptions = computed(() =>
@@ -334,6 +388,9 @@ const handlePromptSend = (text: string) => {
 
     <!-- 节点上方浮动工具栏 -->
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
+
+    <!-- 选中态 + 有内容时：节点顶部浮出富文本工具栏 -->
+    <CanvasNodeTopToolbar :visible="isSelected && !isEmpty" :items="topToolbarItems" />
 
     <!-- 选中态下方浮出 prompt 输入框（按节点类型差异化） -->
     <div v-if="isSelected" class="text-node-prompt-panel nodrag nopan" @mousedown.stop>

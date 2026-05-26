@@ -6,15 +6,15 @@
 import { computed, ref, watch, onMounted, onUnmounted, nextTick, markRaw } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { VueFlow, useVueFlow, type Connection } from '@vue-flow/core'
+import { VueFlow, useVueFlow, SelectionMode, type Connection, type NodeMouseEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
-import { MiniMap } from '@vue-flow/minimap'
 import { useAsyncAction, useShortcut } from '@/composables'
 import { useLoadingStore } from '@/stores/loading'
 import {
   nodes, edges, addNode, addEdge, updateNode, applyCanvasSnapshot,
   canvasViewport, updateViewport,
   undo, redo, canUndo, canRedo, manualSaveHistory, initSampleData, initHistory,
+  pauseHistory, resumeHistory,
   type WorkflowAddEdgeParams,
   type WorkflowCanvasEdge,
   type WorkflowNodeType,
@@ -40,9 +40,27 @@ import ImageRoleEdge from './components/edges/ImageRoleEdge.vue'
 import PromptOrderEdge from './components/edges/PromptOrderEdge.vue'
 import ImageOrderEdge from './components/edges/ImageOrderEdge.vue'
 
+// 画布壳（infinite-canvas → canana-vue 迁移产物）
+import CanvasContextMenu from '@/components/canvas/CanvasContextMenu.vue'
+import CanvasDockToolbar from '@/components/canvas/CanvasDockToolbar.vue'
+import CanvasZoomControls from '@/components/canvas/CanvasZoomControls.vue'
+import CanvasMiniMap from '@/components/canvas/CanvasMiniMap.vue'
+import { useCanvasSelection } from '@/composables/useCanvasSelection'
+import { useCanvasClipboard } from '@/composables/useCanvasClipboard'
+import { useCanvasDrop } from '@/composables/useCanvasDrop'
+import {
+  canvasBackgroundMode,
+  removeNode,
+  removeEdge,
+  duplicateNode,
+  clearCanvas,
+} from './composables/useWorkflowCanvas'
+import { uploadStorageFile } from '@/api/storage'
+import type { ContextMenuItem, ContextMenuPosition } from '@/types/canvas-interaction'
+
 const router = useRouter()
 const route = useRoute()
-const { viewport, zoomIn, zoomOut, fitView, updateNodeInternals } = useVueFlow()
+const { viewport, zoomIn, zoomOut, fitView, updateNodeInternals, screenToFlowCoordinate } = useVueFlow()
 
 // 注册自定义节点类型
 const nodeTypes = {
@@ -690,10 +708,170 @@ useShortcut('CmdOrCtrl+N', () => {
   void handleCreateWorkflow()
 })
 
+// 空格临时平移：按住 Space 时禁用节点拖拽，左键也加入 panOnDrag
+const isSpacePressed = ref(false)
+const panOnDragValue = computed<true | number[]>(() => (isSpacePressed.value ? [0, 1, 2] : true))
+
+const isEditableSpaceTarget = (el: EventTarget | null): boolean => {
+  if (!(el instanceof HTMLElement)) return false
+  const tag = el.tagName.toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
+  return el.isContentEditable
+}
+
+const handleSpaceDown = (event: KeyboardEvent) => {
+  if (event.code !== 'Space' || event.repeat) return
+  if (isEditableSpaceTarget(event.target)) return
+  event.preventDefault()
+  isSpacePressed.value = true
+}
+const handleSpaceUp = (event: KeyboardEvent) => {
+  if (event.code === 'Space') {
+    isSpacePressed.value = false
+  }
+}
+
+// 节点拖拽期间暂停历史入栈，拖拽结束统一作为 1 条历史记录
+const onNodeDragStart = () => {
+  pauseHistory()
+}
+const onNodeDragStop = () => {
+  resumeHistory()
+}
+
+// === 选择 / 剪贴板 / 拖入 / 右键菜单 ===
+const { selectedNodeIds, selectedEdgeId, selectAll, deselectAll } = useCanvasSelection()
+const { copySelected, pasteFromSlot, hasClipboard } = useCanvasClipboard()
+const { onDrop: onCanvasFileDrop, onDragOver: onCanvasFileDragOver } = useCanvasDrop()
+
+const selectedCount = computed(() => selectedNodeIds.value.size)
+
+// 小地图开关
+const isMiniMapOpen = ref(true)
+const toggleMiniMap = () => {
+  isMiniMapOpen.value = !isMiniMapOpen.value
+}
+
+// 隐藏 file input（点击 Dock 工具栏"上传"时触发）
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const triggerFileUpload = () => {
+  fileInputRef.value?.click()
+}
+const handleFileInputChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  if (!input.files || input.files.length === 0) return
+  for (const file of Array.from(input.files)) {
+    const kind: 'image' | 'video' | null = file.type.startsWith('image/')
+      ? 'image'
+      : file.type.startsWith('video/')
+        ? 'video'
+        : null
+    if (!kind) continue
+    try {
+      const uploaded = await uploadStorageFile(file, 'asset')
+      if (!uploaded) continue
+      const center = screenToFlowCoordinate({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+      if (kind === 'image') {
+        addNode('image', center, { url: uploaded.publicUrl, label: file.name })
+      } else {
+        addNode('video', center, { url: uploaded.publicUrl, duration: 0, label: file.name })
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[workflow] upload failed', err)
+    }
+  }
+  input.value = ''
+}
+
+// 右键上下文菜单
+const contextMenuVisible = ref(false)
+const contextMenuPosition = ref<ContextMenuPosition>({ x: 0, y: 0 })
+const contextMenuItems = ref<ContextMenuItem[]>([])
+const closeContextMenu = () => {
+  contextMenuVisible.value = false
+}
+const openPaneContextMenu = (event: MouseEvent) => {
+  event.preventDefault()
+  const flowPos = screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
+  contextMenuItems.value = [
+    { id: 'add-text', label: '新建文本', onClick: () => addNode('text', flowPos) },
+    { id: 'add-image', label: '新建图片', onClick: () => addNode('image', flowPos) },
+    { id: 'add-video', label: '新建视频', onClick: () => addNode('video', flowPos) },
+    { id: 'add-image-config', label: '新建文生图配置', onClick: () => addNode('imageConfig', flowPos) },
+    { id: 'divider', label: '', type: 'divider' },
+    {
+      id: 'paste',
+      label: '粘贴',
+      shortcut: 'Cmd+V',
+      disabled: !hasClipboard(),
+      onClick: () => pasteFromSlot(),
+    },
+  ]
+  contextMenuPosition.value = { x: event.clientX, y: event.clientY }
+  contextMenuVisible.value = true
+}
+const openNodeContextMenu = (payload: NodeMouseEvent) => {
+  payload.event.preventDefault()
+  const e = payload.event as unknown as MouseEvent
+  contextMenuItems.value = [
+    { id: 'duplicate', label: '复制', shortcut: 'Cmd+C', onClick: () => duplicateNode(payload.node.id) },
+    { id: 'delete', label: '删除', shortcut: 'Del', danger: true, onClick: () => removeNode(payload.node.id) },
+  ]
+  contextMenuPosition.value = { x: e.clientX, y: e.clientY }
+  contextMenuVisible.value = true
+}
+
+// 删除当前选中的节点/边
+const deleteSelected = () => {
+  for (const id of selectedNodeIds.value) {
+    removeNode(id)
+  }
+  if (selectedEdgeId.value) {
+    removeEdge(selectedEdgeId.value)
+  }
+}
+
+// 清空画布（带确认）
+const clearCanvasWithConfirm = () => {
+  if (typeof window === 'undefined') return
+  if (window.confirm('确定要清空画布吗？此操作不可撤销。')) {
+    clearCanvas()
+  }
+}
+
+// 扩展快捷键
+useShortcut('CmdOrCtrl+A', () => selectAll())
+useShortcut('CmdOrCtrl+C', () => {
+  copySelected()
+})
+useShortcut('CmdOrCtrl+V', () => {
+  pasteFromSlot()
+})
+
+// 工具栏按钮 handler
+const addNodeAtViewportCenter = (type: WorkflowNodeType) => {
+  const center = screenToFlowCoordinate({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+  addNode(type, center)
+}
+const handleAddText = () => addNodeAtViewportCenter('text')
+const handleAddImage = () => addNodeAtViewportCenter('image')
+const handleAddVideo = () => addNodeAtViewportCenter('video')
+const handleAddConfig = () => addNodeAtViewportCenter('imageConfig')
+const handleOpenAssetLibrary = () => {
+  ElMessage.info('素材库接入待后续完善')
+}
+const handleOpenMyAssets = () => {
+  ElMessage.info('我的素材接入待后续完善')
+}
+
 onMounted(() => {
   initSampleData()
   initHistory()
   initialCanvasBaselineSnapshot.value = currentCanvasSnapshot.value
+
+  window.addEventListener('keydown', handleSpaceDown)
+  window.addEventListener('keyup', handleSpaceUp)
 
   const initialWorkflowId = String(route.query.workflowId || '').trim()
   const initialVersionId = String(route.query.versionId || '').trim()
@@ -707,6 +885,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleSpaceDown)
+  window.removeEventListener('keyup', handleSpaceUp)
   clearAutosaveTimer()
 })
 
@@ -752,30 +932,85 @@ watch(currentCanvasSnapshot, () => {
   <div class="workflow-container">
     <div class="workflow-workbench">
       <div class="workflow-main">
-        <VueFlow
-          v-model:nodes="nodes"
-          v-model:edges="edges"
-          v-model:viewport="viewport"
-          :node-types="nodeTypes"
-          :edge-types="edgeTypes"
-          :default-viewport="canvasViewport"
-          :min-zoom="0.1"
-          :max-zoom="2"
-          :snap-to-grid="true"
-          :snap-grid="[20, 20]"
-          :delete-key-code="['Delete', 'Backspace']"
-          :connect-on-click="false"
-          :node-class-name="resolveNodeClass"
-          @connect="onConnect"
-          @node-click="handleNodeClick"
-          @pane-click="onPaneClick"
-          @viewport-change="handleViewportChange"
-          @edges-change="onEdgesChange"
-          class="workflow-canvas"
+        <div
+          class="workflow-canvas-wrap"
+          @dragover="onCanvasFileDragOver"
+          @drop="onCanvasFileDrop"
         >
-          <Background :gap="20" :size="1" />
-          <MiniMap position="bottom-right" :pannable="true" :zoomable="true" />
-        </VueFlow>
+          <VueFlow
+            v-model:nodes="nodes"
+            v-model:edges="edges"
+            v-model:viewport="viewport"
+            :node-types="nodeTypes"
+            :edge-types="edgeTypes"
+            :default-viewport="canvasViewport"
+            :min-zoom="0.1"
+            :max-zoom="2"
+            :snap-to-grid="true"
+            :snap-grid="[20, 20]"
+            :delete-key-code="['Delete', 'Backspace']"
+            :selection-key-code="'Meta'"
+            :multi-selection-key-code="'Shift'"
+            :selection-mode="SelectionMode.Partial"
+            :pan-on-drag="panOnDragValue"
+            :nodes-draggable="!isSpacePressed"
+            :pan-on-scroll="false"
+            :connect-on-click="false"
+            :node-class-name="resolveNodeClass"
+            @connect="onConnect"
+            @node-click="handleNodeClick"
+            @pane-click="onPaneClick"
+            @viewport-change="handleViewportChange"
+            @edges-change="onEdgesChange"
+            @node-drag-start="onNodeDragStart"
+            @node-drag-stop="onNodeDragStop"
+            @pane-context-menu="openPaneContextMenu"
+            @node-context-menu="openNodeContextMenu"
+            class="workflow-canvas"
+            :class="{ 'workflow-canvas--space-panning': isSpacePressed }"
+          >
+            <Background
+              v-if="canvasBackgroundMode !== 'blank'"
+              :gap="canvasBackgroundMode === 'dots' ? 24 : 20"
+              :size="canvasBackgroundMode === 'dots' ? 1.2 : 1"
+              :variant="canvasBackgroundMode === 'dots' ? 'dots' : 'lines'"
+            />
+          </VueFlow>
+
+          <CanvasMiniMap :visible="isMiniMapOpen" />
+          <CanvasZoomControls :mini-map-open="isMiniMapOpen" @toggle-mini-map="toggleMiniMap" />
+          <CanvasDockToolbar
+            :selected-count="selectedCount"
+            :can-undo="canUndo"
+            :can-redo="canRedo"
+            @deselect="deselectAll"
+            @undo="undo"
+            @redo="redo"
+            @add-text="handleAddText"
+            @add-image="handleAddImage"
+            @add-video="handleAddVideo"
+            @add-config="handleAddConfig"
+            @upload="triggerFileUpload"
+            @open-asset-library="handleOpenAssetLibrary"
+            @open-my-assets="handleOpenMyAssets"
+            @delete="deleteSelected"
+            @clear="clearCanvasWithConfirm"
+          />
+          <CanvasContextMenu
+            :visible="contextMenuVisible"
+            :position="contextMenuPosition"
+            :items="contextMenuItems"
+            @close="closeContextMenu"
+          />
+          <input
+            ref="fileInputRef"
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            style="display: none"
+            @change="handleFileInputChange"
+          />
+        </div>
 
         <header class="workflow-header">
           <div class="workflow-header-left">
@@ -888,7 +1123,7 @@ watch(currentCanvasSnapshot, () => {
           </button>
         </div>
 
-        <div class="workflow-bottom-toolbar">
+        <div class="workflow-bottom-toolbar" v-if="false">
           <div class="workflow-bottom-toolbar-container">
             <button class="wf-btn wf-btn-sm" @click="fitView({ padding: 0.2 })" title="适应视图">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">

@@ -10,6 +10,7 @@ import type {
 	SerializedScene,
 	StorageStats,
 	ProjectStorageStats,
+	StorageAdapter,
 } from "./types";
 import type { SavedSoundsData, SavedSound, SoundEffect } from "@cutia/types/sounds";
 import {
@@ -18,13 +19,29 @@ import {
 } from "@cutia/services/storage/migrations";
 import type { TimelineTrack, TScene } from "@cutia/types/timeline";
 
+// 项目存储 adapter 需要支持的接口:5 个 StorageAdapter 方法 + getAll(批量拉取)。
+// IndexedDBAdapter 与 RemoteStorageAdapter(canana-vue 集成版)都实现此形态。
+export type ProjectsStorageAdapter = StorageAdapter<SerializedProject> & {
+	getAll(): Promise<SerializedProject[]>;
+};
+
+export interface StorageServiceOptions {
+	// 可选注入项目存储 adapter(canana-vue 集成版用 RemoteStorageAdapter)。
+	// 未提供时回退到默认 IndexedDBAdapter,保持 cutia 上游版本零变更。
+	projectsAdapter?: ProjectsStorageAdapter;
+	// 跳过 storage migrations。Remote 数据永远 v3 起步,migration runner 内部
+	// 硬绑 IndexedDB('video-editor-projects'),与远程数据无关,故跳过。
+	skipMigrations?: boolean;
+}
+
 class StorageService {
-	private projectsAdapter: IndexedDBAdapter<SerializedProject>;
+	private projectsAdapter: ProjectsStorageAdapter;
 	private savedSoundsAdapter: IndexedDBAdapter<SavedSoundsData>;
 	private config: StorageConfig;
 	private migrationsPromise: Promise<void> | null = null;
+	private skipMigrations: boolean;
 
-	constructor() {
+	constructor(options: StorageServiceOptions = {}) {
 		this.config = {
 			projectsDb: "video-editor-projects",
 			mediaDb: "video-editor-media",
@@ -32,20 +49,26 @@ class StorageService {
 			version: 1,
 		};
 
-		this.projectsAdapter = new IndexedDBAdapter<SerializedProject>(
-			this.config.projectsDb,
-			"projects",
-			this.config.version,
-		);
+		this.projectsAdapter =
+			options.projectsAdapter ??
+			new IndexedDBAdapter<SerializedProject>(
+				this.config.projectsDb,
+				"projects",
+				this.config.version,
+			);
 
 		this.savedSoundsAdapter = new IndexedDBAdapter<SavedSoundsData>(
 			this.config.savedSoundsDb,
 			"saved-sounds",
 			this.config.version,
 		);
+
+		this.skipMigrations = options.skipMigrations ?? false;
 	}
 
 	private async ensureMigrations(): Promise<void> {
+		if (this.skipMigrations) return;
+
 		if (this.migrationsPromise) {
 			await this.migrationsPromise;
 			return;
@@ -522,5 +545,15 @@ class StorageService {
 	}
 }
 
-export const storageService = new StorageService();
+// 默认 storageService 单例,使用 IndexedDB(cutia 原生行为)。
+// canana-vue 集成场景下,通过 __replaceStorageServiceForIntegration 替换为
+// 注入了 RemoteStorageAdapter 的实例。cutia 内部所有 `import { storageService }`
+// 都是标准命名 import,ES Module live binding 保证替换后内部代码零修改。
+export let storageService = new StorageService();
 export { StorageService };
+
+// 集成专用:替换全局 storageService 单例。仅在 React mount 前(VideoEditor 挂载前)
+// 调用一次即可。不要在运行时反复替换,会导致已经持有引用的代码使用旧实例。
+export function __replaceStorageServiceForIntegration(svc: StorageService) {
+	storageService = svc;
+}

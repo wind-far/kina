@@ -31,6 +31,16 @@
 }
 
 /* ========== Vue Flow 画布覆盖样式 ========== */
+
+/* 画布外层壳：承担 dragover/drop + 浮层 absolute 定位基准；填满 .workflow-main 剩余高度 */
+.workflow-canvas-wrap {
+  position: relative;
+  flex: 1 1 0;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .workflow-canvas {
   width: 100%;
   height: 100%;

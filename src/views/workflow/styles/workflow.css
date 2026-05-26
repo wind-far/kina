@@ -8,15 +8,16 @@
 
 /* NodeResizer 视觉覆盖：用 lv-theme 变量统一画风 */
 .workflow-canvas .vue-flow__resize-control.handle {
-  background: var(--canvas-resize-handle-bg, #fff);
-  border: 2px solid var(--canvas-selection-border, #00cae0);
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+  background: var(--canvas-resize-handle-bg, #fff) !important;
+  border: 2px solid var(--canvas-selection-border, #00cae0) !important;
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 50% !important;
 }
 .workflow-canvas .vue-flow__resize-control.line {
-  border-color: var(--canvas-selection-border, #00cae0);
-  border-width: 1px;
+  border-color: var(--canvas-selection-border, #00cae0) !important;
+  border-width: 1px !important;
+  background: transparent !important;
 }
 
 /* ========== 主容器 ========== */
@@ -107,6 +108,12 @@
 
 .workflow-canvas .vue-flow__node.selected {
   box-shadow: none;
+  outline: none;
+}
+
+/* 选中态用节点本身（.wf-node）的描边，避免 vue-flow 默认紫色 outline 渗出 */
+.workflow-canvas .vue-flow__node.selected .wf-node {
+  box-shadow: 0 0 0 2px var(--canvas-selection-border, #00cae0);
 }
 
 /* 连线样式 */
@@ -521,7 +528,11 @@
   backdrop-filter: blur(var(--canvas-float-backdrop-blur, 32px));
   border: 0.5px solid var(--stroke-tertiary, rgba(204, 221, 255, 0.08));
   border-radius: 12px;
-  width: 280px;
+  width: 100%;
+  height: 100%;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
   cursor: default;
   position: relative;
 }
@@ -577,9 +588,9 @@
 
 /* 节点悬浮操作 */
 .wf-node-wrapper {
-  padding-right: 50px;
-  padding-top: 20px;
   position: relative;
+  width: 100%;
+  height: 100%;
 }
 
 .wf-node-actions {

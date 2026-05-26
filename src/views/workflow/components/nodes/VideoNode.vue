@@ -4,6 +4,7 @@
  */
 import { ref, watch } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
+import { NodeResizer } from '@vue-flow/node-resizer'
 import {
   updateNode,
   removeNode,
@@ -64,6 +65,7 @@ const handleDuplicate = () => {
 
 <template>
   <div class="wf-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
+    <NodeResizer :min-width="240" :min-height="160" :keep-aspect-ratio="true" />
     <div class="wf-node wf-node-video" :class="{ selected: data.selected }">
       <div class="wf-node-header">
         <div class="wf-node-header-left">

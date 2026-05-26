@@ -4,6 +4,7 @@
  */
 import { ref, computed, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
+import { NodeResizer } from '@vue-flow/node-resizer'
 import {
   updateNode,
   removeNode,
@@ -131,6 +132,7 @@ const createVideoConfig = () => {
 
 <template>
   <div class="wf-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
+    <NodeResizer :min-width="220" :min-height="120" />
     <div class="wf-node wf-node-text" :class="{ selected: data.selected }">
       <!-- 头部 -->
       <div class="wf-node-header">

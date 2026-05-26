@@ -4,6 +4,20 @@
 @import '@vue-flow/core/dist/style.css';
 @import '@vue-flow/core/dist/theme-default.css';
 @import '@vue-flow/minimap/dist/style.css';
+@import '@vue-flow/node-resizer/dist/style.css';
+
+/* NodeResizer 视觉覆盖：用 lv-theme 变量统一画风 */
+.workflow-canvas .vue-flow__resize-control.handle {
+  background: var(--canvas-resize-handle-bg, #fff);
+  border: 2px solid var(--canvas-selection-border, #00cae0);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.workflow-canvas .vue-flow__resize-control.line {
+  border-color: var(--canvas-selection-border, #00cae0);
+  border-width: 1px;
+}
 
 /* ========== 主容器 ========== */
 .workflow-container {

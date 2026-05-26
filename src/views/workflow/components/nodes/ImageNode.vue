@@ -5,6 +5,7 @@
  */
 import { ref, watch } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
+import { NodeResizer } from '@vue-flow/node-resizer'
 import {
   updateNode,
   removeNode,
@@ -150,6 +151,7 @@ const handleDuplicate = () => {
 
 <template>
   <div class="wf-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
+    <NodeResizer :min-width="220" :min-height="160" />
     <div class="wf-node wf-node-image" :class="{ selected: data.selected }">
       <!-- 头部 -->
       <div class="wf-node-header">

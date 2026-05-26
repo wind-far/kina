@@ -5,6 +5,7 @@
  */
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
+import { NodeResizer } from '@vue-flow/node-resizer'
 import {
   updateNode,
   removeNode,
@@ -332,6 +333,7 @@ watch(
 
 <template>
   <div class="wf-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
+    <NodeResizer :min-width="280" :min-height="200" />
     <div class="wf-node wf-node-image-config" :class="{ selected: data.selected }">
       <!-- 头部 -->
       <div class="wf-node-header">

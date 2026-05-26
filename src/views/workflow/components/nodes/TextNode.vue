@@ -41,6 +41,7 @@ import {
   type WorkflowTextNodeData,
 } from '../../composables/useWorkflowCanvas'
 import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
+import { streamChatCompletions } from '../../api/chat'
 
 const props = defineProps<{
   id: string
@@ -53,6 +54,7 @@ const { updateNodeInternals } = useVueFlow()
 
 const content = ref(props.data?.content || '')
 const showActions = ref(false)
+const isPolishing = ref(false)
 const polishModel = ref(props.data?.polishModel || getDefaultChatModelKey())
 const fontSize = ref(props.data?.fontSize ?? 14)
 const forceEditMode = ref(false)
@@ -245,12 +247,50 @@ const promptText = ref('')
 const promptModelOptions = computed(() =>
   getAllChatModels().map((m) => ({ key: m.key, label: m.label })),
 )
-const handlePromptSend = (text: string) => {
-  // 文本节点：把发送内容写入 content（沿用 AI 润色作为后续步骤；这里只填充）
-  content.value = text
+/**
+ * 节点下方 PromptInput 发送 = AI 润色：
+ *   - 节点 content 有内容 → 把 content 作为「原文」+ PromptInput 文本作为「润色诉求」一起送给 AI
+ *   - 节点 content 为空 → 直接把 PromptInput 文本送给 AI 生成润色版作为初始内容
+ * 流式写回 content。
+ */
+const handlePromptSend = async (text: string) => {
+  if (!text.trim() || isPolishing.value) return
+  const original = content.value
+  isPolishing.value = true
   forceEditMode.value = true
-  updateNode(props.id, { content: text })
   promptText.value = ''
+  const userMsg = original.trim()
+    ? `请基于以下原文进行润色，融入新的诉求：\n\n【原文】\n${original}\n\n【润色诉求】\n${text}`
+    : text
+  try {
+    let result = ''
+    for await (const chunk of streamChatCompletions({
+      model: polishModel.value,
+      messages: [
+        {
+          role: 'system',
+          content:
+            '你是一个专业的 AI 创作提示词与文本润色专家。将用户输入润色为高质量的内容，保留原意但融入更生动的细节、画面感与情绪。直接返回润色后的纯文本，不要解释。',
+        },
+        { role: 'user', content: userMsg },
+      ],
+    })) {
+      result += chunk
+      content.value = result // 流式边写边显示
+    }
+    if (result) {
+      updateNode(props.id, { content: result })
+    } else {
+      content.value = original
+    }
+  } catch (err) {
+    content.value = original
+    ElMessage.error('AI 润色失败')
+    // eslint-disable-next-line no-console
+    console.error('[TextNode] polish failed', err)
+  } finally {
+    isPolishing.value = false
+  }
 }
 </script>
 
@@ -339,7 +379,8 @@ const handlePromptSend = (text: string) => {
         v-model:model-key="polishModel"
         :model-options="promptModelOptions"
         :show-add-btn="false"
-        placeholder="描述你想生成的文本内容，按 Enter 发送"
+        :sending="isPolishing"
+        placeholder="描述润色诉求或想生成的文本内容，按 Enter 发送（AI 会基于当前内容润色）"
         @send="handlePromptSend"
       />
     </div>

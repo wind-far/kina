@@ -461,8 +461,8 @@ watch(content, async () => {
   height: 100%;
   min-width: 300px;
   min-height: 200px;
-  background: var(--canvas-bg-block-default);
-  border: 1px solid var(--stroke-secondary);
+  background: var(--canvas-node-bg);
+  border: 1px solid var(--canvas-node-border);
   border-radius: 16px;
   padding: 0;
   display: flex;

@@ -144,8 +144,8 @@ const titleEdit = useNodeTitleEdit(props.nodeId, () => props.label)
   position: relative;
   width: 100%;
   height: 100%;
-  background: var(--canvas-bg-block-default);
-  border: 1px solid var(--stroke-secondary);
+  background: var(--canvas-node-bg);
+  border: 1px solid var(--canvas-node-border);
   border-radius: 16px;
   padding: 0;
   display: flex;

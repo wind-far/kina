@@ -628,6 +628,10 @@ body [data-lv-theme-force=dark],body [lv-theme=dark],body body[lv-theme-version=
     --canvas-selection-border: var(--brand-main-default);
     --canvas-resize-handle-bg: var(--canvas-frame);
     --canvas-drag-ghost-opacity: 0.7;
+    /* canvas node tokens (节点卡片背景/边，对齐 RunningHUB) */
+    --canvas-node-bg: #1a1a1c;
+    --canvas-node-border: #3a3a3a;
+    --canvas-node-elevated: #1f1f1f;
     --text-primary: #f5fbff;
     --text-secondary: #e0f5ff99;
     --text-tertiary: #e0f5ff7a;
@@ -796,6 +800,10 @@ body body[lv-theme-version="2.0"][lv-theme=light],html body[lv-theme-version="2.
     --canvas-selection-border: var(--brand-main-default);
     --canvas-resize-handle-bg: var(--canvas-frame);
     --canvas-drag-ghost-opacity: 0.7;
+    /* canvas node tokens (浅色：节点卡片背景/边) */
+    --canvas-node-bg: #ffffff;
+    --canvas-node-border: rgba(0, 0, 0, 0.08);
+    --canvas-node-elevated: #f7f7f7;
     --line-divider: rgba(15, 20, 25, 0.12);
     --text-primary: #0f1419;
     --text-secondary: #536471;
@@ -1992,6 +2000,10 @@ body,html {
             --canvas-selection-border: var(--brand-main-default);
             --canvas-resize-handle-bg: var(--canvas-frame);
             --canvas-drag-ghost-opacity: 0.7;
+            /* canvas node tokens */
+            --canvas-node-bg: #1a1a1c;
+            --canvas-node-border: #3a3a3a;
+            --canvas-node-elevated: #1f1f1f;
             --text-primary: #f5fbff;
             --text-secondary: #e0f5ff99;
             --text-tertiary: #e0f5ff7a;
@@ -5032,6 +5044,10 @@ body,html {
             --canvas-selection-border: var(--brand-main-default);
             --canvas-resize-handle-bg: var(--canvas-frame);
             --canvas-drag-ghost-opacity: 0.7;
+            /* canvas node tokens */
+            --canvas-node-bg: #1a1a1c;
+            --canvas-node-border: #3a3a3a;
+            --canvas-node-elevated: #1f1f1f;
             --text-primary: #f5fbff;
             --text-secondary: #e0f5ff99;
             --text-tertiary: #e0f5ff7a;

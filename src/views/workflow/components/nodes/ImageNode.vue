@@ -483,8 +483,8 @@ const handlePromptSend = (text: string) => {
   height: 100%;
   min-width: 380px;
   min-height: 280px;
-  background: var(--canvas-bg-block-default);
-  border: 1px solid var(--stroke-secondary);
+  background: var(--canvas-node-bg);
+  border: 1px solid var(--canvas-node-border);
   border-radius: 16px;
   padding: 0;
   display: flex;

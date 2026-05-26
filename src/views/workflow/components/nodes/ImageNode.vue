@@ -385,8 +385,9 @@ const handlePromptSend = (text: string) => {
     <!-- 选中态顶部悬浮工具栏（仅有图时显示） -->
     <CanvasNodeTopToolbar :visible="isSelected && showImage" :items="topToolbarItems" />
 
-    <!-- 选中态下方浮出 prompt -->
-    <div v-if="isSelected" class="image-node-prompt-panel nodrag nopan" @mousedown.stop>
+    <!-- 选中态下方浮出 prompt：仅 ready-state（有上游连线 + 自身空）时显示
+         自身有图 / 空态菜单 时不显示，符合 RunningHUB 设计 -->
+    <div v-if="isSelected && showReady" class="image-node-prompt-panel nodrag nopan" @mousedown.stop>
       <CanvasPromptInput
         v-model="promptText"
         v-model:model-key="promptModelKey"
@@ -469,7 +470,12 @@ const handlePromptSend = (text: string) => {
   flex-direction: column;
   box-sizing: border-box;
   overflow: hidden;
-  transition: border-color 0.16s, box-shadow 0.16s;
+  transition: border-color 0.16s, box-shadow 0.16s, min-width 0.2s ease;
+}
+/* 有图态：节点变宽，图片居中（参照 RunningHUB 生成结果布局 img_11） */
+.image-node-card:has(.image-node-display) {
+  min-width: 580px;
+  min-height: 340px;
 }
 .image-node-card.is-selected {
   border-color: var(--canvas-selection-border);
@@ -642,7 +648,7 @@ const handlePromptSend = (text: string) => {
   to { transform: rotate(360deg); }
 }
 
-/* 批量组叠卡 */
+/* 批量组叠卡 / 有图态：图片居中，最大尺寸限制让节点周围有黑色边距（参照 img_11） */
 .image-node-display {
   position: relative;
   flex: 1 1 0;
@@ -650,10 +656,13 @@ const handlePromptSend = (text: string) => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  padding: 32px;
 }
 .image-node-image {
-  max-width: 100%;
+  max-width: 320px;
   max-height: 100%;
+  width: auto;
+  height: auto;
   object-fit: contain;
   position: relative;
   z-index: 1;

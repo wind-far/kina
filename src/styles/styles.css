@@ -15,6 +15,35 @@
 @source "../../src-cutia/**/*.{ts,tsx,js,jsx}";
 
 /* ========================================================================
+ * Canvas Interaction Tokens（infinite-canvas → canana-vue 迁移）
+ *
+ * 新增 3 个 token，承载画布的节点选中描边、resize 手柄、拖拽副本透明度。
+ * 已定义在所有 lv-theme 主 selector 内（浅/深各一份）。
+ *
+ *   --canvas-selection-border  : 节点/连线选中描边色（取品牌主色）
+ *   --canvas-resize-handle-bg  : 四角 resize 手柄填充（与画布同色，外加蓝边）
+ *   --canvas-drag-ghost-opacity: 拖拽副本透明度（unitless 0.7）
+ *
+ * infinite-canvas canvasThemes → canana-vue lv-theme 对照表
+ * （详见 docs/canvas-theme-mapping.md，本注释只列关键映射）：
+ *   canvas.background        → --canvas-bg
+ *   canvas.dot / canvas.line → 组件内按透明度叠加 --text-primary
+ *   canvas.selectionStroke   → --canvas-selection-border (新)
+ *   canvas.selectionFill     → rgba(--brand-main-default, .08)
+ *   node.fill                → --canvas-bg-block-default
+ *   node.panel               → --canvas-float-block-default
+ *   node.stroke              → --stroke-secondary
+ *   node.activeStroke        → --canvas-selection-border (新)
+ *   node.text                → --text-primary
+ *   node.muted               → --stroke-primary
+ *   toolbar.panel            → --canvas-float-block-default
+ *   toolbar.border           → --stroke-secondary
+ *   toolbar.itemHover        → --canvas-float-block-hover
+ *   toolbar.activeBg         → --brand-main-block-default
+ *   toolbar.activeText       → --brand-main-default
+ * ======================================================================== */
+
+/* ========================================================================
  * Cutia 编辑器主题 —— 内联自 src-cutia/styles/cutia-globals.css
  *
  * 为什么 inline 而不是 @import：
@@ -595,6 +624,10 @@ body [data-lv-theme-force=dark],body [lv-theme=dark],body body[lv-theme-version=
     --canvas-frame: #1c1e22;
     --canvas-image-loading-end: #272b32;
     --canvas-image-loading-start: #22252a;
+    /* canvas interaction tokens (节点选中描边/resize 手柄/拖拽副本) */
+    --canvas-selection-border: var(--brand-main-default);
+    --canvas-resize-handle-bg: var(--canvas-frame);
+    --canvas-drag-ghost-opacity: 0.7;
     --text-primary: #f5fbff;
     --text-secondary: #e0f5ff99;
     --text-tertiary: #e0f5ff7a;
@@ -759,6 +792,10 @@ body body[lv-theme-version="2.0"][lv-theme=light],html body[lv-theme-version="2.
     --canvas-frame: #fff;
     --canvas-image-loading-end: #e9eaeb;
     --canvas-image-loading-start: #f9f9f9;
+    /* canvas interaction tokens (节点选中描边/resize 手柄/拖拽副本) */
+    --canvas-selection-border: var(--brand-main-default);
+    --canvas-resize-handle-bg: var(--canvas-frame);
+    --canvas-drag-ghost-opacity: 0.7;
     --line-divider: rgba(15, 20, 25, 0.12);
     --text-primary: #0f1419;
     --text-secondary: #536471;
@@ -1951,6 +1988,10 @@ body,html {
             --canvas-frame: #1c1e22;
             --canvas-image-loading-end: #272b32;
             --canvas-image-loading-start: #22252a;
+            /* canvas interaction tokens (节点选中描边/resize 手柄/拖拽副本) */
+            --canvas-selection-border: var(--brand-main-default);
+            --canvas-resize-handle-bg: var(--canvas-frame);
+            --canvas-drag-ghost-opacity: 0.7;
             --text-primary: #f5fbff;
             --text-secondary: #e0f5ff99;
             --text-tertiary: #e0f5ff7a;
@@ -4987,6 +5028,10 @@ body,html {
             --canvas-frame: #1c1e22;
             --canvas-image-loading-end: #272b32;
             --canvas-image-loading-start: #22252a;
+            /* canvas interaction tokens (节点选中描边/resize 手柄/拖拽副本) */
+            --canvas-selection-border: var(--brand-main-default);
+            --canvas-resize-handle-bg: var(--canvas-frame);
+            --canvas-drag-ghost-opacity: 0.7;
             --text-primary: #f5fbff;
             --text-secondary: #e0f5ff99;
             --text-tertiary: #e0f5ff7a;

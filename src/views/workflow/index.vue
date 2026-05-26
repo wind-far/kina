@@ -9,7 +9,7 @@ import { ElMessage } from 'element-plus'
 import { VueFlow, useVueFlow, type Connection } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { MiniMap } from '@vue-flow/minimap'
-import { useAsyncAction } from '@/composables'
+import { useAsyncAction, useShortcut } from '@/composables'
 import { useLoadingStore } from '@/stores/loading'
 import {
   nodes, edges, addNode, addEdge, updateNode, applyCanvasSnapshot,
@@ -673,31 +673,27 @@ const flushAutosave = async () => {
   await autosaveInFlight.value
 }
 
-// 键盘快捷键
-const handleKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && quickLinkSourceId.value) {
-    e.preventDefault()
-    quickLinkSourceId.value = null
-    return
-  }
-
-  if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
-    e.preventDefault()
-    e.shiftKey ? redo() : undo()
-    return
-  }
-
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
-    e.preventDefault()
-    void handleCreateWorkflow()
-  }
-}
+// 键盘快捷键（统一走 useShortcut 注册，自动管理生命周期 + 输入框焦点屏蔽）
+useShortcut(
+  'Escape',
+  () => {
+    if (quickLinkSourceId.value) {
+      quickLinkSourceId.value = null
+    }
+  },
+  // Esc 不阻止默认，让 el-dialog / el-popover 等浮层也能关闭
+  { preventDefault: false },
+)
+useShortcut('CmdOrCtrl+Z', () => undo())
+useShortcut(['CmdOrCtrl+Shift+Z', 'CmdOrCtrl+Y'], () => redo())
+useShortcut('CmdOrCtrl+N', () => {
+  void handleCreateWorkflow()
+})
 
 onMounted(() => {
   initSampleData()
   initHistory()
   initialCanvasBaselineSnapshot.value = currentCanvasSnapshot.value
-  window.addEventListener('keydown', handleKeydown)
 
   const initialWorkflowId = String(route.query.workflowId || '').trim()
   const initialVersionId = String(route.query.versionId || '').trim()
@@ -711,7 +707,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown)
   clearAutosaveTimer()
 })
 
@@ -864,13 +859,13 @@ watch(currentCanvasSnapshot, () => {
 
             <div class="wf-divider"></div>
 
-            <button class="wf-btn wf-btn-icon" :disabled="!canUndo()" @click="undo()" title="撤销">
+            <button class="wf-btn wf-btn-icon" :disabled="!canUndo" @click="undo()" title="撤销">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M3 10h10a5 5 0 015 5v0a5 5 0 01-5 5H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M7 14l-4-4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </button>
-            <button class="wf-btn wf-btn-icon" :disabled="!canRedo()" @click="redo()" title="重做">
+            <button class="wf-btn wf-btn-icon" :disabled="!canRedo" @click="redo()" title="重做">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M21 10H11a5 5 0 00-5 5v0a5 5 0 005 5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M17 14l4-4-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>

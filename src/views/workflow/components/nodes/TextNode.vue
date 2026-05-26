@@ -26,6 +26,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
+import CanvasPromptInput from '@/components/canvas/CanvasPromptInput.vue'
 import {
   updateNode,
   removeNode,
@@ -211,6 +212,19 @@ const emptyMenuItems = [
   { id: 'create-video', label: '文字生视频', icon: VideoCamera, onClick: createVideoConfig },
   { id: 'reverse-prompt', label: '图片反推提示词', icon: MagicStick, onClick: handleReversePrompt },
 ]
+
+// 选中态下方浮层 prompt：仅在节点被选中时显示
+const promptText = ref('')
+const promptModelOptions = computed(() =>
+  getAllChatModels().map((m) => ({ key: m.key, label: m.label })),
+)
+const handlePromptSend = (text: string) => {
+  // 文本节点：把发送内容写入 content（沿用 AI 润色作为后续步骤；这里只填充）
+  content.value = text
+  forceEditMode.value = true
+  updateNode(props.id, { content: text })
+  promptText.value = ''
+}
 </script>
 
 <template>
@@ -303,6 +317,18 @@ const emptyMenuItems = [
 
     <!-- 节点上方浮动工具栏 -->
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
+
+    <!-- 选中态下方浮出 prompt 输入框（按节点类型差异化） -->
+    <div v-if="data?.selected" class="text-node-prompt-panel nodrag nopan" @mousedown.stop>
+      <CanvasPromptInput
+        v-model="promptText"
+        v-model:model-key="polishModel"
+        :model-options="promptModelOptions"
+        :show-add-btn="false"
+        placeholder="描述你想生成的文本内容，按 Enter 发送"
+        @send="handlePromptSend"
+      />
+    </div>
   </div>
 </template>
 
@@ -490,5 +516,17 @@ const emptyMenuItems = [
   background: var(--canvas-float-block-hover) !important;
   border-color: var(--canvas-selection-border) !important;
   transform: scale(1.1);
+}
+
+/* 选中态下方 prompt 浮层 */
+.text-node-prompt-panel {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  min-width: 380px;
+  max-width: 560px;
+  z-index: 5;
 }
 </style>

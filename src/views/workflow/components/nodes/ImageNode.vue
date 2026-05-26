@@ -55,7 +55,7 @@ const props = defineProps<{
 }>()
 const isSelected = computed(() => props.selected || props.data?.selected)
 const titleEdit = useNodeTitleEdit(props.id, () => props.data?.label || 'Image')
-const { updateNodeInternals } = useVueFlow()
+const { updateNodeInternals, addSelectedNodes, removeSelectedNodes, getNodes } = useVueFlow()
 
 const showActions = ref(false)
 const imageUrl = ref(props.data?.url || '')
@@ -94,6 +94,8 @@ const handleFileChange = async (event: Event) => {
     if (uploaded) {
       imageUrl.value = uploaded.publicUrl
       updateNode(props.id, { url: uploaded.publicUrl, loading: false })
+      // 上传成功后：如果还没有下游节点，自动创建一个 ready-state 的下游 image 节点
+      autoCreateDownstreamImageNode()
     } else {
       throw new Error('upload returned empty')
     }
@@ -106,6 +108,35 @@ const handleFileChange = async (event: Event) => {
     isLoading.value = false
     input.value = ''
   }
+}
+
+// 已有下游节点？
+const hasDownstream = computed(() => edges.value.some((e) => e.source === props.id))
+
+/**
+ * 自动创建一个下游 image 节点 + 连线，让画布进入 img_5 状态：
+ * 「左侧已上传图片节点 → 右侧 ready-state Image 节点 + 底部 PromptInput（自动带 "图片1" 缩略 chip）」
+ */
+const autoCreateDownstreamImageNode = () => {
+  if (hasDownstream.value) return
+  const node = nodes.value.find((n) => n.id === props.id)
+  if (!node) return
+  const newId = addNode('image', { x: node.position.x + 480, y: node.position.y }, { label: 'Image' })
+  addEdge({
+    source: props.id,
+    target: newId,
+    sourceHandle: 'right',
+    targetHandle: 'left',
+    type: 'imageOrder',
+    data: { imageOrder: 1 },
+  })
+  setTimeout(() => {
+    updateNodeInternals([newId])
+    const allNodes = getNodes.value
+    removeSelectedNodes(allNodes.filter((n) => n.selected))
+    const target = allNodes.find((n) => n.id === newId)
+    if (target) addSelectedNodes([target])
+  }, 100)
 }
 
 const handleDownload = async () => {
@@ -150,18 +181,8 @@ const requireImage = (): boolean => {
 
 const handleImageToImage = () => {
   if (!requireImage()) return
-  const node = nodes.value.find((n) => n.id === props.id)
-  if (!node) return
-  const newId = addNode('imageConfig', { x: node.position.x + 380, y: node.position.y })
-  addEdge({
-    source: props.id,
-    target: newId,
-    sourceHandle: 'right',
-    targetHandle: 'left',
-    type: 'imageOrder',
-    data: { imageOrder: 1 },
-  })
-  setTimeout(() => updateNodeInternals([newId]), 50)
+  // 已有图：直接创建下游占位节点；没图时 requireImage 已触发上传，handleFileChange 上传成功后会调 autoCreate
+  autoCreateDownstreamImageNode()
 }
 const handleImageToVideo = (role: 'first_frame_image' | 'input_reference' = 'input_reference') => {
   if (!requireImage()) return

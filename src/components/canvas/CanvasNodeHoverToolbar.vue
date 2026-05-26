@@ -70,7 +70,7 @@ defineProps<{
 .canvas-node-hover-toolbar {
   position: absolute;
   top: 50%;
-  left: calc(100% + 8px);
+  left: calc(100% + 50px);
   transform: translateY(-50%);
   display: inline-flex;
   flex-direction: column;

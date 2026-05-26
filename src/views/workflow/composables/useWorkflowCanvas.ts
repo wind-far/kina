@@ -39,6 +39,8 @@ export interface WorkflowNodeDataBase {
 export interface WorkflowTextNodeData extends WorkflowNodeDataBase {
   content: string
   polishModel?: string
+  /** 文本字号，px。hover toolbar 通过 +/- 调节，默认 14 */
+  fontSize?: number
 }
 
 export interface WorkflowImageConfigNodeData extends WorkflowNodeDataBase {

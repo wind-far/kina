@@ -5,6 +5,8 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { NodeResizer } from '@vue-flow/node-resizer'
+import { CopyDocument, Picture, VideoCamera, Delete, Plus, Minus } from '@element-plus/icons-vue'
+import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import {
   updateNode,
   removeNode,
@@ -29,6 +31,14 @@ const content = ref(props.data?.content || '')
 const showActions = ref(false)
 const isPolishing = ref(false)
 const polishModel = ref(props.data?.polishModel || getDefaultChatModelKey())
+const fontSize = ref(props.data?.fontSize ?? 14)
+
+const FONT_SIZE_MIN = 10
+const FONT_SIZE_MAX = 28
+const handleFontSizeChange = (delta: number) => {
+  fontSize.value = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, fontSize.value + delta))
+  updateNode(props.id, { fontSize: fontSize.value })
+}
 
 const chatModelOptions = computed(() => getAllChatModels().map(m => ({ label: m.label, value: m.key })))
 
@@ -51,6 +61,7 @@ onMounted(() => {
 
 watch(() => props.data?.content, (v) => { if (v !== undefined) content.value = v })
 watch(() => props.data?.polishModel, (v) => { if (v !== undefined) polishModel.value = v })
+watch(() => props.data?.fontSize, (v) => { if (v !== undefined) fontSize.value = v })
 
 const handleInput = () => {
   updateNode(props.id, { content: content.value, polishModel: polishModel.value })
@@ -128,6 +139,16 @@ const createVideoConfig = () => {
   })
   setTimeout(() => updateNodeInternals([newId]), 50)
 }
+
+// hover 工具栏配置
+const hoverActions = computed<NodeToolbarAction[]>(() => [
+  { id: 'font-minus', label: '缩小字号', icon: Minus, disabled: fontSize.value <= FONT_SIZE_MIN, onClick: () => handleFontSizeChange(-1) },
+  { id: 'font-plus', label: '放大字号', icon: Plus, disabled: fontSize.value >= FONT_SIZE_MAX, onClick: () => handleFontSizeChange(1) },
+  { id: 'duplicate', label: '复制', icon: CopyDocument, onClick: handleDuplicate },
+  { id: 'image-config', label: '生图', icon: Picture, onClick: createImageConfig },
+  { id: 'video-config', label: '生视频', icon: VideoCamera, onClick: createVideoConfig },
+  { id: 'delete', label: '删除', icon: Delete, danger: true, onClick: handleDelete },
+])
 </script>
 
 <template>
@@ -160,7 +181,7 @@ const createVideoConfig = () => {
           @mousedown.stop
           placeholder="输入文本内容..."
           rows="4"
-          style="min-height: 80px; max-height: 160px; overflow-y: auto;"
+          :style="{ minHeight: '80px', maxHeight: '160px', overflowY: 'auto', fontSize: fontSize + 'px' }"
         />
 
         <!-- 润色模型选择 -->
@@ -206,32 +227,6 @@ const createVideoConfig = () => {
     </div>
 
     <!-- 悬浮操作 -->
-    <div v-show="showActions" class="wf-node-actions">
-      <button class="wf-node-action-btn" @click="handleDuplicate">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-          <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
-          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="2"/>
-        </svg>
-        <span>复制</span>
-      </button>
-      <button class="wf-node-action-btn" @click="createImageConfig">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-          <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span>生图</span>
-      </button>
-      <button class="wf-node-action-btn" @click="createVideoConfig">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-          <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span>生视频</span>
-      </button>
-      <button class="wf-node-action-btn" @click="handleDelete">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-          <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span>删除</span>
-      </button>
-    </div>
+    <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
   </div>
 </template>

@@ -45,6 +45,7 @@ import CanvasContextMenu from '@/components/canvas/CanvasContextMenu.vue'
 import CanvasDockToolbar from '@/components/canvas/CanvasDockToolbar.vue'
 import CanvasZoomControls from '@/components/canvas/CanvasZoomControls.vue'
 import CanvasMiniMap from '@/components/canvas/CanvasMiniMap.vue'
+import CanvasConnectionLine from '@/components/canvas/CanvasConnectionLine.vue'
 import { useCanvasSelection } from '@/composables/useCanvasSelection'
 import { useCanvasClipboard } from '@/composables/useCanvasClipboard'
 import { useCanvasDrop } from '@/composables/useCanvasDrop'
@@ -956,6 +957,7 @@ watch(currentCanvasSnapshot, () => {
             :nodes-draggable="!isSpacePressed"
             :pan-on-scroll="false"
             :connect-on-click="false"
+            :connection-line-component="CanvasConnectionLine"
             :node-class-name="resolveNodeClass"
             @connect="onConnect"
             @node-click="handleNodeClick"

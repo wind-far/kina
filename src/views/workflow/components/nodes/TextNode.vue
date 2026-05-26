@@ -196,6 +196,15 @@ const handleReversePrompt = () => {
   ElMessage.info('图片反推提示词接入中，敬请期待')
 }
 
+// 节点左右"+"按钮（仅 selected 时显示）
+const handleAddLeft = () => {
+  ElMessage.info('从左侧追加上游节点：接入中')
+}
+const handleAddRight = () => {
+  // 直接复用"用文本生图"逻辑（最常见的右侧追加）
+  createImageConfig()
+}
+
 // hover 工具栏配置
 const hoverActions = computed<NodeToolbarAction[]>(() => [
   { id: 'font-minus', label: '缩小字号', icon: Minus, disabled: fontSize.value <= FONT_SIZE_MIN, onClick: () => handleFontSizeChange(-1) },
@@ -239,6 +248,9 @@ const handlePromptSend = (text: string) => {
 
     <!-- 节点本体 -->
     <div class="text-node-card" :class="{ 'is-selected': data?.selected, 'is-empty': isEmpty }">
+      <!-- 选中态：流光边框（参照 RunningHUB .flowing-border） -->
+      <span v-if="data?.selected" class="text-node-flow text-node-flow--ring" aria-hidden="true" />
+      <span v-if="data?.selected" class="text-node-flow text-node-flow--glow" aria-hidden="true" />
       <!-- 空态：尝试菜单 -->
       <div v-if="isEmpty" class="text-node-empty">
         <div class="text-node-empty-title">尝试：</div>
@@ -315,6 +327,36 @@ const handlePromptSend = (text: string) => {
     <Handle type="target" :position="Position.Left" id="left" class="text-node-handle" />
     <Handle type="source" :position="Position.Right" id="right" class="text-node-handle" />
 
+    <!-- 节点外左右 "+" 按钮（选中态显示，参照 RunningHUB .node-add-btn） -->
+    <button
+      v-if="data?.selected"
+      class="text-node-add-btn text-node-add-btn--left nodrag nopan"
+      title="向左追加节点"
+      @mousedown.stop
+      @click.stop="handleAddLeft"
+    >
+      <span class="text-node-add-btn__icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 5v10" />
+          <path d="M5 10h10" />
+        </svg>
+      </span>
+    </button>
+    <button
+      v-if="data?.selected"
+      class="text-node-add-btn text-node-add-btn--right nodrag nopan"
+      title="向右追加节点"
+      @mousedown.stop
+      @click.stop="handleAddRight"
+    >
+      <span class="text-node-add-btn__icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 5v10" />
+          <path d="M5 10h10" />
+        </svg>
+      </span>
+    </button>
+
     <!-- 节点上方浮动工具栏 -->
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
 
@@ -370,6 +412,7 @@ const handlePromptSend = (text: string) => {
 }
 
 .text-node-card {
+  position: relative;
   width: 100%;
   height: 100%;
   min-width: 300px;
@@ -386,6 +429,54 @@ const handlePromptSend = (text: string) => {
 .text-node-card.is-selected {
   border-color: var(--canvas-selection-border);
   box-shadow: 0 0 0 2px var(--canvas-selection-border);
+}
+
+/* 流光边框（参照 RunningHUB .flowing-border） */
+.text-node-flow {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  background-size: 200% 200%;
+  animation: text-node-flowing 2.4s linear infinite;
+}
+.text-node-flow--ring {
+  inset: -2px;
+  border-radius: 18px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    transparent 20%,
+    rgba(2, 219, 163, 0.45) 40%,
+    #02dba3 50%,
+    rgba(2, 219, 163, 0.45) 60%,
+    transparent 80%,
+    transparent
+  );
+  z-index: -1;
+}
+.text-node-flow--glow {
+  inset: -6px;
+  border-radius: 22px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    transparent 20%,
+    rgba(2, 219, 163, 0.18) 40%,
+    rgba(2, 219, 163, 0.42) 50%,
+    rgba(2, 219, 163, 0.18) 60%,
+    transparent 80%,
+    transparent
+  );
+  filter: blur(8px);
+  z-index: -2;
+}
+@keyframes text-node-flowing {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: -100% 50%;
+  }
 }
 
 /* 空态菜单 */
@@ -553,5 +644,48 @@ const handlePromptSend = (text: string) => {
   min-width: 380px;
   max-width: 560px;
   z-index: 5;
+}
+
+/* 节点外左右 "+" 按钮（参照 RunningHUB .node-add-btn / .node-plus-button） */
+.text-node-add-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  z-index: 10;
+  transition: transform 0.2s, color 0.2s;
+}
+.text-node-add-btn--left {
+  left: -56px;
+}
+.text-node-add-btn--right {
+  right: -56px;
+}
+.text-node-add-btn__icon {
+  width: 20px;
+  height: 20px;
+  padding: 3px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, border-color 0.2s;
+  box-sizing: content-box;
+}
+.text-node-add-btn:hover {
+  color: var(--text-primary);
+}
+.text-node-add-btn:active {
+  transform: translateY(-50%) scale(0.95);
 }
 </style>

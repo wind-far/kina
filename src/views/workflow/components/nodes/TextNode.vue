@@ -292,6 +292,14 @@ const handlePromptSend = async (text: string) => {
     isPolishing.value = false
   }
 }
+
+// 流式润色时让 textarea 自动滚到底部跟随
+watch(content, async () => {
+  if (!isPolishing.value) return
+  await nextTick()
+  const ta = textareaRef.value
+  if (ta) ta.scrollTop = ta.scrollHeight
+})
 </script>
 
 <template>
@@ -315,7 +323,15 @@ const handlePromptSend = async (text: string) => {
     </div>
 
     <!-- 节点本体 -->
-    <div class="text-node-card" :class="{ 'is-selected': isSelected, 'is-empty': isEmpty }">
+    <div class="text-node-card" :class="{ 'is-selected': isSelected, 'is-empty': isEmpty, 'is-polishing': isPolishing }">
+      <!-- AI 润色中指示器（右上角，spin + 渐变流光文字） -->
+      <Transition name="text-node-polish-indicator">
+        <div v-if="isPolishing" class="text-node-polish-indicator nodrag nopan" aria-live="polite">
+          <span class="text-node-polish-spinner" aria-hidden="true" />
+          <span class="text-node-polish-label">✨ AI 润色中…</span>
+        </div>
+      </Transition>
+
       <!-- 选中态：流光边框（参照 RunningHUB .flowing-border） -->
       <span v-if="isSelected" class="text-node-flow text-node-flow--ring" aria-hidden="true" />
       <span v-if="isSelected" class="text-node-flow text-node-flow--glow" aria-hidden="true" />
@@ -460,6 +476,82 @@ const handlePromptSend = async (text: string) => {
 }
 
 /* 流光边框（参照 RunningHUB .flowing-border） */
+/* AI 润色中指示器 */
+.text-node-polish-indicator {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(30, 30, 30, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 0.5px solid #02dba3;
+  border-radius: 999px;
+  font-size: 12px;
+  pointer-events: none;
+  animation: text-node-polish-pulse 1.8s ease-in-out infinite;
+}
+.text-node-polish-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(2, 219, 163, 0.3);
+  border-top-color: #02dba3;
+  animation: text-node-polish-spin 0.8s linear infinite;
+}
+.text-node-polish-label {
+  background: linear-gradient(90deg, #02dba3, #00c2c6 30%, #fff 50%, #00c2c6 70%, #02dba3);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: text-node-polish-shimmer 2.4s linear infinite;
+  font-weight: 500;
+}
+@keyframes text-node-polish-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(2, 219, 163, 0);
+  }
+  50% {
+    box-shadow: 0 0 18px 0 rgba(2, 219, 163, 0.55);
+  }
+}
+@keyframes text-node-polish-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes text-node-polish-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -150% 0;
+  }
+}
+.text-node-polish-indicator-enter-active,
+.text-node-polish-indicator-leave-active {
+  transition: opacity 0.18s, transform 0.18s;
+}
+.text-node-polish-indicator-enter-from,
+.text-node-polish-indicator-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.96);
+}
+
+/* 润色中：textarea 内文字加微弱发光，强化"正在生成"感知 */
+.text-node-card.is-polishing .text-node-textarea {
+  text-shadow: 0 0 8px rgba(2, 219, 163, 0.18);
+  transition: text-shadow 0.3s ease-in;
+}
+
+/* 选中态：流光边框（参照 RunningHUB .flowing-border） */
 .text-node-flow {
   content: '';
   position: absolute;

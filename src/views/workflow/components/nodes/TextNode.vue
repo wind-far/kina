@@ -1,11 +1,30 @@
 <script setup lang="ts">
 /**
- * 文本节点组件
+ * 文本节点（即梦风样板）
+ *
+ * 视觉对照用户截图：
+ *   - 标题外置（节点上方居中显示图标 + Text）
+ *   - 空态时节点内部显示「尝试」菜单（自己编写 / 上传文档 / 文字生视频 / 反推提示词）
+ *   - 有内容时切回 textarea + 模型选择 + 润色 + 生图/生视频快捷按钮
+ *   - 选中态：青绿色亮描边
+ *   - 左右连接点保留 Vue Flow Handle，但视觉对齐圆形 + 图标
  */
-import { ref, computed, watch, onMounted } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import { NodeResizer } from '@vue-flow/node-resizer'
-import { CopyDocument, Picture, VideoCamera, Delete, Plus, Minus } from '@element-plus/icons-vue'
+import {
+  CopyDocument,
+  Picture,
+  VideoCamera,
+  Delete,
+  Plus,
+  Minus,
+  EditPen,
+  Upload,
+  MagicStick,
+  Document,
+} from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import {
   updateNode,
@@ -16,7 +35,6 @@ import {
   nodes,
   type WorkflowTextNodeData,
 } from '../../composables/useWorkflowCanvas'
-import WfNodeTitle from '../WfNodeTitle.vue'
 import { streamChatCompletions } from '../../api/chat'
 import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
 import WfSelect from '@/components/common/WfSelect.vue'
@@ -32,6 +50,9 @@ const showActions = ref(false)
 const isPolishing = ref(false)
 const polishModel = ref(props.data?.polishModel || getDefaultChatModelKey())
 const fontSize = ref(props.data?.fontSize ?? 14)
+const forceEditMode = ref(false)
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const FONT_SIZE_MIN = 10
 const FONT_SIZE_MAX = 28
@@ -40,12 +61,15 @@ const handleFontSizeChange = (delta: number) => {
   updateNode(props.id, { fontSize: fontSize.value })
 }
 
-const chatModelOptions = computed(() => getAllChatModels().map(m => ({ label: m.label, value: m.key })))
+const chatModelOptions = computed(() => getAllChatModels().map((m) => ({ label: m.label, value: m.key })))
+
+/** 空态判断：内容为空且用户未主动切到编辑态 */
+const isEmpty = computed(() => !forceEditMode.value && !content.value.trim())
 
 watch(
   chatModelOptions,
   (options) => {
-    const values = options.map(item => item.value)
+    const values = options.map((item) => item.value)
     if (!values.length) return
     if (!values.includes(polishModel.value)) {
       polishModel.value = getDefaultChatModelKey() || values[0]
@@ -74,7 +98,39 @@ const handleDuplicate = () => {
   if (newId) setTimeout(() => updateNodeInternals([newId]), 50)
 }
 
-// AI 润色提示词
+// 空态菜单：自己编写内容（切到 textarea + focus）
+const handleStartEdit = async () => {
+  forceEditMode.value = true
+  await nextTick()
+  textareaRef.value?.focus()
+}
+
+// 空态菜单：上传文档解析文本（.txt 简单读 + 写入 content）
+const handleImportFile = () => {
+  fileInputRef.value?.click()
+}
+const handleFileChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (file.size > 1024 * 1024) {
+    ElMessage.warning('请选择 1MB 以内的纯文本文档')
+    input.value = ''
+    return
+  }
+  try {
+    const text = await file.text()
+    content.value = text
+    updateNode(props.id, { content: text })
+    forceEditMode.value = true
+  } catch {
+    ElMessage.error('文件读取失败')
+  } finally {
+    input.value = ''
+  }
+}
+
+// AI 润色提示词（已有内容时使用）
 const handlePolish = async () => {
   const input = content.value.trim()
   if (!input) return
@@ -86,8 +142,8 @@ const handlePolish = async () => {
       model: polishModel.value,
       messages: [
         { role: 'system', content: '你是一个专业的AI绘画提示词专家。将用户输入的内容美化成高质量的生图提示词，包含风格、光线、构图、细节等要素。直接返回提示词，不要其他解释。' },
-        { role: 'user', content: input }
-      ]
+        { role: 'user', content: input },
+      ],
     })) {
       result += chunk
     }
@@ -104,40 +160,39 @@ const handlePolish = async () => {
 
 // 快捷创建文生图配置节点
 const createImageConfig = () => {
-  const node = nodes.value.find(n => n.id === props.id)
+  const node = nodes.value.find((n) => n.id === props.id)
   if (!node) return
-  const newId = addNode('imageConfig', {
-    x: node.position.x + 380,
-    y: node.position.y
-  })
+  const newId = addNode('imageConfig', { x: node.position.x + 380, y: node.position.y })
   addEdge({
     source: props.id,
     target: newId,
     sourceHandle: 'right',
     targetHandle: 'left',
     type: 'promptOrder',
-    data: { promptOrder: 1 }
+    data: { promptOrder: 1 },
   })
   setTimeout(() => updateNodeInternals([newId]), 50)
 }
 
 // 快捷创建视频配置节点
 const createVideoConfig = () => {
-  const node = nodes.value.find(n => n.id === props.id)
+  const node = nodes.value.find((n) => n.id === props.id)
   if (!node) return
-  const newId = addNode('videoConfig', {
-    x: node.position.x + 380,
-    y: node.position.y
-  })
+  const newId = addNode('videoConfig', { x: node.position.x + 380, y: node.position.y })
   addEdge({
     source: props.id,
     target: newId,
     sourceHandle: 'right',
     targetHandle: 'left',
     type: 'promptOrder',
-    data: { promptOrder: 1 }
+    data: { promptOrder: 1 },
   })
   setTimeout(() => updateNodeInternals([newId]), 50)
+}
+
+// 空态菜单：图片反推提示词（占位，等接 ai-gateway 的 reverse-prompt 能力）
+const handleReversePrompt = () => {
+  ElMessage.info('图片反推提示词接入中，敬请期待')
 }
 
 // hover 工具栏配置
@@ -149,84 +204,291 @@ const hoverActions = computed<NodeToolbarAction[]>(() => [
   { id: 'video-config', label: '生视频', icon: VideoCamera, onClick: createVideoConfig },
   { id: 'delete', label: '删除', icon: Delete, danger: true, onClick: handleDelete },
 ])
+
+const emptyMenuItems = [
+  { id: 'start-edit', label: '自己编写内容', icon: EditPen, onClick: handleStartEdit },
+  { id: 'import-file', label: '上传文档解析文本', icon: Upload, onClick: handleImportFile },
+  { id: 'create-video', label: '文字生视频', icon: VideoCamera, onClick: createVideoConfig },
+  { id: 'reverse-prompt', label: '图片反推提示词', icon: MagicStick, onClick: handleReversePrompt },
+]
 </script>
 
 <template>
-  <div class="wf-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
-    <NodeResizer :min-width="220" :min-height="120" />
-    <div class="wf-node wf-node-text" :class="{ selected: data.selected }">
-      <!-- 头部 -->
-      <div class="wf-node-header">
-        <div class="wf-node-header-left">
-          <span class="wf-node-header-icon">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path d="M4 6h16M4 12h8m-8 6h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          </span>
-          <WfNodeTitle :node-id="id" :label="data.label" placeholder="文本输入" />
+  <div class="text-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
+    <NodeResizer :min-width="240" :min-height="180" />
+
+    <!-- 节点外置标题：浮在节点上方左侧 -->
+    <div class="text-node-title">
+      <el-icon class="text-node-title-icon"><Document /></el-icon>
+      <span>{{ data?.label || 'Text' }}</span>
+    </div>
+
+    <!-- 节点本体 -->
+    <div class="text-node-card" :class="{ 'is-selected': data?.selected, 'is-empty': isEmpty }">
+      <!-- 空态：尝试菜单 -->
+      <div v-if="isEmpty" class="text-node-empty">
+        <div class="text-node-empty-title">尝试：</div>
+        <div class="text-node-empty-menu">
+          <button
+            v-for="item in emptyMenuItems"
+            :key="item.id"
+            type="button"
+            class="text-node-empty-item nodrag nopan"
+            @click.stop="item.onClick"
+          >
+            <el-icon class="text-node-empty-item-icon">
+              <component :is="item.icon" />
+            </el-icon>
+            <span>{{ item.label }}</span>
+          </button>
         </div>
-        <button class="wf-btn wf-btn-sm" @click="handleDelete">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-        </button>
       </div>
 
-      <!-- 内容 -->
-      <div class="wf-node-body">
+      <!-- 有内容态：原 textarea + 模型 + 润色 + 生图/生视频 -->
+      <div v-else class="text-node-body">
         <textarea
+          ref="textareaRef"
           v-model="content"
+          class="text-node-textarea nodrag nopan"
           @input="handleInput"
           @wheel.stop
           @mousedown.stop
           placeholder="输入文本内容..."
           rows="4"
-          :style="{ minHeight: '80px', maxHeight: '160px', overflowY: 'auto', fontSize: fontSize + 'px' }"
+          :style="{ fontSize: fontSize + 'px' }"
         />
 
-        <!-- 润色模型选择 -->
         <WfSelect
           v-model="polishModel"
           :options="chatModelOptions"
           @change="updateNode(id, { polishModel })"
-          style="margin-top: 6px;"
+          class="text-node-model-select"
         />
 
-        <!-- AI 润色按钮 -->
         <button
-          class="wf-node-action-btn"
+          class="text-node-polish-btn nodrag nopan"
           :disabled="isPolishing || !content.trim()"
-          @click="handlePolish"
-          style="margin-top: 6px; width: 100%; justify-content: center;"
+          @click.stop="handlePolish"
         >
-          <span v-if="isPolishing" class="wf-spinner"></span>
-          <span v-else>✨</span>
-          <span>{{ isPolishing ? '润色中...' : 'AI 润色' }}</span>
+          <span v-if="isPolishing" class="wf-spinner" />
+          <el-icon v-else><MagicStick /></el-icon>
+          <span>{{ isPolishing ? '润色中…' : 'AI 润色' }}</span>
         </button>
 
-        <!-- 快捷操作 -->
-        <div style="display: flex; gap: 6px; margin-top: 6px;">
-          <button class="wf-node-action-btn" @click="createImageConfig" style="flex: 1; justify-content: center;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-              <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+        <div class="text-node-quick">
+          <button class="text-node-quick-btn nodrag nopan" @click.stop="createImageConfig">
+            <el-icon><Picture /></el-icon>
             <span>生成图片</span>
           </button>
-          <button class="wf-node-action-btn" @click="createVideoConfig" style="flex: 1; justify-content: center;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-              <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+          <button class="text-node-quick-btn nodrag nopan" @click.stop="createVideoConfig">
+            <el-icon><VideoCamera /></el-icon>
             <span>生成视频</span>
           </button>
         </div>
       </div>
 
-      <!-- 连接点 -->
-      <Handle type="target" :position="Position.Left" id="left" />
-      <Handle type="source" :position="Position.Right" id="right" />
+      <!-- 隐藏 file input：用于"上传文档解析文本" -->
+      <input
+        ref="fileInputRef"
+        type="file"
+        accept=".txt,.md,.json,text/plain"
+        style="display: none"
+        @change="handleFileChange"
+      />
     </div>
 
-    <!-- 悬浮操作 -->
+    <!-- 左右连接点（圆形 + 图标） -->
+    <Handle type="target" :position="Position.Left" id="left" class="text-node-handle" />
+    <Handle type="source" :position="Position.Right" id="right" class="text-node-handle" />
+
+    <!-- 节点上方浮动工具栏 -->
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
   </div>
 </template>
+
+<style scoped>
+.text-node-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.text-node-title {
+  position: absolute;
+  top: -26px;
+  left: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  pointer-events: none;
+}
+.text-node-title-icon {
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+.text-node-card {
+  width: 100%;
+  height: 100%;
+  background: var(--canvas-bg-block-default);
+  border: 1px solid var(--stroke-secondary);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  transition: border-color 0.16s, box-shadow 0.16s;
+}
+.text-node-card.is-selected {
+  border-color: var(--canvas-selection-border);
+  box-shadow: 0 0 0 1.5px var(--canvas-selection-border);
+}
+
+/* 空态菜单 */
+.text-node-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 0;
+}
+.text-node-empty-title {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  letter-spacing: 0.4px;
+}
+.text-node-empty-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.text-node-empty-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--lv-border-radius-medium);
+  transition: background-color 0.12s, color 0.12s;
+}
+.text-node-empty-item:hover {
+  background: var(--canvas-float-block-hover);
+}
+.text-node-empty-item-icon {
+  font-size: 16px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* 有内容态 */
+.text-node-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.text-node-textarea {
+  flex: 1 1 0;
+  min-height: 80px;
+  width: 100%;
+  background: var(--canvas-float-block-default);
+  border: 0.5px solid var(--stroke-secondary);
+  border-radius: var(--lv-border-radius-medium);
+  padding: 8px 10px;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.55;
+  resize: none;
+  outline: none;
+}
+.text-node-textarea:focus {
+  border-color: var(--canvas-selection-border);
+}
+.text-node-model-select {
+  width: 100%;
+}
+.text-node-polish-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 0;
+  background: var(--canvas-float-block-default);
+  border: 0.5px solid var(--stroke-secondary);
+  border-radius: var(--lv-border-radius-medium);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
+}
+.text-node-polish-btn:hover:not(:disabled) {
+  background: var(--canvas-float-block-hover);
+  color: var(--brand-main-default);
+}
+.text-node-polish-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.text-node-quick {
+  display: flex;
+  gap: 6px;
+}
+.text-node-quick-btn {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 0;
+  background: var(--canvas-float-block-default);
+  border: 0.5px solid var(--stroke-secondary);
+  border-radius: var(--lv-border-radius-medium);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
+}
+.text-node-quick-btn:hover {
+  background: var(--canvas-float-block-hover);
+  color: var(--brand-main-default);
+}
+
+/* 左右连接点：圆形 + 中央"+"图标（即梦风） */
+.text-node-handle {
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 50% !important;
+  background: var(--canvas-bg-block-default) !important;
+  border: 1px solid var(--stroke-secondary) !important;
+  transition: background-color 0.12s, border-color 0.12s, transform 0.12s;
+}
+.text-node-handle::before {
+  content: '+';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  pointer-events: none;
+  line-height: 1;
+}
+.text-node-handle:hover {
+  background: var(--canvas-float-block-hover) !important;
+  border-color: var(--canvas-selection-border) !important;
+  transform: scale(1.1);
+}
+</style>

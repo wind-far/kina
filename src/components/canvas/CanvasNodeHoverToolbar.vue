@@ -69,10 +69,11 @@ defineProps<{
 <style scoped>
 .canvas-node-hover-toolbar {
   position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
+  top: 50%;
+  left: calc(100% + 8px);
+  transform: translateY(-50%);
   display: inline-flex;
+  flex-direction: column;
   gap: 2px;
   padding: 4px;
   background: var(--canvas-float-block-default);
@@ -130,6 +131,6 @@ defineProps<{
 .canvas-node-hover-toolbar-enter-from,
 .canvas-node-hover-toolbar-leave-to {
   opacity: 0;
-  transform: translateX(-50%) translateY(4px);
+  transform: translateY(-50%) translateX(-4px);
 }
 </style>

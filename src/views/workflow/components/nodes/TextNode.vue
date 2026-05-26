@@ -341,51 +341,67 @@ const handlePromptSend = (text: string) => {
 
 .text-node-title {
   position: absolute;
-  top: -26px;
-  left: 4px;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 8px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: 22px;
+  padding: 0 8px 0 2px;
+  border-radius: 4px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
+  line-height: 22px;
   letter-spacing: 0.2px;
-  pointer-events: none;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.text-node-title:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
 }
 .text-node-title-icon {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--text-tertiary);
 }
 
 .text-node-card {
   width: 100%;
   height: 100%;
+  min-width: 300px;
+  min-height: 200px;
   background: var(--canvas-bg-block-default);
   border: 1px solid var(--stroke-secondary);
-  border-radius: 14px;
-  padding: 16px;
+  border-radius: 16px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   box-sizing: border-box;
   transition: border-color 0.16s, box-shadow 0.16s;
 }
 .text-node-card.is-selected {
   border-color: var(--canvas-selection-border);
-  box-shadow: 0 0 0 1.5px var(--canvas-selection-border);
+  box-shadow: 0 0 0 2px var(--canvas-selection-border);
 }
 
 /* 空态菜单 */
 .text-node-empty {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   flex: 1 1 0;
+  justify-content: center;
+  padding: 20px;
+  text-align: left;
 }
 .text-node-empty-title {
   color: var(--text-tertiary);
-  font-size: 12px;
-  letter-spacing: 0.4px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  margin-left: 10px;
 }
 .text-node-empty-menu {
   display: flex;
@@ -395,24 +411,32 @@ const handlePromptSend = (text: string) => {
 .text-node-empty-item {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 4px;
+  gap: 12px;
+  padding: 8px;
   background: transparent;
   border: 0;
-  color: var(--text-primary);
-  font-size: 13px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.4;
   text-align: left;
   cursor: pointer;
-  border-radius: var(--lv-border-radius-medium);
-  transition: background-color 0.12s, color 0.12s;
+  border-radius: 16px;
+  width: fit-content;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 .text-node-empty-item:hover {
-  background: var(--canvas-float-block-hover);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
 }
 .text-node-empty-item-icon {
-  font-size: 16px;
-  color: var(--text-secondary);
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+  color: var(--text-tertiary);
   flex-shrink: 0;
+}
+.text-node-empty-item:hover .text-node-empty-item-icon {
+  color: var(--text-primary);
 }
 
 /* 有内容态 */
@@ -422,6 +446,7 @@ const handlePromptSend = (text: string) => {
   gap: 6px;
   flex: 1 1 0;
   min-height: 0;
+  padding: 16px;
 }
 .text-node-textarea {
   flex: 1 1 0;

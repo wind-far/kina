@@ -22,9 +22,16 @@ import {
   PictureFilled,
   Sunny,
   Upload as UploadIcon,
+  Aim,
+  EditPen,
+  Refresh,
+  MoreFilled,
+  Crop,
+  ZoomIn,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
+import CanvasNodeTopToolbar, { type NodeTopToolbarItem } from '@/components/canvas/CanvasNodeTopToolbar.vue'
 import CanvasPromptInput, { type PromptReference } from '@/components/canvas/CanvasPromptInput.vue'
 import {
   updateNode,
@@ -223,6 +230,22 @@ const promptReferences = computed<PromptReference[]>(() => {
   }
   return refs
 })
+
+// 顶部悬浮工具栏（参照 RunningHUB .image-toolbar）：仅在选中 + 有图时显示
+const topToolbarItems = computed<NodeTopToolbarItem[]>(() => [
+  { id: 'panorama', label: '全景图', icon: Aim, hasDropdown: true, onClick: () => ElMessage.info('全景图：接入中') },
+  { id: 'hd', label: 'HD 增强', icon: PictureFilled, onClick: () => ElMessage.info('HD 增强：接入中') },
+  { id: 'edit-element', label: '编辑元素', icon: EditPen, onClick: () => ElMessage.info('编辑元素：接入中') },
+  { id: 'angle', label: '角度', icon: Refresh, onClick: () => ElMessage.info('角度：接入中') },
+  { id: 'light', label: '打光', icon: Sunny, onClick: () => ElMessage.info('打光：接入中') },
+  { id: 'more', label: '更多', icon: MoreFilled, onClick: () => ElMessage.info('更多：接入中') },
+  { type: 'divider' },
+  { id: 'crop', label: '裁剪', icon: Crop, iconOnly: true, onClick: () => ElMessage.info('裁剪：接入中') },
+  { id: 'download-mini', label: '下载', icon: Download, iconOnly: true, onClick: handleDownload },
+  { id: 'preview', label: '放大预览', icon: ZoomIn, iconOnly: true, onClick: () => imageUrl.value && window.open(imageUrl.value, '_blank') },
+  { type: 'divider' },
+  { id: 'agent', label: '加入 Agent', textMark: 'R', onClick: () => ElMessage.info('加入 Agent：接入中') },
+])
 const handlePromptSend = (text: string) => {
   ElMessage.success(`发送：${text.slice(0, 30)}…（图片生成接入中）`)
   promptText.value = ''
@@ -377,6 +400,9 @@ const handlePromptSend = (text: string) => {
     </button>
 
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
+
+    <!-- 选中态顶部悬浮工具栏（仅有图时显示） -->
+    <CanvasNodeTopToolbar :visible="isSelected && showImage" :items="topToolbarItems" />
 
     <!-- 选中态下方浮出 prompt -->
     <div v-if="isSelected" class="image-node-prompt-panel nodrag nopan" @mousedown.stop>

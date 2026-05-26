@@ -11,7 +11,6 @@
  */
 import { computed, ref, watch } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
-import { NodeResizer } from '@vue-flow/node-resizer'
 import {
   CopyDocument,
   Download,
@@ -146,8 +145,6 @@ const emptyMenuItems = [
 
 <template>
   <div class="video-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
-    <NodeResizer :min-width="240" :min-height="200" :keep-aspect-ratio="false" />
-
     <div class="video-node-title">
       <el-icon class="video-node-title-icon"><VideoCamera /></el-icon>
       <span>{{ data?.label || 'Video' }}</span>

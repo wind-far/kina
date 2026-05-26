@@ -11,7 +11,6 @@
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
-import { NodeResizer } from '@vue-flow/node-resizer'
 import {
   CopyDocument,
   Picture,
@@ -238,8 +237,6 @@ const handlePromptSend = (text: string) => {
 
 <template>
   <div class="text-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
-    <NodeResizer :min-width="240" :min-height="180" />
-
     <!-- 节点外置标题：浮在节点上方左侧 -->
     <div class="text-node-title">
       <el-icon class="text-node-title-icon"><Document /></el-icon>

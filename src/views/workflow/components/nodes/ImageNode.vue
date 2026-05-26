@@ -11,7 +11,6 @@
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
-import { NodeResizer } from '@vue-flow/node-resizer'
 import {
   CopyDocument,
   Download,
@@ -180,8 +179,6 @@ const emptyMenuItems = [
 
 <template>
   <div class="image-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
-    <NodeResizer :min-width="240" :min-height="200" />
-
     <!-- 节点外置标题 -->
     <div class="image-node-title">
       <el-icon class="image-node-title-icon"><Picture /></el-icon>

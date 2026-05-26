@@ -345,6 +345,7 @@ watch(
 <template>
   <div class="image-config-node-outer" @mouseenter="showActions = true" @mouseleave="showActions = false">
     <CanvasConfigNodeShell
+      :node-id="id"
       :label="data?.label || '文生图'"
       :icon="Picture"
       :selected="isSelected"

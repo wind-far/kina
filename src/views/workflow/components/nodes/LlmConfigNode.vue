@@ -259,6 +259,7 @@ const hoverActions = computed<NodeToolbarAction[]>(() => [
 <template>
   <div class="llm-config-node-outer" @mouseenter="showActions = true" @mouseleave="showActions = false">
     <CanvasConfigNodeShell
+      :node-id="id"
       :label="data?.label || 'LLM 文本生成'"
       :icon="ChatDotRound"
       :selected="isSelected"

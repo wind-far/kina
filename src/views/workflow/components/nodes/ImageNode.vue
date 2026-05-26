@@ -33,6 +33,7 @@ import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasNodeTopToolbar, { type NodeTopToolbarItem } from '@/components/canvas/CanvasNodeTopToolbar.vue'
 import CanvasPromptInput, { type PromptReference } from '@/components/canvas/CanvasPromptInput.vue'
+import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
   updateNode,
   removeNode,
@@ -52,6 +53,7 @@ const props = defineProps<{
   selected?: boolean
 }>()
 const isSelected = computed(() => props.selected || props.data?.selected)
+const titleEdit = useNodeTitleEdit(props.id, () => props.data?.label || 'Image')
 const { updateNodeInternals } = useVueFlow()
 
 const showActions = ref(false)
@@ -255,9 +257,21 @@ const handlePromptSend = (text: string) => {
 <template>
   <div class="image-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
     <!-- 节点外置标题 -->
-    <div class="image-node-title">
+    <div class="image-node-title" :title="titleEdit.editing.value ? '' : '双击编辑名称'" @dblclick.stop="titleEdit.start">
       <el-icon class="image-node-title-icon"><Picture /></el-icon>
-      <span>{{ data?.label || 'Image' }}</span>
+      <input
+        v-if="titleEdit.editing.value"
+        :ref="titleEdit.setInputRef"
+        v-model="titleEdit.draft.value"
+        class="image-node-title-input nodrag"
+        :maxlength="40"
+        @blur="titleEdit.commit"
+        @keydown.enter.prevent="titleEdit.commit"
+        @keydown.esc.prevent="titleEdit.cancel"
+        @mousedown.stop
+        @click.stop
+      />
+      <span v-else>{{ data?.label || 'Image' }}</span>
     </div>
 
     <!-- 节点本体 -->
@@ -457,6 +471,21 @@ const handlePromptSend = (text: string) => {
 .image-node-title-icon {
   font-size: 16px;
   color: var(--text-tertiary);
+}
+.image-node-title-input {
+  flex: 1 1 0;
+  min-width: 80px;
+  max-width: 220px;
+  background: transparent;
+  border: 1px solid var(--brand-main-default);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  outline: none;
+  box-sizing: border-box;
 }
 
 .image-node-card {

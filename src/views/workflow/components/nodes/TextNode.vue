@@ -26,6 +26,7 @@ import {
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasPromptInput from '@/components/canvas/CanvasPromptInput.vue'
+import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
   updateNode,
   removeNode,
@@ -45,6 +46,7 @@ const props = defineProps<{
   selected?: boolean
 }>()
 const isSelected = computed(() => props.selected || props.data?.selected)
+const titleEdit = useNodeTitleEdit(props.id, () => props.data?.label || 'Text')
 const { updateNodeInternals } = useVueFlow()
 
 const content = ref(props.data?.content || '')
@@ -240,9 +242,21 @@ const handlePromptSend = (text: string) => {
 <template>
   <div class="text-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
     <!-- 节点外置标题：浮在节点上方左侧 -->
-    <div class="text-node-title">
+    <div class="text-node-title" :title="titleEdit.editing.value ? '' : '双击编辑名称'" @dblclick.stop="titleEdit.start">
       <el-icon class="text-node-title-icon"><Document /></el-icon>
-      <span>{{ data?.label || 'Text' }}</span>
+      <input
+        v-if="titleEdit.editing.value"
+        :ref="titleEdit.setInputRef"
+        v-model="titleEdit.draft.value"
+        class="text-node-title-input nodrag"
+        :maxlength="40"
+        @blur="titleEdit.commit"
+        @keydown.enter.prevent="titleEdit.commit"
+        @keydown.esc.prevent="titleEdit.cancel"
+        @mousedown.stop
+        @click.stop
+      />
+      <span v-else>{{ data?.label || 'Text' }}</span>
     </div>
 
     <!-- 节点本体 -->
@@ -408,6 +422,21 @@ const handlePromptSend = (text: string) => {
 .text-node-title-icon {
   font-size: 16px;
   color: var(--text-tertiary);
+}
+.text-node-title-input {
+  flex: 1 1 0;
+  min-width: 80px;
+  max-width: 220px;
+  background: transparent;
+  border: 1px solid var(--brand-main-default);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  outline: none;
+  box-sizing: border-box;
 }
 
 .text-node-card {

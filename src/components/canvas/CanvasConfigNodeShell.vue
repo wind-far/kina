@@ -14,9 +14,11 @@
  */
 import type { Component } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
+import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
+    nodeId: string
     label: string
     icon: Component
     selected?: boolean
@@ -37,16 +39,34 @@ const emit = defineEmits<{
   (e: 'add-left'): void
   (e: 'add-right'): void
 }>()
+
+const titleEdit = useNodeTitleEdit(props.nodeId, () => props.label)
 </script>
 
 <template>
   <div class="config-node-wrapper" :data-config-type="type">
     <!-- 节点外置标题 -->
-    <div class="config-node-title">
+    <div
+      class="config-node-title"
+      :title="titleEdit.editing.value ? '' : '双击编辑名称'"
+      @dblclick.stop="titleEdit.start"
+    >
       <el-icon class="config-node-title-icon">
         <component :is="icon" />
       </el-icon>
-      <span>{{ label }}</span>
+      <input
+        v-if="titleEdit.editing.value"
+        :ref="titleEdit.setInputRef"
+        v-model="titleEdit.draft.value"
+        class="config-node-title-input nodrag"
+        :maxlength="40"
+        @blur="titleEdit.commit"
+        @keydown.enter.prevent="titleEdit.commit"
+        @keydown.esc.prevent="titleEdit.cancel"
+        @mousedown.stop
+        @click.stop
+      />
+      <span v-else>{{ label }}</span>
     </div>
 
     <!-- 卡片本体 -->
@@ -133,6 +153,21 @@ const emit = defineEmits<{
 .config-node-title-icon {
   font-size: 16px;
   color: var(--text-tertiary);
+}
+.config-node-title-input {
+  flex: 1 1 0;
+  min-width: 80px;
+  max-width: 220px;
+  background: transparent;
+  border: 1px solid var(--brand-main-default);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  outline: none;
+  box-sizing: border-box;
 }
 
 .config-node-card {

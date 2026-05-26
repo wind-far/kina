@@ -199,6 +199,7 @@ watch(
 <template>
   <div class="video-config-node-outer" @mouseenter="showActions = true" @mouseleave="showActions = false">
     <CanvasConfigNodeShell
+      :node-id="id"
       :label="data?.label || '图生视频'"
       :icon="VideoCamera"
       :selected="isSelected"

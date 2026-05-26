@@ -25,6 +25,7 @@ import {
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasPromptInput, { type PromptReference } from '@/components/canvas/CanvasPromptInput.vue'
+import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
   updateNode,
   removeNode,
@@ -44,6 +45,7 @@ const props = defineProps<{
   selected?: boolean
 }>()
 const isSelected = computed(() => props.selected || props.data?.selected)
+const titleEdit = useNodeTitleEdit(props.id, () => props.data?.label || 'Video')
 const { updateNodeInternals } = useVueFlow()
 
 const showActions = ref(false)
@@ -180,9 +182,21 @@ const handlePromptSend = (text: string) => {
 
 <template>
   <div class="video-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
-    <div class="video-node-title">
+    <div class="video-node-title" :title="titleEdit.editing.value ? '' : '双击编辑名称'" @dblclick.stop="titleEdit.start">
       <el-icon class="video-node-title-icon"><VideoCamera /></el-icon>
-      <span>{{ data?.label || 'Video' }}</span>
+      <input
+        v-if="titleEdit.editing.value"
+        :ref="titleEdit.setInputRef"
+        v-model="titleEdit.draft.value"
+        class="video-node-title-input nodrag"
+        :maxlength="40"
+        @blur="titleEdit.commit"
+        @keydown.enter.prevent="titleEdit.commit"
+        @keydown.esc.prevent="titleEdit.cancel"
+        @mousedown.stop
+        @click.stop
+      />
+      <span v-else>{{ data?.label || 'Video' }}</span>
     </div>
 
     <div class="video-node-card" :class="{ 'is-selected': isSelected }">
@@ -334,6 +348,21 @@ const handlePromptSend = (text: string) => {
 .video-node-title-icon {
   font-size: 16px;
   color: var(--text-tertiary);
+}
+.video-node-title-input {
+  flex: 1 1 0;
+  min-width: 80px;
+  max-width: 220px;
+  background: transparent;
+  border: 1px solid var(--brand-main-default);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  outline: none;
+  box-sizing: border-box;
 }
 
 .video-node-card {

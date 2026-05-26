@@ -46,6 +46,8 @@ import CanvasDockToolbar from '@/components/canvas/CanvasDockToolbar.vue'
 import CanvasZoomControls from '@/components/canvas/CanvasZoomControls.vue'
 import CanvasMiniMap from '@/components/canvas/CanvasMiniMap.vue'
 import CanvasConnectionLine from '@/components/canvas/CanvasConnectionLine.vue'
+import CanvasAssistantPanel from '@/components/canvas/CanvasAssistantPanel.vue'
+import { useChatSessions } from '@/composables/useChatSessions'
 import { useCanvasSelection } from '@/composables/useCanvasSelection'
 import { useCanvasClipboard } from '@/composables/useCanvasClipboard'
 import { useCanvasDrop } from '@/composables/useCanvasDrop'
@@ -866,6 +868,9 @@ const handleOpenMyAssets = () => {
   ElMessage.info('我的素材接入待后续完善')
 }
 
+// 助手面板
+const { isPanelCollapsed: isAssistantCollapsed, togglePanel: toggleAssistantPanel } = useChatSessions()
+
 onMounted(() => {
   initSampleData()
   initHistory()
@@ -1277,6 +1282,21 @@ watch(currentCanvasSnapshot, () => {
           @send="handlePromptSend"
         />
       </div>
+
+      <!-- 右侧助手面板（折叠时不显示） -->
+      <CanvasAssistantPanel />
+
+      <!-- 折叠态下的展开把手 -->
+      <button
+        v-if="isAssistantCollapsed"
+        class="canvas-assistant-toggle"
+        title="展开助手面板"
+        @click="toggleAssistantPanel"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+      </button>
     </div>
   </div>
 </template>

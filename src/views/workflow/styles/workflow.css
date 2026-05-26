@@ -40,8 +40,36 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  width: 100%;
+  flex: 1 1 0;
+  min-width: 0;
   position: relative;
+}
+
+/* 助手面板折叠态的展开把手（贴在画布右边缘） */
+.canvas-assistant-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 64px;
+  background: var(--canvas-float-block-default);
+  backdrop-filter: blur(var(--canvas-float-backdrop-blur));
+  -webkit-backdrop-filter: blur(var(--canvas-float-backdrop-blur));
+  border: 0.5px solid var(--stroke-secondary);
+  border-radius: 12px 0 0 12px;
+  border-right: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  z-index: 80;
+  transition: background-color 0.12s, color 0.12s;
+}
+.canvas-assistant-toggle:hover {
+  background: var(--canvas-float-block-hover);
+  color: var(--text-primary);
 }
 
 /* ========== Vue Flow 画布覆盖样式 ========== */

@@ -1,15 +1,17 @@
 <script setup lang="ts">
 /**
- * 图片节点（即梦风样板）
+ * 图片节点（RunningHUB 风样板）
  *
- * 视觉对照用户截图：
- *   - 标题外置（节点上方左侧浮 Image 图标 + label）
- *   - 空态时显示「尝试」菜单：图生图 / 图生视频 / 图片换背景 / 首帧图生视频
- *   - 有内容态：显示图片（含批量组叠卡）+ 上传/替换按钮
- *   - 选中态：青绿色亮描边
- *   - 左右连接点：圆形「+」按钮
+ * 视觉对照 HTML 抽出的真实样式：
+ *   - 卡片 380×280, border-radius 16
+ *   - 标题外置（absolute bottom:100%）
+ *   - 4 类状态：空态菜单 / ready-state（有上游连线）/ 加载 / 有图
+ *   - 选中态：青绿描边 + 流光边框 + 模糊光晕
+ *   - 节点外左右 -56px "+" 按钮
+ *   - 选中后下方浮出 CanvasPromptInput（图片模型 + 尺寸/质量/价格 chip）
+ *   - 保留批量生图组叠卡能力
  */
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import {
   CopyDocument,
@@ -23,6 +25,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
+import CanvasPromptInput from '@/components/canvas/CanvasPromptInput.vue'
 import {
   updateNode,
   removeNode,
@@ -30,9 +33,11 @@ import {
   addNode,
   addEdge,
   nodes,
+  edges,
   type WorkflowImageNodeData,
 } from '../../composables/useWorkflowCanvas'
 import { uploadStorageFile } from '@/api/storage'
+import { getAllImageModels, getDefaultImageModelKey, loadPublicModelCatalog } from '@/config/models'
 
 const props = defineProps<{
   id: string
@@ -55,9 +60,16 @@ watch(
   },
 )
 
-const isEmpty = computed(() => !imageUrl.value && !isLoading.value && !errorMsg.value)
+// 上游连线检测：当 target=本节点 的边存在时，节点处于"已连接参考图片"状态
+const hasUpstream = computed(() => edges.value.some((e) => e.target === props.id))
 
-// 上传图片
+// 4 类状态优先级：加载 > 错误 > 有图 > ready-state（无图但有上游）> 空态菜单
+const showLoading = computed(() => isLoading.value)
+const showError = computed(() => !isLoading.value && !!errorMsg.value)
+const showImage = computed(() => !isLoading.value && !errorMsg.value && !!imageUrl.value)
+const showReady = computed(() => !showLoading.value && !showError.value && !showImage.value && hasUpstream.value)
+const showEmpty = computed(() => !showLoading.value && !showError.value && !showImage.value && !showReady.value)
+
 const triggerUpload = () => fileInputRef.value?.click()
 const handleFileChange = async (event: Event) => {
   const input = event.target as HTMLInputElement
@@ -120,7 +132,7 @@ const toggleBatchExpanded = () => {
 const requireImage = (): boolean => {
   if (imageUrl.value) return true
   ElMessage.info('请先上传图片，再使用该能力')
-  void nextTick(() => triggerUpload())
+  triggerUpload()
   return false
 }
 
@@ -158,6 +170,10 @@ const handleChangeBackground = () => {
   ElMessage.info('图片换背景接入中，敬请期待')
 }
 
+// 节点外 "+" 按钮
+const handleAddLeft = () => ElMessage.info('从左侧追加上游节点：接入中')
+const handleAddRight = () => handleImageToImage()
+
 const hoverActions = computed<NodeToolbarAction[]>(() => {
   const list: NodeToolbarAction[] = [
     { id: 'duplicate', label: '复制', icon: CopyDocument, onClick: handleDuplicate },
@@ -175,6 +191,23 @@ const emptyMenuItems = [
   { id: 'bg', label: '图片换背景', icon: Sunny, onClick: handleChangeBackground },
   { id: 'first-frame', label: '首帧图生视频', icon: PictureFilled, onClick: () => handleImageToVideo('first_frame_image') },
 ]
+
+// 选中态下方浮层 prompt
+const promptText = ref('')
+const promptModelKey = ref(getDefaultImageModelKey())
+const promptModelOptions = computed(() => getAllImageModels().map((m) => ({ key: m.key, label: m.label })))
+onMounted(() => {
+  void loadPublicModelCatalog()
+})
+const promptParams = computed(() => [
+  { id: 'size', label: '自适应/中/1k' },
+  { id: 'camera', label: '摄影机控制' },
+  { id: 'pano', label: '全景图' },
+])
+const handlePromptSend = (text: string) => {
+  ElMessage.success(`发送：${text.slice(0, 30)}…（图片生成接入中）`)
+  promptText.value = ''
+}
 </script>
 
 <template>
@@ -187,8 +220,12 @@ const emptyMenuItems = [
 
     <!-- 节点本体 -->
     <div class="image-node-card" :class="{ 'is-selected': data?.selected }">
+      <!-- 选中态流光边框 -->
+      <span v-if="data?.selected" class="image-node-flow image-node-flow--ring" aria-hidden="true" />
+      <span v-if="data?.selected" class="image-node-flow image-node-flow--glow" aria-hidden="true" />
+
       <!-- 空态：尝试菜单 -->
-      <div v-if="isEmpty" class="image-node-empty">
+      <div v-if="showEmpty" class="image-node-empty">
         <div class="image-node-empty-title">尝试：</div>
         <div class="image-node-empty-menu">
           <button
@@ -210,18 +247,31 @@ const emptyMenuItems = [
         </button>
       </div>
 
-      <!-- 加载态 -->
-      <div v-else-if="isLoading" class="image-node-loading">
+      <!-- ready-state：有上游连线但本节点没有图 -->
+      <div v-else-if="showReady" class="image-node-ready">
+        <div class="image-node-ready-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            <circle cx="8.5" cy="10" r="1.5" fill="currentColor" />
+            <path d="M3 15L7 11L10 14L15 9L21 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </div>
+        <div class="image-node-ready-text">已连接参考图片</div>
+        <div class="image-node-ready-hint">选中节点后在下方配置并生成</div>
+      </div>
+
+      <!-- 加载 -->
+      <div v-else-if="showLoading" class="image-node-loading">
         <div class="image-node-spinner" />
         <span>生成中…</span>
       </div>
 
-      <!-- 错误态 -->
-      <div v-else-if="errorMsg" class="image-node-error" @click.stop="triggerUpload">
+      <!-- 错误 -->
+      <div v-else-if="showError" class="image-node-error" @click.stop="triggerUpload">
         <span>{{ errorMsg }}，点击重新上传</span>
       </div>
 
-      <!-- 有图态 -->
+      <!-- 有图 -->
       <div
         v-else
         class="image-node-display"
@@ -268,7 +318,52 @@ const emptyMenuItems = [
     <Handle type="target" :position="Position.Left" id="left" class="image-node-handle" />
     <Handle type="source" :position="Position.Right" id="right" class="image-node-handle" />
 
+    <!-- 节点外 "+" 按钮 -->
+    <button
+      v-if="data?.selected"
+      class="image-node-add-btn image-node-add-btn--left nodrag nopan"
+      title="向左追加上游节点"
+      @mousedown.stop
+      @click.stop="handleAddLeft"
+    >
+      <span class="image-node-add-btn__icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 5v10" />
+          <path d="M5 10h10" />
+        </svg>
+      </span>
+    </button>
+    <button
+      v-if="data?.selected"
+      class="image-node-add-btn image-node-add-btn--right nodrag nopan"
+      title="向右追加下游配置"
+      @mousedown.stop
+      @click.stop="handleAddRight"
+    >
+      <span class="image-node-add-btn__icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 5v10" />
+          <path d="M5 10h10" />
+        </svg>
+      </span>
+    </button>
+
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
+
+    <!-- 选中态下方浮出 prompt -->
+    <div v-if="data?.selected" class="image-node-prompt-panel nodrag nopan" @mousedown.stop>
+      <CanvasPromptInput
+        v-model="promptText"
+        v-model:model-key="promptModelKey"
+        :model-options="promptModelOptions"
+        :params="promptParams"
+        :count="1"
+        :price="0.38"
+        :show-add-btn="true"
+        placeholder="描述你想要生成的内容，使用 @可快速引用上传的文件，按/呼出指令"
+        @send="handlePromptSend"
+      />
+    </div>
   </div>
 </template>
 
@@ -281,51 +376,112 @@ const emptyMenuItems = [
 
 .image-node-title {
   position: absolute;
-  top: -26px;
-  left: 4px;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 8px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: 22px;
+  padding: 0 8px 0 2px;
+  border-radius: 4px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
+  line-height: 22px;
   letter-spacing: 0.2px;
-  pointer-events: none;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.image-node-title:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
 }
 .image-node-title-icon {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--text-tertiary);
 }
 
 .image-node-card {
+  position: relative;
   width: 100%;
   height: 100%;
+  min-width: 380px;
+  min-height: 280px;
   background: var(--canvas-bg-block-default);
   border: 1px solid var(--stroke-secondary);
-  border-radius: 14px;
-  padding: 16px;
+  border-radius: 16px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   box-sizing: border-box;
-  transition: border-color 0.16s, box-shadow 0.16s;
   overflow: hidden;
+  transition: border-color 0.16s, box-shadow 0.16s;
 }
 .image-node-card.is-selected {
   border-color: var(--canvas-selection-border);
-  box-shadow: 0 0 0 1.5px var(--canvas-selection-border);
+  box-shadow: 0 0 0 2px var(--canvas-selection-border);
 }
 
+/* 流光边框 */
+.image-node-flow {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  background-size: 200% 200%;
+  animation: image-node-flowing 2.4s linear infinite;
+}
+.image-node-flow--ring {
+  inset: -2px;
+  border-radius: 18px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    transparent 20%,
+    rgba(2, 219, 163, 0.45) 40%,
+    #02dba3 50%,
+    rgba(2, 219, 163, 0.45) 60%,
+    transparent 80%,
+    transparent
+  );
+  z-index: -1;
+}
+.image-node-flow--glow {
+  inset: -6px;
+  border-radius: 22px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    transparent 20%,
+    rgba(2, 219, 163, 0.18) 40%,
+    rgba(2, 219, 163, 0.42) 50%,
+    rgba(2, 219, 163, 0.18) 60%,
+    transparent 80%,
+    transparent
+  );
+  filter: blur(8px);
+  z-index: -2;
+}
+@keyframes image-node-flowing {
+  0% { background-position: 100% 50%; }
+  100% { background-position: -100% 50%; }
+}
+
+/* 空态菜单 */
 .image-node-empty {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   flex: 1 1 0;
+  justify-content: center;
+  padding: 20px;
 }
 .image-node-empty-title {
   color: var(--text-tertiary);
-  font-size: 12px;
-  letter-spacing: 0.4px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  margin-left: 10px;
 }
 .image-node-empty-menu {
   display: flex;
@@ -335,27 +491,36 @@ const emptyMenuItems = [
 .image-node-empty-item {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 4px;
+  gap: 12px;
+  padding: 8px;
   background: transparent;
   border: 0;
-  color: var(--text-primary);
-  font-size: 13px;
+  color: var(--text-secondary);
+  font-size: 14px;
   text-align: left;
   cursor: pointer;
-  border-radius: var(--lv-border-radius-medium);
-  transition: background-color 0.12s;
+  border-radius: 16px;
+  width: fit-content;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 .image-node-empty-item:hover {
-  background: var(--canvas-float-block-hover);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
 }
 .image-node-empty-item-icon {
-  font-size: 16px;
-  color: var(--text-secondary);
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+  color: var(--text-tertiary);
   flex-shrink: 0;
+}
+.image-node-empty-item:hover .image-node-empty-item-icon {
+  color: var(--text-primary);
 }
 .image-node-upload-pill {
   margin-top: auto;
+  margin-left: 10px;
+  margin-right: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -363,7 +528,7 @@ const emptyMenuItems = [
   padding: 8px 0;
   background: var(--canvas-float-block-default);
   border: 0.5px solid var(--stroke-secondary);
-  border-radius: var(--lv-border-radius-medium);
+  border-radius: 16px;
   color: var(--text-primary);
   font-size: 12px;
   cursor: pointer;
@@ -374,7 +539,32 @@ const emptyMenuItems = [
   color: var(--brand-main-default);
 }
 
-/* 加载/错误态 */
+/* ready-state（有上游连线但空图）*/
+.image-node-ready {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-tertiary);
+  padding: 24px;
+}
+.image-node-ready-icon {
+  color: var(--text-tertiary);
+  opacity: 0.6;
+}
+.image-node-ready-text {
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+.image-node-ready-hint {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+/* 加载 / 错误 */
 .image-node-loading,
 .image-node-error {
   flex: 1 1 0;
@@ -398,12 +588,10 @@ const emptyMenuItems = [
   animation: image-node-spin 0.8s linear infinite;
 }
 @keyframes image-node-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
-/* 批量组叠卡 + 计数（沿用上一版样式） */
+/* 批量组叠卡 */
 .image-node-display {
   position: relative;
   flex: 1 1 0;
@@ -503,30 +691,59 @@ const emptyMenuItems = [
   border-color: var(--brand-main-default);
 }
 
-/* 左右连接点：圆形 + */
+/* 左右 Handle 隐藏（用 .image-node-add-btn 替代） */
 .image-node-handle {
-  width: 20px !important;
-  height: 20px !important;
-  border-radius: 50% !important;
-  background: var(--canvas-bg-block-default) !important;
-  border: 1px solid var(--stroke-secondary) !important;
-  transition: background-color 0.12s, border-color 0.12s, transform 0.12s;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  border: 0 !important;
+  background: transparent !important;
 }
-.image-node-handle::before {
-  content: '+';
+
+/* 外置 "+" 按钮 */
+.image-node-add-btn {
   position: absolute;
-  inset: 0;
-  display: flex;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  color: var(--text-secondary);
-  pointer-events: none;
-  line-height: 1;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  z-index: 10;
+  transition: transform 0.2s, color 0.2s;
 }
-.image-node-handle:hover {
-  background: var(--canvas-float-block-hover) !important;
-  border-color: var(--canvas-selection-border) !important;
-  transform: scale(1.1);
+.image-node-add-btn--left { left: -56px; }
+.image-node-add-btn--right { right: -56px; }
+.image-node-add-btn__icon {
+  width: 20px;
+  height: 20px;
+  padding: 3px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: content-box;
+}
+.image-node-add-btn:hover { color: var(--text-primary); }
+.image-node-add-btn:active { transform: translateY(-50%) scale(0.95); }
+
+/* 节点下方浮出 prompt */
+.image-node-prompt-panel {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  min-width: 540px;
+  max-width: 760px;
+  z-index: 5;
 }
 </style>

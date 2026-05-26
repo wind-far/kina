@@ -1,15 +1,16 @@
 <script setup lang="ts">
 /**
- * 视频节点（即梦风样板）
+ * 视频节点（RunningHUB 风样板）
  *
- * 视觉对照用户截图：
- *   - 标题外置（节点上方左侧浮 VideoCamera 图标 + label）
- *   - 空态时显示「尝试」菜单：全能参考 / 图生视频 / 首尾帧生视频
- *   - 有内容态：原生 <video controls> + 下载按钮
- *   - 选中态：青绿色亮描边
- *   - 左右连接点：圆形「+」按钮
+ * 与 ImageNode 同款结构：
+ *   - 卡片 380×280, border-radius 16
+ *   - 标题外置
+ *   - 4 类状态：空态菜单 / ready-state / 加载 / 有视频
+ *   - 选中态：青绿描边 + 流光边框
+ *   - 节点外 -56px "+" 按钮
+ *   - 选中后下方浮出 CanvasPromptInput（视频模型 + 480p/5s/... chip + ¥3）
  */
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import {
   CopyDocument,
@@ -23,6 +24,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
+import CanvasPromptInput from '@/components/canvas/CanvasPromptInput.vue'
 import {
   updateNode,
   removeNode,
@@ -30,9 +32,11 @@ import {
   addNode,
   addEdge,
   nodes,
+  edges,
   type WorkflowVideoNodeData,
 } from '../../composables/useWorkflowCanvas'
 import { uploadStorageFile } from '@/api/storage'
+import { getAllVideoModels, getDefaultVideoModelKey, loadPublicModelCatalog } from '@/config/models'
 
 const props = defineProps<{
   id: string
@@ -55,7 +59,13 @@ watch(
   },
 )
 
-const isEmpty = computed(() => !videoUrl.value && !isLoading.value && !errorMsg.value)
+const hasUpstream = computed(() => edges.value.some((e) => e.target === props.id))
+
+const showLoading = computed(() => isLoading.value)
+const showError = computed(() => !isLoading.value && !!errorMsg.value)
+const showVideo = computed(() => !isLoading.value && !errorMsg.value && !!videoUrl.value)
+const showReady = computed(() => !showLoading.value && !showError.value && !showVideo.value && hasUpstream.value)
+const showEmpty = computed(() => !showLoading.value && !showError.value && !showVideo.value && !showReady.value)
 
 const triggerUpload = () => fileInputRef.value?.click()
 const handleFileChange = async (event: Event) => {
@@ -97,16 +107,7 @@ const handleDuplicate = () => {
   if (newId) setTimeout(() => updateNodeInternals([newId]), 50)
 }
 
-const requireVideo = (): boolean => {
-  if (videoUrl.value) return true
-  ElMessage.info('请先上传视频或先生成视频，再使用该能力')
-  return false
-}
-
-const handleAllReference = () => {
-  if (!requireVideo()) return
-  ElMessage.info('「全能参考」接入中，敬请期待')
-}
+const handleAllReference = () => ElMessage.info('「全能参考」接入中，敬请期待')
 const handleImageToVideo = () => {
   const node = nodes.value.find((n) => n.id === props.id)
   if (!node) return
@@ -121,9 +122,10 @@ const handleImageToVideo = () => {
   })
   setTimeout(() => updateNodeInternals([newId]), 50)
 }
-const handleFirstLastFrame = () => {
-  ElMessage.info('「首尾帧生视频」接入中，敬请期待')
-}
+const handleFirstLastFrame = () => ElMessage.info('「首尾帧生视频」接入中，敬请期待')
+
+const handleAddLeft = () => ElMessage.info('从左侧追加上游节点：接入中')
+const handleAddRight = () => handleImageToVideo()
 
 const hoverActions = computed<NodeToolbarAction[]>(() => {
   const list: NodeToolbarAction[] = [
@@ -141,6 +143,21 @@ const emptyMenuItems = [
   { id: 'i2v', label: '图生视频', icon: Picture, onClick: handleImageToVideo },
   { id: 'first-last', label: '首尾帧生视频', icon: Film, onClick: handleFirstLastFrame },
 ]
+
+// 选中态下方 prompt
+const promptText = ref('')
+const promptModelKey = ref(getDefaultVideoModelKey())
+const promptModelOptions = computed(() => getAllVideoModels().map((m) => ({ key: m.key, label: m.label })))
+onMounted(() => {
+  void loadPublicModelCatalog()
+})
+const promptParams = computed(() => [
+  { id: 'spec', label: '480p / 5s / 自适应' },
+])
+const handlePromptSend = (text: string) => {
+  ElMessage.success(`发送：${text.slice(0, 30)}…（视频生成接入中）`)
+  promptText.value = ''
+}
 </script>
 
 <template>
@@ -151,8 +168,11 @@ const emptyMenuItems = [
     </div>
 
     <div class="video-node-card" :class="{ 'is-selected': data?.selected }">
+      <span v-if="data?.selected" class="video-node-flow video-node-flow--ring" aria-hidden="true" />
+      <span v-if="data?.selected" class="video-node-flow video-node-flow--glow" aria-hidden="true" />
+
       <!-- 空态：尝试菜单 -->
-      <div v-if="isEmpty" class="video-node-empty">
+      <div v-if="showEmpty" class="video-node-empty">
         <div class="video-node-empty-title">尝试：</div>
         <div class="video-node-empty-menu">
           <button
@@ -174,16 +194,25 @@ const emptyMenuItems = [
         </button>
       </div>
 
-      <!-- 加载/错误 -->
-      <div v-else-if="isLoading" class="video-node-loading">
+      <!-- ready-state -->
+      <div v-else-if="showReady" class="video-node-ready">
+        <div class="video-node-ready-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="6" width="20" height="12" rx="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <path d="M10 9l5 3-5 3V9z" fill="currentColor" />
+          </svg>
+        </div>
+        <div class="video-node-ready-text">已连接参考素材</div>
+        <div class="video-node-ready-hint">选中节点后在下方配置并生成</div>
+      </div>
+
+      <div v-else-if="showLoading" class="video-node-loading">
         <div class="video-node-spinner" />
         <span>生成中…</span>
       </div>
-      <div v-else-if="errorMsg" class="video-node-error" @click.stop="triggerUpload">
+      <div v-else-if="showError" class="video-node-error" @click.stop="triggerUpload">
         <span>{{ errorMsg }}，点击重新上传</span>
       </div>
-
-      <!-- 有视频态 -->
       <video
         v-else
         :src="videoUrl"
@@ -205,7 +234,50 @@ const emptyMenuItems = [
     <Handle type="target" :position="Position.Left" id="left" class="video-node-handle" />
     <Handle type="source" :position="Position.Right" id="right" class="video-node-handle" />
 
+    <button
+      v-if="data?.selected"
+      class="video-node-add-btn video-node-add-btn--left nodrag nopan"
+      title="向左追加上游节点"
+      @mousedown.stop
+      @click.stop="handleAddLeft"
+    >
+      <span class="video-node-add-btn__icon">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 5v10" />
+          <path d="M5 10h10" />
+        </svg>
+      </span>
+    </button>
+    <button
+      v-if="data?.selected"
+      class="video-node-add-btn video-node-add-btn--right nodrag nopan"
+      title="向右追加下游配置"
+      @mousedown.stop
+      @click.stop="handleAddRight"
+    >
+      <span class="video-node-add-btn__icon">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 5v10" />
+          <path d="M5 10h10" />
+        </svg>
+      </span>
+    </button>
+
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
+
+    <div v-if="data?.selected" class="video-node-prompt-panel nodrag nopan" @mousedown.stop>
+      <CanvasPromptInput
+        v-model="promptText"
+        v-model:model-key="promptModelKey"
+        :model-options="promptModelOptions"
+        :params="promptParams"
+        :count="1"
+        :price="3"
+        :show-add-btn="true"
+        placeholder="根据图片生成视频，按 Enter 发送"
+        @send="handlePromptSend"
+      />
+    </div>
   </div>
 </template>
 
@@ -218,51 +290,109 @@ const emptyMenuItems = [
 
 .video-node-title {
   position: absolute;
-  top: -26px;
-  left: 4px;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 8px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: 22px;
+  padding: 0 8px 0 2px;
+  border-radius: 4px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
-  letter-spacing: 0.2px;
-  pointer-events: none;
+  line-height: 22px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s, color 0.2s;
+}
+.video-node-title:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
 }
 .video-node-title-icon {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--text-tertiary);
 }
 
 .video-node-card {
+  position: relative;
   width: 100%;
   height: 100%;
+  min-width: 380px;
+  min-height: 280px;
   background: var(--canvas-bg-block-default);
   border: 1px solid var(--stroke-secondary);
-  border-radius: 14px;
-  padding: 16px;
+  border-radius: 16px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   box-sizing: border-box;
   overflow: hidden;
   transition: border-color 0.16s, box-shadow 0.16s;
 }
 .video-node-card.is-selected {
   border-color: var(--canvas-selection-border);
-  box-shadow: 0 0 0 1.5px var(--canvas-selection-border);
+  box-shadow: 0 0 0 2px var(--canvas-selection-border);
+}
+
+.video-node-flow {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  background-size: 200% 200%;
+  animation: video-node-flowing 2.4s linear infinite;
+}
+.video-node-flow--ring {
+  inset: -2px;
+  border-radius: 18px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    transparent 20%,
+    rgba(2, 219, 163, 0.45) 40%,
+    #02dba3 50%,
+    rgba(2, 219, 163, 0.45) 60%,
+    transparent 80%,
+    transparent
+  );
+  z-index: -1;
+}
+.video-node-flow--glow {
+  inset: -6px;
+  border-radius: 22px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    transparent 20%,
+    rgba(2, 219, 163, 0.18) 40%,
+    rgba(2, 219, 163, 0.42) 50%,
+    rgba(2, 219, 163, 0.18) 60%,
+    transparent 80%,
+    transparent
+  );
+  filter: blur(8px);
+  z-index: -2;
+}
+@keyframes video-node-flowing {
+  0% { background-position: 100% 50%; }
+  100% { background-position: -100% 50%; }
 }
 
 .video-node-empty {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   flex: 1 1 0;
+  justify-content: center;
+  padding: 20px;
 }
 .video-node-empty-title {
   color: var(--text-tertiary);
-  font-size: 12px;
-  letter-spacing: 0.4px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  margin-left: 10px;
 }
 .video-node-empty-menu {
   display: flex;
@@ -272,27 +402,36 @@ const emptyMenuItems = [
 .video-node-empty-item {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 4px;
+  gap: 12px;
+  padding: 8px;
   background: transparent;
   border: 0;
-  color: var(--text-primary);
-  font-size: 13px;
+  color: var(--text-secondary);
+  font-size: 14px;
   text-align: left;
   cursor: pointer;
-  border-radius: var(--lv-border-radius-medium);
-  transition: background-color 0.12s;
+  border-radius: 16px;
+  width: fit-content;
+  transition: background-color 0.15s, color 0.15s;
 }
 .video-node-empty-item:hover {
-  background: var(--canvas-float-block-hover);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
 }
 .video-node-empty-item-icon {
-  font-size: 16px;
-  color: var(--text-secondary);
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+  color: var(--text-tertiary);
   flex-shrink: 0;
+}
+.video-node-empty-item:hover .video-node-empty-item-icon {
+  color: var(--text-primary);
 }
 .video-node-upload-pill {
   margin-top: auto;
+  margin-left: 10px;
+  margin-right: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -300,7 +439,7 @@ const emptyMenuItems = [
   padding: 8px 0;
   background: var(--canvas-float-block-default);
   border: 0.5px solid var(--stroke-secondary);
-  border-radius: var(--lv-border-radius-medium);
+  border-radius: 16px;
   color: var(--text-primary);
   font-size: 12px;
   cursor: pointer;
@@ -309,6 +448,27 @@ const emptyMenuItems = [
 .video-node-upload-pill:hover {
   background: var(--canvas-float-block-hover);
   color: var(--brand-main-default);
+}
+
+.video-node-ready {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-tertiary);
+  padding: 24px;
+}
+.video-node-ready-icon { opacity: 0.6; }
+.video-node-ready-text {
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+.video-node-ready-hint {
+  color: var(--text-tertiary);
+  font-size: 12px;
 }
 
 .video-node-loading,
@@ -334,9 +494,7 @@ const emptyMenuItems = [
   animation: video-node-spin 0.8s linear infinite;
 }
 @keyframes video-node-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
 .video-node-player {
@@ -347,28 +505,55 @@ const emptyMenuItems = [
 }
 
 .video-node-handle {
-  width: 20px !important;
-  height: 20px !important;
-  border-radius: 50% !important;
-  background: var(--canvas-bg-block-default) !important;
-  border: 1px solid var(--stroke-secondary) !important;
-  transition: background-color 0.12s, border-color 0.12s, transform 0.12s;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  border: 0 !important;
+  background: transparent !important;
 }
-.video-node-handle::before {
-  content: '+';
+
+.video-node-add-btn {
   position: absolute;
-  inset: 0;
-  display: flex;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  color: var(--text-secondary);
-  pointer-events: none;
-  line-height: 1;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  z-index: 10;
+  transition: transform 0.2s, color 0.2s;
 }
-.video-node-handle:hover {
-  background: var(--canvas-float-block-hover) !important;
-  border-color: var(--canvas-selection-border) !important;
-  transform: scale(1.1);
+.video-node-add-btn--left { left: -56px; }
+.video-node-add-btn--right { right: -56px; }
+.video-node-add-btn__icon {
+  width: 20px;
+  height: 20px;
+  padding: 3px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: content-box;
+}
+.video-node-add-btn:hover { color: var(--text-primary); }
+.video-node-add-btn:active { transform: translateY(-50%) scale(0.95); }
+
+.video-node-prompt-panel {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  min-width: 540px;
+  max-width: 760px;
+  z-index: 5;
 }
 </style>

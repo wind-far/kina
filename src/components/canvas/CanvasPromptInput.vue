@@ -33,6 +33,12 @@ interface ParamChip {
   /** 点击时触发的事件 id，调用方监听 @param-click */
   id?: string
 }
+export interface PromptReference {
+  id: string
+  /** 缩略图 url（图片节点）；不传则只显示文本卡 */
+  url?: string
+  label: string
+}
 
 const props = withDefaults(
   defineProps<{
@@ -40,6 +46,7 @@ const props = withDefaults(
     modelKey?: string
     modelOptions?: ModelOption[]
     params?: ParamChip[]
+    references?: PromptReference[]
     count?: number
     /** 价格（数字 = ¥xx 显示；字符串 = 直接显示，如 "今日限免还剩 3次"） */
     price?: number | string
@@ -51,6 +58,7 @@ const props = withDefaults(
     modelKey: '',
     modelOptions: () => [],
     params: () => [],
+    references: () => [],
     count: 1,
     price: undefined,
     placeholder: '描述你想要生成的内容…',
@@ -139,8 +147,19 @@ const countOptions = [1, 2, 3, 4]
 
 <template>
   <div class="canvas-prompt-input" @click.stop>
-    <!-- 顶部插槽：tab / "+ 添加" / 素材库 -->
-    <div v-if="$slots.top || showAddBtn" class="canvas-prompt-input__top">
+    <!-- 顶部插槽：references chip / tab / "+ 添加" / 素材库 -->
+    <div v-if="$slots.top || showAddBtn || references.length > 0" class="canvas-prompt-input__top">
+      <!-- 上游参考素材 chip -->
+      <div
+        v-for="ref in references"
+        :key="ref.id"
+        class="canvas-prompt-input__ref"
+        :title="ref.label"
+      >
+        <img v-if="ref.url" :src="ref.url" alt="" class="canvas-prompt-input__ref-img" />
+        <span v-else class="canvas-prompt-input__ref-fallback">{{ ref.label.slice(0, 2) }}</span>
+        <span class="canvas-prompt-input__ref-label">{{ ref.label }}</span>
+      </div>
       <slot name="top">
         <button v-if="showAddBtn" class="canvas-prompt-input__add" @click="handleAdd">
           <el-icon><Plus /></el-icon>
@@ -286,6 +305,50 @@ const countOptions = [1, 2, 3, 4]
   background: var(--canvas-float-block-hover);
   color: var(--brand-main-default);
   border-color: var(--brand-main-default);
+}
+
+/* 上游参考素材 chip */
+.canvas-prompt-input__ref {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--lv-border-radius-medium);
+  overflow: hidden;
+  background: var(--canvas-bg-block-default);
+  border: 0.5px solid var(--stroke-secondary);
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.canvas-prompt-input__ref-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.canvas-prompt-input__ref-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.canvas-prompt-input__ref-label {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  padding: 2px 4px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.65));
+  color: #fff;
+  font-size: 10px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 主输入区 */

@@ -42,7 +42,9 @@ import WfSelect from '@/components/common/WfSelect.vue'
 const props = defineProps<{
   id: string
   data: WorkflowTextNodeData & { selected?: boolean }
+  selected?: boolean
 }>()
+const isSelected = computed(() => props.selected || props.data?.selected)
 const { updateNodeInternals } = useVueFlow()
 
 const content = ref(props.data?.content || '')
@@ -244,10 +246,10 @@ const handlePromptSend = (text: string) => {
     </div>
 
     <!-- 节点本体 -->
-    <div class="text-node-card" :class="{ 'is-selected': data?.selected, 'is-empty': isEmpty }">
+    <div class="text-node-card" :class="{ 'is-selected': isSelected, 'is-empty': isEmpty }">
       <!-- 选中态：流光边框（参照 RunningHUB .flowing-border） -->
-      <span v-if="data?.selected" class="text-node-flow text-node-flow--ring" aria-hidden="true" />
-      <span v-if="data?.selected" class="text-node-flow text-node-flow--glow" aria-hidden="true" />
+      <span v-if="isSelected" class="text-node-flow text-node-flow--ring" aria-hidden="true" />
+      <span v-if="isSelected" class="text-node-flow text-node-flow--glow" aria-hidden="true" />
       <!-- 空态：尝试菜单 -->
       <div v-if="isEmpty" class="text-node-empty">
         <div class="text-node-empty-title">尝试：</div>
@@ -326,7 +328,7 @@ const handlePromptSend = (text: string) => {
 
     <!-- 节点外左右 "+" 按钮（选中态显示，参照 RunningHUB .node-add-btn） -->
     <button
-      v-if="data?.selected"
+      v-if="isSelected"
       class="text-node-add-btn text-node-add-btn--left nodrag nopan"
       title="向左追加节点"
       @mousedown.stop
@@ -340,7 +342,7 @@ const handlePromptSend = (text: string) => {
       </span>
     </button>
     <button
-      v-if="data?.selected"
+      v-if="isSelected"
       class="text-node-add-btn text-node-add-btn--right nodrag nopan"
       title="向右追加节点"
       @mousedown.stop
@@ -358,7 +360,7 @@ const handlePromptSend = (text: string) => {
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
 
     <!-- 选中态下方浮出 prompt 输入框（按节点类型差异化） -->
-    <div v-if="data?.selected" class="text-node-prompt-panel nodrag nopan" @mousedown.stop>
+    <div v-if="isSelected" class="text-node-prompt-panel nodrag nopan" @mousedown.stop>
       <CanvasPromptInput
         v-model="promptText"
         v-model:model-key="polishModel"

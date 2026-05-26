@@ -25,7 +25,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
-import CanvasPromptInput from '@/components/canvas/CanvasPromptInput.vue'
+import CanvasPromptInput, { type PromptReference } from '@/components/canvas/CanvasPromptInput.vue'
 import {
   updateNode,
   removeNode,
@@ -42,7 +42,9 @@ import { getAllImageModels, getDefaultImageModelKey, loadPublicModelCatalog } fr
 const props = defineProps<{
   id: string
   data: WorkflowImageNodeData & { selected?: boolean }
+  selected?: boolean
 }>()
+const isSelected = computed(() => props.selected || props.data?.selected)
 const { updateNodeInternals } = useVueFlow()
 
 const showActions = ref(false)
@@ -204,6 +206,23 @@ const promptParams = computed(() => [
   { id: 'camera', label: '摄影机控制' },
   { id: 'pano', label: '全景图' },
 ])
+// 上游图片素材 → PromptInput 左侧 reference chip
+const promptReferences = computed<PromptReference[]>(() => {
+  const upstreamEdges = edges.value.filter((e) => e.target === props.id)
+  const refs: PromptReference[] = []
+  let counter = 1
+  for (const edge of upstreamEdges) {
+    const sourceNode = nodes.value.find((n) => n.id === edge.source)
+    if (!sourceNode) continue
+    if (sourceNode.type === 'image') {
+      const url = (sourceNode.data as { url?: string })?.url
+      const label = (sourceNode.data as { label?: string })?.label || `图片${counter}`
+      refs.push({ id: edge.id, url: url || undefined, label })
+      counter += 1
+    }
+  }
+  return refs
+})
 const handlePromptSend = (text: string) => {
   ElMessage.success(`发送：${text.slice(0, 30)}…（图片生成接入中）`)
   promptText.value = ''
@@ -219,10 +238,10 @@ const handlePromptSend = (text: string) => {
     </div>
 
     <!-- 节点本体 -->
-    <div class="image-node-card" :class="{ 'is-selected': data?.selected }">
+    <div class="image-node-card" :class="{ 'is-selected': isSelected }">
       <!-- 选中态流光边框 -->
-      <span v-if="data?.selected" class="image-node-flow image-node-flow--ring" aria-hidden="true" />
-      <span v-if="data?.selected" class="image-node-flow image-node-flow--glow" aria-hidden="true" />
+      <span v-if="isSelected" class="image-node-flow image-node-flow--ring" aria-hidden="true" />
+      <span v-if="isSelected" class="image-node-flow image-node-flow--glow" aria-hidden="true" />
 
       <!-- 空态：尝试菜单 -->
       <div v-if="showEmpty" class="image-node-empty">
@@ -283,6 +302,15 @@ const handlePromptSend = (text: string) => {
           <div class="image-node-batch-frame image-node-batch-frame--1" aria-hidden="true" />
         </template>
         <img :src="imageUrl" alt="生成图片" class="image-node-image" />
+        <button
+          class="image-node-replace-btn nodrag nopan"
+          title="替换图片"
+          @mousedown.stop
+          @click.stop="triggerUpload"
+        >
+          <span class="image-node-replace-icon" aria-hidden="true">↑</span>
+          <span>替换</span>
+        </button>
         <span v-if="isBatchGroupVisible" class="image-node-batch-count" :title="`批量组 ${batchChildCount} 张，双击展开/折叠`">
           {{ batchChildCount }}
         </span>
@@ -320,7 +348,7 @@ const handlePromptSend = (text: string) => {
 
     <!-- 节点外 "+" 按钮 -->
     <button
-      v-if="data?.selected"
+      v-if="isSelected"
       class="image-node-add-btn image-node-add-btn--left nodrag nopan"
       title="向左追加上游节点"
       @mousedown.stop
@@ -334,7 +362,7 @@ const handlePromptSend = (text: string) => {
       </span>
     </button>
     <button
-      v-if="data?.selected"
+      v-if="isSelected"
       class="image-node-add-btn image-node-add-btn--right nodrag nopan"
       title="向右追加下游配置"
       @mousedown.stop
@@ -351,12 +379,13 @@ const handlePromptSend = (text: string) => {
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
 
     <!-- 选中态下方浮出 prompt -->
-    <div v-if="data?.selected" class="image-node-prompt-panel nodrag nopan" @mousedown.stop>
+    <div v-if="isSelected" class="image-node-prompt-panel nodrag nopan" @mousedown.stop>
       <CanvasPromptInput
         v-model="promptText"
         v-model:model-key="promptModelKey"
         :model-options="promptModelOptions"
         :params="promptParams"
+        :references="promptReferences"
         :count="1"
         :price="0.38"
         :show-add-btn="true"
@@ -689,6 +718,34 @@ const handlePromptSend = (text: string) => {
   background: var(--brand-main-default);
   color: #fff;
   border-color: var(--brand-main-default);
+}
+
+/* 替换按钮（有图态右上角） */
+.image-node-replace-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: rgba(30, 30, 30, 0.9);
+  border: 1px solid var(--stroke-secondary);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+}
+.image-node-replace-btn:hover {
+  background: rgba(50, 50, 50, 0.95);
+  border-color: var(--brand-main-default);
+  color: var(--brand-main-default);
+}
+.image-node-replace-icon {
+  font-size: 14px;
+  line-height: 1;
 }
 
 /* 左右 Handle 隐藏（用 .image-node-add-btn 替代） */

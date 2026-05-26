@@ -24,7 +24,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
-import CanvasPromptInput from '@/components/canvas/CanvasPromptInput.vue'
+import CanvasPromptInput, { type PromptReference } from '@/components/canvas/CanvasPromptInput.vue'
 import {
   updateNode,
   removeNode,
@@ -41,7 +41,9 @@ import { getAllVideoModels, getDefaultVideoModelKey, loadPublicModelCatalog } fr
 const props = defineProps<{
   id: string
   data: WorkflowVideoNodeData & { selected?: boolean }
+  selected?: boolean
 }>()
+const isSelected = computed(() => props.selected || props.data?.selected)
 const { updateNodeInternals } = useVueFlow()
 
 const showActions = ref(false)
@@ -154,6 +156,22 @@ onMounted(() => {
 const promptParams = computed(() => [
   { id: 'spec', label: '480p / 5s / 自适应' },
 ])
+const promptReferences = computed<PromptReference[]>(() => {
+  const upstreamEdges = edges.value.filter((e) => e.target === props.id)
+  const refs: PromptReference[] = []
+  let counter = 1
+  for (const edge of upstreamEdges) {
+    const sourceNode = nodes.value.find((n) => n.id === edge.source)
+    if (!sourceNode) continue
+    if (sourceNode.type === 'image' || sourceNode.type === 'video') {
+      const url = (sourceNode.data as { url?: string })?.url
+      const label = (sourceNode.data as { label?: string })?.label || `素材${counter}`
+      refs.push({ id: edge.id, url: url || undefined, label })
+      counter += 1
+    }
+  }
+  return refs
+})
 const handlePromptSend = (text: string) => {
   ElMessage.success(`发送：${text.slice(0, 30)}…（视频生成接入中）`)
   promptText.value = ''
@@ -167,9 +185,9 @@ const handlePromptSend = (text: string) => {
       <span>{{ data?.label || 'Video' }}</span>
     </div>
 
-    <div class="video-node-card" :class="{ 'is-selected': data?.selected }">
-      <span v-if="data?.selected" class="video-node-flow video-node-flow--ring" aria-hidden="true" />
-      <span v-if="data?.selected" class="video-node-flow video-node-flow--glow" aria-hidden="true" />
+    <div class="video-node-card" :class="{ 'is-selected': isSelected }">
+      <span v-if="isSelected" class="video-node-flow video-node-flow--ring" aria-hidden="true" />
+      <span v-if="isSelected" class="video-node-flow video-node-flow--glow" aria-hidden="true" />
 
       <!-- 空态：尝试菜单 -->
       <div v-if="showEmpty" class="video-node-empty">
@@ -235,7 +253,7 @@ const handlePromptSend = (text: string) => {
     <Handle type="source" :position="Position.Right" id="right" class="video-node-handle" />
 
     <button
-      v-if="data?.selected"
+      v-if="isSelected"
       class="video-node-add-btn video-node-add-btn--left nodrag nopan"
       title="向左追加上游节点"
       @mousedown.stop
@@ -249,7 +267,7 @@ const handlePromptSend = (text: string) => {
       </span>
     </button>
     <button
-      v-if="data?.selected"
+      v-if="isSelected"
       class="video-node-add-btn video-node-add-btn--right nodrag nopan"
       title="向右追加下游配置"
       @mousedown.stop
@@ -265,12 +283,13 @@ const handlePromptSend = (text: string) => {
 
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
 
-    <div v-if="data?.selected" class="video-node-prompt-panel nodrag nopan" @mousedown.stop>
+    <div v-if="isSelected" class="video-node-prompt-panel nodrag nopan" @mousedown.stop>
       <CanvasPromptInput
         v-model="promptText"
         v-model:model-key="promptModelKey"
         :model-options="promptModelOptions"
         :params="promptParams"
+        :references="promptReferences"
         :count="1"
         :price="3"
         :show-add-btn="true"

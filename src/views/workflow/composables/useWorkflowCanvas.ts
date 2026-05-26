@@ -61,6 +61,14 @@ export interface WorkflowImageNodeData extends WorkflowNodeDataBase {
   url: string
   base64?: string
   duration?: number
+  /** 批量生图组首标记（节点内自渲染叠卡） */
+  isBatchRoot?: boolean
+  /** 组内子图列表（包含主图副本） */
+  batchChildren?: Array<{ id: string; url: string }>
+  /** 当前显示为主图的子图 id（指向 batchChildren 中的某项） */
+  primaryImageId?: string
+  /** 是否展开为网格视图（false=叠卡折叠，true=网格展开） */
+  batchExpanded?: boolean
 }
 
 export interface WorkflowVideoNodeData extends WorkflowNodeDataBase {

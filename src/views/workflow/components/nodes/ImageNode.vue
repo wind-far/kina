@@ -150,6 +150,16 @@ const handleDuplicate = () => {
   if (newId) setTimeout(() => updateNodeInternals([newId]), 50)
 }
 
+// 批量生图组：当 isBatchRoot 且子图数量 > 1 时显示叠卡 + 计数
+const isBatchGroupVisible = computed(() =>
+  Boolean(props.data?.isBatchRoot && (props.data.batchChildren?.length ?? 0) > 1),
+)
+const batchChildCount = computed(() => props.data?.batchChildren?.length ?? 0)
+const toggleBatchExpanded = () => {
+  if (!isBatchGroupVisible.value) return
+  updateNode(props.id, { batchExpanded: !props.data?.batchExpanded })
+}
+
 const hoverActions = computed<NodeToolbarAction[]>(() => {
   const list: NodeToolbarAction[] = [
     { id: 'duplicate', label: '复制', icon: CopyDocument, onClick: handleDuplicate },
@@ -204,7 +214,41 @@ const hoverActions = computed<NodeToolbarAction[]>(() => {
             <span>{{ errorMsg }}</span>
           </div>
           <!-- 有图片 -->
-          <img v-else-if="imageUrl" :src="imageUrl" alt="生成图片" style="max-height: 300px; object-fit: contain;" />
+          <div
+            v-else-if="imageUrl"
+            class="image-node-display"
+            :class="{ 'is-batch-root': isBatchGroupVisible, 'is-batch-expanded': data?.batchExpanded }"
+            @dblclick.stop="toggleBatchExpanded"
+          >
+            <!-- 批量组未展开时显示叠卡假影 -->
+            <template v-if="isBatchGroupVisible && !data?.batchExpanded">
+              <div class="image-node-batch-frame image-node-batch-frame--2" aria-hidden="true" />
+              <div class="image-node-batch-frame image-node-batch-frame--1" aria-hidden="true" />
+            </template>
+            <img :src="imageUrl" alt="生成图片" class="image-node-image" />
+            <span v-if="isBatchGroupVisible" class="image-node-batch-count" :title="`批量组 ${batchChildCount} 张，双击展开/折叠`">
+              {{ batchChildCount }}
+            </span>
+            <!-- 展开后的子图网格 -->
+            <div v-if="isBatchGroupVisible && data?.batchExpanded" class="image-node-batch-grid">
+              <div
+                v-for="child in data?.batchChildren"
+                :key="child.id"
+                class="image-node-batch-grid__item"
+                :class="{ 'is-primary': child.id === data?.primaryImageId }"
+                @click.stop
+              >
+                <img :src="child.url" alt="批量子图" />
+                <button
+                  class="image-node-batch-set-primary"
+                  title="设为主图"
+                  @click.stop="updateNode(id, { primaryImageId: child.id, url: child.url })"
+                >
+                  ★
+                </button>
+              </div>
+            </div>
+          </div>
           <!-- URL 加载中 -->
           <div v-else-if="urlLoading" class="wf-generating-overlay square">
             <div class="wf-generating-pulse"></div>
@@ -269,3 +313,111 @@ const hoverActions = computed<NodeToolbarAction[]>(() => {
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
   </div>
 </template>
+
+<style scoped>
+/* 批量生图组：叠卡 + 计数 chip + 展开网格 */
+.image-node-display {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.image-node-image {
+  max-height: 300px;
+  object-fit: contain;
+  position: relative;
+  z-index: 1;
+  border-radius: var(--lv-border-radius-medium);
+}
+.image-node-display.is-batch-root .image-node-image {
+  box-shadow: 0 0 0 0.5px var(--stroke-secondary);
+}
+
+.image-node-batch-frame {
+  position: absolute;
+  inset: 0;
+  background: var(--canvas-bg-block-default);
+  border: 0.5px solid var(--stroke-secondary);
+  border-radius: var(--lv-border-radius-medium);
+  pointer-events: none;
+}
+.image-node-batch-frame--1 {
+  transform: translate(-4px, -4px) rotate(-2deg);
+  z-index: 0;
+  opacity: 0.6;
+}
+.image-node-batch-frame--2 {
+  transform: translate(-8px, -8px) rotate(-4deg);
+  z-index: -1;
+  opacity: 0.32;
+}
+
+.image-node-batch-count {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  padding: 1px 8px;
+  background: var(--brand-main-default);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.image-node-batch-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 6px;
+  padding: 8px;
+  background: var(--canvas-float-block-default);
+  border-radius: var(--lv-border-radius-medium);
+  overflow-y: auto;
+  z-index: 3;
+}
+.image-node-batch-grid__item {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  background: var(--canvas-image-loading-start);
+  border-radius: var(--lv-border-radius-small);
+  overflow: hidden;
+  border: 1.5px solid transparent;
+  transition: border-color 0.12s;
+}
+.image-node-batch-grid__item:hover {
+  border-color: var(--brand-main-default);
+}
+.image-node-batch-grid__item.is-primary {
+  border-color: var(--brand-main-default);
+}
+.image-node-batch-grid__item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.image-node-batch-set-primary {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  background: var(--canvas-float-block-default);
+  border: 0.5px solid var(--stroke-secondary);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.image-node-batch-grid__item.is-primary .image-node-batch-set-primary {
+  background: var(--brand-main-default);
+  color: #fff;
+  border-color: var(--brand-main-default);
+}
+</style>

@@ -40,9 +40,7 @@ import {
   nodes,
   type WorkflowTextNodeData,
 } from '../../composables/useWorkflowCanvas'
-import { streamChatCompletions } from '../../api/chat'
 import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
-import WfSelect from '@/components/common/WfSelect.vue'
 
 const props = defineProps<{
   id: string
@@ -55,7 +53,6 @@ const { updateNodeInternals } = useVueFlow()
 
 const content = ref(props.data?.content || '')
 const showActions = ref(false)
-const isPolishing = ref(false)
 const polishModel = ref(props.data?.polishModel || getDefaultChatModelKey())
 const fontSize = ref(props.data?.fontSize ?? 14)
 const forceEditMode = ref(false)
@@ -135,34 +132,6 @@ const handleFileChange = async (event: Event) => {
     ElMessage.error('文件读取失败')
   } finally {
     input.value = ''
-  }
-}
-
-// AI 润色提示词（已有内容时使用）
-const handlePolish = async () => {
-  const input = content.value.trim()
-  if (!input) return
-  isPolishing.value = true
-  const original = content.value
-  try {
-    let result = ''
-    for await (const chunk of streamChatCompletions({
-      model: polishModel.value,
-      messages: [
-        { role: 'system', content: '你是一个专业的AI绘画提示词专家。将用户输入的内容美化成高质量的生图提示词，包含风格、光线、构图、细节等要素。直接返回提示词，不要其他解释。' },
-        { role: 'user', content: input },
-      ],
-    })) {
-      result += chunk
-    }
-    if (result) {
-      content.value = result
-      updateNode(props.id, { content: result })
-    }
-  } catch {
-    content.value = original
-  } finally {
-    isPolishing.value = false
   }
 }
 
@@ -329,7 +298,7 @@ const handlePromptSend = (text: string) => {
         </div>
       </div>
 
-      <!-- 有内容态：原 textarea + 模型 + 润色 + 生图/生视频 -->
+      <!-- 有内容态：纯文本编辑（模型/AI 润色/生图/生视频已移到 hover toolbar + 节点下方 PromptInput） -->
       <div v-else class="text-node-body">
         <textarea
           ref="textareaRef"
@@ -339,37 +308,8 @@ const handlePromptSend = (text: string) => {
           @wheel.stop
           @mousedown.stop
           placeholder="输入文本内容..."
-          rows="4"
           :style="{ fontSize: fontSize + 'px' }"
         />
-
-        <WfSelect
-          v-model="polishModel"
-          :options="chatModelOptions"
-          @change="updateNode(id, { polishModel })"
-          class="text-node-model-select"
-        />
-
-        <button
-          class="text-node-polish-btn nodrag nopan"
-          :disabled="isPolishing || !content.trim()"
-          @click.stop="handlePolish"
-        >
-          <span v-if="isPolishing" class="wf-spinner" />
-          <el-icon v-else><MagicStick /></el-icon>
-          <span>{{ isPolishing ? '润色中…' : 'AI 润色' }}</span>
-        </button>
-
-        <div class="text-node-quick">
-          <button class="text-node-quick-btn nodrag nopan" @click.stop="createImageConfig">
-            <el-icon><Picture /></el-icon>
-            <span>生成图片</span>
-          </button>
-          <button class="text-node-quick-btn nodrag nopan" @click.stop="createVideoConfig">
-            <el-icon><VideoCamera /></el-icon>
-            <span>生成视频</span>
-          </button>
-        </div>
       </div>
 
       <!-- 隐藏 file input：用于"上传文档解析文本" -->
@@ -577,80 +517,26 @@ const handlePromptSend = (text: string) => {
   color: var(--text-primary);
 }
 
-/* 有内容态 */
+/* 有内容态：纯文本编辑 */
 .text-node-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
   flex: 1 1 0;
   min-height: 0;
-  padding: 16px;
+  padding: 16px 20px 20px;
 }
 .text-node-textarea {
   flex: 1 1 0;
-  min-height: 80px;
   width: 100%;
-  background: var(--canvas-float-block-default);
-  border: 0.5px solid var(--stroke-secondary);
-  border-radius: var(--lv-border-radius-medium);
-  padding: 8px 10px;
+  height: 100%;
+  background: transparent;
+  border: 0;
+  padding: 0;
   color: var(--text-primary);
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.65;
   resize: none;
   outline: none;
-}
-.text-node-textarea:focus {
-  border-color: var(--canvas-selection-border);
-}
-.text-node-model-select {
-  width: 100%;
-}
-.text-node-polish-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 0;
-  background: var(--canvas-float-block-default);
-  border: 0.5px solid var(--stroke-secondary);
-  border-radius: var(--lv-border-radius-medium);
-  color: var(--text-primary);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 0.12s, color 0.12s;
-}
-.text-node-polish-btn:hover:not(:disabled) {
-  background: var(--canvas-float-block-hover);
-  color: var(--brand-main-default);
-}
-.text-node-polish-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.text-node-quick {
-  display: flex;
-  gap: 6px;
-}
-.text-node-quick-btn {
-  flex: 1 1 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 0;
-  background: var(--canvas-float-block-default);
-  border: 0.5px solid var(--stroke-secondary);
-  border-radius: var(--lv-border-radius-medium);
-  color: var(--text-primary);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 0.12s, color 0.12s;
-}
-.text-node-quick-btn:hover {
-  background: var(--canvas-float-block-hover);
-  color: var(--brand-main-default);
 }
 
 /* 左右连接点：圆形 + 中央"+"图标（即梦风） */

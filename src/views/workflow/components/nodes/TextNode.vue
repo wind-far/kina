@@ -10,7 +10,7 @@
  *   - 左右连接点保留 Vue Flow Handle，但视觉对齐圆形 + 图标
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { Handle, Position, useVueFlow } from '@vue-flow/core'
+import { useVueFlow } from '@vue-flow/core'
 import {
   CopyDocument,
   Picture,
@@ -26,6 +26,7 @@ import {
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasPromptInput from '@/components/canvas/CanvasPromptInput.vue'
+import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
   updateNode,
@@ -199,15 +200,6 @@ const handleReversePrompt = () => {
   ElMessage.info('图片反推提示词接入中，敬请期待')
 }
 
-// 节点左右"+"按钮（仅 selected 时显示）
-const handleAddLeft = () => {
-  ElMessage.info('从左侧追加上游节点：接入中')
-}
-const handleAddRight = () => {
-  // 直接复用"用文本生图"逻辑（最常见的右侧追加）
-  createImageConfig()
-}
-
 // hover 工具栏配置
 const hoverActions = computed<NodeToolbarAction[]>(() => [
   { id: 'font-minus', label: '缩小字号', icon: Minus, disabled: fontSize.value <= FONT_SIZE_MIN, onClick: () => handleFontSizeChange(-1) },
@@ -336,39 +328,9 @@ const handlePromptSend = (text: string) => {
       />
     </div>
 
-    <!-- 左右连接点（圆形 + 图标） -->
-    <Handle type="target" :position="Position.Left" id="left" class="text-node-handle" />
-    <Handle type="source" :position="Position.Right" id="right" class="text-node-handle" />
-
-    <!-- 节点外左右 "+" 按钮（选中态显示，参照 RunningHUB .node-add-btn） -->
-    <button
-      v-if="isSelected"
-      class="text-node-add-btn text-node-add-btn--left nodrag nopan"
-      title="向左追加节点"
-      @mousedown.stop
-      @click.stop="handleAddLeft"
-    >
-      <span class="text-node-add-btn__icon" aria-hidden="true">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10 5v10" />
-          <path d="M5 10h10" />
-        </svg>
-      </span>
-    </button>
-    <button
-      v-if="isSelected"
-      class="text-node-add-btn text-node-add-btn--right nodrag nopan"
-      title="向右追加节点"
-      @mousedown.stop
-      @click.stop="handleAddRight"
-    >
-      <span class="text-node-add-btn__icon" aria-hidden="true">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10 5v10" />
-          <path d="M5 10h10" />
-        </svg>
-      </span>
-    </button>
+    <!-- 左右连接点：用 CanvasNodeAddHandle 直接做 "+" 按钮 + 拖拽连线 -->
+    <CanvasNodeAddHandle side="left" :visible="isSelected" />
+    <CanvasNodeAddHandle side="right" :visible="isSelected" />
 
     <!-- 节点上方浮动工具栏 -->
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />

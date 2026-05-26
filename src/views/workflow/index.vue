@@ -39,6 +39,7 @@ import LlmConfigNode from './components/nodes/LlmConfigNode.vue'
 import ImageRoleEdge from './components/edges/ImageRoleEdge.vue'
 import PromptOrderEdge from './components/edges/PromptOrderEdge.vue'
 import ImageOrderEdge from './components/edges/ImageOrderEdge.vue'
+import CanvasDefaultEdge from '@/components/canvas/CanvasDefaultEdge.vue'
 
 // 画布壳（infinite-canvas → canana-vue 迁移产物）
 import CanvasContextMenu from '@/components/canvas/CanvasContextMenu.vue'
@@ -77,6 +78,7 @@ const nodeTypes = {
 
 // 注册自定义边类型
 const edgeTypes = {
+  default: markRaw(CanvasDefaultEdge),
   imageRole: markRaw(ImageRoleEdge),
   promptOrder: markRaw(PromptOrderEdge),
   imageOrder: markRaw(ImageOrderEdge),

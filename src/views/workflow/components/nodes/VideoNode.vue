@@ -11,7 +11,7 @@
  *   - 选中后下方浮出 CanvasPromptInput（视频模型 + 480p/5s/... chip + ¥3）
  */
 import { computed, onMounted, ref, watch } from 'vue'
-import { Handle, Position, useVueFlow } from '@vue-flow/core'
+import { useVueFlow } from '@vue-flow/core'
 import {
   CopyDocument,
   Download,
@@ -25,6 +25,7 @@ import {
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasPromptInput, { type PromptReference } from '@/components/canvas/CanvasPromptInput.vue'
+import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
   updateNode,
@@ -127,9 +128,6 @@ const handleImageToVideo = () => {
   setTimeout(() => updateNodeInternals([newId]), 50)
 }
 const handleFirstLastFrame = () => ElMessage.info('「首尾帧生视频」接入中，敬请期待')
-
-const handleAddLeft = () => ElMessage.info('从左侧追加上游节点：接入中')
-const handleAddRight = () => handleImageToVideo()
 
 const hoverActions = computed<NodeToolbarAction[]>(() => {
   const list: NodeToolbarAction[] = [
@@ -263,37 +261,8 @@ const handlePromptSend = (text: string) => {
       />
     </div>
 
-    <Handle type="target" :position="Position.Left" id="left" class="video-node-handle" />
-    <Handle type="source" :position="Position.Right" id="right" class="video-node-handle" />
-
-    <button
-      v-if="isSelected"
-      class="video-node-add-btn video-node-add-btn--left nodrag nopan"
-      title="向左追加上游节点"
-      @mousedown.stop
-      @click.stop="handleAddLeft"
-    >
-      <span class="video-node-add-btn__icon">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10 5v10" />
-          <path d="M5 10h10" />
-        </svg>
-      </span>
-    </button>
-    <button
-      v-if="isSelected"
-      class="video-node-add-btn video-node-add-btn--right nodrag nopan"
-      title="向右追加下游配置"
-      @mousedown.stop
-      @click.stop="handleAddRight"
-    >
-      <span class="video-node-add-btn__icon">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10 5v10" />
-          <path d="M5 10h10" />
-        </svg>
-      </span>
-    </button>
+    <CanvasNodeAddHandle side="left" :visible="isSelected" />
+    <CanvasNodeAddHandle side="right" :visible="isSelected" />
 
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
 

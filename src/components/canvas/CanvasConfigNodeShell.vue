@@ -13,8 +13,8 @@
  *   - overlay 插槽：节点级浮层（如 hover toolbar / prompt panel）
  */
 import type { Component } from 'vue'
-import { Handle, Position } from '@vue-flow/core'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
+import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -80,39 +80,9 @@ const titleEdit = useNodeTitleEdit(props.nodeId, () => props.label)
       <slot />
     </div>
 
-    <!-- 隐藏 Handle（连接功能保留） -->
-    <Handle type="target" :position="Position.Left" id="left" class="config-node-handle" />
-    <Handle type="source" :position="Position.Right" id="right" class="config-node-handle" />
-
-    <!-- 选中态：节点外左右 -56px "+"按钮 -->
-    <button
-      v-if="selected"
-      class="config-node-add-btn config-node-add-btn--left nodrag nopan"
-      title="向左追加上游节点"
-      @mousedown.stop
-      @click.stop="emit('add-left')"
-    >
-      <span class="config-node-add-btn__icon" aria-hidden="true">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10 5v10" />
-          <path d="M5 10h10" />
-        </svg>
-      </span>
-    </button>
-    <button
-      v-if="selected"
-      class="config-node-add-btn config-node-add-btn--right nodrag nopan"
-      title="向右追加下游节点"
-      @mousedown.stop
-      @click.stop="emit('add-right')"
-    >
-      <span class="config-node-add-btn__icon" aria-hidden="true">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10 5v10" />
-          <path d="M5 10h10" />
-        </svg>
-      </span>
-    </button>
+    <!-- 左右 "+" 连接点（CanvasNodeAddHandle 自带 Vue Flow Handle 拖拽连线） -->
+    <CanvasNodeAddHandle side="left" :visible="selected" @click.stop="emit('add-left')" />
+    <CanvasNodeAddHandle side="right" :visible="selected" @click.stop="emit('add-right')" />
 
     <!-- overlay 插槽：hover toolbar / prompt panel 等浮层 -->
     <slot name="overlay" />

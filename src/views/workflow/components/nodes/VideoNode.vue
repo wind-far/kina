@@ -252,6 +252,7 @@ const handlePromptSend = (text: string) => {
         :default-expanded="true"
         initial-creation-type="video"
         :hide-type-selector="true"
+        :verbose-toolbar="true"
         placeholder-override="描述你想生成的视频画面，按 Enter 发送"
         popup-placement="top"
         @send="handlePromptSend"

@@ -2,6 +2,7 @@
 import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import SidebarEmptyState from '@/components/canana/SidebarEmptyState.vue'
+import AssistantSessionList from '@/components/canvas/AssistantSessionList.vue'
 import { streamChatCompletions } from '@/api/chat'
 import {
   createGenerationTask,
@@ -14,6 +15,7 @@ import {
   getDefaultChatModelKey,
 } from '@/config/models'
 import { appendImageReferencesToRequestBody } from '@/shared/image-generation-request'
+import { useAssistantSessions } from '@/composables/useAssistantSessions'
 
 const props = defineProps({
   title: { type: String, default: '' },
@@ -22,6 +24,79 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'message-received', 'add-image-to-canvas'])
+
+// 会话列表（与 /generate 通过 source='canvas-assistant' 物理隔离）
+const {
+  sessions: assistantSessions,
+  activeSession,
+  activeSessionId,
+  loadSessions,
+  createNewSession,
+  renameSessionTitle,
+  removeSessionById,
+  setActive,
+  ensureSession,
+  ASSISTANT_SOURCE,
+} = useAssistantSessions()
+
+const sessionListVisible = ref(false)
+const sessionListAnchor = ref(null)
+const headerTitleText = computed(() => activeSession.value?.title || props.title || '未命名对话')
+
+const openSessionList = () => {
+  sessionListVisible.value = !sessionListVisible.value
+}
+const closeSessionList = () => {
+  sessionListVisible.value = false
+}
+
+const handleSessionSelect = (id) => {
+  if (id === activeSessionId.value) {
+    closeSessionList()
+    return
+  }
+  setActive(id)
+  // 切换会话：当前面板内消息清空（首期不拉历史 records，仅切换上下文）
+  messages.value = []
+  hasMessages.value = false
+  cleanupStreams()
+  closeSessionList()
+}
+
+const handleSessionCreate = async () => {
+  try {
+    await createNewSession()
+    messages.value = []
+    hasMessages.value = false
+    cleanupStreams()
+  } catch (err) {
+    console.error('[RightPanel] create session failed', err)
+  } finally {
+    closeSessionList()
+  }
+}
+
+const handleSessionRename = async (id, title) => {
+  try {
+    await renameSessionTitle(id, title)
+  } catch (err) {
+    console.error('[RightPanel] rename session failed', err)
+  }
+}
+
+const handleSessionDelete = async (id) => {
+  try {
+    const wasActive = activeSessionId.value === id
+    await removeSessionById(id)
+    if (wasActive) {
+      messages.value = []
+      hasMessages.value = false
+      cleanupStreams()
+    }
+  } catch (err) {
+    console.error('[RightPanel] delete session failed', err)
+  }
+}
 
 // 是否有消息（用于决定显示空状态还是消息列表）
 const hasMessages = ref(false)
@@ -59,6 +134,8 @@ const cleanupStreams = () => {
 onMounted(() => {
   // 后台拉取模型清单（getDefault*ModelKey 依赖此调用）
   void loadPublicModelCatalog()
+  // 拉取助手会话列表（首次会自动建默认会话）
+  void loadSessions()
 })
 
 onBeforeUnmount(cleanupStreams)
@@ -139,7 +216,8 @@ const runImageGeneration = async (prompt, refImages, aiMsg) => {
       : requestBody
 
     const saved = await createGenerationTask({
-      source: 'assistant-panel',
+      source: ASSISTANT_SOURCE,
+      sessionId: activeSessionId.value || undefined,
       type: 'image',
       requestMode: hasRef ? 'image-edit' : 'image-generation',
       prompt: prompt || '',
@@ -232,6 +310,14 @@ const sendMessage = async () => {
 
   if (!content && !hasImagesLocal) return
 
+  // 确保有活跃会话（首次发送会自动定位到默认会话）
+  try {
+    await ensureSession()
+  } catch (err) {
+    console.error('[RightPanel] ensureSession failed', err)
+    return
+  }
+
   hasMessages.value = true
 
   const userId = Date.now()
@@ -311,6 +397,14 @@ const handleKeydown = (e) => {
 watch(() => props.initialMessage, async (newMessage) => {
   if (!newMessage || !newMessage.trim()) return
 
+  // 确保有活跃会话再发送
+  try {
+    await ensureSession()
+  } catch (err) {
+    console.error('[RightPanel] ensureSession failed', err)
+    return
+  }
+
   hasMessages.value = true
   const userId = Date.now()
   messages.value.push({
@@ -342,8 +436,14 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
     <div class="chat-container">
       <!-- 头部 -->
       <div class="chat-header">
-        <div class="trigger-container" tabindex="0">
-          <div class="lv-typography title-vBcivv">{{ title || '未命名对话' }}</div>
+        <div
+          ref="sessionListAnchor"
+          class="trigger-container"
+          tabindex="0"
+          role="button"
+          @click="openSessionList"
+        >
+          <div class="lv-typography title-vBcivv">{{ headerTitleText }}</div>
           <div class="arrow-icon-uG49Bu">
             <svg width="14" height="14" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
               <g>
@@ -361,8 +461,8 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
               </g>
             </svg>
           </div>
-          <!-- 新建对话按钮（禁用） -->
-          <div :class="['operation-button-bwA7yT', { 'disabled-kGgYs7': !hasMessages }]">
+          <!-- 新建对话按钮 -->
+          <div class="operation-button-bwA7yT" title="新建对话" @click="handleSessionCreate">
             <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
               <g>
                 <path data-follow-fill="currentColor" d="M17.5 2.5A4.5 4.5 0 0 1 22 6.998l.004 7.5a4.5 4.5 0 0 1-4.5 4.503h-5.027a1 1 0 0 0-.542.16l-4.15 2.68A1 1 0 0 1 6.241 21v-2.009a4.5 4.5 0 0 1-4.238-4.49L2 7.003A4.5 4.5 0 0 1 6.5 2.5h11Zm-11 2A2.5 2.5 0 0 0 4 7.001l.004 7.501a2.5 2.5 0 0 0 2.5 2.499h.738a1 1 0 0 1 1 1v1.163l2.609-1.684a2.999 2.999 0 0 1 1.626-.479h5.027a2.5 2.5 0 0 0 2.5-2.502L20 6.999A2.5 2.5 0 0 0 17.5 4.5h-11ZM12 7.2a1 1 0 0 1 1 1v1.5h1.5a1 1 0 1 1 0 2H13v1.5a1 1 0 1 1-2 0v-1.5H9.5a1 1 0 1 1 0-2H11V8.2a1 1 0 0 1 1-1Z" fill="currentColor"></path>
@@ -379,6 +479,19 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
           </div>
         </div>
       </div>
+
+      <!-- 会话列表浮层 -->
+      <AssistantSessionList
+        :visible="sessionListVisible"
+        :sessions="assistantSessions"
+        :active-id="activeSessionId"
+        :anchor="sessionListAnchor"
+        @close="closeSessionList"
+        @create="handleSessionCreate"
+        @select="handleSessionSelect"
+        @rename="handleSessionRename"
+        @delete="handleSessionDelete"
+      />
 
       <!-- 隐藏的文件上传输入框 -->
       <input type="file" multiple accept="image/*" class="hidden-file-input" ref="fileInputRef" @change="handleFileChange">

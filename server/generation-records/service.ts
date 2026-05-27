@@ -692,10 +692,11 @@ const resolveReferenceImagesFromMeta = (metaJson: unknown) => {
 }
 
 // 统一从记录元信息中恢复来源，未显式标记时按 generate 兜底。
+const KNOWN_GENERATION_RECORD_SOURCES = new Set(['generate', 'workflow', 'canvas-assistant'])
 const resolveGenerationRecordSource = (metaJson: unknown) => {
   const source = String((metaJson as any)?.source || '').trim().toLowerCase()
-  if (source === 'workflow') {
-    return 'workflow'
+  if (KNOWN_GENERATION_RECORD_SOURCES.has(source)) {
+    return source
   }
   return 'generate'
 }

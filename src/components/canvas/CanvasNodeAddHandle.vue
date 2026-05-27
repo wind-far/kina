@@ -35,14 +35,21 @@ const idValue = computed(() => props.handleId || props.side)
 </template>
 
 <style scoped>
+/*
+ * Handle DOM 本体放在卡片边缘（1×1，透明），用作 Vue Flow 连线锚点；
+ * 视觉的"+" 圆圈和 56×56 命中区，全部通过 ::before（命中区）+ ::after（图标）
+ * 在卡片外侧 56px 处绘制——这样 bezier 边的端点恰好落在卡片边上，不再出现"线条
+ * 离卡片有缝"的视觉问题。
+ */
 .canvas-node-add-handle {
   position: absolute !important;
   top: 50% !important;
-  width: 56px !important;
-  height: 56px !important;
+  width: 1px !important;
+  height: 1px !important;
+  min-width: 1px !important;
+  min-height: 1px !important;
   background: transparent !important;
   border: 0 !important;
-  border-radius: 50% !important;
   opacity: 0;
   z-index: 10;
   pointer-events: auto !important;
@@ -51,12 +58,12 @@ const idValue = computed(() => props.handleId || props.side)
   transition: opacity 0.2s ease, color 0.2s ease;
 }
 .canvas-node-add-handle--left {
-  left: -56px !important;
+  left: 0 !important;
   right: auto !important;
   transform: translateY(-50%) !important;
 }
 .canvas-node-add-handle--right {
-  right: -56px !important;
+  right: 0 !important;
   left: auto !important;
   transform: translateY(-50%) !important;
 }
@@ -68,16 +75,33 @@ const idValue = computed(() => props.handleId || props.side)
   color: var(--text-primary);
 }
 
-/* "+" 图标（20×20 圆形 + 14×14 内"+"），用纯 CSS 画，免内嵌 SVG */
+/* 56×56 不可见命中区，让用户能在卡片外侧 56px 处直接拖出连线 */
+.canvas-node-add-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 56px;
+  height: 56px;
+  margin-top: -28px;
+  background: transparent;
+  pointer-events: auto;
+}
+.canvas-node-add-handle--left::before {
+  left: -56px;
+}
+.canvas-node-add-handle--right::before {
+  right: -56px;
+}
+
+/* "+" 圆形图标（20×20 圆形 + 14×14 内"+"），通过 ::after 在卡片外侧绘制 */
 .canvas-node-add-handle::after {
   content: '';
   position: absolute;
   top: 50%;
-  left: 50%;
   width: 14px;
   height: 14px;
   padding: 3px;
-  margin: -10px 0 0 -10px;
+  margin-top: -10px;
   border: 1px solid currentColor;
   border-radius: 50%;
   background:
@@ -86,6 +110,12 @@ const idValue = computed(() => props.handleId || props.side)
   pointer-events: none;
   box-sizing: content-box;
   transition: transform 0.18s ease;
+}
+.canvas-node-add-handle--left::after {
+  left: -38px;
+}
+.canvas-node-add-handle--right::after {
+  right: -38px;
 }
 .canvas-node-add-handle:active::after {
   transform: scale(0.92);

@@ -141,7 +141,7 @@ const previewBannerItems = computed(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  //border-radius: 24px;
+  /* border-radius: 24px; */
   border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
   transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
@@ -161,7 +161,7 @@ const previewBannerItems = computed(() => {
   flex: 1;
   min-height: 0;
   box-sizing: border-box;
-  //padding: 20px;
+  /* padding: 20px; */
   display: grid;
   gap: 24px;
   overflow: auto;
@@ -173,7 +173,7 @@ const previewBannerItems = computed(() => {
 }
 
 .admin-theme-frontstage {
-  //border-radius: 22px;
+  /* border-radius: 22px; */
   overflow: visible;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background: transparent;

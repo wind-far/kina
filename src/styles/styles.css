@@ -561,9 +561,9 @@
     src: url(//lf3-lv-buz.vlabstatic.com/obj/image-lvweb-buz/common/font/FZYASHJW-Demibold.20251015.subset.ttf)
 }
 
-:export {
-    modal-z-index: 1001;
-    infinite-canvas-commercial-modal: 1000000
+:root {
+    --modal-z-index: 1001;
+    --infinite-canvas-commercial-modal: 1000000;
 }
 
 body,html {

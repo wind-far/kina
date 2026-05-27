@@ -1407,6 +1407,31 @@ body[lv-theme='dark'] .workflow-canvas .vue-flow__background pattern circle {
   pointer-events: auto;
 }
 
+/* 浅色主题下的顶部状态横幅配色：改为浅灰底 + 浅蓝描边，文本用深色 */
+body[lv-theme='light'] .wf-quick-link-banner,
+html[data-theme='light'] .wf-quick-link-banner {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(59, 130, 246, 0.25);
+  box-shadow: 0 8px 24px rgba(15, 20, 25, 0.08);
+  color: var(--text-primary, #0f1419);
+}
+
+body[lv-theme='light'] .wf-quick-link-banner__text strong,
+html[data-theme='light'] .wf-quick-link-banner__text strong {
+  color: #2563eb;
+}
+
+body[lv-theme='light'] .wf-quick-link-banner__hint,
+html[data-theme='light'] .wf-quick-link-banner__hint {
+  background: rgba(15, 20, 25, 0.06);
+  color: var(--text-secondary, #536471);
+}
+
+body[lv-theme='light'] .wf-quick-link-banner__close,
+html[data-theme='light'] .wf-quick-link-banner__close {
+  color: var(--text-secondary, #536471);
+}
+
 .wf-quick-link-banner__dot {
   width: 8px;
   height: 8px;

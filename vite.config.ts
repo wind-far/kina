@@ -153,10 +153,7 @@ export default defineConfig({
           if (!id.includes('node_modules')) {
             return
           }
-          // React 运行时单独成 chunk，便于浏览器长效缓存
-          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
-            return 'react-vendor'
-          }
+          // React 相关依赖统一进 vendor，避免 vendor/react-vendor 循环引用告警
           // Vue Flow 仅工作流页用到，单独成 chunk
           if (id.includes('@vue-flow')) {
             return 'vue-flow'

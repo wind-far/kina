@@ -9,13 +9,12 @@ export class MediaManager {
 	private assets: MediaAsset[] = [];
 	private isLoading = false;
 	private listeners = new Set<() => void>();
-	private mediaUpdateUnsubscribe: (() => void) | null = null;
 
 	constructor(private editor: EditorCore) {
 		// 订阅存储层的媒体更新事件 (异步上传完成后, StorageService 通知刷新元数据)。
 		// canana-vue 集成时由 RemoteMediaSyncAdapter 触发, cutia 上游下永远不触发。
-		this.mediaUpdateUnsubscribe = storageService.subscribeMediaUpdates(
-			(event) => {
+		// MediaManager 是 EditorCore 单例的组件, 生命周期与编辑器一致, 无需保存 unsubscribe。
+		storageService.subscribeMediaUpdates((event) => {
 				const idx = this.assets.findIndex((a) => a.id === event.mediaId);
 				if (idx === -1) return;
 				const old = this.assets[idx];

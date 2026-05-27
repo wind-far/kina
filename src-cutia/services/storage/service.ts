@@ -13,10 +13,7 @@ import type {
 	ProjectStorageStats,
 	StorageAdapter,
 } from "./types";
-import type {
-	RemoteAssetDto,
-	RemoteMediaSync,
-} from "./remote-media-sync-adapter";
+import type { RemoteMediaSync } from "./remote-media-sync-adapter";
 import { remoteAssetToMediaAssetData } from "./remote-media-sync-adapter";
 import type { SavedSoundsData, SavedSound, SoundEffect } from "@cutia/types/sounds";
 import {
@@ -381,18 +378,16 @@ class StorageService {
 		// canana-vue 集成场景:异步触发云端上传,失败仅标 failed 不回滚本地。
 		// cutia 上游(无 mediaSync 注入)直接返回, 行为与改造前一致。
 		if (this.mediaSync && !mediaAsset.ephemeral && !alreadyRemote) {
-			void this.triggerMediaUpload({ projectId, mediaAsset, metadata });
+			void this.triggerMediaUpload({ projectId, mediaAsset });
 		}
 	}
 
 	private async triggerMediaUpload({
 		projectId,
 		mediaAsset,
-		metadata,
 	}: {
 		projectId: string;
 		mediaAsset: MediaAsset;
-		metadata: MediaAssetData;
 	}): Promise<void> {
 		if (!this.mediaSync) return;
 		const { mediaMetadataAdapter } = this.getProjectMediaAdapters({ projectId });

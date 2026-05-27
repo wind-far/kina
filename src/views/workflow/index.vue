@@ -20,12 +20,10 @@ import {
   type WorkflowNodeType,
 } from './composables/useWorkflowCanvas'
 import { WORKFLOW_TEMPLATES } from './config/workflows'
-import { useWorkflowOrchestrator } from './composables/useWorkflowOrchestrator'
 import { useWorkflowPersistence } from './composables/useWorkflowPersistence'
-import { buildAgentWorkflowStrategy } from '@/config/agentSkills'
 import type { WorkflowDefinitionSummary } from './api/definitions'
 import { updateWorkflowDefinition } from './api/definitions'
-import type { WorkflowCanvasPosition, WorkflowIntentAnalysisResult } from './composables/workflow-orchestrator-types'
+import type { WorkflowCanvasPosition } from './composables/workflow-orchestrator-types'
 
 // 节点组件
 import TextNode from './components/nodes/TextNode.vue'
@@ -54,11 +52,9 @@ import { useCanvasDrop } from '@/composables/useCanvasDrop'
 import {
   canvasBackgroundMode,
   removeNode,
-  removeEdge,
   duplicateNode,
   clearCanvas,
 } from './composables/useWorkflowCanvas'
-import { uploadStorageFile } from '@/api/storage'
 import type { ContextMenuItem, ContextMenuPosition } from '@/types/canvas-interaction'
 
 const router = useRouter()
@@ -82,9 +78,6 @@ const edgeTypes = {
   promptOrder: markRaw(PromptOrderEdge),
   imageOrder: markRaw(ImageOrderEdge),
 } as any
-
-// 工作流编排器
-const { analyzeIntent, executeWorkflow } = useWorkflowOrchestrator()
 
 // 工作流持久化
 const {
@@ -164,10 +157,6 @@ interface WorkflowNodeOption {
   name: string
   color: string
   icon: string
-}
-
-interface PromptSendOptions {
-  skill?: string
 }
 
 const currentWorkflowTitle = computed(() => {
@@ -580,41 +569,6 @@ const onPaneClick = () => {
   showNodeMenu.value = false
 }
 
-// 处理内容生成器发送（使用工作流编排器）
-const handlePromptSend = async (
-  message: string,
-  type: string,
-  options?: PromptSendOptions,
-) => {
-  const cx = -viewport.value.x / viewport.value.zoom + (window.innerWidth / 2) / viewport.value.zoom
-  const cy = -viewport.value.y / viewport.value.zoom + (window.innerHeight / 2) / viewport.value.zoom
-  const position = { x: cx - 300, y: cy - 100 }
-
-  if (type === 'agent') {
-    try {
-      const strategy = buildAgentWorkflowStrategy(options?.skill || 'general', message)
-      if (strategy.mode === 'direct') {
-        await executeWorkflow(strategy.params as unknown as WorkflowIntentAnalysisResult, position)
-      } else {
-        const intent = await analyzeIntent(strategy.userInput, {
-          systemPromptOverride: strategy.systemPrompt,
-        })
-        await executeWorkflow(intent, position)
-      }
-    } catch (err) {
-      console.error('工作流执行失败:', err)
-    }
-  } else if (type === 'image') {
-    await executeWorkflow({ workflow_type: 'text_to_image', image_prompt: message }, position)
-  } else if (type === 'video') {
-    await executeWorkflow({
-      workflow_type: 'text_to_image_to_video',
-      image_prompt: message,
-      video_prompt: message,
-    }, position)
-  }
-}
-
 // 返回首页：保存草稿 → 跳转。globalKey:'blocking' 期间会弹遮罩"正在保存草稿…"，
 // 避免用户感觉点了没反应。useAsyncAction 自身防止重复点击。
 const goBackAction = useAsyncAction(async () => {
@@ -792,44 +746,10 @@ const { selectAll } = useCanvasSelection()
 const { copySelected, pasteFromSlot, hasClipboard } = useCanvasClipboard()
 const { onDrop: onCanvasFileDrop, onDragOver: onCanvasFileDragOver } = useCanvasDrop()
 
-const selectedCount = computed(() => selectedNodeIds.value.size)
-
 // 小地图开关
 const isMiniMapOpen = ref(true)
 const toggleMiniMap = () => {
   isMiniMapOpen.value = !isMiniMapOpen.value
-}
-
-// 隐藏 file input（点击 Dock 工具栏"上传"时触发）
-const fileInputRef = ref<HTMLInputElement | null>(null)
-const triggerFileUpload = () => {
-  fileInputRef.value?.click()
-}
-const handleFileInputChange = async (event: Event) => {
-  const input = event.target as HTMLInputElement
-  if (!input.files || input.files.length === 0) return
-  for (const file of Array.from(input.files)) {
-    const kind: 'image' | 'video' | null = file.type.startsWith('image/')
-      ? 'image'
-      : file.type.startsWith('video/')
-        ? 'video'
-        : null
-    if (!kind) continue
-    try {
-      const uploaded = await uploadStorageFile(file, 'asset')
-      if (!uploaded) continue
-      const center = screenToFlowCoordinate({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
-      if (kind === 'image') {
-        addNode('image', center, { url: uploaded.publicUrl, label: file.name })
-      } else {
-        addNode('video', center, { url: uploaded.publicUrl, duration: 0, label: file.name })
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[workflow] upload failed', err)
-    }
-  }
-  input.value = ''
 }
 
 // 右键上下文菜单
@@ -870,16 +790,6 @@ const openNodeContextMenu = (payload: NodeMouseEvent) => {
   contextMenuVisible.value = true
 }
 
-// 删除当前选中的节点/边
-const deleteSelected = () => {
-  for (const id of selectedNodeIds.value) {
-    removeNode(id)
-  }
-  if (selectedEdgeId.value) {
-    removeEdge(selectedEdgeId.value)
-  }
-}
-
 // 清空画布（带确认）
 const clearCanvasWithConfirm = () => {
   if (typeof window === 'undefined') return
@@ -896,22 +806,6 @@ useShortcut('CmdOrCtrl+C', () => {
 useShortcut('CmdOrCtrl+V', () => {
   pasteFromSlot()
 })
-
-// 工具栏按钮 handler
-const addNodeAtViewportCenter = (type: WorkflowNodeType) => {
-  const center = screenToFlowCoordinate({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
-  addNode(type, center)
-}
-const handleAddText = () => addNodeAtViewportCenter('text')
-const handleAddImage = () => addNodeAtViewportCenter('image')
-const handleAddVideo = () => addNodeAtViewportCenter('video')
-const handleAddConfig = () => addNodeAtViewportCenter('imageConfig')
-const handleOpenAssetLibrary = () => {
-  ElMessage.info('素材库接入待后续完善')
-}
-const handleOpenMyAssets = () => {
-  ElMessage.info('我的素材接入待后续完善')
-}
 
 // 助手面板（复用 canana 视图的 RightPanel）
 const { isPanelCollapsed: isAssistantCollapsed, togglePanel: toggleAssistantPanel } = useChatSessions()
@@ -1048,14 +942,6 @@ watch(currentCanvasSnapshot, () => {
             :position="contextMenuPosition"
             :items="contextMenuItems"
             @close="closeContextMenu"
-          />
-          <input
-            ref="fileInputRef"
-            type="file"
-            accept="image/*,video/*"
-            multiple
-            style="display: none"
-            @change="handleFileInputChange"
           />
         </div>
 

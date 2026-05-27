@@ -11,7 +11,6 @@ import { computed } from 'vue'
 import { useThemePreferenceStore } from '@/stores/theme-preference'
 import {
   canvasBackgroundMode,
-  canvasShowImageInfo,
   type WorkflowBackgroundMode,
 } from '@/views/workflow/composables/useWorkflowCanvas'
 
@@ -31,10 +30,6 @@ const backgroundOptions: Array<{ value: WorkflowBackgroundMode; label: string }>
 
 const setBackground = (mode: WorkflowBackgroundMode) => {
   canvasBackgroundMode.value = mode
-}
-
-const toggleShowImageInfo = (checked: boolean) => {
-  canvasShowImageInfo.value = checked
 }
 </script>
 

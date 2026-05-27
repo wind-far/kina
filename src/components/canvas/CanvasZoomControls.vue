@@ -7,8 +7,7 @@
  * 追加：画布外观（弹出 CanvasAppearancePanel） / 清空画布
  */
 import { computed, ref } from 'vue'
-import { ElDialog } from 'element-plus'
-import { Compass, Aim, QuestionFilled, MagicStick, Brush } from '@element-plus/icons-vue'
+import { Compass, Aim, MagicStick, Brush } from '@element-plus/icons-vue'
 import { useVueFlow } from '@vue-flow/core'
 import CanvasAppearancePanel from './CanvasAppearancePanel.vue'
 
@@ -31,21 +30,7 @@ const handleReset = () => {
   fitView({ duration: 200 })
 }
 
-const showHelp = ref(false)
 const appearanceOpen = ref(false)
-const shortcutRows: Array<[string, string]> = [
-  ['拖动空白', '平移画布'],
-  ['滚轮', '缩放'],
-  ['Cmd/Ctrl + 拖动', '框选'],
-  ['Shift + 点击节点', '追加多选'],
-  ['Cmd/Ctrl + A', '全选'],
-  ['Cmd/Ctrl + C / V', '复制 / 粘贴'],
-  ['Delete / Backspace', '删除选中'],
-  ['Cmd/Ctrl + Z', '撤销'],
-  ['Cmd/Ctrl + Shift + Z', '重做'],
-  ['Space (按住)', '临时平移'],
-  ['Esc', '取消 / 关闭浮层'],
-]
 </script>
 
 <template>

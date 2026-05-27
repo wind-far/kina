@@ -28,7 +28,8 @@ import {
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasNodeTopToolbar, { type NodeTopToolbarItem } from '@/components/canvas/CanvasNodeTopToolbar.vue'
-import CanvasPromptInput from '@/components/canvas/CanvasPromptInput.vue'
+import ContentGenerator from '@/components/generate/ContentGenerator.vue'
+import type { CreationType } from '@/components/generate/selectors'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
@@ -244,16 +245,13 @@ const topToolbarItems = computed<NodeTopToolbarItem[]>(() => [
 
 // 选中态下方浮层 prompt：仅在节点被选中时显示
 const promptText = ref('')
-const promptModelOptions = computed(() =>
-  getAllChatModels().map((m) => ({ key: m.key, label: m.label })),
-)
 /**
  * 节点下方 PromptInput 发送 = AI 润色：
  *   - 节点 content 有内容 → 把 content 作为「原文」+ PromptInput 文本作为「润色诉求」一起送给 AI
  *   - 节点 content 为空 → 直接把 PromptInput 文本送给 AI 生成润色版作为初始内容
- * 流式写回 content。
+ * 流式写回 content。底层 workflow streamChatCompletions 已通过 createGenerationTask 持久化。
  */
-const handlePromptSend = async (text: string) => {
+const handlePromptSend = async (text: string, _type: CreationType, _options?: unknown) => {
   if (!text.trim() || isPolishing.value) return
   const original = content.value
   isPolishing.value = true
@@ -390,13 +388,12 @@ watch(content, async () => {
 
     <!-- 选中态下方浮出 prompt 输入框（按节点类型差异化） -->
     <div v-if="isSelected" class="text-node-prompt-panel nodrag nopan" @mousedown.stop>
-      <CanvasPromptInput
-        v-model="promptText"
-        v-model:model-key="polishModel"
-        :model-options="promptModelOptions"
-        :show-add-btn="false"
-        :sending="isPolishing"
-        placeholder="描述润色诉求或想生成的文本内容，按 Enter 发送（AI 会基于当前内容润色）"
+      <ContentGenerator
+        layout="sidebar"
+        :collapsible="false"
+        :default-expanded="true"
+        initial-creation-type="agent"
+        popup-placement="top"
         @send="handlePromptSend"
       />
     </div>

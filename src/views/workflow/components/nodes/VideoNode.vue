@@ -24,7 +24,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
-import CanvasPromptInput, { type PromptReference } from '@/components/canvas/CanvasPromptInput.vue'
+import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
@@ -38,7 +38,7 @@ import {
   type WorkflowVideoNodeData,
 } from '../../composables/useWorkflowCanvas'
 import { uploadStorageFile } from '@/api/storage'
-import { getAllVideoModels, getDefaultVideoModelKey, loadPublicModelCatalog } from '@/config/models'
+import { loadPublicModelCatalog } from '@/config/models'
 
 const props = defineProps<{
   id: string
@@ -146,35 +146,14 @@ const emptyMenuItems = [
   { id: 'first-last', label: '首尾帧生视频', icon: Film, onClick: handleFirstLastFrame },
 ]
 
-// 选中态下方 prompt
-const promptText = ref('')
-const promptModelKey = ref(getDefaultVideoModelKey())
-const promptModelOptions = computed(() => getAllVideoModels().map((m) => ({ key: m.key, label: m.label })))
+// 选中态下方浮层：用 ContentGenerator（与 /generate 同款），锁定 video 类型
 onMounted(() => {
   void loadPublicModelCatalog()
 })
-const promptParams = computed(() => [
-  { id: 'spec', label: '480p / 5s / 自适应' },
-])
-const promptReferences = computed<PromptReference[]>(() => {
-  const upstreamEdges = edges.value.filter((e) => e.target === props.id)
-  const refs: PromptReference[] = []
-  let counter = 1
-  for (const edge of upstreamEdges) {
-    const sourceNode = nodes.value.find((n) => n.id === edge.source)
-    if (!sourceNode) continue
-    if (sourceNode.type === 'image' || sourceNode.type === 'video') {
-      const url = (sourceNode.data as { url?: string })?.url
-      const label = (sourceNode.data as { label?: string })?.label || `素材${counter}`
-      refs.push({ id: edge.id, url: url || undefined, label })
-      counter += 1
-    }
-  }
-  return refs
-})
+// TODO: 视频生成走 FormData + createVideoTask + pollVideoTask（与 image 任务异步路径不同）
+// 当前只完成 UI 复用，真实视频生成等后续接入
 const handlePromptSend = (text: string) => {
-  ElMessage.success(`发送：${text.slice(0, 30)}…（视频生成接入中）`)
-  promptText.value = ''
+  ElMessage.success(`发送：${text.slice(0, 30)}…（视频生成 API 接入中）`)
 }
 </script>
 
@@ -267,16 +246,12 @@ const handlePromptSend = (text: string) => {
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
 
     <div v-if="isSelected" class="video-node-prompt-panel nodrag nopan" @mousedown.stop>
-      <CanvasPromptInput
-        v-model="promptText"
-        v-model:model-key="promptModelKey"
-        :model-options="promptModelOptions"
-        :params="promptParams"
-        :references="promptReferences"
-        :count="1"
-        :price="3"
-        :show-add-btn="true"
-        placeholder="根据图片生成视频，按 Enter 发送"
+      <ContentGenerator
+        layout="sidebar"
+        :collapsible="false"
+        :default-expanded="true"
+        initial-creation-type="video"
+        popup-placement="top"
         @send="handlePromptSend"
       />
     </div>

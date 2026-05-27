@@ -32,7 +32,7 @@ import {
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasNodeTopToolbar, { type NodeTopToolbarItem } from '@/components/canvas/CanvasNodeTopToolbar.vue'
-import CanvasPromptInput, { type PromptReference } from '@/components/canvas/CanvasPromptInput.vue'
+import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
@@ -46,7 +46,9 @@ import {
   type WorkflowImageNodeData,
 } from '../../composables/useWorkflowCanvas'
 import { uploadStorageFile } from '@/api/storage'
-import { getAllImageModels, getDefaultImageModelKey, loadPublicModelCatalog } from '@/config/models'
+import { loadPublicModelCatalog } from '@/config/models'
+import { createGenerationTask, subscribeGenerationTaskEvents, resolveGenerationTaskModel } from '@/api/generation-tasks'
+import { appendImageReferencesToRequestBody } from '@/shared/image-generation-request'
 
 const props = defineProps<{
   id: string
@@ -221,31 +223,20 @@ const emptyMenuItems = [
   { id: 'first-frame', label: '首帧图生视频', icon: PictureFilled, onClick: () => handleImageToVideo('first_frame_image') },
 ]
 
-// 选中态下方浮层 prompt
-const promptText = ref('')
-const promptModelKey = ref(getDefaultImageModelKey())
-const promptModelOptions = computed(() => getAllImageModels().map((m) => ({ key: m.key, label: m.label })))
+// 选中态下方浮层：用 ContentGenerator（与 /generate 同款），锁定 image 类型
 onMounted(() => {
   void loadPublicModelCatalog()
 })
-const promptParams = computed(() => [
-  { id: 'size', label: '自适应/中/1k' },
-  { id: 'camera', label: '摄影机控制' },
-  { id: 'pano', label: '全景图' },
-])
-// 上游图片素材 → PromptInput 左侧 reference chip
-const promptReferences = computed<PromptReference[]>(() => {
+// 上游图片素材 → 作为图生图参考图（直接拿 url 数组）
+const upstreamReferenceUrls = computed<string[]>(() => {
+  const refs: string[] = []
   const upstreamEdges = edges.value.filter((e) => e.target === props.id)
-  const refs: PromptReference[] = []
-  let counter = 1
   for (const edge of upstreamEdges) {
     const sourceNode = nodes.value.find((n) => n.id === edge.source)
     if (!sourceNode) continue
     if (sourceNode.type === 'image') {
       const url = (sourceNode.data as { url?: string })?.url
-      const label = (sourceNode.data as { label?: string })?.label || `图片${counter}`
-      refs.push({ id: edge.id, url: url || undefined, label })
-      counter += 1
+      if (url) refs.push(url)
     }
   }
   return refs
@@ -266,9 +257,85 @@ const topToolbarItems = computed<NodeTopToolbarItem[]>(() => [
   { type: 'divider' },
   { id: 'agent', label: '加入 Agent', textMark: 'R', onClick: () => ElMessage.info('加入 Agent：接入中') },
 ])
-const handlePromptSend = (text: string) => {
-  ElMessage.success(`发送：${text.slice(0, 30)}…（图片生成接入中）`)
-  promptText.value = ''
+
+// ContentGenerator 发送：用上游图作为参考 + 用户 prompt 调图生图，结果回填到当前节点
+const isGenerating = ref(false)
+const taskStreamController = ref<AbortController | null>(null)
+const handlePromptSend = async (
+  message: string,
+  _type: string,
+  options?: { modelKey?: string; ratio?: string; resolution?: string; count?: number; referenceImages?: string[] },
+) => {
+  if (!message?.trim() || isGenerating.value) return
+  // 优先用 ContentGenerator 自带的参考图选项（用户在生成器内单独添加的）
+  // 没有时落到上游连线的图
+  const refImages = Array.isArray(options?.referenceImages) && options.referenceImages.length
+    ? options.referenceImages
+    : upstreamReferenceUrls.value
+  isGenerating.value = true
+  taskStreamController.value?.abort()
+  updateNode(props.id, { loading: true, error: '' })
+  try {
+    const fallbackKey = String(options?.modelKey || '').trim() || ''
+    const { providerId, modelKey } = resolveGenerationTaskModel({
+      modelKey: fallbackKey,
+      fallbackModelKey: fallbackKey,
+      category: 'IMAGE',
+      missingModelMessage: '未匹配到有效图片模型，请先在后台配置模型',
+    })
+    const requestBody: Record<string, unknown> = {
+      model: modelKey,
+      prompt: message,
+      n: Math.max(1, Math.min(8, Number(options?.count) || 1)),
+      providerId,
+    }
+    if (options?.ratio) requestBody.size = options.ratio
+    if (options?.resolution) requestBody.quality = options.resolution
+    const hasRef = refImages.length > 0
+    const finalBody = hasRef ? appendImageReferencesToRequestBody(requestBody, refImages) : requestBody
+
+    const saved = await createGenerationTask({
+      source: 'workflow',
+      type: 'image',
+      requestMode: hasRef ? 'image-edit' : 'image-generation',
+      prompt: message,
+      modelKey,
+      ratio: options?.ratio,
+      resolution: options?.resolution,
+      referenceImages: hasRef ? [...refImages] : [],
+      requestBody: finalBody,
+    })
+    const taskId = String(saved?.id || '').trim()
+    if (!taskId) throw new Error('图片任务创建失败')
+
+    const controller = new AbortController()
+    taskStreamController.value = controller
+    await subscribeGenerationTaskEvents(taskId, {
+      signal: controller.signal,
+      onEvent: (event) => {
+        if (event.type === 'snapshot' || event.type === 'completed') {
+          const urls = Array.isArray(event.record?.images) ? event.record.images.filter(Boolean) : []
+          if (urls.length) {
+            updateNode(props.id, { url: urls[0], loading: false, error: '', executed: true, taskRecordId: taskId })
+            isGenerating.value = false
+          }
+        }
+        if (event.type === 'failed') {
+          updateNode(props.id, { loading: false, error: String(event.message || event.record?.error || '图片生成失败') })
+          isGenerating.value = false
+        }
+        if (event.type === 'stopped') {
+          updateNode(props.id, { loading: false, error: '任务已停止' })
+          isGenerating.value = false
+        }
+      },
+    })
+  } catch (err: unknown) {
+    console.error('[ImageNode] generation failed', err)
+    const msg = err instanceof Error ? err.message : '图片生成失败'
+    updateNode(props.id, { loading: false, error: msg })
+    isGenerating.value = false
+  }
 }
 </script>
 
@@ -409,16 +476,12 @@ const handlePromptSend = (text: string) => {
     <!-- 选中态下方浮出 prompt：仅 ready-state（有上游连线 + 自身空）时显示
          自身有图 / 空态菜单 时不显示，符合 RunningHUB 设计 -->
     <div v-if="isSelected && showReady" class="image-node-prompt-panel nodrag nopan" @mousedown.stop>
-      <CanvasPromptInput
-        v-model="promptText"
-        v-model:model-key="promptModelKey"
-        :model-options="promptModelOptions"
-        :params="promptParams"
-        :references="promptReferences"
-        :count="1"
-        :price="0.38"
-        :show-add-btn="true"
-        placeholder="描述你想要生成的内容，使用 @可快速引用上传的文件，按/呼出指令"
+      <ContentGenerator
+        layout="sidebar"
+        :collapsible="false"
+        :default-expanded="true"
+        initial-creation-type="image"
+        popup-placement="top"
         @send="handlePromptSend"
       />
     </div>
@@ -484,7 +547,7 @@ const handlePromptSend = (text: string) => {
   min-width: 380px;
   min-height: 280px;
   background: var(--canvas-node-bg);
-  border: 1px solid var(--canvas-node-border);
+  /*border: 1px solid var(--canvas-node-border);*/
   border-radius: 16px;
   padding: 0;
   display: flex;
@@ -674,10 +737,8 @@ const handlePromptSend = (text: string) => {
   position: relative;
   flex: 1 1 0;
   display: inline-flex;
-  align-items: center;
   justify-content: center;
   overflow: hidden;
-  padding: 32px;
 }
 .image-node-image {
   max-width: 320px;

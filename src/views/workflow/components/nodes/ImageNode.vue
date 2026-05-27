@@ -228,16 +228,43 @@ onMounted(() => {
   void loadPublicModelCatalog()
 })
 // 上游图片素材 → 作为图生图参考图（直接拿 url 数组）
+// 注意：上游图生图模型（如 gpt-image-2）只接受栅格格式，SVG/PDF/HEIC 等会让 PIL 在
+// BytesIO 解码时报 "cannot identify image file"，必须在客户端过滤掉。
+const RASTER_REFERENCE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'])
+const isRasterReferenceUrl = (url: string): boolean => {
+  if (!url) return false
+  // data url 直接放行
+  if (url.startsWith('data:image/')) return true
+  // 截掉 query/hash 再取扩展名
+  const cleanUrl = url.split('?')[0].split('#')[0]
+  const dotIndex = cleanUrl.lastIndexOf('.')
+  if (dotIndex < 0) return true // 无扩展名时不强制拦截
+  const ext = cleanUrl.slice(dotIndex + 1).toLowerCase()
+  return RASTER_REFERENCE_EXTENSIONS.has(ext)
+}
+const droppedNonRasterRefsHint = ref(false)
 const upstreamReferenceUrls = computed<string[]>(() => {
   const refs: string[] = []
+  let droppedCount = 0
   const upstreamEdges = edges.value.filter((e) => e.target === props.id)
   for (const edge of upstreamEdges) {
     const sourceNode = nodes.value.find((n) => n.id === edge.source)
     if (!sourceNode) continue
     if (sourceNode.type === 'image') {
       const url = (sourceNode.data as { url?: string })?.url
-      if (url) refs.push(url)
+      if (!url) continue
+      if (isRasterReferenceUrl(url)) {
+        refs.push(url)
+      } else {
+        droppedCount += 1
+      }
     }
+  }
+  if (droppedCount > 0 && !droppedNonRasterRefsHint.value) {
+    droppedNonRasterRefsHint.value = true
+    ElMessage.warning(`已忽略 ${droppedCount} 张非栅格格式（SVG 等）的参考图，图生图模型不支持`)
+    // 下一次重新出现时再次提示
+    setTimeout(() => { droppedNonRasterRefsHint.value = false }, 3000)
   }
   return refs
 })
@@ -269,9 +296,14 @@ const handlePromptSend = async (
   if (!message?.trim() || isGenerating.value) return
   // 优先用 ContentGenerator 自带的参考图选项（用户在生成器内单独添加的）
   // 没有时落到上游连线的图
-  const refImages = Array.isArray(options?.referenceImages) && options.referenceImages.length
+  const rawRefImages = Array.isArray(options?.referenceImages) && options.referenceImages.length
     ? options.referenceImages
     : upstreamReferenceUrls.value
+  // 再做一次栅格过滤，防止用户直接通过 ContentGenerator 上传 SVG/PDF 等
+  const refImages = rawRefImages.filter(isRasterReferenceUrl)
+  if (rawRefImages.length > refImages.length) {
+    ElMessage.warning('已忽略非栅格格式（SVG 等）的参考图，图生图模型不支持')
+  }
   isGenerating.value = true
   taskStreamController.value?.abort()
   updateNode(props.id, { loading: true, error: '' })

@@ -283,10 +283,29 @@ const handleAddImageToCanvas = (url) => {
   emit('add-image-to-canvas', { url })
 }
 
+// 仅允许栅格格式的参考图（svg/pdf/heic 等矢量格式上游 PIL 解码会失败）
+const RASTER_REFERENCE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'])
+const isRasterReferenceUrl = (url) => {
+  if (!url) return false
+  if (typeof url === 'string' && url.startsWith('data:image/')) {
+    // 排除 svg+xml
+    return !url.startsWith('data:image/svg')
+  }
+  const clean = String(url).split('?')[0].split('#')[0]
+  const dot = clean.lastIndexOf('.')
+  if (dot < 0) return true
+  return RASTER_REFERENCE_EXTENSIONS.has(clean.slice(dot + 1).toLowerCase())
+}
+
 // 调用图片生成 API（写入到指定 aiMsg.images）
 const runImageGeneration = async (prompt, refImages, aiMsg) => {
   try {
     const opts = lastImageOptions.value || {}
+    const rawRefs = Array.isArray(refImages) ? refImages : []
+    const filteredRefs = rawRefs.filter(isRasterReferenceUrl)
+    if (rawRefs.length > filteredRefs.length) {
+      aiMsg.error = '已忽略非栅格格式（SVG 等）的参考图，图生图模型不支持'
+    }
     // ContentGenerator 把张数放在 options.count，缺省给 1（与底部输入框的默认一致）
     const count = Math.max(1, Math.min(8, Number(opts.count) || 1))
     const fallbackKey = String(opts.modelKey || opts.model || '').trim() || getDefaultImageModelKey() || ''
@@ -308,9 +327,9 @@ const runImageGeneration = async (prompt, refImages, aiMsg) => {
     const qualityValue = String(opts.quality || opts.resolution || '').trim()
     if (qualityValue) requestBody.quality = qualityValue
 
-    const hasRef = Array.isArray(refImages) && refImages.length > 0
+    const hasRef = filteredRefs.length > 0
     const normalizedBody = hasRef
-      ? appendImageReferencesToRequestBody(requestBody, refImages)
+      ? appendImageReferencesToRequestBody(requestBody, filteredRefs)
       : requestBody
 
     const saved = await createGenerationTask({
@@ -322,7 +341,7 @@ const runImageGeneration = async (prompt, refImages, aiMsg) => {
       modelKey,
       ratio: sizeValue || undefined,
       resolution: qualityValue || undefined,
-      referenceImages: hasRef ? [...refImages] : [],
+      referenceImages: hasRef ? [...filteredRefs] : [],
       requestBody: normalizedBody,
     })
 

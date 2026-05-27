@@ -9,6 +9,7 @@ import {
   subscribeGenerationTaskEvents,
   resolveGenerationTaskModel,
 } from '@/api/generation-tasks'
+import { listGenerationRecords } from '@/api/generation-records'
 import {
   loadPublicModelCatalog,
   getDefaultImageModelKey,
@@ -56,19 +57,20 @@ const handleSessionSelect = (id) => {
     return
   }
   setActive(id)
-  // 切换会话：当前面板内消息清空（首期不拉历史 records，仅切换上下文）
-  messages.value = []
-  hasMessages.value = false
   cleanupStreams()
   closeSessionList()
+  // 切换会话后加载该会话的历史 records
+  void loadSessionHistory(id)
 }
 
 const handleSessionCreate = async () => {
   try {
-    await createNewSession()
+    const created = await createNewSession()
     messages.value = []
     hasMessages.value = false
     cleanupStreams()
+    // 新会话还没有 records，不需要 loadSessionHistory，留空展示空态
+    void created
   } catch (err) {
     console.error('[RightPanel] create session failed', err)
   } finally {
@@ -89,9 +91,14 @@ const handleSessionDelete = async (id) => {
     const wasActive = activeSessionId.value === id
     await removeSessionById(id)
     if (wasActive) {
-      messages.value = []
-      hasMessages.value = false
       cleanupStreams()
+      // 删除当前会话后，切换到新选中的会话并加载它的历史
+      if (activeSessionId.value) {
+        void loadSessionHistory(activeSessionId.value)
+      } else {
+        messages.value = []
+        hasMessages.value = false
+      }
     }
   } catch (err) {
     console.error('[RightPanel] delete session failed', err)
@@ -134,11 +141,92 @@ const cleanupStreams = () => {
 onMounted(() => {
   // 后台拉取模型清单（getDefault*ModelKey 依赖此调用）
   void loadPublicModelCatalog()
-  // 拉取助手会话列表（首次会自动建默认会话）
-  void loadSessions()
+  // 拉取助手会话列表（首次会自动建默认会话），然后加载当前会话历史
+  void (async () => {
+    await loadSessions()
+    if (activeSessionId.value) {
+      await loadSessionHistory(activeSessionId.value)
+    }
+  })()
 })
 
 onBeforeUnmount(cleanupStreams)
+
+// 把后端持久化的 record 映射为前端 UI 消息行
+const mapRecordToMessages = (record) => {
+  const ts = record.createdAt ? new Date(record.createdAt).getTime() : Date.now()
+  const baseId = record.id || String(ts)
+  const out = []
+  const refImages = Array.isArray(record.referenceImages) ? record.referenceImages.filter(Boolean) : []
+  if (record.prompt) {
+    if (refImages.length) {
+      out.push({
+        id: `${baseId}-u`,
+        type: 'user-with-ref',
+        content: record.prompt,
+        referenceImages: refImages,
+      })
+    } else {
+      out.push({
+        id: `${baseId}-u`,
+        type: 'user',
+        content: record.prompt,
+      })
+    }
+  }
+  const rtype = String(record.type || '').trim()
+  if (rtype === 'image') {
+    const images = Array.isArray(record.images) ? record.images.filter(Boolean) : []
+    out.push({
+      id: `${baseId}-a`,
+      type: 'ai-images',
+      summary: (record.prompt || '图片生成').slice(0, 10) + (record.prompt?.length > 10 ? '...' : ''),
+      collapsed: false,
+      images,
+      totalCount: images.length,
+      loading: !record.done && !images.length,
+      error: record.error || '',
+    })
+  } else if (rtype === 'agent' || rtype === 'chat') {
+    out.push({
+      id: `${baseId}-a`,
+      type: 'ai-text',
+      content: record.content || '',
+      loading: !record.done && !record.content,
+      error: record.error || '',
+    })
+  }
+  return out
+}
+
+// 拉取指定会话的历史记录并填充到 messages（time asc）
+const loadSessionHistory = async (sessionId) => {
+  if (!sessionId) {
+    messages.value = []
+    hasMessages.value = false
+    return
+  }
+  try {
+    const all = await listGenerationRecords()
+    const list = Array.isArray(all) ? all : []
+    const filtered = list
+      .filter((r) => r.sessionId === sessionId && (r.source || 'generate') === ASSISTANT_SOURCE)
+      .sort((a, b) => {
+        const at = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return at - bt
+      })
+    const mapped = []
+    for (const record of filtered) {
+      mapped.push(...mapRecordToMessages(record))
+    }
+    messages.value = mapped
+    hasMessages.value = mapped.length > 0
+    scrollToBottom()
+  } catch (err) {
+    console.error('[RightPanel] loadSessionHistory failed', err)
+  }
+}
 
 const triggerUpload = () => {
   fileInputRef.value?.click()

@@ -28,6 +28,13 @@ const popupRef = ref<HTMLDivElement | null>(null)
 const renamingId = ref<string>('')
 const renameDraft = ref<string>('')
 const renameInputRef = ref<HTMLInputElement | null>(null)
+// v-for + ref="" 在 Vue 3 里会把绑定值变成数组（即使只渲染一个）。
+// 用函数 ref 直接拿到当前生效那一个 input 元素。
+const setRenameInputRef = (el: unknown) => {
+  renameInputRef.value = el && typeof (el as HTMLInputElement).focus === 'function'
+    ? (el as HTMLInputElement)
+    : null
+}
 
 const position = ref({ top: 0, left: 0, width: 320 })
 
@@ -160,7 +167,7 @@ const handleRenameClick = (event: MouseEvent, session: PersistedGenerationSessio
           <div class="assistant-session-list__item-main">
             <input
               v-if="renamingId === session.id"
-              ref="renameInputRef"
+              :ref="setRenameInputRef"
               v-model="renameDraft"
               class="assistant-session-list__item-input"
               :maxlength="40"

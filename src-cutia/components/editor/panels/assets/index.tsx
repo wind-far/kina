@@ -5,6 +5,7 @@ import { TabBar } from "./tabbar";
 import { AIView } from "./views/ai";
 import { Captions } from "./views/captions";
 import { MediaView } from "./views/media";
+import { MyAssetsView } from "./views/my-assets";
 import { SettingsView } from "./views/settings";
 import { SoundsView } from "./views/sounds";
 import { StickersView } from "./views/stickers";
@@ -16,6 +17,7 @@ export function AssetsPanel() {
 
 	const viewMap: Record<Tab, React.ReactNode> = {
 		media: <MediaView />,
+		"my-assets": <MyAssetsView />,
 		sounds: <SoundsView />,
 		text: <TextView />,
 		stickers: <StickersView />,

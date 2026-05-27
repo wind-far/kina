@@ -616,13 +616,13 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
         </div>
         <div class="actions-bl5UWA">
           <!-- 筛选按钮 -->
-          <div class="filter-button">
+<!--          <div class="filter-button">
             <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="filter-icon">
               <g>
                 <path data-follow-fill="currentColor" d="M4.927 2.86a2 2 0 0 0-2 2v1.672a3 3 0 0 0 .879 2.121l2.828 2.829a1 1 0 0 1 .293.707v4.605a2 2 0 0 0 .971 1.715l3.757 2.254a1.5 1.5 0 0 0 2.272-1.286V12.19a1 1 0 0 1 .293-.707l2.828-2.829a3 3 0 0 0 .88-2.121V4.86a2 2 0 0 0-2-2h-11Zm0 2h11v1.672a1 1 0 0 1-.293.707l-2.828 2.828a3 3 0 0 0-.879 2.122v6.405l-3-1.8v-4.605a3 3 0 0 0-.879-2.122L5.22 7.24a1 1 0 0 1-.293-.707V4.86Zm11 8.14a1 1 0 0 1 1-1h5a1 1 0 1 1 0 2h-5a1 1 0 0 1-1-1Zm0 4a1 1 0 0 1 1-1h3a1 1 0 1 1 0 2h-3a1 1 0 0 1-1-1Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor"></path>
               </g>
             </svg>
-          </div>
+          </div>-->
           <!-- 新建对话按钮 -->
           <div class="operation-button-bwA7yT" title="新建对话" @click="handleSessionCreate">
             <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -706,7 +706,7 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
               <!-- AI 提示 -->
               <div class="ai-notice">以上内容由 AI 生成</div>
               <!-- 操作按钮 -->
-              <div class="action-row">
+<!--              <div class="action-row">
                 <div class="action-left">
                   <button class="action-btn-Wp3kLl">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="m8.56 5.73 3.95-2.78a.5.5 0 0 1 .79.41v2.23h2.72v2H9.19a1 1 0 0 1-.63-.23c-.52-.36-.61-1.2 0-1.63Z" fill="currentColor"/></svg>
@@ -724,7 +724,7 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18.89 4a3.08 3.08 0 0 1 3.1 2.67c0 .04 0 .09 0 .13v6.3c0 .04 0 .09 0 .13-.2 1.48-1.47 2.78-3.09 2.77h-1.8l-3.29 7.4a1 1 0 0 1-.91.6 3.7 3.7 0 0 1-3.7-3.7v-2.6h-4.4a2.8 2.8 0 0 1-2.8-3.22L3.24 6.38A2.8 2.8 0 0 1 6.03 4h12.86Z" fill="currentColor"/></svg>
                   </button>
                 </div>
-              </div>
+              </div>-->
             </div>
           </div>
 

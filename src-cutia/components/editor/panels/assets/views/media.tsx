@@ -631,6 +631,7 @@ function GridView({
 							containerClassName="w-full"
 							isHighlighted={highlightedId === item.id}
 							isSelected={selectedMediaId === item.id}
+							isDraggable={item.uploadStatus !== "remote-only"}
 						/>
 					</MediaItemWithContextMenu>
 				</div>
@@ -692,6 +693,7 @@ function ListView({
 							variant="compact"
 							isHighlighted={highlightedId === item.id}
 							isSelected={selectedMediaId === item.id}
+							isDraggable={item.uploadStatus !== "remote-only"}
 						/>
 					</MediaItemWithContextMenu>
 				</div>
@@ -760,66 +762,107 @@ function MediaPreview({
 }) {
 	const { t } = useTranslation();
 	const shouldShowDurationBadge = variant === "grid";
+	const uploadStatus = item.uploadStatus;
+	const isRemoteOnly = uploadStatus === "remote-only";
 
-	if (item.type === "image") {
-		return (
-			<div className="relative flex size-full items-center justify-center">
-				<img
-					src={item.url ?? ""}
-					alt={item.name}
-					sizes="100vw"
-					className="object-cover"
-					loading="lazy"
-				/>
-			</div>
-		);
-	}
-
-	if (item.type === "video") {
-		if (item.thumbnailUrl) {
+	const previewContent = (() => {
+		if (item.type === "image") {
+			const imageUrl = item.url || item.fileUrl || "";
 			return (
-				<div className="relative size-full">
+				<div className="relative flex size-full items-center justify-center">
 					<img
-						src={item.thumbnailUrl}
+						src={imageUrl}
 						alt={item.name}
 						sizes="100vw"
-						className="rounded object-cover"
+						className="object-cover"
 						loading="lazy"
 					/>
-					{shouldShowDurationBadge ? (
-						<MediaDurationBadge duration={item.duration} />
-					) : null}
 				</div>
+			);
+		}
+
+		if (item.type === "video") {
+			if (item.thumbnailUrl) {
+				return (
+					<div className="relative size-full">
+						<img
+							src={item.thumbnailUrl}
+							alt={item.name}
+							sizes="100vw"
+							className="rounded object-cover"
+							loading="lazy"
+						/>
+						{shouldShowDurationBadge ? (
+							<MediaDurationBadge duration={item.duration} />
+						) : null}
+					</div>
+				);
+			}
+
+			return (
+				<MediaTypePlaceholder
+					icon={Video01Icon}
+					label={t("Video")}
+					duration={item.duration}
+					variant="muted"
+				/>
+			);
+		}
+
+		if (item.type === "audio") {
+			return (
+				<MediaTypePlaceholder
+					icon={MusicNote03Icon}
+					label={t("Audio")}
+					duration={item.duration}
+					variant="bordered"
+				/>
 			);
 		}
 
 		return (
 			<MediaTypePlaceholder
-				icon={Video01Icon}
-				label={t("Video")}
-				duration={item.duration}
+				icon={Image02Icon}
+				label={t("Unknown")}
 				variant="muted"
 			/>
 		);
+	})();
+
+	if (!uploadStatus || uploadStatus === "uploaded") {
+		return previewContent;
 	}
 
-	if (item.type === "audio") {
-		return (
-			<MediaTypePlaceholder
-				icon={MusicNote03Icon}
-				label={t("Audio")}
-				duration={item.duration}
-				variant="bordered"
-			/>
-		);
-	}
-
+	// 异步上传状态徽章 + 远端占位视觉提示。
+	// remote-only: 半透明 + 下载中字样, draggable=false 由调用方控制。
+	// uploading: 右下角 spinner。
+	// failed: 右下角红色感叹号 + tooltip(uploadError)。
 	return (
-		<MediaTypePlaceholder
-			icon={Image02Icon}
-			label={t("Unknown")}
-			variant="muted"
-		/>
+		<div className="relative size-full">
+			<div className={isRemoteOnly ? "size-full opacity-40" : "size-full"}>
+				{previewContent}
+			</div>
+			{uploadStatus === "uploading" && (
+				<div className="absolute bottom-1 right-1 size-4 rounded-full bg-black/60 flex items-center justify-center">
+					<span className="size-2 rounded-full bg-white animate-pulse" />
+				</div>
+			)}
+			{uploadStatus === "failed" && (
+				<div
+					className="absolute bottom-1 right-1 size-4 rounded-full bg-red-500 flex items-center justify-center text-white text-[10px] font-bold"
+					title={item.uploadError || t("Upload failed")}
+				>
+					!
+				</div>
+			)}
+			{isRemoteOnly && (
+				<div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+					<span className="text-xs text-foreground/70 bg-black/40 px-2 py-0.5 rounded">
+						{t("Downloading...")}
+					</span>
+				</div>
+			)}
+		</div>
 	);
 }
 

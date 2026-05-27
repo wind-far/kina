@@ -42,7 +42,7 @@ export interface ChatSession {
 
 const sessions = ref<ChatSession[]>([])
 const activeSessionId = ref<string | null>(null)
-const isPanelCollapsed = ref(false)
+const isPanelCollapsed = ref(true)
 const panelWidth = ref(440)
 
 const PANEL_WIDTH_MIN = 320

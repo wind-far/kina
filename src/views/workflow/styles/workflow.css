@@ -132,6 +132,31 @@
   fill: var(--stroke-secondary, rgba(204, 221, 255, 0.06));
 }
 
+.workflow-canvas .vue-flow__background pattern path {
+  stroke: var(--stroke-secondary, rgba(204, 221, 255, 0.06));
+}
+
+/* 深色模式：画布底色略提亮，网格线降低对比，避免纯黑底过于压抑 */
+html[data-theme='dark'] .workflow-container,
+body[lv-theme='dark'] .workflow-container {
+  background-color: var(--canvas-workflow-bg, #181b22);
+}
+
+html[data-theme='dark'] .workflow-canvas .vue-flow__background,
+body[lv-theme='dark'] .workflow-canvas .vue-flow__background {
+  background-color: var(--canvas-workflow-bg, #181b22);
+}
+
+html[data-theme='dark'] .workflow-canvas .vue-flow__background pattern path,
+body[lv-theme='dark'] .workflow-canvas .vue-flow__background pattern path {
+  stroke: rgba(204, 221, 255, 0.1);
+}
+
+html[data-theme='dark'] .workflow-canvas .vue-flow__background pattern circle,
+body[lv-theme='dark'] .workflow-canvas .vue-flow__background pattern circle {
+  fill: rgba(204, 221, 255, 0.1);
+}
+
 /* 节点基础样式 */
 .workflow-canvas .vue-flow__node {
   border: none;
@@ -255,6 +280,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.wf-header-meta__title-input {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--stroke-secondary, rgba(204, 221, 255, 0.2));
+  outline: none;
+  padding: 0;
+}
+
+.wf-header-meta__title-input:focus {
+  border-bottom-color: var(--brand-main-default, #00cae0);
 }
 
 .wf-header-meta__status {

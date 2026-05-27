@@ -4,15 +4,18 @@
  *
  * 来自 infinite-canvas/CanvasZoomControls：
  *   小地图开关 / 重置视图 / 缩放滑杆 5–500 / 数字百分比 / 快捷键弹窗
+ * 追加：画布外观（弹出 CanvasAppearancePanel） / 清空画布
  */
 import { computed, ref } from 'vue'
 import { ElDialog } from 'element-plus'
-import { Compass, Aim, QuestionFilled } from '@element-plus/icons-vue'
+import { Compass, Aim, QuestionFilled, MagicStick, Brush } from '@element-plus/icons-vue'
 import { useVueFlow } from '@vue-flow/core'
+import CanvasAppearancePanel from './CanvasAppearancePanel.vue'
 
-const props = defineProps<{ miniMapOpen: boolean }>()
+defineProps<{ miniMapOpen: boolean }>()
 const emit = defineEmits<{
   (e: 'toggleMiniMap'): void
+  (e: 'clear'): void
 }>()
 
 const { viewport, zoomTo, fitView } = useVueFlow()
@@ -29,6 +32,7 @@ const handleReset = () => {
 }
 
 const showHelp = ref(false)
+const appearanceOpen = ref(false)
 const shortcutRows: Array<[string, string]> = [
   ['拖动空白', '平移画布'],
   ['滚轮', '缩放'],
@@ -67,24 +71,59 @@ const shortcutRows: Array<[string, string]> = [
       @input="handleSliderInput"
     />
     <span class="canvas-zoom-controls__percent">{{ zoomPercent }}%</span>
-    <button type="button" class="canvas-zoom-controls__btn" title="快捷键" @click="showHelp = true">
-      <el-icon><QuestionFilled /></el-icon>
+
+    <!-- 分隔线 -->
+    <span class="canvas-zoom-controls__divider" aria-hidden="true" />
+
+    <!-- 画布外观（弹出 CanvasAppearancePanel） -->
+    <button
+      type="button"
+      class="canvas-zoom-controls__btn"
+      :class="{ 'is-active': appearanceOpen }"
+      title="画布外观"
+      @click="appearanceOpen = !appearanceOpen"
+    >
+      <el-icon><MagicStick /></el-icon>
+    </button>
+    <Transition name="canvas-appearance-pop">
+      <div
+        v-if="appearanceOpen"
+        class="canvas-zoom-controls__appearance"
+        @click.stop
+      >
+        <CanvasAppearancePanel />
+      </div>
+    </Transition>
+
+    <!-- 清空画布 -->
+    <button
+      type="button"
+      class="canvas-zoom-controls__btn canvas-zoom-controls__btn--danger"
+      title="清空画布"
+      @click="emit('clear')"
+    >
+      <el-icon><Brush /></el-icon>
     </button>
 
-    <ElDialog
-      v-model="showHelp"
-      title="画布快捷键"
-      width="420px"
-      align-center
-      destroy-on-close
-    >
-      <div class="canvas-zoom-controls__help">
-        <div v-for="row in shortcutRows" :key="row[0]" class="canvas-zoom-controls__help-row">
-          <span class="canvas-zoom-controls__help-key">{{ row[0] }}</span>
-          <span class="canvas-zoom-controls__help-desc">{{ row[1] }}</span>
-        </div>
-      </div>
-    </ElDialog>
+    <!-- 快捷键弹窗 -->
+<!--    <button type="button" class="canvas-zoom-controls__btn" title="快捷键" @click="showHelp = true">-->
+<!--      <el-icon><QuestionFilled /></el-icon>-->
+<!--    </button>-->
+
+<!--    <ElDialog-->
+<!--      v-model="showHelp"-->
+<!--      title="画布快捷键"-->
+<!--      width="420px"-->
+<!--      align-center-->
+<!--      destroy-on-close-->
+<!--    >-->
+<!--      <div class="canvas-zoom-controls__help">-->
+<!--        <div v-for="row in shortcutRows" :key="row[0]" class="canvas-zoom-controls__help-row">-->
+<!--          <span class="canvas-zoom-controls__help-key">{{ row[0] }}</span>-->
+<!--          <span class="canvas-zoom-controls__help-desc">{{ row[1] }}</span>-->
+<!--        </div>-->
+<!--      </div>-->
+<!--    </ElDialog>-->
   </div>
 </template>
 
@@ -131,6 +170,20 @@ const shortcutRows: Array<[string, string]> = [
   background: var(--brand-main-block-default);
   color: var(--brand-main-default);
 }
+.canvas-zoom-controls__btn--danger {
+  color: var(--text-secondary);
+}
+.canvas-zoom-controls__btn--danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.canvas-zoom-controls__divider {
+  width: 1px;
+  height: 20px;
+  background: var(--stroke-tertiary);
+  margin: 0 2px;
+}
 
 .canvas-zoom-controls__slider {
   width: 96px;
@@ -147,6 +200,23 @@ const shortcutRows: Array<[string, string]> = [
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.canvas-zoom-controls__appearance {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+}
+
+.canvas-appearance-pop-enter-active,
+.canvas-appearance-pop-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.canvas-appearance-pop-enter-from,
+.canvas-appearance-pop-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
 }
 
 .canvas-zoom-controls__help {

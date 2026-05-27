@@ -1,6 +1,7 @@
 import type { TProject, TProjectMetadata } from "@cutia/types/project";
 import { getProjectDurationFromScenes } from "@cutia/lib/scenes";
 import type { MediaAsset } from "@cutia/types/assets";
+import { fetchRemoteMediaAsFile } from "@cutia/lib/media/url-import";
 import { IndexedDBAdapter } from "./indexeddb-adapter";
 import { OPFSAdapter } from "./opfs-adapter";
 import type {
@@ -12,6 +13,11 @@ import type {
 	ProjectStorageStats,
 	StorageAdapter,
 } from "./types";
+import type {
+	RemoteAssetDto,
+	RemoteMediaSync,
+} from "./remote-media-sync-adapter";
+import { remoteAssetToMediaAssetData } from "./remote-media-sync-adapter";
 import type { SavedSoundsData, SavedSound, SoundEffect } from "@cutia/types/sounds";
 import {
 	migrations,
@@ -32,7 +38,18 @@ export interface StorageServiceOptions {
 	// 跳过 storage migrations。Remote 数据永远 v3 起步,migration runner 内部
 	// 硬绑 IndexedDB('video-editor-projects'),与远程数据无关,故跳过。
 	skipMigrations?: boolean;
+	// 可选注入媒体远端同步层。canana-vue 集成时把 cutia 的素材上传到后端 AssetItem 表;
+	// 未注入时 saveMediaAsset/loadAllMediaAssets 与改造前 100% 一致。
+	mediaSync?: RemoteMediaSync;
 }
+
+// 媒体元数据更新事件 — saveMediaAsset 异步上传完成后,通过此回调通知 MediaManager
+// 替换内存中对应项,刷新 UI 状态徽章。
+type MediaUpdateListener = (event: {
+	projectId: string;
+	mediaId: string;
+	metadata: MediaAssetData;
+}) => void;
 
 class StorageService {
 	private projectsAdapter: ProjectsStorageAdapter;
@@ -40,6 +57,8 @@ class StorageService {
 	private config: StorageConfig;
 	private migrationsPromise: Promise<void> | null = null;
 	private skipMigrations: boolean;
+	private mediaSync: RemoteMediaSync | null;
+	private mediaUpdateListeners = new Set<MediaUpdateListener>();
 
 	constructor(options: StorageServiceOptions = {}) {
 		this.config = {
@@ -64,6 +83,86 @@ class StorageService {
 		);
 
 		this.skipMigrations = options.skipMigrations ?? false;
+		this.mediaSync = options.mediaSync ?? null;
+	}
+
+	// 订阅媒体元数据更新事件(异步上传完成后触发)。MediaManager 用此 hook 同步内存状态。
+	subscribeMediaUpdates(listener: MediaUpdateListener): () => void {
+		this.mediaUpdateListeners.add(listener);
+		return () => {
+			this.mediaUpdateListeners.delete(listener);
+		};
+	}
+
+	// 暴露注入的 mediaSync 实例 (canana-vue 集成场景下用于"我的资产" tab 直接读取主站 AssetItem)。
+	// cutia 上游模式下返回 null。
+	getMediaSync(): RemoteMediaSync | null {
+		return this.mediaSync;
+	}
+
+	// remote-only 状态下的占位素材后台回填: 从 fileUrl 拉文件 → 写 OPFS → 更新 metadata → notify。
+	// 用于"从 AssetItem 导入"和"跨设备加载项目时 OPFS miss"两种场景, 调用后异步执行。
+	// 同一 mediaId 多次调用会用 inflight Map 去重。
+	private readonly backfillInflight = new Map<string, Promise<void>>();
+	async backfillRemoteOnlyAsset({
+		projectId,
+		mediaId,
+		fileUrl,
+	}: {
+		projectId: string;
+		mediaId: string;
+		fileUrl: string;
+	}): Promise<void> {
+		const key = `${projectId}::${mediaId}`;
+		const existing = this.backfillInflight.get(key);
+		if (existing) return existing;
+
+		const task = (async () => {
+			try {
+				const file = await fetchRemoteMediaAsFile({ url: fileUrl });
+				const { mediaMetadataAdapter, mediaAssetsAdapter } =
+					this.getProjectMediaAdapters({ projectId });
+
+				// 检查 metadata 是否还在(可能被并发 deleteMediaAsset 删除)
+				const current = await mediaMetadataAdapter.get(mediaId);
+				if (!current) return;
+
+				await mediaAssetsAdapter.set(mediaId, file);
+
+				const updated: MediaAssetData = {
+					...current,
+					size: file.size,
+					lastModified: file.lastModified,
+					uploadStatus: "uploaded",
+					uploadError: undefined,
+				};
+				await mediaMetadataAdapter.set(mediaId, updated);
+				this.notifyMediaUpdate({ projectId, mediaId, metadata: updated });
+			} catch (err) {
+				console.warn(`Backfill remote-only asset ${mediaId} failed:`, err);
+			}
+		})();
+
+		this.backfillInflight.set(key, task);
+		try {
+			await task;
+		} finally {
+			this.backfillInflight.delete(key);
+		}
+	}
+
+	private notifyMediaUpdate(event: {
+		projectId: string;
+		mediaId: string;
+		metadata: MediaAssetData;
+	}): void {
+		for (const listener of this.mediaUpdateListeners) {
+			try {
+				listener(event);
+			} catch (err) {
+				console.warn("media update listener error:", err);
+			}
+		}
 	}
 
 	private async ensureMigrations(): Promise<void> {
@@ -244,6 +343,22 @@ class StorageService {
 
 		await mediaAssetsAdapter.set(mediaAsset.id, mediaAsset.file);
 
+		// 优先尊重调用方显式传入的 uploadStatus(例如从 AssetItem 导入时传 'remote-only')。
+		// 否则按规则推导:
+		//   - ephemeral 素材不参与上传, 状态 undefined
+		//   - 已有 assetItemId(且文件实存)→ uploaded
+		//   - 否则需异步上传 → uploading
+		const alreadyRemote = Boolean(mediaAsset.assetItemId);
+		const initialStatus: MediaAssetData["uploadStatus"] =
+			mediaAsset.uploadStatus ??
+			(mediaAsset.ephemeral
+				? undefined
+				: alreadyRemote
+					? "uploaded"
+					: this.mediaSync
+						? "uploading"
+						: undefined);
+
 		const metadata: MediaAssetData = {
 			id: mediaAsset.id,
 			name: mediaAsset.name,
@@ -255,9 +370,73 @@ class StorageService {
 			duration: mediaAsset.duration,
 			thumbnailUrl: mediaAsset.thumbnailUrl,
 			ephemeral: mediaAsset.ephemeral,
+			assetItemId: mediaAsset.assetItemId,
+			fileUrl: mediaAsset.fileUrl,
+			mimeType: mediaAsset.mimeType,
+			uploadStatus: initialStatus,
 		};
 
 		await mediaMetadataAdapter.set(mediaAsset.id, metadata);
+
+		// canana-vue 集成场景:异步触发云端上传,失败仅标 failed 不回滚本地。
+		// cutia 上游(无 mediaSync 注入)直接返回, 行为与改造前一致。
+		if (this.mediaSync && !mediaAsset.ephemeral && !alreadyRemote) {
+			void this.triggerMediaUpload({ projectId, mediaAsset, metadata });
+		}
+	}
+
+	private async triggerMediaUpload({
+		projectId,
+		mediaAsset,
+		metadata,
+	}: {
+		projectId: string;
+		mediaAsset: MediaAsset;
+		metadata: MediaAssetData;
+	}): Promise<void> {
+		if (!this.mediaSync) return;
+		const { mediaMetadataAdapter } = this.getProjectMediaAdapters({ projectId });
+
+		try {
+			const dto = await this.mediaSync.upload({
+				assetType: mediaAsset.type,
+				file: mediaAsset.file,
+				name: mediaAsset.name,
+				metadata: {
+					width: mediaAsset.width,
+					height: mediaAsset.height,
+					duration: mediaAsset.duration,
+					thumbnailUrl: mediaAsset.thumbnailUrl,
+				},
+			});
+
+			// 回写前先检查 metadata 是否还在(可能被并发 deleteMediaAsset 删除)
+			const current = await mediaMetadataAdapter.get(mediaAsset.id);
+			if (!current) return;
+
+			const updated: MediaAssetData = {
+				...current,
+				assetItemId: dto.id,
+				fileUrl: dto.fileUrl,
+				mimeType: dto.mimeType || current.mimeType,
+				uploadStatus: "uploaded",
+				uploadError: undefined,
+			};
+			await mediaMetadataAdapter.set(mediaAsset.id, updated);
+			this.notifyMediaUpdate({ projectId, mediaId: mediaAsset.id, metadata: updated });
+		} catch (err) {
+			const current = await mediaMetadataAdapter.get(mediaAsset.id);
+			if (!current) return;
+			const errorMsg = err instanceof Error ? err.message : String(err);
+			const updated: MediaAssetData = {
+				...current,
+				uploadStatus: "failed",
+				uploadError: errorMsg,
+			};
+			await mediaMetadataAdapter.set(mediaAsset.id, updated);
+			this.notifyMediaUpdate({ projectId, mediaId: mediaAsset.id, metadata: updated });
+			console.warn(`Failed to upload media ${mediaAsset.id}:`, err);
+		}
 	}
 
 	async loadMediaAsset({
@@ -305,22 +484,88 @@ class StorageService {
 			duration: metadata.duration,
 			thumbnailUrl: metadata.thumbnailUrl,
 			ephemeral: metadata.ephemeral,
+			assetItemId: metadata.assetItemId,
+			fileUrl: metadata.fileUrl,
+			mimeType: metadata.mimeType,
+			uploadStatus: metadata.uploadStatus,
+			uploadError: metadata.uploadError,
 		};
 	}
 
 	async loadAllMediaAssets({
 		projectId,
+		mediaIds,
 	}: {
 		projectId: string;
+		mediaIds?: string[];
 	}): Promise<MediaAsset[]> {
-		const { mediaMetadataAdapter } = this.getProjectMediaAdapters({
-			projectId,
-		});
+		const { mediaMetadataAdapter, mediaAssetsAdapter } =
+			this.getProjectMediaAdapters({ projectId });
 
-		const mediaIds = await mediaMetadataAdapter.list();
+		// canana-vue 集成: 优先用 mediaSync 拉权威列表(基于项目 JSON 中的 mediaId 反查)
+		if (this.mediaSync && mediaIds && mediaIds.length > 0) {
+			const remoteAssets = await this.mediaSync.fetchByIds(mediaIds).catch((err) => {
+				console.warn("fetchByIds failed, fallback to local IDB:", err);
+				return null;
+			});
+
+			if (remoteAssets) {
+				const mediaItems: MediaAsset[] = [];
+
+				for (const dto of remoteAssets) {
+					const localFile = await mediaAssetsAdapter.get(dto.id);
+					if (localFile) {
+						// OPFS hit: 完整 MediaAsset
+						const existing = await mediaMetadataAdapter.get(dto.id);
+						const url = URL.createObjectURL(localFile);
+						mediaItems.push({
+							id: dto.id,
+							name: dto.title || existing?.name || "untitled",
+							type: dto.assetType,
+							file: localFile,
+							url,
+							width: dto.width ?? existing?.width,
+							height: dto.height ?? existing?.height,
+							duration: dto.durationSeconds ?? existing?.duration,
+							thumbnailUrl: dto.thumbnailUrl ?? existing?.thumbnailUrl,
+							assetItemId: dto.id,
+							fileUrl: dto.fileUrl,
+							mimeType: dto.mimeType,
+							uploadStatus: "uploaded",
+						});
+					} else {
+						// OPFS miss: 占位 MediaAsset, 后续由 MediaManager 触发 fetchRemoteMediaAsFile 回填
+						const placeholderData = remoteAssetToMediaAssetData(dto);
+						const placeholderFile = new File([], placeholderData.name, {
+							type: dto.mimeType || "application/octet-stream",
+						});
+						mediaItems.push({
+							id: dto.id,
+							name: placeholderData.name,
+							type: dto.assetType,
+							file: placeholderFile,
+							url: dto.fileUrl,
+							width: dto.width,
+							height: dto.height,
+							duration: dto.durationSeconds,
+							thumbnailUrl: dto.thumbnailUrl,
+							assetItemId: dto.id,
+							fileUrl: dto.fileUrl,
+							mimeType: dto.mimeType,
+							uploadStatus: "remote-only",
+						});
+					}
+				}
+
+				return mediaItems;
+			}
+		}
+
+		// 默认路径 (cutia 上游 / mediaSync 未注入 / fetchByIds 失败回退): 从本地 IDB 加载
+		const localIds = await mediaMetadataAdapter.list();
 		const mediaItems: MediaAsset[] = [];
 
-		for (const id of mediaIds) {
+		for (const id of localIds) {
 			const item = await this.loadMediaAsset({ projectId, id });
 			if (item) {
 				mediaItems.push(item);

@@ -3,6 +3,7 @@ import { create } from "zustand";
 import {
 	AiBrain01Icon,
 	ArrowRightDoubleIcon,
+	CloudIcon,
 	ClosedCaptionIcon,
 	Folder03Icon,
 	Happy01Icon,
@@ -17,6 +18,7 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 
 export const TAB_KEYS = [
 	"media",
+	"my-assets",
 	"sounds",
 	"text",
 	"stickers",
@@ -39,6 +41,7 @@ const createHugeiconsIcon =
 
 const TAB_LABELS: Record<Tab, string> = {
 	media: "Media",
+	"my-assets": "My Assets",
 	sounds: "Sounds",
 	text: "Text",
 	stickers: "Stickers",
@@ -55,6 +58,10 @@ export const tabs = {
 	media: {
 		icon: createHugeiconsIcon({ icon: Folder03Icon }),
 		label: TAB_LABELS.media,
+	},
+	"my-assets": {
+		icon: createHugeiconsIcon({ icon: CloudIcon }),
+		label: TAB_LABELS["my-assets"],
 	},
 	sounds: {
 		icon: createHugeiconsIcon({ icon: HeadphonesIcon }),

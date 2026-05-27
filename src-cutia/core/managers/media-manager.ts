@@ -9,19 +9,47 @@ export class MediaManager {
 	private assets: MediaAsset[] = [];
 	private isLoading = false;
 	private listeners = new Set<() => void>();
+	private mediaUpdateUnsubscribe: (() => void) | null = null;
 
-	constructor(private editor: EditorCore) {}
+	constructor(private editor: EditorCore) {
+		// 订阅存储层的媒体更新事件 (异步上传完成后, StorageService 通知刷新元数据)。
+		// canana-vue 集成时由 RemoteMediaSyncAdapter 触发, cutia 上游下永远不触发。
+		this.mediaUpdateUnsubscribe = storageService.subscribeMediaUpdates(
+			(event) => {
+				const idx = this.assets.findIndex((a) => a.id === event.mediaId);
+				if (idx === -1) return;
+				const old = this.assets[idx];
+				if (!old) return;
+				const updated: MediaAsset = {
+					...old,
+					assetItemId: event.metadata.assetItemId ?? old.assetItemId,
+					fileUrl: event.metadata.fileUrl ?? old.fileUrl,
+					mimeType: event.metadata.mimeType ?? old.mimeType,
+					uploadStatus: event.metadata.uploadStatus ?? old.uploadStatus,
+					uploadError: event.metadata.uploadError,
+				};
+				this.assets = [
+					...this.assets.slice(0, idx),
+					updated,
+					...this.assets.slice(idx + 1),
+				];
+				this.notify();
+			},
+		);
+	}
 
 	async addMediaAsset({
 		projectId,
 		asset,
 	}: {
 		projectId: string;
-		asset: Omit<MediaAsset, "id">;
+		asset: Omit<MediaAsset, "id"> & { id?: string };
 	}): Promise<string> {
+		// 从 AssetItem 导入素材时, 直接复用 AssetItem.id 作 mediaId (避免双 id 系统)。
+		// 其它场景生成新 UUID。
 		const newAsset: MediaAsset = {
 			...asset,
-			id: generateUUID(),
+			id: asset.id || generateUUID(),
 		};
 
 		this.assets = [...this.assets, newAsset];
@@ -35,7 +63,26 @@ export class MediaManager {
 			this.notify();
 		}
 
+		// remote-only 素材后台拉文件回填 OPFS, 完成后通过事件订阅自动更新内存状态
+		this.triggerBackfillIfRemoteOnly({ projectId, asset: newAsset });
+
 		return newAsset.id;
+	}
+
+	// 检查素材是否需要后台回填(remote-only + 有 fileUrl), 异步触发不阻塞调用方
+	private triggerBackfillIfRemoteOnly({
+		projectId,
+		asset,
+	}: {
+		projectId: string;
+		asset: MediaAsset;
+	}): void {
+		if (asset.uploadStatus !== "remote-only" || !asset.fileUrl) return;
+		void storageService.backfillRemoteOnlyAsset({
+			projectId,
+			mediaId: asset.id,
+			fileUrl: asset.fileUrl,
+		});
 	}
 
 	async removeMediaAsset({
@@ -86,17 +133,45 @@ export class MediaManager {
 		this.notify();
 
 		try {
+			// 从当前 active project 的 timeline elements 提取所有 mediaId 集合,
+			// 用于 RemoteMediaSyncAdapter 反查 AssetItem (canana-vue 集成场景)。
+			// cutia 上游模式下,storageService 会忽略此参数走本地 IDB 列表。
+			const mediaIds = this.collectMediaIdsFromActiveProject();
 			const mediaAssets = await storageService.loadAllMediaAssets({
 				projectId,
+				mediaIds,
 			});
 			this.assets = mediaAssets;
 			this.notify();
+
+			// 跨设备恢复场景: 扫描 remote-only 素材, 后台拉文件回填 OPFS
+			for (const asset of mediaAssets) {
+				this.triggerBackfillIfRemoteOnly({ projectId, asset });
+			}
 		} catch (error) {
 			console.error("Failed to load media assets:", error);
 		} finally {
 			this.isLoading = false;
 			this.notify();
 		}
+	}
+
+	// 遍历当前 project 的所有 scene → track → element, 提取去重的 mediaId 集合。
+	// 返回空数组时,loadAllMediaAssets 会退回本地 IDB 列表(兼容无项目场景)。
+	private collectMediaIdsFromActiveProject(): string[] {
+		const project = this.editor.project.getActiveOrNull();
+		if (!project) return [];
+		const ids = new Set<string>();
+		for (const scene of project.scenes) {
+			for (const track of scene.tracks) {
+				for (const element of track.elements) {
+					if (hasMediaId(element) && element.mediaId) {
+						ids.add(element.mediaId);
+					}
+				}
+			}
+		}
+		return [...ids];
 	}
 
 	async clearProjectMedia({ projectId }: { projectId: string }): Promise<void> {

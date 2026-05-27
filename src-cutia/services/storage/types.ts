@@ -27,6 +27,13 @@ export interface MediaAssetData {
 	fps?: number;
 	ephemeral?: boolean;
 	thumbnailUrl?: string;
+	// 以下字段在 canana-vue 集成场景下使用,cutia 上游不感知。
+	// 全部可选,保证向后兼容。
+	assetItemId?: string;
+	fileUrl?: string;
+	mimeType?: string;
+	uploadStatus?: "uploading" | "uploaded" | "failed" | "remote-only";
+	uploadError?: string;
 }
 
 export type SerializedScene = Omit<TScene, "createdAt" | "updatedAt"> & {

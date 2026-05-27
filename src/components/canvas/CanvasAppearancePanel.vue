@@ -89,17 +89,17 @@ const toggleShowImageInfo = (checked: boolean) => {
 
     <div class="canvas-appearance-panel__divider" />
 
-    <div class="canvas-appearance-panel__row">
-      <span class="canvas-appearance-panel__label">图片信息</span>
-      <label class="canvas-appearance-panel__switch">
-        <input
-          type="checkbox"
-          :checked="canvasShowImageInfo"
-          @change="(e) => toggleShowImageInfo((e.target as HTMLInputElement).checked)"
-        />
-        <span class="canvas-appearance-panel__switch-slider" />
-      </label>
-    </div>
+<!--    <div class="canvas-appearance-panel__row">-->
+<!--      <span class="canvas-appearance-panel__label">图片信息</span>-->
+<!--      <label class="canvas-appearance-panel__switch">-->
+<!--        <input-->
+<!--          type="checkbox"-->
+<!--          :checked="canvasShowImageInfo"-->
+<!--          @change="(e) => toggleShowImageInfo((e.target as HTMLInputElement).checked)"-->
+<!--        />-->
+<!--        <span class="canvas-appearance-panel__switch-slider" />-->
+<!--      </label>-->
+<!--    </div>-->
   </div>
 </template>
 

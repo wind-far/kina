@@ -54,10 +54,9 @@ const nodeColor = (node: Node) => {
   width: 240px;
   height: 160px;
   z-index: 49;
-  background: var(--canvas-float-block-default);
-  border: 0.5px solid var(--stroke-secondary);
+/*  background: var(--canvas-float-block-default);*/
+ /* border: 0.5px solid var(--stroke-secondary);*/
   border-radius: var(--lv-border-radius-large);
-  box-shadow: var(--shadow-generator-float-block);
   overflow: hidden;
   pointer-events: auto;
 }

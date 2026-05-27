@@ -24,6 +24,7 @@ import { useWorkflowOrchestrator } from './composables/useWorkflowOrchestrator'
 import { useWorkflowPersistence } from './composables/useWorkflowPersistence'
 import { buildAgentWorkflowStrategy } from '@/config/agentSkills'
 import type { WorkflowDefinitionSummary } from './api/definitions'
+import { updateWorkflowDefinition } from './api/definitions'
 import type { WorkflowCanvasPosition, WorkflowIntentAnalysisResult } from './composables/workflow-orchestrator-types'
 
 // 节点组件
@@ -42,7 +43,6 @@ import CanvasDefaultEdge from '@/components/canvas/CanvasDefaultEdge.vue'
 
 // 画布壳（infinite-canvas → canana-vue 迁移产物）
 import CanvasContextMenu from '@/components/canvas/CanvasContextMenu.vue'
-import CanvasDockToolbar from '@/components/canvas/CanvasDockToolbar.vue'
 import CanvasZoomControls from '@/components/canvas/CanvasZoomControls.vue'
 import CanvasMiniMap from '@/components/canvas/CanvasMiniMap.vue'
 import CanvasConnectionLine from '@/components/canvas/CanvasConnectionLine.vue'
@@ -140,6 +140,10 @@ const autosaveErrorMessage = ref('')
 const autosaveReady = ref(false)
 const autosaveInFlight = ref<Promise<void> | null>(null)
 
+// 头部标题重命名
+const renamingTitle = ref(false)
+const renameTitleInput = ref('')
+
 interface WorkflowTemplateNode {
   id: string
   type: WorkflowNodeType
@@ -189,6 +193,46 @@ const autosaveStatusText = computed(() => {
 
   return currentWorkflowId.value ? '实时保存已开启' : '准备自动保存'
 })
+
+const startRenameTitle = () => {
+  renameTitleInput.value = currentWorkflowTitle.value
+  renamingTitle.value = true
+  nextTick(() => {
+    const el = document.querySelector<HTMLInputElement>('.wf-header-meta__title-input')
+    el?.focus()
+    el?.select()
+  })
+}
+
+const cancelRenameTitle = () => {
+  renamingTitle.value = false
+}
+
+const submitRenameTitle = async () => {
+  const nextTitle = renameTitleInput.value.trim()
+  if (!nextTitle) {
+    renamingTitle.value = false
+    return
+  }
+
+  // 未保存的新工作流：只改本地 name，后续保存/自动保存时带上
+  if (!currentWorkflowId.value) {
+    workflowName.value = nextTitle
+    renamingTitle.value = false
+    return
+  }
+
+  try {
+    const detail = await updateWorkflowDefinition(currentWorkflowId.value, { name: nextTitle })
+    currentWorkflowDetail.value = detail
+    workflowName.value = detail.definition.name
+  } catch (error) {
+    console.error('重命名工作流失败', error)
+    ElMessage.error('重命名失败，请稍后重试')
+  } finally {
+    renamingTitle.value = false
+  }
+}
 
 const buildComparableCanvasSnapshot = (input: {
   nodesJson: unknown
@@ -744,7 +788,7 @@ const onNodeDragStop = () => {
 }
 
 // === 选择 / 剪贴板 / 拖入 / 右键菜单 ===
-const { selectedNodeIds, selectedEdgeId, selectAll, deselectAll } = useCanvasSelection()
+const { selectAll } = useCanvasSelection()
 const { copySelected, pasteFromSlot, hasClipboard } = useCanvasClipboard()
 const { onDrop: onCanvasFileDrop, onDragOver: onCanvasFileDragOver } = useCanvasDrop()
 
@@ -994,22 +1038,9 @@ watch(currentCanvasSnapshot, () => {
           </VueFlow>
 
           <CanvasMiniMap :visible="isMiniMapOpen" />
-          <CanvasZoomControls :mini-map-open="isMiniMapOpen" @toggle-mini-map="toggleMiniMap" />
-          <CanvasDockToolbar
-            :selected-count="selectedCount"
-            :can-undo="canUndo"
-            :can-redo="canRedo"
-            @deselect="deselectAll"
-            @undo="undo"
-            @redo="redo"
-            @add-text="handleAddText"
-            @add-image="handleAddImage"
-            @add-video="handleAddVideo"
-            @add-config="handleAddConfig"
-            @upload="triggerFileUpload"
-            @open-asset-library="handleOpenAssetLibrary"
-            @open-my-assets="handleOpenMyAssets"
-            @delete="deleteSelected"
+          <CanvasZoomControls
+            :mini-map-open="isMiniMapOpen"
+            @toggle-mini-map="toggleMiniMap"
             @clear="clearCanvasWithConfirm"
           />
           <CanvasContextMenu
@@ -1040,7 +1071,24 @@ watch(currentCanvasSnapshot, () => {
 
           <div class="workflow-header-right">
             <div class="wf-header-meta">
-              <span class="wf-header-meta__title">{{ currentWorkflowTitle }}</span>
+              <input
+                v-if="renamingTitle"
+                v-model="renameTitleInput"
+                class="wf-header-meta__title wf-header-meta__title-input"
+                type="text"
+                maxlength="80"
+                @blur="submitRenameTitle"
+                @keyup.enter.prevent="submitRenameTitle"
+                @keyup.esc.prevent="cancelRenameTitle"
+              />
+              <span
+                v-else
+                class="wf-header-meta__title"
+                title="点击重命名工作流"
+                @click="startRenameTitle"
+              >
+                {{ currentWorkflowTitle }}
+              </span>
               <span class="wf-header-meta__status">{{ currentWorkflowStatusText }} · {{ autosaveStatusText }}</span>
             </div>
           </div>

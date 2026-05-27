@@ -889,7 +889,7 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
   let lastRecordAtForUpdate: Date | null = null
   try {
     created = await prisma.$transaction(async (tx) => {
-      const session = await resolveGenerationSessionForUser(tx, currentUserId, payload.sessionId)
+      const session = await resolveGenerationSessionForUser(tx, currentUserId, payload.sessionId, payload.source)
 
       const createdRecord = await tx.generationRecord.create({
         data: {
@@ -1154,7 +1154,7 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
         throw new Error('无权修改当前生成记录')
       }
 
-      const session = await resolveGenerationSessionForUser(tx, currentUserId, payload.sessionId || existingRecord.sessionId)
+      const session = await resolveGenerationSessionForUser(tx, currentUserId, payload.sessionId || existingRecord.sessionId, payload.source)
       const existingReferenceImages = Array.isArray((existingRecord.metaJson as any)?.referenceImages)
         ? (existingRecord.metaJson as any).referenceImages
         : []

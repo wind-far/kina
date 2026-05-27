@@ -489,6 +489,7 @@ model ObjectStorageConfig {
 model GenerationSession {
   id           String             @id @default(cuid()) @db.VarChar(36)
   userId       String             @map("user_id") @db.VarChar(36)
+  source       String             @default("generate") @db.VarChar(64)
   title        String             @db.VarChar(120)
   isDefault    Boolean            @default(false) @map("is_default")
   sortOrder    Int                @default(0) @map("sort_order")
@@ -500,6 +501,7 @@ model GenerationSession {
 
   @@index([userId, isDefault, updatedAt], map: "idx_generation_sessions_user_default_updated_at")
   @@index([userId, lastRecordAt], map: "idx_generation_sessions_user_last_record_at")
+  @@index([userId, source, lastRecordAt], map: "idx_generation_sessions_user_source_last_record_at")
   @@map("generation_sessions")
 }
 
@@ -585,6 +587,7 @@ model AssetItem {
   height             Int?
   durationSeconds    Int?               @map("duration_seconds")
   fileSizeBytes      BigInt?            @map("file_size_bytes")
+  mimeType           String?            @map("mime_type") @db.VarChar(128)
   promptText         String?            @map("prompt_text") @db.LongText
   modelLabel         String?            @map("model_label") @db.VarChar(100)
   aspectRatio        String?            @map("aspect_ratio") @db.VarChar(32)
@@ -633,32 +636,9 @@ model VideoProject {
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
   user                  AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  assets                VideoAsset[]
 
   @@index([userId, isDeleted, updatedAt], map: "idx_video_projects_user_updated_at")
   @@map("video_projects")
-}
-
-enum VideoAssetType {
-  VIDEO
-  AUDIO
-  IMAGE
-}
-
-/// 视频项目内引用的媒体素材表（占位，给阶段 3.5 素材库打通使用）。
-/// 本组只建表不写入；3.5 会让 MediaManager 写入并与 AssetItem 关联。
-model VideoAsset {
-  id           String         @id @default(cuid()) @db.VarChar(36)
-  projectId    String         @map("project_id") @db.VarChar(36)
-  assetType    VideoAssetType @map("asset_type")
-  storageKey   String         @map("storage_key") @db.VarChar(512)
-  metadataJson Json?          @map("metadata_json")
-  isDeleted    Boolean        @default(false) @map("is_deleted")
-  createdAt    DateTime       @default(now()) @map("created_at")
-  project      VideoProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@index([projectId, assetType], map: "idx_video_assets_project_type")
-  @@map("video_assets")
 }
 
 /// 资源收藏关系表。
@@ -1212,6 +1192,7 @@ enum OutputType {
 enum AssetType {
   IMAGE
   VIDEO
+  AUDIO
 }
 
 enum AssetVisibility {
@@ -1236,6 +1217,7 @@ enum AssetSource {
   GENERATED
   UPLOADED
   IMPORTED
+  EDITOR_UPLOAD
 }
 
 enum AgentRunStatus {

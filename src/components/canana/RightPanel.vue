@@ -3,7 +3,6 @@ import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import SidebarEmptyState from '@/components/canana/SidebarEmptyState.vue'
 import AssistantSessionList from '@/components/canvas/AssistantSessionList.vue'
-import { streamChatCompletions } from '@/api/chat'
 import {
   createGenerationTask,
   subscribeGenerationTaskEvents,
@@ -353,10 +352,8 @@ const runImageGeneration = async (prompt, refImages, aiMsg) => {
   }
 }
 
-// 调用流式对话 API（chunk 增量写入 aiMsg.content）
+// 调用流式对话 API（走 createGenerationTask({ type:'agent' }) + SSE 订阅，后端持久化 record，刷新可恢复）
 const runChatStream = async (prompt, aiMsg) => {
-  const controller = new AbortController()
-  registerStream(controller)
   try {
     const fallbackKey = getDefaultChatModelKey() || ''
     const { providerId, modelKey } = resolveGenerationTaskModel({
@@ -365,23 +362,67 @@ const runChatStream = async (prompt, aiMsg) => {
       category: 'CHAT',
       missingModelMessage: '未匹配到有效对话模型，请先在后台配置模型',
     })
-    const stream = streamChatCompletions(
-      {
+    const saved = await createGenerationTask({
+      source: ASSISTANT_SOURCE,
+      sessionId: activeSessionId.value || undefined,
+      type: 'agent',
+      prompt,
+      modelKey,
+      requestBody: {
         model: modelKey,
         providerId,
         messages: [{ role: 'user', content: prompt }],
         stream: true,
       },
-      controller.signal,
-    )
+    })
+
+    const taskId = String(saved?.id || '').trim()
+    if (!taskId) throw new Error('对话任务创建失败')
+
+    const controller = new AbortController()
+    registerStream(controller)
     aiMsg.content = ''
-    for await (const chunk of stream) {
-      if (chunk) {
-        aiMsg.content += chunk
-        scrollToBottom()
-      }
-    }
-    aiMsg.loading = false
+
+    await subscribeGenerationTaskEvents(taskId, {
+      signal: controller.signal,
+      onEvent: (event) => {
+        if (event.type === 'content_delta') {
+          if (typeof event.delta === 'string' && event.delta) {
+            aiMsg.content += event.delta
+            scrollToBottom()
+          } else if (typeof event.content === 'string') {
+            aiMsg.content = event.content
+            scrollToBottom()
+          }
+          return
+        }
+        if (event.type === 'snapshot') {
+          const snapshotContent = String(event.record?.content || '')
+          if (snapshotContent && snapshotContent.length > aiMsg.content.length) {
+            aiMsg.content = snapshotContent
+            scrollToBottom()
+          }
+          return
+        }
+        if (event.type === 'completed') {
+          const finalContent = String(event.record?.content || '')
+          if (finalContent) aiMsg.content = finalContent
+          aiMsg.loading = false
+          scrollToBottom()
+          return
+        }
+        if (event.type === 'failed') {
+          aiMsg.error = String(event.message || event.record?.error || '对话失败')
+          aiMsg.loading = false
+          scrollToBottom()
+          return
+        }
+        if (event.type === 'stopped') {
+          aiMsg.error = aiMsg.error || '任务已停止'
+          aiMsg.loading = false
+        }
+      },
+    })
   } catch (err) {
     if (err?.name === 'AbortError') return
     console.error('[RightPanel] chat stream failed', err)

@@ -122,6 +122,8 @@ const hoveredImageId = ref(null)
 
 // 最近一次发送时 ContentGenerator 选择的创建类型（image/agent/video...）
 const lastCreationType = ref('agent')
+// 最近一次 ContentGenerator 透传过来的图片生成参数（count/model/ratio/quality 等）
+const lastImageOptions = ref({})
 
 // 跟踪进行中的流式请求，用于卸载时统一 abort
 const activeStreams = []
@@ -284,7 +286,10 @@ const handleAddImageToCanvas = (url) => {
 // 调用图片生成 API（写入到指定 aiMsg.images）
 const runImageGeneration = async (prompt, refImages, aiMsg) => {
   try {
-    const fallbackKey = getDefaultImageModelKey() || ''
+    const opts = lastImageOptions.value || {}
+    // ContentGenerator 把张数放在 options.count，缺省给 1（与底部输入框的默认一致）
+    const count = Math.max(1, Math.min(8, Number(opts.count) || 1))
+    const fallbackKey = String(opts.modelKey || opts.model || '').trim() || getDefaultImageModelKey() || ''
     const { providerId, modelKey } = resolveGenerationTaskModel({
       modelKey: fallbackKey,
       fallbackModelKey: fallbackKey,
@@ -294,9 +299,15 @@ const runImageGeneration = async (prompt, refImages, aiMsg) => {
     const requestBody = {
       model: modelKey,
       prompt: prompt || '',
-      n: 4,
+      n: count,
       providerId,
     }
+    // 透传 size/quality（ContentGenerator 里 ratio 对应 size、resolution 对应 quality）
+    const sizeValue = String(opts.size || opts.ratio || '').trim()
+    if (sizeValue) requestBody.size = sizeValue
+    const qualityValue = String(opts.quality || opts.resolution || '').trim()
+    if (qualityValue) requestBody.quality = qualityValue
+
     const hasRef = Array.isArray(refImages) && refImages.length > 0
     const normalizedBody = hasRef
       ? appendImageReferencesToRequestBody(requestBody, refImages)
@@ -309,6 +320,8 @@ const runImageGeneration = async (prompt, refImages, aiMsg) => {
       requestMode: hasRef ? 'image-edit' : 'image-generation',
       prompt: prompt || '',
       modelKey,
+      ratio: sizeValue || undefined,
+      resolution: qualityValue || undefined,
       referenceImages: hasRef ? [...refImages] : [],
       requestBody: normalizedBody,
     })
@@ -504,6 +517,7 @@ const sendMessage = async () => {
 const handlePromptSend = (message, type, options) => {
   inputMessage.value = message
   lastCreationType.value = type || 'agent'
+  lastImageOptions.value = options && typeof options === 'object' ? options : {}
   uploadedImages.value = Array.isArray(options?.referenceImages)
     ? options.referenceImages.map((src, index) => ({
         id: Date.now() + index + Math.random(),

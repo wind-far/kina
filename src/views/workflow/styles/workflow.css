@@ -73,16 +73,33 @@
   color: var(--text-primary);
 }
 
-/* 右侧助手面板（复用 canana RightPanel，给一个固定宽度的 flex 子项） */
+/* 右侧助手面板（复用 canana RightPanel：fixed + translateX 动画） */
 .workflow-assistant-aside {
-  flex-shrink: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
   width: 440px;
-  height: 100%;
-  background: var(--canvas-bg-block-default);
-  border-left: 0.5px solid var(--stroke-secondary);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  background-color: var(--canvas-sidebar-bg);
+  border-left: 1px solid var(--stroke-secondary);
+  overflow-y: auto;
+  transform: translateX(100%);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 100;
+}
+.workflow-container.workflow-right-panel-open .workflow-assistant-aside {
+  transform: translateX(0);
+}
+
+/* 助手面板打开时，画布主区让出右侧 440 让 ContentGenerator 等浮层不被遮 */
+.workflow-container.workflow-right-panel-open .workflow-workbench {
+  padding-right: 440px;
+  transition: padding-right 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.workflow-workbench {
+  transition: padding-right 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ========== Vue Flow 画布覆盖样式 ========== */

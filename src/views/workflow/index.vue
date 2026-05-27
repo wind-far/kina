@@ -938,7 +938,7 @@ watch(currentCanvasSnapshot, () => {
 </script>
 
 <template>
-  <div class="workflow-container">
+  <div class="workflow-container" :class="{ 'workflow-right-panel-open': !isAssistantCollapsed }">
     <div class="workflow-workbench">
       <div class="workflow-main">
         <div
@@ -1286,11 +1286,8 @@ watch(currentCanvasSnapshot, () => {
         />
       </div>
 
-      <!-- 右侧助手面板（折叠时不显示），复用 canana 视图的 RightPanel -->
-      <aside
-        v-if="!isAssistantCollapsed"
-        class="workflow-assistant-aside"
-      >
+      <!-- 右侧助手面板（复用 canana 视图的 RightPanel）：fixed 定位 + translateX 动画 -->
+      <aside class="workflow-assistant-aside">
         <RightPanel
           :title="currentWorkflowTitle"
           :visible="!isAssistantCollapsed"

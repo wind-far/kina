@@ -1,7 +1,19 @@
 <script setup>
-import { ref, nextTick, watch, computed } from 'vue'
+import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import SidebarEmptyState from '@/components/canana/SidebarEmptyState.vue'
+import { streamChatCompletions } from '@/api/chat'
+import {
+  createGenerationTask,
+  subscribeGenerationTaskEvents,
+  resolveGenerationTaskModel,
+} from '@/api/generation-tasks'
+import {
+  loadPublicModelCatalog,
+  getDefaultImageModelKey,
+  getDefaultChatModelKey,
+} from '@/config/models'
+import { appendImageReferencesToRequestBody } from '@/shared/image-generation-request'
 
 const props = defineProps({
   title: { type: String, default: '' },
@@ -9,7 +21,7 @@ const props = defineProps({
   initialMessage: { type: String, default: '' }
 })
 
-const emit = defineEmits(['close', 'message-received'])
+const emit = defineEmits(['close', 'message-received', 'add-image-to-canvas'])
 
 // 是否有消息（用于决定显示空状态还是消息列表）
 const hasMessages = ref(false)
@@ -26,6 +38,30 @@ const uploadedImages = ref([])
 const fileInputRef = ref(null)
 const imagesExpanded = ref(false)
 const hoveredImageId = ref(null)
+
+// 最近一次发送时 ContentGenerator 选择的创建类型（image/agent/video...）
+const lastCreationType = ref('agent')
+
+// 跟踪进行中的流式请求，用于卸载时统一 abort
+const activeStreams = []
+
+const registerStream = (controller) => {
+  activeStreams.push(controller)
+}
+
+const cleanupStreams = () => {
+  while (activeStreams.length) {
+    const c = activeStreams.shift()
+    try { c?.abort() } catch { /* ignore */ }
+  }
+}
+
+onMounted(() => {
+  // 后台拉取模型清单（getDefault*ModelKey 依赖此调用）
+  void loadPublicModelCatalog()
+})
+
+onBeforeUnmount(cleanupStreams)
 
 const triggerUpload = () => {
   fileInputRef.value?.click()
@@ -65,73 +101,194 @@ const closePreview = () => {
   previewImage.value = null
 }
 
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    }
+  })
+}
+
+// 把 messages 数组里的最后一项以响应式代理形式取回，便于后续 mutation 触发 UI 更新
+const tailMessage = () => messages.value[messages.value.length - 1]
+
+const handleAddImageToCanvas = (url) => {
+  if (!url) return
+  emit('add-image-to-canvas', { url })
+}
+
+// 调用图片生成 API（写入到指定 aiMsg.images）
+const runImageGeneration = async (prompt, refImages, aiMsg) => {
+  try {
+    const fallbackKey = getDefaultImageModelKey() || ''
+    const { providerId, modelKey } = resolveGenerationTaskModel({
+      modelKey: fallbackKey,
+      fallbackModelKey: fallbackKey,
+      category: 'IMAGE',
+      missingModelMessage: '未匹配到有效图片模型，请先在后台配置模型',
+    })
+    const requestBody = {
+      model: modelKey,
+      prompt: prompt || '',
+      n: 4,
+      providerId,
+    }
+    const hasRef = Array.isArray(refImages) && refImages.length > 0
+    const normalizedBody = hasRef
+      ? appendImageReferencesToRequestBody(requestBody, refImages)
+      : requestBody
+
+    const saved = await createGenerationTask({
+      source: 'assistant-panel',
+      type: 'image',
+      requestMode: hasRef ? 'image-edit' : 'image-generation',
+      prompt: prompt || '',
+      modelKey,
+      referenceImages: hasRef ? [...refImages] : [],
+      requestBody: normalizedBody,
+    })
+
+    const taskId = String(saved?.id || '').trim()
+    if (!taskId) throw new Error('图片任务创建失败')
+
+    const controller = new AbortController()
+    registerStream(controller)
+
+    await subscribeGenerationTaskEvents(taskId, {
+      signal: controller.signal,
+      onEvent: (event) => {
+        if (event.type === 'snapshot' || event.type === 'completed') {
+          const urls = Array.isArray(event.record?.images)
+            ? event.record.images.filter(Boolean)
+            : []
+          if (urls.length) {
+            aiMsg.images = urls
+            aiMsg.totalCount = urls.length
+            aiMsg.loading = false
+            scrollToBottom()
+          }
+        }
+        if (event.type === 'failed') {
+          aiMsg.error = String(event.message || event.record?.error || '图片生成失败')
+          aiMsg.loading = false
+          scrollToBottom()
+        }
+        if (event.type === 'stopped') {
+          aiMsg.error = aiMsg.error || '任务已停止'
+          aiMsg.loading = false
+        }
+      },
+    })
+  } catch (err) {
+    console.error('[RightPanel] image generation failed', err)
+    aiMsg.error = err?.message || '图片生成失败'
+    aiMsg.loading = false
+    scrollToBottom()
+  }
+}
+
+// 调用流式对话 API（chunk 增量写入 aiMsg.content）
+const runChatStream = async (prompt, aiMsg) => {
+  const controller = new AbortController()
+  registerStream(controller)
+  try {
+    const fallbackKey = getDefaultChatModelKey() || ''
+    const { providerId, modelKey } = resolveGenerationTaskModel({
+      modelKey: fallbackKey,
+      fallbackModelKey: fallbackKey,
+      category: 'CHAT',
+      missingModelMessage: '未匹配到有效对话模型，请先在后台配置模型',
+    })
+    const stream = streamChatCompletions(
+      {
+        model: modelKey,
+        providerId,
+        messages: [{ role: 'user', content: prompt }],
+        stream: true,
+      },
+      controller.signal,
+    )
+    aiMsg.content = ''
+    for await (const chunk of stream) {
+      if (chunk) {
+        aiMsg.content += chunk
+        scrollToBottom()
+      }
+    }
+    aiMsg.loading = false
+  } catch (err) {
+    if (err?.name === 'AbortError') return
+    console.error('[RightPanel] chat stream failed', err)
+    aiMsg.error = err?.message || '对话失败'
+    aiMsg.loading = false
+    scrollToBottom()
+  }
+}
+
 // 发送消息
-const sendMessage = () => {
+const sendMessage = async () => {
   const content = inputMessage.value.trim()
   const hasImagesLocal = uploadedImages.value.length > 0
 
   if (!content && !hasImagesLocal) return
 
-  // 标记有消息
   hasMessages.value = true
 
-  // 添加用户消息
-  const newId = Date.now()
+  const userId = Date.now()
+  const refImages = uploadedImages.value.map(img => img.src)
 
   if (hasImagesLocal) {
-    // 带图片的消息
     messages.value.push({
-      id: newId,
+      id: userId,
       type: 'user-with-ref',
-      referenceImages: uploadedImages.value.map(img => img.src),
+      referenceImages: refImages,
       content: content || '请根据图片生成',
     })
   } else {
-    // 纯文本消息
     messages.value.push({
-      id: newId,
+      id: userId,
       type: 'user',
-      content
+      content,
     })
   }
 
   // 清空输入
   inputMessage.value = ''
   uploadedImages.value = []
+  scrollToBottom()
 
-  // 滚动到底部
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-  })
-
-  // 模拟AI回复（2秒后）
-  setTimeout(() => {
+  // 路由到对应模型 API：有参考图 / 显式选 image → 图片生成；否则走文本对话
+  const goImage = hasImagesLocal || lastCreationType.value === 'image'
+  if (goImage) {
     messages.value.push({
-      id: Date.now(),
+      id: userId + 1,
       type: 'ai-images',
-      summary: (content || '图片生成').slice(0, 10) + '...',
+      summary: (content || '图片生成').slice(0, 10) + (content.length > 10 ? '...' : ''),
       collapsed: false,
-      images: [
-        `https://picsum.photos/200/267?random=${Date.now()}`,
-        `https://picsum.photos/200/267?random=${Date.now() + 1}`,
-        `https://picsum.photos/200/267?random=${Date.now() + 2}`,
-        `https://picsum.photos/200/267?random=${Date.now() + 3}`,
-      ],
-      totalCount: 4
+      images: [],
+      totalCount: 0,
+      loading: true,
+      error: '',
     })
-    nextTick(() => {
-      if (messagesContainer.value) {
-        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-      }
+    scrollToBottom()
+    await runImageGeneration(content || '请根据参考图生成', refImages, tailMessage())
+  } else {
+    messages.value.push({
+      id: userId + 1,
+      type: 'ai-text',
+      content: '',
+      loading: true,
+      error: '',
     })
-  }, 2000)
+    scrollToBottom()
+    await runChatStream(content, tailMessage())
+  }
 }
 
 // 处理 ContentGenerator 发送事件
 const handlePromptSend = (message, type, options) => {
   inputMessage.value = message
+  lastCreationType.value = type || 'agent'
   uploadedImages.value = Array.isArray(options?.referenceImages)
     ? options.referenceImages.map((src, index) => ({
         id: Date.now() + index + Math.random(),
@@ -139,62 +296,41 @@ const handlePromptSend = (message, type, options) => {
         name: `reference-${index + 1}`,
       }))
     : []
-  sendMessage()
+  void sendMessage()
 }
 
 // 回车发送
 const handleKeydown = (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
-    sendMessage()
+    void sendMessage()
   }
 }
 
-// 监听从中间底部传来的消息
-watch(() => props.initialMessage, (newMessage) => {
-  if (newMessage && newMessage.trim()) {
-    // 标记有消息
-    hasMessages.value = true
+// 监听从中间底部传来的消息（画布触发的入口）：作为文本对话发起
+watch(() => props.initialMessage, async (newMessage) => {
+  if (!newMessage || !newMessage.trim()) return
 
-    // 添加用户消息
-    messages.value.push({
-      id: Date.now(),
-      type: 'user',
-      content: newMessage
-    })
+  hasMessages.value = true
+  const userId = Date.now()
+  messages.value.push({
+    id: userId,
+    type: 'user',
+    content: newMessage,
+  })
 
-    // 通知父组件消息已接收
-    emit('message-received')
+  emit('message-received')
+  scrollToBottom()
 
-    // 滚动到底部
-    nextTick(() => {
-      if (messagesContainer.value) {
-        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-      }
-    })
-
-    // 模拟AI回复
-    setTimeout(() => {
-      messages.value.push({
-        id: Date.now(),
-        type: 'ai-images',
-        summary: newMessage.slice(0, 10) + '...',
-        collapsed: false,
-        images: [
-          `https://picsum.photos/200/267?random=${Date.now()}`,
-          `https://picsum.photos/200/267?random=${Date.now() + 1}`,
-          `https://picsum.photos/200/267?random=${Date.now() + 2}`,
-          `https://picsum.photos/200/267?random=${Date.now() + 3}`,
-        ],
-        totalCount: 4
-      })
-      nextTick(() => {
-        if (messagesContainer.value) {
-          messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-        }
-      })
-    }, 2000)
-  }
+  messages.value.push({
+    id: userId + 1,
+    type: 'ai-text',
+    content: '',
+    loading: true,
+    error: '',
+  })
+  scrollToBottom()
+  await runChatStream(newMessage, tailMessage())
 })
 
 // 计算内容生成器高度（用于任务指示器定位）
@@ -271,10 +407,22 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
                   <path d="M21.01 7.982A1.2 1.2 0 0 1 21 9.679l-8.156 8.06a1.2 1.2 0 0 1-1.688 0L3 9.68a1.2 1.2 0 0 1 1.687-1.707L12 15.199l7.313-7.227a1.2 1.2 0 0 1 1.697.01Z" fill="currentColor"/>
                 </svg>
               </div>
+              <!-- 加载占位 -->
+              <div v-if="msg.loading && !msg.images.length" class="ai-images-loading">
+                <span class="ai-images-spinner" />
+                <span>图片生成中…</span>
+              </div>
+              <!-- 错误 -->
+              <div v-else-if="msg.error" class="ai-images-error">{{ msg.error }}</div>
               <!-- 图片网格 -->
-              <div class="images-row" v-show="!msg.collapsed">
+              <div v-else class="images-row" v-show="!msg.collapsed">
                 <div v-for="(img, idx) in msg.images" :key="idx" class="image-cell" @click="openPreview(img)">
                   <img :src="img" />
+                  <button class="image-cell-add" title="添加到画布" @click.stop="handleAddImageToCanvas(img)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                    </svg>
+                  </button>
                   <div v-if="idx === msg.images.length - 1 && msg.totalCount > msg.images.length" class="more-badge">
                     {{ msg.totalCount - msg.images.length }}+
                   </div>
@@ -302,6 +450,19 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- AI 文本流式回复 -->
+          <div v-else-if="msg.type === 'ai-text'" class="message-row ai">
+            <div class="ai-text-bubble">
+              <div v-if="msg.content" class="ai-text-content">{{ msg.content }}</div>
+              <div v-else-if="msg.loading" class="ai-text-typing">
+                <span class="ai-text-dot" />
+                <span class="ai-text-dot" />
+                <span class="ai-text-dot" />
+              </div>
+              <div v-if="msg.error" class="ai-text-error">{{ msg.error }}</div>
             </div>
           </div>
 
@@ -380,6 +541,93 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
 </template>
 
 <style scoped>
+/* AI 图片加载/错误态 */
+.ai-images-loading {
+  align-items: center;
+  color: var(--text-tertiary);
+  display: inline-flex;
+  font-size: 12px;
+  gap: 8px;
+  padding: 16px 0;
+}
+.ai-images-spinner {
+  animation: ai-spin 0.8s linear infinite;
+  border: 2px solid var(--stroke-secondary);
+  border-radius: 50%;
+  border-top-color: var(--brand-main-default);
+  display: inline-block;
+  height: 16px;
+  width: 16px;
+}
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+.ai-images-error {
+  color: #ef4444;
+  font-size: 12px;
+  padding: 12px 0;
+}
+
+/* 单图右上角"加入画布" + 按钮 */
+.image-cell {
+  position: relative;
+}
+.image-cell-add {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.55);
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  height: 22px;
+  justify-content: center;
+  opacity: 0;
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  width: 22px;
+}
+.image-cell:hover .image-cell-add { opacity: 1; }
+.image-cell-add:hover { transform: scale(1.08); }
+
+/* AI 文本流式回复气泡 */
+.message-row.ai > .ai-text-bubble {
+  background: var(--bg-block-secondary, rgba(255, 255, 255, 0.04));
+  border-radius: 16px;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 85%;
+  padding: 12px 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ai-text-error {
+  color: #ef4444;
+  font-size: 12px;
+  margin-top: 6px;
+}
+.ai-text-typing {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+.ai-text-dot {
+  animation: ai-typing 1s infinite ease-in-out;
+  background: var(--text-tertiary);
+  border-radius: 50%;
+  display: inline-block;
+  height: 6px;
+  width: 6px;
+}
+.ai-text-dot:nth-child(2) { animation-delay: 0.15s; }
+.ai-text-dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes ai-typing {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-2px); }
+}
+
 /* 用户消息（带参考图）：右对齐气泡 + 缩略图 */
 .message-row.user-with-ref-row {
   display: flex;

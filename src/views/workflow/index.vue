@@ -20,7 +20,6 @@ import {
   type WorkflowNodeType,
 } from './composables/useWorkflowCanvas'
 import { WORKFLOW_TEMPLATES } from './config/workflows'
-import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import { useWorkflowOrchestrator } from './composables/useWorkflowOrchestrator'
 import { useWorkflowPersistence } from './composables/useWorkflowPersistence'
 import { buildAgentWorkflowStrategy } from '@/config/agentSkills'
@@ -874,6 +873,13 @@ const handleOpenMyAssets = () => {
 const { isPanelCollapsed: isAssistantCollapsed, togglePanel: toggleAssistantPanel } = useChatSessions()
 const pendingAssistantMessage = ref('')
 
+// 助手生成的图片落到画布：在视口中心创建 image 节点
+const handleAssistantAddImage = ({ url }: { url: string }) => {
+  if (!url) return
+  const center = screenToFlowCoordinate({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+  addNode('image', center, { url, label: '助手生成' })
+}
+
 onMounted(() => {
   initSampleData()
   initHistory()
@@ -1277,13 +1283,13 @@ watch(currentCanvasSnapshot, () => {
           </div>
         </Transition>
 
-        <ContentGenerator
-          class="workflow-content-generator"
-          :collapsible="true"
-          :default-expanded="false"
-          popup-placement="top"
-          @send="handlePromptSend"
-        />
+<!--        <ContentGenerator-->
+<!--          class="workflow-content-generator"-->
+<!--          :collapsible="true"-->
+<!--          :default-expanded="false"-->
+<!--          popup-placement="top"-->
+<!--          @send="handlePromptSend"-->
+<!--        />-->
       </div>
 
       <!-- 右侧助手面板（复用 canana 视图的 RightPanel）：fixed 定位 + translateX 动画 -->
@@ -1294,6 +1300,7 @@ watch(currentCanvasSnapshot, () => {
           :initial-message="pendingAssistantMessage"
           @close="toggleAssistantPanel"
           @message-received="pendingAssistantMessage = ''"
+          @add-image-to-canvas="handleAssistantAddImage"
         />
       </aside>
 

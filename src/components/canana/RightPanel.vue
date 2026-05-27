@@ -142,21 +142,6 @@ const handlePromptSend = (message, type, options) => {
   sendMessage()
 }
 
-const getReferenceCardStyle = (index) => {
-  const rotateList = [-8, 6, -4, 3]
-  const offsetList = [
-    { x: 0, y: 10 },
-    { x: 30, y: 6 },
-    { x: 56, y: 10 },
-    { x: 80, y: 8 },
-  ]
-  const offset = offsetList[index] || { x: index * 22, y: 8 }
-  return {
-    transform: `translate(${offset.x}px, ${offset.y}px) rotate(${rotateList[index] ?? 0}deg)`,
-    zIndex: String(10 + index),
-  }
-}
-
 // 回车发送
 const handleKeydown = (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -320,28 +305,20 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
             </div>
           </div>
 
-          <!-- 用户消息（带参考图） -->
-          <div v-else-if="msg.type === 'user-with-ref'" class="message-row user-ref">
-            <div class="agent-user-reference-card">
-              <div class="agent-user-reference-card__stack">
+          <!-- 用户消息（带参考图）：右对齐气泡 + 图片缩略图 -->
+          <div v-else-if="msg.type === 'user-with-ref'" class="message-row user-with-ref-row">
+            <div class="user-with-ref-bubble">
+              <div v-if="msg.referenceImages?.length" class="user-with-ref-thumbs">
                 <div
-                  v-for="(imageSrc, index) in (msg.referenceImages || []).slice(0, 4)"
+                  v-for="(imageSrc, index) in msg.referenceImages"
                   :key="`${msg.id}-${index}`"
-                  class="agent-user-reference-card__image-frame"
-                  :style="getReferenceCardStyle(index)"
+                  class="user-with-ref-thumb"
+                  @click="openPreview(imageSrc)"
                 >
-                  <img :src="imageSrc" class="agent-user-reference-card__image" alt="参考图" @click="openPreview(imageSrc)">
+                  <img :src="imageSrc" alt="参考图" />
                 </div>
               </div>
-              <div class="agent-user-reference-card__bubble">
-                {{ msg.content }}
-              </div>
-              <button type="button" class="agent-user-reference-card__action" aria-label="编辑消息">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path d="M14.817 3.182a3.409 3.409 0 0 1 4.821 4.821l-8.954 8.954a1.5 1.5 0 0 1-.638.386l-3.214.964a.75.75 0 0 1-.932-.932l.964-3.214a1.5 1.5 0 0 1 .386-.638l8.954-8.954Zm3.76 1.06a1.909 1.909 0 0 0-2.699 0l-1.035 1.036 2.7 2.699 1.035-1.035a1.909 1.909 0 0 0 0-2.7Zm-2.095 4.795-2.7-2.699-5.47 5.47-.59 1.968 1.969-.59 5.47-5.47Z" fill="currentColor"/>
-                  <path d="M13 19.75a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1-.75-.75Z" fill="currentColor"/>
-                </svg>
-              </button>
+              <div v-if="msg.content" class="user-with-ref-text">{{ msg.content }}</div>
             </div>
           </div>
 
@@ -403,75 +380,51 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
 </template>
 
 <style scoped>
-.agent-user-reference-card {
-  align-items: center;
+/* 用户消息（带参考图）：右对齐气泡 + 缩略图 */
+.message-row.user-with-ref-row {
+  display: flex;
+  justify-content: flex-end;
+}
+.user-with-ref-bubble {
+  align-items: flex-end;
   display: flex;
   flex-direction: column;
-  margin: 8px 0 24px;
-  width: 100%;
+  gap: 6px;
+  max-width: 85%;
 }
-
-.agent-user-reference-card__stack {
-  height: 120px;
-  margin: 0 auto 18px;
-  position: relative;
-  width: 168px;
+.user-with-ref-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
 }
-
-.agent-user-reference-card__image-frame {
-  background: rgba(255, 255, 255, 0.06);
-  border: 2px solid rgba(255, 255, 255, 0.88);
+.user-with-ref-thumb {
+  background: var(--bg-block-secondary, rgba(255, 255, 255, 0.06));
   border-radius: 8px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  height: 88px;
-  left: 0;
-  overflow: hidden;
-  position: absolute;
-  top: 0;
-  width: 64px;
-}
-
-.agent-user-reference-card__image {
   cursor: pointer;
+  flex: 0 0 auto;
+  height: 72px;
+  overflow: hidden;
+  transition: transform 0.15s ease;
+  width: 72px;
+}
+.user-with-ref-thumb:hover {
+  transform: scale(1.03);
+}
+.user-with-ref-thumb img {
   display: block;
   height: 100%;
   object-fit: cover;
   width: 100%;
 }
-
-.agent-user-reference-card__bubble {
-  background: #1d1e27;
-  border-radius: 24px;
-  color: rgba(255, 255, 255, 0.96);
-  font-size: 18px;
-  font-weight: 400;
-  line-height: 1.45;
-  margin: 0 auto;
-  max-width: min(404px, calc(100% - 48px));
-  min-height: 72px;
-  padding: 20px 28px;
-  text-align: left;
+.user-with-ref-text {
+  background: var(--bg-block-primary-default);
+  border-radius: 16px;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 12px 16px;
   word-break: break-word;
-}
-
-.agent-user-reference-card__action {
-  align-items: center;
-  background: transparent;
-  border: none;
-  color: #7e8494;
-  cursor: pointer;
-  display: inline-flex;
-  height: 32px;
-  justify-content: center;
-  margin-top: 18px;
-  padding: 0;
-  transition: color 0.2s ease, transform 0.2s ease;
-  width: 32px;
-}
-
-.agent-user-reference-card__action:hover {
-  color: #aeb4c3;
-  transform: translateY(-1px);
 }
 
 /* 图片预览弹窗 */

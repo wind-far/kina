@@ -393,6 +393,8 @@ watch(content, async () => {
         :collapsible="false"
         :default-expanded="true"
         initial-creation-type="agent"
+        :hide-type-selector="true"
+        placeholder-override="描述润色诉求或想生成的文本内容，按 Enter 发送（AI 会基于当前内容润色）"
         popup-placement="top"
         @send="handlePromptSend"
       />

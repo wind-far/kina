@@ -481,6 +481,8 @@ const handlePromptSend = async (
         :collapsible="false"
         :default-expanded="true"
         initial-creation-type="image"
+        :hide-type-selector="true"
+        placeholder-override="描述你想生成的图片内容，使用上游节点的图作为参考"
         popup-placement="top"
         @send="handlePromptSend"
       />

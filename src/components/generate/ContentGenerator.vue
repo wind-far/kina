@@ -41,6 +41,10 @@ interface Props {
   initialCreationType?: CreationType
   /** 展示变体：首页可使用差异化按钮样式 */
   variant?: SurfaceVariant
+  /** 隐藏顶部创作类型切换器（节点下方场景常用：节点已锁定类型，不允许切换） */
+  hideTypeSelector?: boolean
+  /** 自定义输入框 placeholder，覆盖按类型推断的默认文案 */
+  placeholderOverride?: string
 }
 
 interface GeneratorSendOptions {
@@ -97,7 +101,9 @@ const props = withDefaults(defineProps<Props>(), {
   externalPrompt: undefined,
   promptSyncKey: undefined,
   initialCreationType: undefined,
-  variant: 'home'
+  variant: 'home',
+  hideTypeSelector: false,
+  placeholderOverride: '',
 })
 
 // 事件定义
@@ -434,6 +440,9 @@ defineExpose({
 
 // 根据创作类型返回不同的 placeholder
 const placeholder = computed(() => {
+  // 外部强制覆盖（节点下方等场景）优先级最高
+  const overrideText = String(props.placeholderOverride || '').trim()
+  if (overrideText) return overrideText
   const configuredPlaceholder = String(inputSettings.value?.placeholder || '').trim()
   if (isCollapsed.value) {
     return configuredPlaceholder || '说说今天想做点什么'
@@ -1136,7 +1145,7 @@ onUnmounted(() => {
             <template v-if="isCollapsed && !isSidebar">
               <!-- 类型选择器 -->
               <TypeSelector
-                v-if="conversationEntrySettings.mode.enabled"
+                v-if="conversationEntrySettings.mode.enabled && !hideTypeSelector"
                 ref="typeSelectorRef"
                 v-model="currentType"
                 :options="availableModeOptions"
@@ -1168,7 +1177,7 @@ onUnmounted(() => {
             <template v-else>
               <!-- 类型选择器（侧边栏模式使用紧凑模式） -->
               <TypeSelector
-                v-if="conversationEntrySettings.mode.enabled"
+                v-if="conversationEntrySettings.mode.enabled && !hideTypeSelector"
                 ref="typeSelectorExpandRef"
                 v-model="currentType"
                 :options="availableModeOptions"

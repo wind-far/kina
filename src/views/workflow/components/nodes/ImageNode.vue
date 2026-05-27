@@ -879,16 +879,18 @@ const handlePromptSend = async (
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background: rgba(30, 30, 30, 0.9);
+  background: var(--canvas-float-block-default, rgba(30, 30, 30, 0.9));
   border: 1px solid var(--stroke-secondary);
   border-radius: 8px;
   color: var(--text-primary);
   font-size: 13px;
   cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   transition: background-color 0.2s, border-color 0.2s, color 0.2s;
 }
 .image-node-replace-btn:hover {
-  background: rgba(50, 50, 50, 0.95);
+  background: var(--canvas-float-block-hover, var(--bg-block-primary-hover, rgba(50, 50, 50, 0.95)));
   border-color: var(--brand-main-default);
   color: var(--brand-main-default);
 }

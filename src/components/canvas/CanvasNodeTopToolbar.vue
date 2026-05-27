@@ -91,11 +91,11 @@ defineProps<{
   align-items: center;
   gap: 2px;
   padding: 6px 12px;
-  background: rgba(38, 38, 38, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--canvas-float-block-default, rgba(38, 38, 38, 0.8));
+  border: 1px solid var(--stroke-secondary, rgba(255, 255, 255, 0.08));
   border-radius: 26px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  color: #ccc;
+  box-shadow: var(--shadow-generator-float-block, 0 4px 12px rgba(0, 0, 0, 0.5));
+  color: var(--text-secondary, #ccc);
   z-index: 50;
   pointer-events: auto;
   white-space: nowrap;
@@ -111,15 +111,15 @@ defineProps<{
   background: transparent;
   border: 0;
   border-radius: 8px;
-  color: #ccc;
+  color: var(--text-secondary, #ccc);
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
   transition: background-color 0.15s, color 0.15s;
 }
 .canvas-node-top-toolbar__btn:hover:not(.is-disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: var(--bg-block-primary-hover, rgba(255, 255, 255, 0.08));
+  color: var(--text-primary, #fff);
 }
 .canvas-node-top-toolbar__btn.is-icon-only {
   padding: 6px;
@@ -158,7 +158,7 @@ defineProps<{
 .canvas-node-top-toolbar__divider {
   width: 1px;
   height: 20px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--stroke-tertiary, rgba(255, 255, 255, 0.1));
   margin: 0 6px;
 }
 

@@ -47,7 +47,7 @@ import CanvasDockToolbar from '@/components/canvas/CanvasDockToolbar.vue'
 import CanvasZoomControls from '@/components/canvas/CanvasZoomControls.vue'
 import CanvasMiniMap from '@/components/canvas/CanvasMiniMap.vue'
 import CanvasConnectionLine from '@/components/canvas/CanvasConnectionLine.vue'
-import CanvasAssistantPanel from '@/components/canvas/CanvasAssistantPanel.vue'
+import RightPanel from '@components/canana/RightPanel.vue'
 import { useChatSessions } from '@/composables/useChatSessions'
 import { useCanvasSelection } from '@/composables/useCanvasSelection'
 import { useCanvasClipboard } from '@/composables/useCanvasClipboard'
@@ -870,8 +870,9 @@ const handleOpenMyAssets = () => {
   ElMessage.info('我的素材接入待后续完善')
 }
 
-// 助手面板
+// 助手面板（复用 canana 视图的 RightPanel）
 const { isPanelCollapsed: isAssistantCollapsed, togglePanel: toggleAssistantPanel } = useChatSessions()
+const pendingAssistantMessage = ref('')
 
 onMounted(() => {
   initSampleData()
@@ -1285,8 +1286,19 @@ watch(currentCanvasSnapshot, () => {
         />
       </div>
 
-      <!-- 右侧助手面板（折叠时不显示） -->
-      <CanvasAssistantPanel />
+      <!-- 右侧助手面板（折叠时不显示），复用 canana 视图的 RightPanel -->
+      <aside
+        v-if="!isAssistantCollapsed"
+        class="workflow-assistant-aside"
+      >
+        <RightPanel
+          :title="currentWorkflowTitle"
+          :visible="!isAssistantCollapsed"
+          :initial-message="pendingAssistantMessage"
+          @close="toggleAssistantPanel"
+          @message-received="pendingAssistantMessage = ''"
+        />
+      </aside>
 
       <!-- 折叠态下的展开把手 -->
       <button

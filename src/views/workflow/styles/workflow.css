@@ -73,6 +73,18 @@
   color: var(--text-primary);
 }
 
+/* 右侧助手面板（复用 canana RightPanel，给一个固定宽度的 flex 子项） */
+.workflow-assistant-aside {
+  flex-shrink: 0;
+  width: 440px;
+  height: 100%;
+  background: var(--canvas-bg-block-default);
+  border-left: 0.5px solid var(--stroke-secondary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* ========== Vue Flow 画布覆盖样式 ========== */
 
 /* 画布外层壳：承担 dragover/drop + 浮层 absolute 定位基准；填满 .workflow-main 剩余高度 */

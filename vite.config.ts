@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -62,7 +62,12 @@ const createMockAgentRawPlugin = () => ({
 })
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // 与 canana-vue 一致：开发态 /uploads 同源代理到后端，避免跨域只能打开链接。
+  const env = loadEnv(mode, process.cwd(), '')
+  const apiProxyTarget = String(env.VITE_API_BASE_URL || 'http://localhost:5409').replace(/\/+$/, '')
+
+  return {
   plugins: [
     // Vue 插件仅处理 .vue 文件，避免与 React JSX 互扰
     vue({ include: [/\.vue$/] }),
@@ -96,8 +101,12 @@ export default defineConfig({
     host: '0.0.0.0',      // 允许外部访问
     open: true,           // 启动时自动打开浏览器
 
-    // 保留示例代理，便于接第三方接口调试。
+    // 开发环境：/uploads 走 API 同源代理；/api 不走代理（前端用 VITE_API_BASE_URL 直连后端）。
     proxy: {
+      '/uploads': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
       '/jimeng-api': {
         target: 'https://api.jimeng.jianying.com',
         changeOrigin: true,
@@ -192,4 +201,5 @@ export default defineConfig({
     // 块大小警告限制（KB）
     chunkSizeWarningLimit: 500,
   },
+  }
 })

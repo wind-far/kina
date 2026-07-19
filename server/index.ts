@@ -62,6 +62,8 @@ const UPLOADS_PUBLIC_PATH_PREFIX = '/uploads/'
 const DEFAULT_CORS_ALLOWED_ORIGINS = [
   'http://localhost:5010',
   'http://127.0.0.1:5010',
+  'http://localhost:5011',
+  'http://127.0.0.1:5011',
   'http://localhost:4173',
   'http://127.0.0.1:4173',
 ]

@@ -29,6 +29,11 @@ export const adminNavGroups: AdminNavGroup[] = [
         description: '管理图片、视频与发布状态',
       },
       {
+        label: '视频项目',
+        path: '/admin/video-projects',
+        description: '查看与管理用户的视频编辑器工程',
+      },
+      {
         label: '营销中心',
         path: '/admin/marketing',
         description: '管理会员订阅、积分充值与奖励活动',

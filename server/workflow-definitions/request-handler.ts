@@ -10,6 +10,7 @@ import {
   getWorkflowDefinitionDetail,
   listWorkflowDefinitions,
   publishWorkflowDefinition,
+  rollbackWorkflowDefinitionVersion,
   updateWorkflowDefinition,
 } from './service'
 import {
@@ -17,6 +18,7 @@ import {
   sendWorkflowDefinitionError,
   type WorkflowDefinitionCreatePayload,
   type WorkflowDefinitionPublishPayload,
+  type WorkflowDefinitionRollbackPayload,
   type WorkflowDefinitionUpdatePayload,
   type WorkflowDefinitionVersionPayload,
 } from './shared'
@@ -65,6 +67,18 @@ const matchWorkflowDraftPath = (requestPath: string) => {
   }
 }
 
+const matchWorkflowRollbackPath = (requestPath: string) => {
+  const matched = requestPath.match(/^\/api\/workflows\/([^/]+)\/versions\/([^/]+)\/rollback$/)
+  if (!matched) {
+    return null
+  }
+
+  return {
+    workflowId: decodeURIComponent(matched[1]),
+    versionId: decodeURIComponent(matched[2]),
+  }
+}
+
 // 处理工作流定义与版本相关请求。
 export const handleWorkflowDefinitionsRequest = async (req: any, res: any) => {
   try {
@@ -84,6 +98,7 @@ export const handleWorkflowDefinitionsRequest = async (req: any, res: any) => {
     const workflowVersionsMatch = matchWorkflowVersionsPath(requestPath)
     const workflowPublishMatch = matchWorkflowPublishPath(requestPath)
     const workflowDraftMatch = matchWorkflowDraftPath(requestPath)
+    const workflowRollbackMatch = matchWorkflowRollbackPath(requestPath)
 
     if (req.method === 'GET' && requestPath === WORKFLOW_DEFINITIONS_BASE_PATH) {
       const data = await listWorkflowDefinitions({
@@ -142,6 +157,18 @@ export const handleWorkflowDefinitionsRequest = async (req: any, res: any) => {
       return
     }
 
+    if (req.method === 'POST' && workflowRollbackMatch) {
+      const payload = await readWorkflowDefinitionBody<WorkflowDefinitionRollbackPayload>(req)
+      const data = await rollbackWorkflowDefinitionVersion(
+        workflowRollbackMatch.workflowId,
+        workflowRollbackMatch.versionId,
+        payload,
+        { currentUserId: currentUser.id },
+      )
+      sendJson(res, 200, { data, message: '已回滚为新的草稿版本' })
+      return
+    }
+
     if (req.method === 'PUT' && workflowDraftMatch) {
       const payload = await readWorkflowDefinitionBody<WorkflowDefinitionVersionPayload>(req)
       const data = await autosaveWorkflowDefinitionDraft(workflowDraftMatch.workflowId, payload, {
@@ -162,6 +189,11 @@ export const handleWorkflowDefinitionsRequest = async (req: any, res: any) => {
 
     sendWorkflowDefinitionError(res, 405, 'Method Not Allowed')
   } catch (error: any) {
-    sendWorkflowDefinitionError(res, 500, error?.message || '处理工作流请求失败')
+    sendWorkflowDefinitionError(
+      res,
+      Number(error?.status || 500),
+      error?.message || '处理工作流请求失败',
+      error?.type || 'workflow_definition_error',
+    )
   }
 }

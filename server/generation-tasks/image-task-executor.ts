@@ -86,6 +86,7 @@ export const executeImageTask = async (
     ...(payload.requestBody || {}),
     model: modelKey,
   }
+  delete (requestBody as Record<string, unknown>).__workflowExecutionId
 
   context.logGenerationTask('image_task:request_start', {
     recordId: task.recordId,

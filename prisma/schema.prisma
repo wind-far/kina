@@ -14,39 +14,40 @@ enum UserRole {
 /// 第一版用户表。
 /// 作为登录、资源、生成、配置等模块的统一用户实体。
 model AppUser {
-  id                 String                 @id @default(cuid()) @db.VarChar(36)
-  username           String?                @unique(map: "uk_app_users_username") @db.VarChar(100)
-  passwordHash       String?                @map("password_hash") @db.VarChar(255)
-  name               String?                @db.VarChar(100)
-  avatarUrl          String?                @map("avatar_url") @db.Text
-  email              String?                @unique(map: "uk_app_users_email") @db.VarChar(191)
-  phone              String?                @unique(map: "uk_app_users_phone") @db.VarChar(32)
-  role               UserRole               @default(USER)
-  status             UserStatus             @default(ANONYMOUS)
-  createdAt          DateTime               @default(now()) @map("created_at")
-  updatedAt          DateTime               @updatedAt @map("updated_at")
-  verificationCodes  AuthVerificationCode[]
-  authIdentities     AppUserAuthIdentity[]
-  sessions           AppSession[]
-  authMethodConfigs  AuthMethodConfig[]
-  providerConfigs    AiProviderConfig[]
-  storageConfigs     ObjectStorageConfig[]
-  generationSessions GenerationSession[]
-  generationRecords  GenerationRecord[]
-  agentRuns          AgentRun[]
-  assets             AssetItem[]
-  assetFavorites     AssetFavorite[]
-  membershipOrders   MembershipOrder[]
-  subscriptions      UserSubscription[]
-  rechargeOrders     RechargeOrder[]
-  pointAccountLogs   PointAccountLog[]
-  rewardClaimRecords RewardClaimRecord[]
-  checkinRecords     UserCheckinRecord[]
-  usedCardCodes      CardCode[]             @relation("CardCodeUsedByUser")
-  cardRedeemRecords  CardRedeemRecord[]
+  id                         String                      @id @default(cuid()) @db.VarChar(36)
+  username                   String?                     @unique(map: "uk_app_users_username") @db.VarChar(100)
+  passwordHash               String?                     @map("password_hash") @db.VarChar(255)
+  name                       String?                     @db.VarChar(100)
+  avatarUrl                  String?                     @map("avatar_url") @db.Text
+  email                      String?                     @unique(map: "uk_app_users_email") @db.VarChar(191)
+  phone                      String?                     @unique(map: "uk_app_users_phone") @db.VarChar(32)
+  role                       UserRole                    @default(USER)
+  status                     UserStatus                  @default(ANONYMOUS)
+  createdAt                  DateTime                    @default(now()) @map("created_at")
+  updatedAt                  DateTime                    @updatedAt @map("updated_at")
+  verificationCodes          AuthVerificationCode[]
+  authIdentities             AppUserAuthIdentity[]
+  sessions                   AppSession[]
+  authMethodConfigs          AuthMethodConfig[]
+  providerConfigs            AiProviderConfig[]
+  storageConfigs             ObjectStorageConfig[]
+  generationSessions         GenerationSession[]
+  generationRecords          GenerationRecord[]
+  agentRuns                  AgentRun[]
+  assets                     AssetItem[]
+  assetFavorites             AssetFavorite[]
+  membershipOrders           MembershipOrder[]
+  subscriptions              UserSubscription[]
+  rechargeOrders             RechargeOrder[]
+  pointAccountLogs           PointAccountLog[]
+  rewardClaimRecords         RewardClaimRecord[]
+  checkinRecords             UserCheckinRecord[]
+  usedCardCodes              CardCode[]                  @relation("CardCodeUsedByUser")
+  cardRedeemRecords          CardRedeemRecord[]
   workflowDefinitions        WorkflowDefinition[]
   workflowDefinitionVersions WorkflowDefinitionVersion[]
-  videoProjects      VideoProject[]
+  workflowRuns               WorkflowRun[]
+  videoProjects              VideoProject[]
 
   @@map("app_users")
 }
@@ -399,26 +400,27 @@ model AiSkillStageTemplate {
 /// 工作流定义主表。
 /// 用于保存可视化工作流的基础信息、当前版本与归属信息。
 model WorkflowDefinition {
-  id              String                    @id @default(cuid()) @db.VarChar(36)
-  userId          String?                   @map("user_id") @db.VarChar(36)
-  code            String                    @unique(map: "uk_workflow_definitions_code") @db.VarChar(100)
-  name            String                    @db.VarChar(100)
-  description     String?                   @db.VarChar(255)
-  category        String?                   @db.VarChar(50)
-  scene           WorkflowScene             @default(WORKFLOW_CANVAS)
-  sourceType      WorkflowSourceType        @default(VISUAL) @map("source_type")
-  status          WorkflowDefinitionStatus  @default(DRAFT)
-  currentVersionId String?                  @map("current_version_id") @db.VarChar(36)
-  latestVersionNo Int                       @default(0) @map("latest_version_no")
-  isBuiltIn       Boolean                   @default(false) @map("is_built_in")
-  isEnabled       Boolean                   @default(true) @map("is_enabled")
-  sortOrder       Int                       @default(0) @map("sort_order")
-  tagsJson        Json?                     @map("tags_json")
-  createdAt       DateTime                  @default(now()) @map("created_at")
-  updatedAt       DateTime                  @updatedAt @map("updated_at")
-  user            AppUser?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
-  currentVersion  WorkflowDefinitionVersion? @relation("WorkflowDefinitionCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  versions        WorkflowDefinitionVersion[] @relation("WorkflowDefinitionVersions")
+  id               String                      @id @default(cuid()) @db.VarChar(36)
+  userId           String?                     @map("user_id") @db.VarChar(36)
+  code             String                      @unique(map: "uk_workflow_definitions_code") @db.VarChar(100)
+  name             String                      @db.VarChar(100)
+  description      String?                     @db.VarChar(255)
+  category         String?                     @db.VarChar(50)
+  scene            WorkflowScene               @default(WORKFLOW_CANVAS)
+  sourceType       WorkflowSourceType          @default(VISUAL) @map("source_type")
+  status           WorkflowDefinitionStatus    @default(DRAFT)
+  currentVersionId String?                     @map("current_version_id") @db.VarChar(36)
+  latestVersionNo  Int                         @default(0) @map("latest_version_no")
+  isBuiltIn        Boolean                     @default(false) @map("is_built_in")
+  isEnabled        Boolean                     @default(true) @map("is_enabled")
+  sortOrder        Int                         @default(0) @map("sort_order")
+  tagsJson         Json?                       @map("tags_json")
+  createdAt        DateTime                    @default(now()) @map("created_at")
+  updatedAt        DateTime                    @updatedAt @map("updated_at")
+  user             AppUser?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  currentVersion   WorkflowDefinitionVersion?  @relation("WorkflowDefinitionCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  versions         WorkflowDefinitionVersion[] @relation("WorkflowDefinitionVersions")
+  runs             WorkflowRun[]
 
   @@index([userId, scene, status], map: "idx_workflow_definitions_user_scene_status")
   @@index([isEnabled, sortOrder], map: "idx_workflow_definitions_enabled_sort")
@@ -448,10 +450,67 @@ model WorkflowDefinitionVersion {
   workflow          WorkflowDefinition    @relation("WorkflowDefinitionVersions", fields: [workflowId], references: [id], onDelete: Cascade)
   creator           AppUser?              @relation(fields: [createdBy], references: [id], onDelete: SetNull)
   currentOf         WorkflowDefinition[]  @relation("WorkflowDefinitionCurrentVersion")
+  runs              WorkflowRun[]
 
   @@unique([workflowId, versionNo], map: "uk_workflow_definition_versions_workflow_version")
   @@index([workflowId, status, createdAt], map: "idx_workflow_definition_versions_workflow_status_created_at")
   @@map("workflow_definition_versions")
+}
+
+/// 工作流运行实例。
+/// 支持浏览器兼容执行器与数据库驱动的服务端执行器，运行生命周期和结果统一持久化。
+model WorkflowRun {
+  id                String                    @id @default(cuid()) @db.VarChar(36)
+  workflowId        String                    @map("workflow_id") @db.VarChar(36)
+  workflowVersionId String                    @map("workflow_version_id") @db.VarChar(36)
+  userId            String                    @map("user_id") @db.VarChar(36)
+  status            WorkflowRunStatus         @default(PENDING)
+  executor          String                    @default("BROWSER") @db.VarChar(32)
+  totalNodes        Int                       @default(0) @map("total_nodes")
+  completedNodes    Int                       @default(0) @map("completed_nodes")
+  currentNodeId     String?                   @map("current_node_id") @db.VarChar(191)
+  errorMessage      String?                   @map("error_message") @db.LongText
+  resultJson        Json?                     @map("result_json")
+  heartbeatAt       DateTime?                 @map("heartbeat_at")
+  stopRequestedAt   DateTime?                 @map("stop_requested_at")
+  startedAt         DateTime?                 @map("started_at")
+  finishedAt        DateTime?                 @map("finished_at")
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
+  workflow          WorkflowDefinition        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  workflowVersion   WorkflowDefinitionVersion @relation(fields: [workflowVersionId], references: [id], onDelete: Restrict)
+  user              AppUser                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nodeRuns          WorkflowNodeRun[]
+
+  @@index([workflowId, createdAt], map: "idx_workflow_runs_workflow_created_at")
+  @@index([userId, status, createdAt], map: "idx_workflow_runs_user_status_created_at")
+  @@index([status, heartbeatAt], map: "idx_workflow_runs_status_heartbeat_at")
+  @@map("workflow_runs")
+}
+
+/// 工作流单节点运行记录。
+model WorkflowNodeRun {
+  id                 String                @id @default(cuid()) @db.VarChar(36)
+  workflowRunId      String                @map("workflow_run_id") @db.VarChar(36)
+  generationRecordId String?               @map("generation_record_id") @db.VarChar(36)
+  nodeId             String                @map("node_id") @db.VarChar(191)
+  nodeType           String                @map("node_type") @db.VarChar(50)
+  label              String?               @db.VarChar(191)
+  status             WorkflowNodeRunStatus @default(PENDING)
+  sortOrder          Int                   @default(0) @map("sort_order")
+  outputJson         Json?                 @map("output_json")
+  errorMessage       String?               @map("error_message") @db.LongText
+  startedAt          DateTime?             @map("started_at")
+  finishedAt         DateTime?             @map("finished_at")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  workflowRun        WorkflowRun           @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  generationRecord   GenerationRecord?     @relation(fields: [generationRecordId], references: [id], onDelete: SetNull)
+
+  @@unique([workflowRunId, nodeId], map: "uk_workflow_node_runs_run_node")
+  @@index([workflowRunId, sortOrder], map: "idx_workflow_node_runs_run_sort")
+  @@index([generationRecordId], map: "idx_workflow_node_runs_generation_record")
+  @@map("workflow_node_runs")
 }
 
 /// 对象存储配置表。
@@ -537,6 +596,7 @@ model GenerationRecord {
   outputs          GenerationOutput[]
   assets           AssetItem[]
   agentRun         AgentRun?
+  workflowNodeRuns WorkflowNodeRun[]
 
   @@index([userId, createdAt], map: "idx_generation_records_user_created_at")
   @@index([sessionId, createdAt], map: "idx_generation_records_session_created_at")
@@ -1144,6 +1204,7 @@ enum AiSkillPromptScene {
 
 enum WorkflowScene {
   WORKFLOW_CANVAS
+  INFINITE_CANVAS
   AGENT_WORKSPACE
   GENERATION_PIPELINE
 }
@@ -1164,6 +1225,23 @@ enum WorkflowVersionStatus {
   DRAFT
   PUBLISHED
   DEPRECATED
+}
+
+enum WorkflowRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  INTERRUPTED
+}
+
+enum WorkflowNodeRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
 }
 
 enum GenerationType {

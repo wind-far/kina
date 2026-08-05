@@ -2,18 +2,22 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import {
   useViewport,
-  useGridLayout,
   useCanvasState,
-  useDragSort,
   useImageResize,
   useHistory,
   usePointerEvents,
   useShortcut
 } from '@/composables'
+import { useFreeCanvasDrag } from '@/composables/useFreeCanvasDrag'
+import {
+  getInfiniteCanvasBounds,
+  getLegacyCanvasPosition,
+  normalizeInfiniteCanvasImages,
+} from '@/shared/infinite-canvas-layout'
 
 const props = defineProps({
   zoom: { type: Number, default: 100 },
-  // 网格配置
+  // 新图片的默认尺寸与旧版网格迁移参数
   gridCols: { type: Number, default: 4 },
   cellWidth: { type: Number, default: 1728 },
   cellHeight: { type: Number, default: 2304 },
@@ -24,84 +28,50 @@ const props = defineProps({
   maxZoom: { type: Number, default: 200 }
 })
 
-const emit = defineEmits(['zoom-change', 'selection-change'])
+const emit = defineEmits(['zoom-change', 'selection-change', 'snapshot-change'])
 
 // ============ 数据 ============
 const containerRef = ref(null)
 
 const images = ref([])
-
-// 模拟数据
-const mockImages = [
-  { id: 1, src: 'https://picsum.photos/seed/a1/1728/2304', w: 1728, h: 2304 },
-  { id: 2, src: 'https://picsum.photos/seed/a2/1728/2304', w: 1728, h: 2304 },
-  { id: 3, src: 'https://picsum.photos/seed/a3/1728/2304', w: 1728, h: 2304 },
-  { id: 4, src: 'https://picsum.photos/seed/a4/1728/2304', w: 1728, h: 2304 },
-  { id: 5, src: 'https://picsum.photos/seed/a5/1728/2304', w: 1728, h: 2304 },
-  { id: 6, src: 'https://picsum.photos/seed/a6/1728/2304', w: 1728, h: 2304 },
-  { id: 7, src: 'https://picsum.photos/seed/a7/1728/2304', w: 1728, h: 2304 },
-  { id: 8, src: 'https://picsum.photos/seed/a8/1728/2304', w: 1728, h: 2304 },
-  { id: 9, src: 'https://picsum.photos/seed/a9/1728/2304', w: 1728, h: 2304 },
-  { id: 10, src: 'https://picsum.photos/seed/a10/1728/2304', w: 1728, h: 2304 },
-  { id: 11, src: 'https://picsum.photos/seed/a11/1728/2304', w: 1728, h: 2304 },
-  { id: 12, src: 'https://picsum.photos/seed/a12/1728/2304', w: 1728, h: 2304 },
-]
-
-let mockIndex = 0
-let generating = false
-
-// 模拟生成图片（逐个添加）
-async function generateImages() {
-  if (generating || mockIndex >= mockImages.length) return
-  generating = true
-
-  // 每次生成 4 张
-  const count = Math.min(4, mockImages.length - mockIndex)
-
-  for (let i = 0; i < count; i++) {
-    await new Promise(r => setTimeout(r, 300 + Math.random() * 200))
-    const img = mockImages[mockIndex]
-    images.value.push({ ...img, index: mockIndex })
-    mockIndex++
-  }
-
-  // 生成后居中显示
-  setTimeout(() => {
-    if (containerRef.value) {
-      const rect = containerRef.value.getBoundingClientRect()
-      viewport.centerContent(gridLayout.frameWidth.value, gridLayout.frameHeight.value, rect)
-    }
-  }, 100)
-
-  generating = false
-}
+let suppressSnapshotEmit = false
+let hasRestoredSnapshot = false
+let snapshotEmitTimer = null
 
 // 添加外部图片（从资产选择器选择的图片）
 async function addImages(assetItems) {
   if (!assetItems || assetItems.length === 0) return
 
-  const startIndex = images.value.length
-
   for (let i = 0; i < assetItems.length; i++) {
     const asset = assetItems[i]
     // 加载图片获取实际尺寸
-    const imgSize = await getImageSize(asset.url)
+    const url = String(asset.url || asset.fileUrl || asset.previewUrl || '').trim()
+    if (!url) continue
+    const imgSize = asset.width && asset.height
+      ? { width: Number(asset.width), height: Number(asset.height) }
+      : await getImageSize(url)
 
+    const index = images.value.length
+    const position = getLegacyCanvasPosition(index)
     images.value.push({
-      id: `asset-${Date.now()}-${i}`,
-      src: asset.url,
+      id: `asset-${asset.id || Date.now()}-${i}`,
+      src: url,
       w: imgSize.width || props.cellWidth,
       h: imgSize.height || props.cellHeight,
-      index: startIndex + i
+      x: position.x,
+      y: position.y,
+      zIndex: index,
+      rotation: 0,
+      index,
+      assetId: asset.id ? String(asset.id) : undefined,
+      name: String(asset.name || asset.title || ''),
+      source: asset.source === 'generated' || asset.source === 'upload' ? asset.source : 'asset',
     })
   }
 
-  // 添加后居中显示
+  // 添加后居中显示全部内容
   setTimeout(() => {
-    if (containerRef.value) {
-      const rect = containerRef.value.getBoundingClientRect()
-      viewport.centerContent(gridLayout.frameWidth.value, gridLayout.frameHeight.value, rect)
-    }
+    centerCanvasContent()
   }, 100)
 }
 
@@ -135,26 +105,48 @@ function getImageSize(url) {
   })
 }
 
-// 暴露给父组件
-defineExpose({ generateImages, addImages })
-
 // ============ Composables ============
 const viewport = useViewport({
   minScale: props.minZoom / 100,
   maxScale: props.maxZoom / 100
 })
-const gridLayout = useGridLayout(images, {
-  cols: props.gridCols,
-  cellWidth: props.cellWidth,
-  cellHeight: props.cellHeight,
-  gap: props.gap,
-  padding: props.padding
-})
 const canvasState = useCanvasState()
-const dragSort = useDragSort(images, gridLayout)
+const freeCanvasDrag = useFreeCanvasDrag(images)
 const imageResize = useImageResize(images)
 const history = useHistory()
 const pointer = usePointerEvents()
+
+const getSnapshot = () => ({
+  schemaVersion: 2,
+  images: JSON.parse(JSON.stringify(images.value)),
+  viewport: {
+    x: viewport.viewport.x,
+    y: viewport.viewport.y,
+    scale: viewport.viewport.scale,
+  },
+})
+
+const applySnapshot = (snapshot) => {
+  suppressSnapshotEmit = true
+  hasRestoredSnapshot = true
+  images.value = normalizeInfiniteCanvasImages(snapshot?.images)
+  viewport.viewport.x = Number(snapshot?.viewport?.x || 0)
+  viewport.viewport.y = Number(snapshot?.viewport?.y || 0)
+  viewport.viewport.scale = Math.max(0.01, Number(snapshot?.viewport?.scale || 1) || 1)
+  history.clear()
+  canvasState.deselect()
+  emit('zoom-change', Math.round(viewport.viewport.scale * 100))
+  setTimeout(() => { suppressSnapshotEmit = false }, 0)
+}
+
+const clearCanvas = () => {
+  images.value = []
+  history.clear()
+  canvasState.deselect()
+}
+
+// 暴露项目持久化所需的最小快照 API。
+defineExpose({ addImages, getSnapshot, applySnapshot, clearCanvas })
 
 // ============ 计算属性 ============
 const selectedImage = computed(() => {
@@ -166,6 +158,13 @@ const draggingImage = computed(() => {
   if (!canvasState.draggedId.value) return null
   return images.value.find(img => img.id === canvasState.draggedId.value)
 })
+
+const contentBounds = computed(() => getInfiniteCanvasBounds(images.value))
+
+const canvasFrameStyle = computed(() => ({
+  width: Math.max(1, contentBounds.value.maxX + props.padding) + 'px',
+  height: Math.max(1, contentBounds.value.maxY + props.padding) + 'px',
+}))
 
 // 虚拟化：只渲染视口内的图片
 // 显式依赖 viewport 状态以确保响应性
@@ -192,16 +191,15 @@ const visibleImages = computed(() => {
   }
   
   return images.value.filter(img => {
-    const pos = gridLayout.getGridPosition(img.index)
-    const imgRight = pos.x + img.w
-    const imgBottom = pos.y + img.h
+    const imgRight = img.x + img.w
+    const imgBottom = img.y + img.h
     
     // 检查是否与视口相交
     return !(
       imgRight < bounds.left ||
-      pos.x > bounds.right ||
+      img.x > bounds.right ||
       imgBottom < bounds.top ||
-      pos.y > bounds.bottom
+      img.y > bounds.bottom
     )
   })
 })
@@ -213,10 +211,7 @@ const floatingToolbarStyle = computed(() => {
   }
   
   const img = selectedImage.value
-  if (typeof img.index !== 'number') return { display: 'none' }
-  
-  const pos = gridLayout.getGridPosition(img.index)
-  const screen = viewport.canvasToScreen(pos.x + gridLayout.cellWidth / 2, pos.y)
+  const screen = viewport.canvasToScreen(img.x + img.w / 2, img.y)
   
   // 确保位置值有效
   if (!isFinite(screen.x) || !isFinite(screen.y)) {
@@ -235,22 +230,19 @@ const sizeLabelStyle = computed(() => {
   if (!selectedImage.value || !containerRef.value) return { display: 'none' }
   
   const img = selectedImage.value
-  if (typeof img.index !== 'number') return { display: 'none' }
-  
   const scale = viewport.viewport.scale || 1
   
   if (canvasState.isDragging.value) {
-    const pos = dragSort.draggingPosition.value
+    const pos = freeCanvasDrag.draggingPosition.value
     if (!isFinite(pos.x) || !isFinite(pos.y)) return { display: 'none' }
     return { 
-      left: (pos.x + gridLayout.cellWidth * scale / 2) + 'px', 
-      top: (pos.y + gridLayout.cellHeight * scale + 8) + 'px', 
+      left: (pos.x + img.w * scale / 2) + 'px',
+      top: (pos.y + img.h * scale + 8) + 'px',
       transform: 'translateX(-50%)' 
     }
   }
   
-  const pos = gridLayout.getGridPosition(img.index)
-  const screen = viewport.canvasToScreen(pos.x + gridLayout.cellWidth / 2, pos.y + gridLayout.cellHeight)
+  const screen = viewport.canvasToScreen(img.x + img.w / 2, img.y + img.h)
   
   if (!isFinite(screen.x) || !isFinite(screen.y)) return { display: 'none' }
   
@@ -266,10 +258,7 @@ const selectionOverlayStyle = computed(() => {
   if (!selectedImage.value || !containerRef.value) return { display: 'none' }
   
   const img = selectedImage.value
-  if (typeof img.index !== 'number') return { display: 'none' }
-  
-  const pos = gridLayout.getGridPosition(img.index)
-  const screen = viewport.canvasToScreen(pos.x, pos.y)
+  const screen = viewport.canvasToScreen(img.x, img.y)
   const scale = viewport.viewport.scale || 1
   
   // 确保位置值有效
@@ -287,13 +276,13 @@ const selectionOverlayStyle = computed(() => {
 
 // 拖拽中图片样式
 const draggingImageStyle = computed(() => {
-  if (!canvasState.isDragging.value) return { display: 'none' }
-  const pos = dragSort.draggingPosition.value
+  if (!canvasState.isDragging.value || !draggingImage.value) return { display: 'none' }
+  const pos = freeCanvasDrag.draggingPosition.value
   return {
     left: pos.x + 'px',
     top: pos.y + 'px',
-    width: (gridLayout.cellWidth * viewport.viewport.scale) + 'px',
-    height: (gridLayout.cellHeight * viewport.viewport.scale) + 'px'
+    width: (draggingImage.value.w * viewport.viewport.scale) + 'px',
+    height: (draggingImage.value.h * viewport.viewport.scale) + 'px'
   }
 })
 
@@ -327,7 +316,7 @@ function handleMouseMove(e) {
   // 拖拽图片
   if (canvasState.draggedId.value) {
     // 检查是否超过阈值
-    if (!canvasState.isDragging.value && dragSort.hasMovedBeyondThreshold(e.clientX, e.clientY)) {
+    if (!canvasState.isDragging.value && freeCanvasDrag.hasMovedBeyondThreshold(e.clientX, e.clientY)) {
       canvasState.markMoved()
       canvasState.startDrag(canvasState.draggedId.value)
     }
@@ -382,7 +371,7 @@ function scheduleDragFrame() {
   dragFrameId = requestAnimationFrame(() => {
     dragFrameId = 0
     if (canvasState.isDragging.value) {
-      dragSort.updateDrag(pendingDragX, pendingDragY, viewport.viewport)
+      freeCanvasDrag.updateDrag(pendingDragX, pendingDragY, viewport.viewport)
     }
   })
 }
@@ -395,21 +384,35 @@ function handleMouseUp() {
     if (img) {
       const oldW = imageResize.resizeState.startWidth
       const oldH = imageResize.resizeState.startHeight
+      const oldX = imageResize.resizeState.startX
+      const oldY = imageResize.resizeState.startY
       const newW = img.w
       const newH = img.h
+      const newX = img.x
+      const newY = img.y
       const imgId = img.id
       
-      if (oldW !== newW || oldH !== newH) {
+      if (oldW !== newW || oldH !== newH || oldX !== newX || oldY !== newY) {
         history.push({
           type: 'resize',
-          data: { imgId, oldW, oldH, newW, newH },
+          data: { imgId, oldW, oldH, oldX, oldY, newW, newH, newX, newY },
           undo: (data) => {
             const target = images.value.find(i => i.id === data.imgId)
-            if (target) { target.w = data.oldW; target.h = data.oldH }
+            if (target) {
+              target.w = data.oldW
+              target.h = data.oldH
+              target.x = data.oldX
+              target.y = data.oldY
+            }
           },
           redo: (data) => {
             const target = images.value.find(i => i.id === data.imgId)
-            if (target) { target.w = data.newW; target.h = data.newH }
+            if (target) {
+              target.w = data.newW
+              target.h = data.newH
+              target.x = data.newX
+              target.y = data.newY
+            }
           }
         })
       }
@@ -425,32 +428,18 @@ function handleMouseUp() {
     const currentDraggedId = canvasState.draggedId.value
     
     if (canvasState.isDragging.value) {
-      // 记录排序前的状态
-      const oldIndices = images.value.map(img => ({ id: img.id, index: img.index }))
-      
-      dragSort.endDrag(currentDraggedId)
-      
-      // 记录排序后的状态
-      const newIndices = images.value.map(img => ({ id: img.id, index: img.index }))
-      
-      // 检查是否有变化
-      const hasChanged = oldIndices.some((old, i) => old.index !== newIndices[i].index)
-      
-      if (hasChanged) {
+      const move = freeCanvasDrag.endDrag(currentDraggedId)
+      if (move.oldX !== move.newX || move.oldY !== move.newY) {
         history.push({
-          type: 'reorder',
-          data: { oldIndices, newIndices },
+          type: 'move',
+          data: { imgId: currentDraggedId, ...move },
           undo: (data) => {
-            data.oldIndices.forEach(({ id, index }) => {
-              const img = images.value.find(i => i.id === id)
-              if (img) img.index = index
-            })
+            const target = images.value.find(i => i.id === data.imgId)
+            if (target) { target.x = data.oldX; target.y = data.oldY }
           },
           redo: (data) => {
-            data.newIndices.forEach(({ id, index }) => {
-              const img = images.value.find(i => i.id === id)
-              if (img) img.index = index
-            })
+            const target = images.value.find(i => i.id === data.imgId)
+            if (target) { target.x = data.newX; target.y = data.newY }
           }
         })
       }
@@ -588,7 +577,7 @@ function handleImageDragStart(e, img) {
   if (e.button !== 0) return
   
   canvasState.select(img.id)
-  dragSort.startDrag(img.id, e.clientX, e.clientY, viewport.viewport)
+  freeCanvasDrag.startDrag(img.id, e.clientX, e.clientY, viewport.viewport)
   
   // 先记录 draggedId，等移动超过阈值再真正进入拖拽状态
   canvasState.prepareDrag(img.id)
@@ -618,18 +607,36 @@ watch(() => canvasState.selectedId.value, (newId) => {
   emit('selection-change', newId ? selectedImage.value : null)
 })
 
+watch(
+  [images, () => ({ ...viewport.viewport })],
+  () => {
+    if (suppressSnapshotEmit) return
+    if (snapshotEmitTimer) clearTimeout(snapshotEmitTimer)
+    snapshotEmitTimer = setTimeout(() => {
+      emit('snapshot-change', getSnapshot())
+    }, 180)
+  },
+  { deep: true },
+)
+
 // ============ 生命周期 ============
 function initCanvasPosition() {
-  if (containerRef.value) {
-    const rect = containerRef.value.getBoundingClientRect()
-    // 确保 scale 已正确设置
-    viewport.viewport.scale = props.zoom / 100
-    viewport.centerContent(gridLayout.frameWidth.value, gridLayout.frameHeight.value, rect)
-  }
+  viewport.viewport.scale = props.zoom / 100
+  centerCanvasContent()
+}
+
+function centerCanvasContent() {
+  if (!containerRef.value) return
+  const rect = containerRef.value.getBoundingClientRect()
+  const scale = viewport.viewport.scale || 1
+  viewport.viewport.x = rect.width / 2 - contentBounds.value.centerX * scale
+  viewport.viewport.y = rect.height / 2 - contentBounds.value.centerY * scale
 }
 
 onMounted(() => {
-  setTimeout(initCanvasPosition, 100)
+  setTimeout(() => {
+    if (!hasRestoredSnapshot) initCanvasPosition()
+  }, 100)
   window.addEventListener('mousemove', handleMouseMove)
   window.addEventListener('mouseup', handleMouseUp)
   window.addEventListener('keydown', handleKeyDown)
@@ -644,12 +651,9 @@ onUnmounted(() => {
   if (panFrameId) cancelAnimationFrame(panFrameId)
   if (resizeFrameId) cancelAnimationFrame(resizeFrameId)
   if (dragFrameId) cancelAnimationFrame(dragFrameId)
+  if (snapshotEmitTimer) clearTimeout(snapshotEmitTimer)
 })
 
-// 获取显示位置的辅助函数
-function getDisplayIndex(img) {
-  return dragSort.getDisplayIndex(img, canvasState.draggedId.value, canvasState.isDragging.value)
-}
 </script>
 
 <template>
@@ -672,24 +676,20 @@ function getDisplayIndex(img) {
       <div class="canvas-layer" :style="viewport.transformStyle.value">
         <div 
           class="canvas-frame" 
-          :style="{ 
-            width: gridLayout.frameWidth.value + 'px', 
-            height: gridLayout.frameHeight.value + 'px' 
-          }"
+          :style="canvasFrameStyle"
         >
-          <!-- 网格图片 (虚拟化渲染) -->
+          <!-- 自由坐标图片（虚拟化渲染） -->
           <div 
             v-for="img in visibleImages"
             :key="img.id"
             class="image-item"
             :class="{ hidden: canvasState.isDragging.value && canvasState.draggedId.value === img.id }"
             :style="{ 
-              left: gridLayout.getGridPosition(getDisplayIndex(img)).x + 'px', 
-              top: gridLayout.getGridPosition(getDisplayIndex(img)).y + 'px', 
+              left: img.x + 'px',
+              top: img.y + 'px',
               width: img.w + 'px', 
               height: img.h + 'px',
-              transition: canvasState.isDragging.value ? 'left 0.2s ease, top 0.2s ease' : 'none',
-              visibility: getDisplayIndex(img) === -1 ? 'hidden' : 'visible'
+              zIndex: img.zIndex
             }"
             @mousedown.stop="handleImageDragStart($event, img)"
           >
@@ -780,10 +780,9 @@ function getDisplayIndex(img) {
 .canvas-frame {
   position: relative;
   box-sizing: border-box;
-  background-color: var(--canvas-frame);
-  outline: var(--stroke-secondary) solid 4px;
-  outline-offset: -4px;
-  border-radius: 16px;
+  min-width: 1px;
+  min-height: 1px;
+  background: transparent;
   overflow: visible;
 }
 

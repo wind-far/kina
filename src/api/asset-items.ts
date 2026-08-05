@@ -63,6 +63,7 @@ interface ListAssetItemsOptions {
   pageSize?: number
   publishState?: AssetPublishState
   ownerKeyword?: string
+  includeEditorUploads?: boolean
 }
 
 const ASSET_ITEMS_API_PATH = '/api/asset-items'
@@ -107,7 +108,50 @@ const buildAssetListQuery = (options: ListAssetItemsOptions = {}) => {
   if (options.ownerKeyword) {
     query.set('ownerKeyword', options.ownerKeyword)
   }
+  if (options.includeEditorUploads) {
+    query.set('includeEditorUploads', 'true')
+  }
   return query
+}
+
+export interface UploadAssetItemMetadata {
+  width?: number
+  height?: number
+  durationSeconds?: number
+  thumbnailUrl?: string
+  title?: string
+}
+
+const encodeUploadMetadata = (metadata: UploadAssetItemMetadata) => {
+  const json = JSON.stringify(metadata || {})
+  const bytes = new TextEncoder().encode(json)
+  let binary = ''
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte) })
+  return btoa(binary)
+}
+
+// 上传编辑器素材并同步创建 AssetItem，避免文件已经落盘但素材库不可见。
+export const uploadAssetItem = async (
+  file: File,
+  assetType: AssetKind = 'image',
+  metadata: UploadAssetItemMetadata = {},
+) => {
+  const response = await fetch(buildApiUrl(`${ASSET_ITEMS_API_PATH}/upload`), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'x-upload-filename': encodeURIComponent(file.name || 'untitled'),
+      'x-asset-type': assetType,
+      'x-media-meta': encodeUploadMetadata(metadata),
+    },
+    body: file,
+  })
+
+  return await readApiData<PersistedAssetItem>(response, {
+    showSuccessMessage: true,
+    successMessage: '素材上传成功',
+  })
 }
 
 // 查询资源列表。

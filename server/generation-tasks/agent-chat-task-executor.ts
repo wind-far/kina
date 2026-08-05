@@ -131,6 +131,7 @@ export const executeAgentChatTaskFlow = async (
     stream: true,
   }
   delete (requestBody as Record<string, unknown>).providerId
+  delete (requestBody as Record<string, unknown>).__workflowExecutionId
   delete (requestBody as Record<string, unknown>)[CAPABILITY_FLAGS_REQUEST_FIELD]
 
   if (Object.keys(appliedCapability.upstreamFields).length) {

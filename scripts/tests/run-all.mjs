@@ -17,6 +17,7 @@ const rootDir = path.resolve(__dirname, '../..')
 /** 需外部服务 / Cookie，不纳入批量运行 */
 const SKIP_FILES = new Set([
   'test-research-task.mjs',
+  'test-workflow-runs-integration.mjs',
 ])
 
 const runScript = (filePath) => new Promise((resolve, reject) => {

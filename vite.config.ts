@@ -63,9 +63,11 @@ const createMockAgentRawPlugin = () => ({
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  // 与 canana-vue 一致：开发态 /uploads 同源代理到后端，避免跨域只能打开链接。
+  // 开发态将 API 与上传资源统一代理到后端，让认证 Cookie 保持同源。
   const env = loadEnv(mode, process.cwd(), '')
-  const apiProxyTarget = String(env.VITE_API_BASE_URL || 'http://localhost:5409').replace(/\/+$/, '')
+  const apiProxyTarget = String(
+    env.VITE_API_PROXY_TARGET || env.VITE_API_BASE_URL || 'http://localhost:5409',
+  ).replace(/\/+$/, '')
 
   return {
   plugins: [
@@ -76,23 +78,24 @@ export default defineConfig(({ mode }) => {
     tailwindcss(),
     // Element Plus 按需引入：自动注入命名导入（ElMessage/ElMessageBox 等）的样式
     AutoImport({
+      dts: false,
       resolvers: [ElementPlusResolver()],
     }),
     // Element Plus 按需引入：自动注册模板中 <el-xxx> 组件
     Components({
+      dts: false,
       resolvers: [ElementPlusResolver()],
     }),
     // 仅保留前端本地调试所需的 mock 文件服务。
     createMockAgentRawPlugin(),
-    // 构建产物体积可视化分析：每次 build 后生成 dist/stats.html，
-    // 通过 ANALYZE=1 时自动打开浏览器，便于排查重复/超大依赖。
-    visualizer({
+    // 体积分析会额外遍历、压缩整份 bundle，只在显式分析时启用。
+    ...(process.env.ANALYZE === '1' ? [visualizer({
       filename: 'dist/stats.html',
       gzipSize: true,
       brotliSize: true,
-      open: process.env.ANALYZE === '1',
+      open: true,
       template: 'treemap',
-    }),
+    })] : []),
   ],
 
   // 开发服务器配置
@@ -101,8 +104,12 @@ export default defineConfig(({ mode }) => {
     host: '0.0.0.0',      // 允许外部访问
     open: true,           // 启动时自动打开浏览器
 
-    // 开发环境：/uploads 走 API 同源代理；/api 不走代理（前端用 VITE_API_BASE_URL 直连后端）。
+    // 开发环境统一走同源代理，避免 localhost 与 127.0.0.1 混用导致会话 Cookie 丢失。
     proxy: {
+      '/api': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
       '/uploads': {
         target: apiProxyTarget,
         changeOrigin: true,
@@ -128,6 +135,11 @@ export default defineConfig(({ mode }) => {
   // 路径别名配置
   resolve: {
     alias: {
+      // Transformers.js 官方浏览器预构建包，避免 Rollup 重复处理完整未压缩分发文件。
+      '@huggingface/transformers': path.resolve(
+        __dirname,
+        'node_modules/@huggingface/transformers/dist/transformers.web.min.js',
+      ),
       '@': path.resolve(__dirname, 'src'),
       '@components': path.resolve(__dirname, 'src/components'),
       '@assets': path.resolve(__dirname, 'src/assets'),
@@ -148,6 +160,8 @@ export default defineConfig(({ mode }) => {
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false,  // 生产环境不生成 sourcemap
+    // 大型浏览器端转写 Worker 的 gzip 体积统计会重复占用大量内存；不影响实际产物压缩。
+    reportCompressedSize: false,
 
     // 启用 CSS 代码分割，按异步 chunk 拆分样式
     cssCodeSplit: true,
@@ -189,14 +203,8 @@ export default defineConfig(({ mode }) => {
       },
     },
 
-    // 压缩配置
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true,  // 移除 console
-        drop_debugger: true, // 移除 debugger
-      },
-    },
+    // 使用 Vite 默认的 esbuild 压缩，避免大型转写 Worker 在 Terser 阶段占用过高内存。
+    minify: 'esbuild',
 
     // 块大小警告限制（KB）
     chunkSizeWarningLimit: 500,

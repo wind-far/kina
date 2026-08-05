@@ -2,7 +2,7 @@
 /**
  * 视频配置节点 - 模型/比例/时长选择 + 生成
  */
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { CopyDocument, Delete, VideoCamera } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -37,6 +37,7 @@ const { updateNodeInternals } = useVueFlow()
 const showActions = ref(false)
 const isGenerating = ref(false)
 const progress = ref(0)
+const generationController = ref<AbortController | null>(null)
 
 interface WorkflowVideoModelLike {
   ratios?: string[]
@@ -45,6 +46,7 @@ interface WorkflowVideoModelLike {
 
 const isTextNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'text'> => node?.type === 'text'
 const isImageNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'image'> => node?.type === 'image'
+const isLlmNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'llmConfig'> => node?.type === 'llmConfig'
 const readImageRole = (data: unknown) => (data && typeof data === 'object' && 'imageRole' in data
   ? String((data as { imageRole?: string }).imageRole || 'input_reference')
   : 'input_reference')
@@ -83,6 +85,11 @@ onMounted(() => {
   void loadPublicModelCatalog()
 })
 
+onUnmounted(() => {
+  generationController.value?.abort()
+  generationController.value = null
+})
+
 const updateConfig = () => {
   updateNode(props.id, { model: model.value, ratio: ratio.value, duration: duration.value })
 }
@@ -97,6 +104,7 @@ const collectInputs = () => {
     const src = nodes.value.find(n => n.id === edge.source)
     if (!src) continue
     if (isTextNode(src) && src.data.content) prompt = src.data.content
+    if (isLlmNode(src) && src.data.outputContent) prompt = src.data.outputContent
     if (isImageNode(src) && src.data.url) {
       images.push({ url: src.data.url, role: readImageRole(edge.data) })
     }
@@ -110,6 +118,15 @@ const handleGenerate = async () => {
 
   isGenerating.value = true
   progress.value = 0
+  generationController.value?.abort()
+  const controller = new AbortController()
+  generationController.value = controller
+  updateNode(props.id, {
+    loading: true,
+    error: '',
+    executed: false,
+    outputNodeId: undefined,
+  })
   let outputNodeId: string | null = null
 
   try {
@@ -132,44 +149,55 @@ const handleGenerate = async () => {
       }
     }
 
-    // 先创建带 loading 状态的输出节点
+    // 模板可能已经预置结果节点；优先复用，避免重复运行不断新增输出节点。
     const node = nodes.value.find(n => n.id === props.id)
-    outputNodeId = addNode('video', {
+    const existingOutput = edges.value
+      .filter(edge => edge.source === props.id)
+      .map(edge => nodes.value.find(candidate => candidate.id === edge.target))
+      .find(candidate => candidate?.type === 'video')
+    outputNodeId = existingOutput?.id || addNode('video', {
       x: (node?.position?.x || 0) + 400,
-      y: node?.position?.y || 0
+      y: node?.position?.y || 0,
     }, { url: '', label: '视频生成中...', loading: true })
-    addEdge({ source: props.id, target: outputNodeId, sourceHandle: 'right', targetHandle: 'left' })
+    updateNode(outputNodeId, { url: '', label: '视频生成中...', loading: true, error: '' })
+    if (!existingOutput) {
+      addEdge({ source: props.id, target: outputNodeId, sourceHandle: 'right', targetHandle: 'left' })
+    }
     const createdOutputNodeId = outputNodeId
     setTimeout(() => updateNodeInternals([createdOutputNodeId]), 50)
 
-    const task = await createVideoTask(formData)
+    const task = await createVideoTask(formData, { signal: controller.signal })
     const taskId = task?.id || task?.task_id
 
     if (taskId && providerId) {
-      const result = await pollVideoTask(taskId, providerId)
+      const result = await pollVideoTask(taskId, providerId, 120, 5000, controller.signal)
       const videoUrl = readVideoResultUrl(result)
 
       if (videoUrl) {
         updateNode(outputNodeId, { url: videoUrl, label: '生成视频', loading: false })
-        updateNode(props.id, { executed: true, outputNodeId: outputNodeId || undefined })
+        updateNode(props.id, { loading: false, error: '', executed: true, outputNodeId: outputNodeId || undefined })
       } else {
         updateNode(outputNodeId, { label: '生成失败', loading: false, error: '未返回视频' })
-        updateNode(props.id, { error: '未返回视频' })
+        updateNode(props.id, { loading: false, error: '未返回视频' })
       }
     } else if (taskId) {
       updateNode(outputNodeId, { label: '生成失败', loading: false, error: '未匹配到视频厂商配置' })
-      updateNode(props.id, { error: '未匹配到视频厂商配置' })
+      updateNode(props.id, { loading: false, error: '未匹配到视频厂商配置' })
     } else {
       updateNode(outputNodeId, { label: '生成失败', loading: false, error: '任务创建失败' })
-      updateNode(props.id, { error: '任务创建失败' })
+      updateNode(props.id, { loading: false, error: '任务创建失败' })
     }
   } catch (err: unknown) {
     console.error('视频生成失败:', err)
-    const msg = err instanceof Error ? err.message : '视频生成失败'
+    const msg = err instanceof DOMException && err.name === 'AbortError'
+      ? '工作流执行已取消'
+      : err instanceof Error ? err.message : '视频生成失败'
     if (outputNodeId) updateNode(outputNodeId, { label: '生成失败', loading: false, error: msg })
-    updateNode(props.id, { error: msg })
+    updateNode(props.id, { loading: false, error: msg })
   } finally {
     isGenerating.value = false
+    if (generationController.value === controller) generationController.value = null
+    updateNode(props.id, { loading: false })
   }
 }
 
@@ -193,6 +221,22 @@ watch(
       setTimeout(() => handleGenerate(), 200)
     }
   }
+)
+
+watch(
+  () => props.data?.executionCancelToken,
+  (token) => {
+    if (!token) return
+    generationController.value?.abort()
+    generationController.value = null
+    isGenerating.value = false
+    updateNode(props.id, {
+      autoExecute: false,
+      loading: false,
+      executed: false,
+      error: '工作流执行已取消',
+    })
+  },
 )
 </script>
 

@@ -31,6 +31,9 @@ import { isSystemInitPath } from './system-init/constants'
 import { handleSystemInitRequest } from './system-init/request-handler'
 import { isWorkflowDefinitionsPath } from './workflow-definitions/constants'
 import { handleWorkflowDefinitionsRequest } from './workflow-definitions/request-handler'
+import { isWorkflowRunsPath } from './workflow-runs/constants'
+import { handleWorkflowRunsRequest } from './workflow-runs/request-handler'
+import { recoverServerWorkflowRuns } from './workflow-runs/executor'
 import { isGenerationRecordsPath } from './generation-records/constants'
 import { handleGenerationRecordsRequest } from './generation-records/request-handler'
 import { isGenerationSessionsPath } from './generation-sessions/constants'
@@ -48,6 +51,7 @@ import { isSkillConfigPath } from './skill-config/constants'
 import { handleSkillConfigRequest } from './skill-config/request-handler'
 import { REDIS_CONFIG, isRedisEnabled } from './redis'
 import { writeScopedLog } from './shared/logging'
+import { isPathInsideDirectory } from './shared/path-security'
 
 // 后端服务默认监听端口。
 const DEFAULT_SERVER_PORT = 5409
@@ -158,7 +162,7 @@ const handleUploadsRequest = async (req: any, res: any, requestPath: string) => 
   const filePath = path.resolve(uploadsDir, relativePath)
 
   // 防止目录穿越到上传目录之外。
-  if (!filePath.startsWith(uploadsDir)) {
+  if (!isPathInsideDirectory(uploadsDir, filePath)) {
     return false
   }
 
@@ -248,7 +252,7 @@ const handleStaticRequest = async (req: any, res: any, requestPath: string) => {
   const candidateFilePath = path.resolve(staticDistDir, `.${normalizedPath}`)
 
   // 若目标文件不在静态目录内，则直接拒绝。
-  if (!candidateFilePath.startsWith(staticDistDir)) {
+  if (!isPathInsideDirectory(staticDistDir, candidateFilePath)) {
     return false
   }
 
@@ -536,6 +540,14 @@ const REQUEST_ROUTE_STRATEGIES: RequestRouteStrategy[] = [
     },
   },
   {
+    key: 'workflow-runs',
+    match: isWorkflowRunsPath,
+    handle: async (req, res) => {
+      await handleWorkflowRunsRequest(req, res)
+      return true
+    },
+  },
+  {
     key: 'workflow-definitions',
     match: isWorkflowDefinitionsPath,
     handle: async (req, res) => {
@@ -640,4 +652,7 @@ server.listen(serverPort, '0.0.0.0', () => {
   writeScopedLog('info', '服务端', `上传目录: ${uploadsDir}`)
   writeScopedLog('info', '服务端', `CORS 来源: ${allowedOrigins.join(', ')}`)
   writeScopedLog('info', '服务端', `Redis: ${resolveRedisStartupSummary()}`)
+  void recoverServerWorkflowRuns()
+    .then(result => writeScopedLog('info', '工作流执行器', '启动恢复完成', result))
+    .catch(error => writeScopedLog('error', '工作流执行器', '启动恢复失败', error))
 })

@@ -34,6 +34,7 @@ export interface WorkflowNodeDataBase {
   autoExecute?: boolean
   executed?: boolean
   outputNodeId?: string
+  executionCancelToken?: number
 }
 
 export interface WorkflowTextNodeData extends WorkflowNodeDataBase {
@@ -182,6 +183,11 @@ export interface WorkflowAddEdgeParams {
   targetHandle?: string
   type?: WorkflowEdgeType
   data?: WorkflowEdgeData
+}
+
+export interface WorkflowConnectionValidationResult {
+  valid: boolean
+  message?: string
 }
 
 // 节点 ID 计数器
@@ -395,12 +401,58 @@ export const duplicateNode = (id: string) => {
   return newId
 }
 
+const wouldCreateCycle = (source: string, target: string) => {
+  const outgoing = new Map<string, string[]>()
+  edges.value.forEach((edge) => {
+    outgoing.set(edge.source, [...(outgoing.get(edge.source) || []), edge.target])
+  })
+
+  const pending = [target]
+  const visited = new Set<string>()
+  while (pending.length) {
+    const current = pending.pop()!
+    if (current === source) return true
+    if (visited.has(current)) continue
+    visited.add(current)
+    pending.push(...(outgoing.get(current) || []))
+  }
+  return false
+}
+
+export const validateWorkflowConnection = (params: WorkflowAddEdgeParams): WorkflowConnectionValidationResult => {
+  if (!params.source || !params.target) {
+    return { valid: false, message: '连接缺少起点或终点' }
+  }
+  if (params.source === params.target) {
+    return { valid: false, message: '节点不能连接到自身' }
+  }
+  if (!nodes.value.some(node => node.id === params.source) || !nodes.value.some(node => node.id === params.target)) {
+    return { valid: false, message: '连接的节点不存在' }
+  }
+  const duplicated = edges.value.some(edge =>
+    edge.source === params.source
+    && edge.target === params.target
+    && (edge.sourceHandle || undefined) === (params.sourceHandle || undefined)
+    && (edge.targetHandle || undefined) === (params.targetHandle || undefined),
+  )
+  if (duplicated) {
+    return { valid: false, message: '相同节点之间已经存在连接' }
+  }
+  if (wouldCreateCycle(params.source, params.target)) {
+    return { valid: false, message: '当前工作流不允许形成循环依赖' }
+  }
+  return { valid: true }
+}
+
 export const addEdge = (params: WorkflowAddEdgeParams) => {
+  const validation = validateWorkflowConnection(params)
+  if (!validation.valid) return null
   const nextEdge: WorkflowCanvasEdge = {
     id: `edge_${params.source}_${params.target}`,
     ...params,
   }
   edges.value = [...edges.value, nextEdge]
+  return nextEdge.id
 }
 
 // 更新边数据

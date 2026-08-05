@@ -25,6 +25,8 @@ export function useImageResize(images: any) {
     resizeState.startMouseY = mouseY
     resizeState.startWidth = image.w
     resizeState.startHeight = image.h
+    resizeState.startX = Number(image.x || 0)
+    resizeState.startY = Number(image.y || 0)
   }
   
   /**
@@ -57,6 +59,12 @@ export function useImageResize(images: any) {
     
     image.w = Math.round(newW)
     image.h = Math.round(newH)
+    image.x = handle.includes('left')
+      ? Math.round(resizeState.startX + resizeState.startWidth - image.w)
+      : resizeState.startX
+    image.y = handle.includes('top')
+      ? Math.round(resizeState.startY + resizeState.startHeight - image.h)
+      : resizeState.startY
   }
   
   /**
@@ -67,6 +75,8 @@ export function useImageResize(images: any) {
     resizeState.startMouseY = 0
     resizeState.startWidth = 0
     resizeState.startHeight = 0
+    resizeState.startX = 0
+    resizeState.startY = 0
   }
 
   return {

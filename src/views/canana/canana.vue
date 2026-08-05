@@ -1,5 +1,7 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import Header from '@components/canana/Header.vue'
 import LeftToolbar from '@components/canana/LeftToolbar.vue'
 import InfiniteCanvas from '@components/canana/InfiniteCanvas.vue'
@@ -7,6 +9,24 @@ import BottomToolbar from '@components/canana/BottomToolbar.vue'
 import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import RightPanel from '@components/canana/RightPanel.vue'
 import CanvasEmptyState from '@components/canana/CanvasEmptyState.vue'
+import { uploadAssetItem } from '@/api/asset-items'
+import { useInfiniteCanvasProject } from '@/composables/useInfiniteCanvasProject'
+
+const route = useRoute()
+const router = useRouter()
+
+const {
+  currentProjectId,
+  projects,
+  saving,
+  loading,
+  listProjects,
+  loadProject,
+  autosaveProject,
+  renameProject,
+  removeProject,
+  resetProject,
+} = useInfiniteCanvasProject()
 
 const zoom = ref(10)
 const projectTitle = ref('生成二次元手办多风格图片')
@@ -14,6 +34,22 @@ const rightPanelOpen = ref(false)
 const selectedImage = ref(null)
 const canvasRef = ref(null)
 const canvasCreated = ref(false)
+const fileInputRef = ref(null)
+const projectDialogOpen = ref(false)
+const projectKeyword = ref('')
+const latestSnapshot = ref(null)
+const saveState = ref('idle')
+const saveError = ref('')
+const backLoading = ref(false)
+let saveTimer = null
+let saveInFlight = null
+
+const saveStatusText = computed(() => {
+  if (saving.value || saveState.value === 'saving') return '保存中…'
+  if (saveState.value === 'error') return saveError.value || '保存失败'
+  if (saveState.value === 'saved') return '已保存'
+  return currentProjectId.value ? '自动保存已开启' : ''
+})
 
 const handleZoomChange = (newZoom) => {
   zoom.value = Math.max(1, Math.min(200, newZoom))
@@ -27,32 +63,69 @@ const handleSelectionChange = (image) => {
   selectedImage.value = image
 }
 
-// 处理本地上传
 const handleUpload = () => {
-  // TODO: 实现上传逻辑
-  console.log('本地上传')
+  fileInputRef.value?.click()
 }
 
-// 处理选择资产
 const handleSelectAsset = () => {
-  console.log('选择资产')
+  // 资产选择器自身负责拉取数据，这里只保留父级事件入口。
 }
 
 // 处理资产选择完成 - 渲染到画布
 const handleAssetSelected = (assets) => {
   if (!assets || assets.length === 0) return
 
-  console.log('选中的资产:', assets)
-
-  // 创建画布并添加图片
   if (!canvasCreated.value) {
     canvasCreated.value = true
-    // 等待画布渲染后再添加图片
-    setTimeout(() => {
+    nextTick(() => {
       canvasRef.value?.addImages(assets)
-    }, 100)
+    })
   } else {
     canvasRef.value?.addImages(assets)
+  }
+}
+
+const readImageDimensions = (file) => new Promise((resolve) => {
+  const url = URL.createObjectURL(file)
+  const image = new Image()
+  image.onload = () => {
+    URL.revokeObjectURL(url)
+    resolve({ width: image.naturalWidth, height: image.naturalHeight })
+  }
+  image.onerror = () => {
+    URL.revokeObjectURL(url)
+    resolve({})
+  }
+  image.src = url
+})
+
+const handleFilesSelected = async (event) => {
+  const input = event.target
+  const files = Array.from(input.files || []).filter(file => file.type.startsWith('image/'))
+  if (!files.length) return
+
+  try {
+    const uploadedAssets = []
+    for (const file of files) {
+      const dimensions = await readImageDimensions(file)
+      const asset = await uploadAssetItem(file, 'image', {
+        ...dimensions,
+        title: file.name,
+      })
+      uploadedAssets.push({
+        id: asset.id,
+        url: asset.fileUrl,
+        width: asset.width,
+        height: asset.height,
+        name: asset.title || file.name,
+        source: 'upload',
+      })
+    }
+    handleAssetSelected(uploadedAssets)
+  } catch (error) {
+    ElMessage.error(error?.message || '图片上传失败')
+  } finally {
+    input.value = ''
   }
 }
 
@@ -61,17 +134,178 @@ const pendingMessage = ref('')
 const handlePromptSend = (message, type) => {
   pendingMessage.value = message
   rightPanelOpen.value = true
-  // 创建画布并生成图片
-  if (!canvasCreated.value) {
-    canvasCreated.value = true
-    // 等待画布渲染后再生成
-    setTimeout(() => {
-      canvasRef.value?.generateImages()
-    }, 100)
-  } else {
-    canvasRef.value?.generateImages()
+}
+
+const syncProjectRoute = async (projectId) => {
+  const nextQuery = { ...route.query }
+  if (projectId) nextQuery.projectId = projectId
+  else delete nextQuery.projectId
+  await router.replace({ path: route.path, query: nextQuery })
+}
+
+const flushAutosave = async () => {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  if (saveInFlight) {
+    const saved = await saveInFlight
+    if (saved && saveState.value === 'idle') return flushAutosave()
+    return saved
+  }
+  if (!latestSnapshot.value || saveState.value === 'saved') return true
+
+  const snapshotToSave = latestSnapshot.value
+  saveState.value = 'saving'
+  saveError.value = ''
+  saveInFlight = (async () => {
+    try {
+      const detail = await autosaveProject({
+        title: projectTitle.value || '未命名创作项目',
+        snapshot: snapshotToSave,
+      })
+      saveState.value = latestSnapshot.value === snapshotToSave ? 'saved' : 'idle'
+      await syncProjectRoute(detail.definition.id)
+      return true
+    } catch (error) {
+      saveState.value = 'error'
+      saveError.value = error?.message || '自动保存失败'
+      return false
+    }
+  })()
+
+  const saved = await saveInFlight
+  saveInFlight = null
+  if (saved && saveState.value === 'idle') return flushAutosave()
+  return saved
+}
+
+const handleBack = async () => {
+  if (backLoading.value) return
+  backLoading.value = true
+  try {
+    const saved = await flushAutosave()
+    if (!saved) {
+      ElMessage.error(saveError.value || '画布保存失败，已留在当前页面')
+      return
+    }
+    const hasPreviousRoute = Boolean(window.history.state?.back)
+    if (hasPreviousRoute) {
+      router.back()
+    } else {
+      await router.push({ name: 'Home' })
+    }
+  } catch (error) {
+    ElMessage.error(error?.message || '返回失败，请稍后重试')
+  } finally {
+    backLoading.value = false
   }
 }
+
+const handleSnapshotChange = (snapshot) => {
+  latestSnapshot.value = snapshot
+  saveState.value = 'idle'
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => { void flushAutosave() }, 1200)
+}
+
+const handleTitleUpdate = async (title) => {
+  projectTitle.value = title
+  if (!currentProjectId.value) return
+  try {
+    await renameProject(title)
+    saveState.value = 'saved'
+  } catch (error) {
+    saveState.value = 'error'
+    saveError.value = error?.message || '重命名失败'
+  }
+}
+
+const createNewProject = async () => {
+  await flushAutosave()
+  resetProject()
+  latestSnapshot.value = null
+  canvasCreated.value = false
+  projectTitle.value = '未命名创作项目'
+  selectedImage.value = null
+  saveState.value = 'idle'
+  await syncProjectRoute('')
+}
+
+const openProjectLibrary = async () => {
+  projectDialogOpen.value = true
+  try {
+    await listProjects(projectKeyword.value)
+  } catch (error) {
+    ElMessage.error(error?.message || '加载项目列表失败')
+  }
+}
+
+const openProject = async (project) => {
+  await flushAutosave()
+  try {
+    const result = await loadProject(project.id)
+    canvasCreated.value = true
+    projectTitle.value = result.detail.definition.name
+    await nextTick()
+    canvasRef.value?.applySnapshot(result.snapshot)
+    latestSnapshot.value = result.snapshot
+    zoom.value = Math.round(result.snapshot.viewport.scale * 100)
+    saveState.value = 'saved'
+    projectDialogOpen.value = false
+    await syncProjectRoute(project.id)
+  } catch (error) {
+    ElMessage.error(error?.message || '打开项目失败')
+  }
+}
+
+const deleteProject = async (project) => {
+  try {
+    await ElMessageBox.confirm(`确认删除项目“${project.name}”？`, '删除项目', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    const deletingCurrent = currentProjectId.value === project.id
+    if (deletingCurrent) latestSnapshot.value = null
+    await removeProject(project.id)
+    if (deletingCurrent) await createNewProject()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error?.message || '删除项目失败')
+    }
+  }
+}
+
+const handleHeaderMenuAction = (action) => {
+  if (action === 'new') void createNewProject()
+  if (action === 'open') void openProjectLibrary()
+}
+
+const handleGeneratedImage = (asset) => {
+  if (!asset?.url) return
+  handleAssetSelected([{ url: asset.url, source: 'generated', name: 'AI 生成结果' }])
+}
+
+onMounted(async () => {
+  const projectId = String(route.query.projectId || '').trim()
+  if (!projectId) return
+  await openProject({ id: projectId })
+})
+
+// 覆盖浏览器后退、侧边导航等所有路由离开方式，避免只有头部返回按钮会等待保存。
+onBeforeRouteLeave(async () => {
+  const saved = await flushAutosave()
+  if (!saved) {
+    ElMessage.error(saveError.value || '画布保存失败，已取消离开当前页面')
+    return false
+  }
+  return true
+})
+
+onBeforeUnmount(() => {
+  if (saveTimer) clearTimeout(saveTimer)
+})
 </script>
 
 <template>
@@ -82,9 +316,22 @@ const handlePromptSend = (message, type) => {
           <!-- 顶部栏 -->
           <Header
               :title="projectTitle"
-              @update:title="projectTitle = $event"
+              :save-status="saveStatusText"
+              :back-loading="backLoading"
+              @update:title="handleTitleUpdate"
+              @back="handleBack"
               @toggle-panel="toggleRightPanel"
+              @menu-action="handleHeaderMenuAction"
           />
+
+          <input
+            ref="fileInputRef"
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            @change="handleFilesSelected"
+          >
 
           <!-- 主内容区 -->
           <main class="main-content-G8f_tC">
@@ -137,7 +384,14 @@ const handlePromptSend = (message, type) => {
                 @asset-selected="handleAssetSelected"
               />
               <!-- 画布 -->
-              <InfiniteCanvas v-else ref="canvasRef" :zoom="zoom" @zoom-change="handleZoomChange" @selection-change="handleSelectionChange" />
+              <InfiniteCanvas
+                v-else
+                ref="canvasRef"
+                :zoom="zoom"
+                @zoom-change="handleZoomChange"
+                @selection-change="handleSelectionChange"
+                @snapshot-change="handleSnapshotChange"
+              />
             </div>
 
             <div class="toolbar-zDoGgL bottom-toolbar-PE8gbm"></div>
@@ -179,9 +433,28 @@ const handlePromptSend = (message, type) => {
             :initial-message="pendingMessage"
             @close="rightPanelOpen = false"
             @message-received="pendingMessage = ''"
+            @add-image-to-canvas="handleGeneratedImage"
         />
       </aside>
     </div>
+
+    <el-dialog v-model="projectDialogOpen" title="打开创作项目" width="640px">
+      <div class="canvas-project-toolbar">
+        <input v-model="projectKeyword" placeholder="搜索项目名称" @keyup.enter="openProjectLibrary">
+        <button type="button" @click="openProjectLibrary">搜索</button>
+      </div>
+      <div v-if="loading" class="canvas-project-empty">正在加载…</div>
+      <div v-else-if="!projects.length" class="canvas-project-empty">还没有保存过的创作项目</div>
+      <div v-else class="canvas-project-list">
+        <div v-for="project in projects" :key="project.id" class="canvas-project-item">
+          <button class="canvas-project-open" type="button" @click="openProject(project)">
+            <strong>{{ project.name }}</strong>
+            <span>V{{ project.latestVersionNo }} · {{ new Date(project.updatedAt).toLocaleString('zh-CN') }}</span>
+          </button>
+          <button class="canvas-project-delete" type="button" @click="deleteProject(project)">删除</button>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -191,4 +464,13 @@ const handlePromptSend = (message, type) => {
 @import './styles/empty-state.css';
 @import './styles/canvas.css';
 @import './styles/sidebar-empty-state.css';
+
+.canvas-project-toolbar { display: flex; gap: 8px; margin-bottom: 16px; }
+.canvas-project-toolbar input { flex: 1; border: 1px solid var(--stroke-secondary); border-radius: 8px; padding: 9px 12px; background: var(--bg-primary); color: var(--text-primary); }
+.canvas-project-toolbar button, .canvas-project-delete { border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+.canvas-project-list { display: flex; flex-direction: column; gap: 8px; max-height: 440px; overflow: auto; }
+.canvas-project-item { display: flex; align-items: center; gap: 8px; border: 1px solid var(--stroke-secondary); border-radius: 10px; padding: 8px; }
+.canvas-project-open { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text-primary); text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+.canvas-project-open span, .canvas-project-empty { color: var(--text-tertiary); font-size: 12px; }
+.canvas-project-delete { color: #ef4444; background: transparent; }
 </style>

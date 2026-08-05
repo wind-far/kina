@@ -15,6 +15,10 @@ import {
 import {
   applyCanvasSnapshot,
   canvasViewport,
+  canvasBackgroundMode,
+  canvasShowImageInfo,
+  canvasChatSessions,
+  canvasActiveChatId,
   edges,
   nodes,
   type WorkflowCanvasEdge,
@@ -36,6 +40,10 @@ export interface WorkflowPersistenceSnapshot {
   }
   runtimeConfigJson: {
     savedAt: string
+    backgroundMode: string
+    showImageInfo: boolean
+    chatSessions: unknown[]
+    activeChatId: string | null
   }
 }
 
@@ -86,6 +94,10 @@ export const useWorkflowPersistence = () => {
       },
       runtimeConfigJson: {
         savedAt: new Date().toISOString(),
+        backgroundMode: canvasBackgroundMode.value,
+        showImageInfo: canvasShowImageInfo.value,
+        chatSessions: JSON.parse(JSON.stringify(canvasChatSessions.value)),
+        activeChatId: canvasActiveChatId.value,
       },
     }
   }
@@ -144,9 +156,21 @@ export const useWorkflowPersistence = () => {
       }
       : null
 
+    const runtimeConfig = currentVersion?.runtimeConfigJson && typeof currentVersion.runtimeConfigJson === 'object'
+      ? currentVersion.runtimeConfigJson as Record<string, unknown>
+      : {}
+
     applyCanvasSnapshot({
       nodes: canvasNodes,
       edges: canvasEdges,
+      backgroundMode: runtimeConfig.backgroundMode === 'lines' || runtimeConfig.backgroundMode === 'blank'
+        ? runtimeConfig.backgroundMode
+        : 'dots',
+      showImageInfo: Boolean(runtimeConfig.showImageInfo),
+      chatSessions: Array.isArray(runtimeConfig.chatSessions)
+        ? runtimeConfig.chatSessions as any
+        : [],
+      activeChatId: typeof runtimeConfig.activeChatId === 'string' ? runtimeConfig.activeChatId : null,
     }, viewportJson)
   }
 
@@ -191,9 +215,21 @@ export const useWorkflowPersistence = () => {
       }
       : null
 
+    const runtimeConfig = targetVersion.runtimeConfigJson && typeof targetVersion.runtimeConfigJson === 'object'
+      ? targetVersion.runtimeConfigJson as Record<string, unknown>
+      : {}
+
     applyCanvasSnapshot({
       nodes: canvasNodes,
       edges: canvasEdges,
+      backgroundMode: runtimeConfig.backgroundMode === 'lines' || runtimeConfig.backgroundMode === 'blank'
+        ? runtimeConfig.backgroundMode
+        : 'dots',
+      showImageInfo: Boolean(runtimeConfig.showImageInfo),
+      chatSessions: Array.isArray(runtimeConfig.chatSessions)
+        ? runtimeConfig.chatSessions as any
+        : [],
+      activeChatId: typeof runtimeConfig.activeChatId === 'string' ? runtimeConfig.activeChatId : null,
     }, viewportJson)
   }
 
@@ -273,7 +309,13 @@ export const useWorkflowPersistence = () => {
       }
 
       const targetWorkflowId = options.workflowId || currentWorkflowId.value
+      const baseVersion = currentWorkflowDetail.value?.definition.currentVersion
+        || currentWorkflowDetail.value?.definition.latestVersion
+        || currentWorkflowDetail.value?.versions[0]
+        || null
       await autosaveWorkflowDefinitionDraft(targetWorkflowId, {
+        baseVersionId: baseVersion?.id || null,
+        baseVersionUpdatedAt: baseVersion?.updatedAt || null,
         versionName: '自动保存',
         changeSummary: '系统自动保存草稿',
         status: 'DRAFT',

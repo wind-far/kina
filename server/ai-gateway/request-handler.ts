@@ -5,6 +5,11 @@ import {
   sendJson,
 } from './shared'
 import { forwardGatewayPayload, forwardMultipartRequest } from './forward'
+import {
+  hasCompleteProviderGatewayTarget,
+  hasDirectGatewayUpstream,
+  isAllowedGatewayUpstreamMethod,
+} from './security'
 import { resolveGatewayProviderUpstream } from '../provider-config/service'
 import { requireCurrentSessionUser } from '../auth/session'
 import { consumeGenerationPoints, refundGenerationPoints, resolveGenerationPointCost } from '../marketing-center/service'
@@ -37,6 +42,12 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
   let debugUpstreamMethod = 'POST'
 
   try {
+    // AI 网关会使用服务端保存的厂商密钥，所有转发请求必须先绑定真实登录用户。
+    const currentUser = await requireCurrentSessionUser(req, res)
+    if (!currentUser?.id) {
+      return
+    }
+
     const headerBaseUrl = String(req.headers['x-upstream-base-url'] || '').trim()
     const headerEndpoint = String(req.headers['x-upstream-endpoint'] || '').trim()
     const headerApiKey = String(req.headers['x-upstream-api-key'] || '').trim()
@@ -46,18 +57,33 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
     const headerMethod = String(req.headers['x-upstream-method'] || 'POST').trim().toUpperCase()
     const billedHeaderEndpointType = normalizeChargeableEndpointType(headerEndpointType)
 
+    // 关闭旧版客户端直传 URL / API Key 的开放代理能力。
+    if (hasDirectGatewayUpstream({
+      baseUrl: headerBaseUrl,
+      endpoint: headerEndpoint,
+      apiKey: headerApiKey,
+    })) {
+      sendJson(res, 400, {
+        message: '不支持客户端直传上游地址或 API Key，请使用后台厂商配置',
+      })
+      return
+    }
+
+    if (!isAllowedGatewayUpstreamMethod(headerMethod)) {
+      sendJson(res, 400, { message: 'AI 网关仅支持 GET 或 POST 上游请求' })
+      return
+    }
+
     const shouldChargeHeaderRequest = isChargeableGenerationRequest({
       providerId: headerProviderId,
       endpointType: headerEndpointType,
       method: headerMethod,
     })
 
-    if (headerProviderId && headerEndpointType) {
-      const currentUser = shouldChargeHeaderRequest ? await requireCurrentSessionUser(req, res) : null
-      if (shouldChargeHeaderRequest && !currentUser?.id) {
-        return
-      }
-
+    if (hasCompleteProviderGatewayTarget({
+      providerId: headerProviderId,
+      endpointType: headerEndpointType,
+    })) {
       const upstream = await resolveGatewayProviderUpstream({
         providerId: headerProviderId,
         endpointType: headerEndpointType,
@@ -77,7 +103,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
       const associationNo = buildGatewayAssociationNo()
       const consumedPointLog = shouldChargeHeaderRequest && billingDetail.pointCost > 0
         ? await consumeGenerationPoints({
-          userId: currentUser!.id,
+          userId: currentUser.id,
           pointCost: billingDetail.pointCost,
           sourceId: associationNo,
           associationNo,
@@ -97,7 +123,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
         refunded = true
         try {
           await refundGenerationPoints({
-            userId: currentUser!.id,
+            userId: currentUser.id,
             pointCost: billingDetail.pointCost,
             sourceId: associationNo,
             associationNo,
@@ -142,33 +168,45 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
       return
     }
 
-    if (headerBaseUrl && headerEndpoint) {
-      debugUpstreamUrl = `${headerBaseUrl.replace(/\/+$/, '')}/${headerEndpoint.replace(/^\/+/, '')}`
-      debugUpstreamMethod = headerMethod
-      await forwardMultipartRequest({
-        req,
-        res,
-        baseUrl: headerBaseUrl,
-        endpoint: headerEndpoint,
-        apiKey: headerApiKey || undefined,
-        method: headerMethod,
-      })
+    if (headerProviderId || headerEndpointType || headerModelKey) {
+      sendJson(res, 400, { message: '缺少完整的厂商或端点类型配置' })
       return
     }
 
     const payload = await readJsonBody(req)
     const normalized = normalizeGatewayPayload(payload)
-    const upstream = normalized.providerId && normalized.endpointType
-      ? await resolveGatewayProviderUpstream({
-        providerId: normalized.providerId,
-        endpointType: normalized.endpointType,
-        modelKey: normalized.modelKey || undefined,
-      })
-      : null
 
-    debugUpstreamUrl = upstream
-      ? joinUpstreamUrl(upstream.baseUrl, upstream.endpoint)
-      : normalized.upstreamUrl
+    if (hasDirectGatewayUpstream({
+      baseUrl: payload.upstream?.baseUrl,
+      endpoint: payload.upstream?.endpoint,
+      apiKey: payload.upstream?.apiKey,
+    })) {
+      sendJson(res, 400, {
+        message: '不支持客户端直传上游地址或 API Key，请使用后台厂商配置',
+      })
+      return
+    }
+
+    if (!hasCompleteProviderGatewayTarget({
+      providerId: normalized.providerId,
+      endpointType: normalized.endpointType,
+    })) {
+      sendJson(res, 400, { message: '缺少完整的厂商或端点类型配置' })
+      return
+    }
+
+    if (!isAllowedGatewayUpstreamMethod(normalized.method)) {
+      sendJson(res, 400, { message: 'AI 网关仅支持 GET 或 POST 上游请求' })
+      return
+    }
+
+    const upstream = await resolveGatewayProviderUpstream({
+      providerId: normalized.providerId,
+      endpointType: normalized.endpointType,
+      modelKey: normalized.modelKey || undefined,
+    })
+
+    debugUpstreamUrl = joinUpstreamUrl(upstream.baseUrl, upstream.endpoint)
     debugUpstreamMethod = normalized.method
 
     const shouldChargeJsonRequest = isChargeableGenerationRequest({
@@ -177,11 +215,6 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
       method: normalized.method,
     })
     const billedJsonEndpointType = normalizeChargeableEndpointType(normalized.endpointType)
-
-    const currentUser = shouldChargeJsonRequest ? await requireCurrentSessionUser(req, res) : null
-    if (shouldChargeJsonRequest && !currentUser?.id) {
-      return
-    }
 
     const billingDetail = shouldChargeJsonRequest
       ? await resolveGenerationPointCost({
@@ -194,7 +227,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
     const associationNo = buildGatewayAssociationNo()
     const consumedPointLog = shouldChargeJsonRequest && billingDetail.pointCost > 0
       ? await consumeGenerationPoints({
-        userId: currentUser!.id,
+        userId: currentUser.id,
         pointCost: billingDetail.pointCost,
         sourceId: associationNo,
         associationNo,
@@ -214,7 +247,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
       refunded = true
       try {
         await refundGenerationPoints({
-          userId: currentUser!.id,
+          userId: currentUser.id,
           pointCost: billingDetail.pointCost,
           sourceId: associationNo,
           associationNo,
@@ -237,12 +270,8 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
 
     await forwardGatewayPayload({
       res,
-      upstreamUrl: upstream
-        ? joinUpstreamUrl(upstream.baseUrl, upstream.endpoint)
-        : normalized.upstreamUrl,
-      apiKey: upstream
-        ? (upstream.apiKey || undefined)
-        : (normalized.apiKey || undefined),
+      upstreamUrl: joinUpstreamUrl(upstream.baseUrl, upstream.endpoint),
+      apiKey: upstream.apiKey || undefined,
       method: normalized.method,
       headers: normalized.headers,
       body: normalized.body,

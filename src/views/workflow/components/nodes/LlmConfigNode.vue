@@ -116,6 +116,8 @@ const handleGenerate = async () => {
   isGenerating.value = true
   outputContent.value = ''
   cleanupTaskStream()
+  const controller = new AbortController()
+  taskStreamController.value = controller
 
   try {
     const messages: Array<{ role: 'system' | 'user'; content: string }> = []
@@ -134,6 +136,7 @@ const handleGenerate = async () => {
     updateNode(props.id, {
       loading: true,
       error: '',
+      executed: false,
       outputContent: '',
       taskRecordId: '',
     })
@@ -151,7 +154,7 @@ const handleGenerate = async () => {
         messages,
         stream: true,
       },
-    })
+    }, { signal: controller.signal })
 
     const taskRecordId = String(saved.id || '').trim()
     if (!taskRecordId) {
@@ -163,9 +166,6 @@ const handleGenerate = async () => {
       error: '',
       taskRecordId,
     })
-
-    const controller = new AbortController()
-    taskStreamController.value = controller
 
     void subscribeGenerationTaskEvents(taskRecordId, {
       signal: controller.signal,
@@ -191,6 +191,7 @@ const handleGenerate = async () => {
           updateNode(props.id, {
             loading: !event.done,
             error: '',
+            executed: Boolean(event.done),
             outputContent: nextContent,
           })
         }
@@ -230,12 +231,15 @@ const handleGenerate = async () => {
     })
   } catch (err) {
     console.error('LLM 生成失败:', err)
-    const message = err instanceof Error ? err.message : 'LLM 生成失败'
+    const message = err instanceof DOMException && err.name === 'AbortError'
+      ? '工作流执行已取消'
+      : err instanceof Error ? err.message : 'LLM 生成失败'
     updateNode(props.id, {
       loading: false,
       error: message,
     })
     isGenerating.value = false
+    cleanupTaskStream()
   }
 }
 
@@ -254,6 +258,32 @@ const hoverActions = computed<NodeToolbarAction[]>(() => [
   { id: 'duplicate', label: '复制', icon: CopyDocument, onClick: handleDuplicate },
   { id: 'delete', label: '删除', icon: Delete, danger: true, onClick: handleDelete },
 ])
+
+// 统一接受工作流执行引擎下发的自动执行信号。
+watch(
+  () => props.data?.autoExecute,
+  (shouldExecute) => {
+    if (shouldExecute && !isGenerating.value) {
+      updateNode(props.id, { autoExecute: false })
+      setTimeout(() => void handleGenerate(), 200)
+    }
+  },
+)
+
+watch(
+  () => props.data?.executionCancelToken,
+  (token) => {
+    if (!token) return
+    cleanupTaskStream()
+    isGenerating.value = false
+    updateNode(props.id, {
+      autoExecute: false,
+      loading: false,
+      executed: false,
+      error: '工作流执行已取消',
+    })
+  },
+)
 </script>
 
 <template>

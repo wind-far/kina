@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { AssetSelector, type AssetItem } from '@/components/generate/common'
+import { listAssetItems } from '@/api/asset-items'
 
 // 定义事件
 const emit = defineEmits(['upload', 'select-asset', 'asset-selected'])
@@ -8,9 +9,12 @@ const emit = defineEmits(['upload', 'select-asset', 'asset-selected'])
 // 资产选择器弹窗状态
 const showAssetSelector = ref(false)
 
-// 模拟资产数据（实际使用时从 API 获取）
-const mockAssets = ref<AssetItem[]>([])
+const assets = ref<AssetItem[]>([])
 const assetsLoading = ref(false)
+const assetTabs = [
+  { key: 'mine', label: '我的资产' },
+  { key: 'feed', label: '公开资源' },
+]
 
 // 本地上传
 const handleUpload = () => {
@@ -21,44 +25,35 @@ const handleUpload = () => {
 const handleSelectAsset = () => {
   showAssetSelector.value = true
   emit('select-asset')
-  // 模拟加载资产数据
-  loadAssets()
+  void loadAssets('mine')
 }
 
 // 加载资产数据
-const loadAssets = async () => {
+const loadAssets = async (scope: 'mine' | 'feed' = 'mine') => {
   assetsLoading.value = true
-  // 模拟 API 请求
-  setTimeout(() => {
-    // 示例数据，实际使用时替换为 API 调用
-    mockAssets.value = [
-      {
-        id: '1',
-        url: 'https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/003c91f7f32947c6874aaab9d79778cb~tplv-tb4s082cfz-aigc_resize_mark:640:640.jpeg?lk3s=43402efa&x-expires=1769425200&x-signature=zaZPRco%2BPmSEZK3jJDy6tg9rM%2BA%3D&format=.jpeg',
-        type: 'image',
-        name: '示例图片1'
-      },
-      {
-        id: '2',
-        url: 'https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/003c91f7f32947c6874aaab9d79778cb~tplv-tb4s082cfz-aigc_resize_mark:640:640.jpeg?lk3s=43402efa&x-expires=1769425200&x-signature=zaZPRco%2BPmSEZK3jJDy6tg9rM%2BA%3D&format=.jpeg',
-        type: 'image',
-        name: '示例图片2'
-      },
-      {
-        id: '3',
-        url: 'https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/003c91f7f32947c6874aaab9d79778cb~tplv-tb4s082cfz-aigc_resize_mark:640:640.jpeg?lk3s=43402efa&x-expires=1769425200&x-signature=zaZPRco%2BPmSEZK3jJDy6tg9rM%2BA%3D&format=.jpeg',
-        type: 'image',
-        name: '示例图片3'
-      },
-      {
-        id: '4',
-        url: 'https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/003c91f7f32947c6874aaab9d79778cb~tplv-tb4s082cfz-aigc_resize_mark:640:640.jpeg?lk3s=43402efa&x-expires=1769425200&x-signature=zaZPRco%2BPmSEZK3jJDy6tg9rM%2BA%3D&format=.jpeg',
-        type: 'image',
-        name: '示例图片4'
-      }
-    ]
+  try {
+    const records = await listAssetItems({
+      scope,
+      assetType: 'image',
+      take: 60,
+      includeEditorUploads: scope === 'mine',
+    })
+    assets.value = records.map(record => ({
+      id: record.id,
+      url: record.fileUrl,
+      thumbnailUrl: record.thumbnailUrl || record.previewUrl,
+      type: 'image',
+      name: record.title,
+      width: record.width,
+      height: record.height,
+      createdAt: record.createdAt,
+    }))
+  } catch (error) {
+    console.error('加载画布资产失败', error)
+    assets.value = []
+  } finally {
     assetsLoading.value = false
-  }, 500)
+  }
 }
 
 // 确认选择资产
@@ -68,9 +63,7 @@ const handleAssetConfirm = (assets: AssetItem[]) => {
 
 // Tab 切换
 const handleTabChange = (tabKey: string) => {
-  // 根据 tab 重新加载数据
-  console.log('切换到 Tab:', tabKey)
-  loadAssets()
+  void loadAssets(tabKey === 'feed' ? 'feed' : 'mine')
 }
 </script>
 
@@ -200,8 +193,9 @@ const handleTabChange = (tabKey: string) => {
     <AssetSelector
       v-model:visible="showAssetSelector"
       asset-type="image"
-      :assets="mockAssets"
+      :assets="assets"
       :loading="assetsLoading"
+      :tabs="assetTabs"
       title="选择资产"
       @confirm="handleAssetConfirm"
       @tab-change="handleTabChange"

@@ -32,6 +32,8 @@ export interface WorkflowDefinitionCreatePayload {
 }
 
 export interface WorkflowDefinitionVersionPayload {
+  baseVersionId?: string | null
+  baseVersionUpdatedAt?: string | null
   versionName?: string | null
   changeSummary?: string | null
   status?: string
@@ -42,6 +44,37 @@ export interface WorkflowDefinitionVersionPayload {
   inputSchemaJson?: unknown
   outputSchemaJson?: unknown
   runtimeConfigJson?: unknown
+}
+
+export class WorkflowDefinitionConflictError extends Error {
+  readonly status = 409
+  readonly type = 'workflow_definition_conflict'
+
+  constructor(message = '工作流内容已在其他页面更新，请重新打开后再保存') {
+    super(message)
+    this.name = 'WorkflowDefinitionConflictError'
+  }
+}
+
+export const assertWorkflowAutosaveBaseVersion = (
+  currentVersion: { id: string; updatedAt: Date | string } | null,
+  payload: Pick<WorkflowDefinitionVersionPayload, 'baseVersionId' | 'baseVersionUpdatedAt'>,
+) => {
+  if (payload.baseVersionId !== undefined) {
+    const expectedId = payload.baseVersionId ? String(payload.baseVersionId) : null
+    const currentId = currentVersion?.id || null
+    if (expectedId !== currentId) {
+      throw new WorkflowDefinitionConflictError()
+    }
+  }
+
+  if (payload.baseVersionUpdatedAt !== undefined && payload.baseVersionUpdatedAt !== null) {
+    const expectedTime = new Date(payload.baseVersionUpdatedAt).getTime()
+    const currentTime = currentVersion ? new Date(currentVersion.updatedAt).getTime() : Number.NaN
+    if (!Number.isFinite(expectedTime) || expectedTime !== currentTime) {
+      throw new WorkflowDefinitionConflictError()
+    }
+  }
 }
 
 export interface WorkflowDefinitionUpdatePayload {
@@ -58,10 +91,20 @@ export interface WorkflowDefinitionPublishPayload {
   versionId?: string
 }
 
-export const sendWorkflowDefinitionError = (res: any, status: number, message: string) => {
+export interface WorkflowDefinitionRollbackPayload {
+  versionName?: string | null
+  changeSummary?: string | null
+}
+
+export const sendWorkflowDefinitionError = (
+  res: any,
+  status: number,
+  message: string,
+  type = 'workflow_definition_error',
+) => {
   sendJson(res, status, {
     error: {
-      type: 'workflow_definition_error',
+      type,
       message,
     },
     message,

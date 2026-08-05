@@ -5,7 +5,7 @@
  */
 import { computed, ref, watch, onMounted, onUnmounted, nextTick, markRaw } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { VueFlow, useVueFlow, SelectionMode, type Connection, type NodeMouseEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { useAsyncAction, useShortcut } from '@/composables'
@@ -15,6 +15,7 @@ import {
   canvasViewport, updateViewport,
   undo, redo, canUndo, canRedo, manualSaveHistory, initSampleData, initHistory,
   pauseHistory, resumeHistory,
+  validateWorkflowConnection,
   type WorkflowAddEdgeParams,
   type WorkflowCanvasEdge,
   type WorkflowNodeType,
@@ -22,8 +23,19 @@ import {
 import { WORKFLOW_TEMPLATES } from './config/workflows'
 import { useWorkflowPersistence } from './composables/useWorkflowPersistence'
 import type { WorkflowDefinitionSummary } from './api/definitions'
-import { updateWorkflowDefinition } from './api/definitions'
+import { rollbackWorkflowDefinitionVersion, updateWorkflowDefinition } from './api/definitions'
 import type { WorkflowCanvasPosition } from './composables/workflow-orchestrator-types'
+import {
+  getWorkflowExecutionPlan,
+  type WorkflowExecutionProgress,
+} from './composables/workflow-execution-engine'
+import {
+  createWorkflowRun,
+  getLatestWorkflowRun,
+  retryWorkflowRun,
+  stopWorkflowRun,
+  type WorkflowRunDetail,
+} from './api/runs'
 
 // 节点组件
 import TextNode from './components/nodes/TextNode.vue'
@@ -132,6 +144,13 @@ const autosaveState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 const autosaveErrorMessage = ref('')
 const autosaveReady = ref(false)
 const autosaveInFlight = ref<Promise<void> | null>(null)
+const workflowRunning = ref(false)
+const workflowExecutionProgress = ref<WorkflowExecutionProgress | null>(null)
+const workflowStopping = ref(false)
+const latestWorkflowRun = ref<WorkflowRunDetail | null>(null)
+const activeWorkflowRunId = ref('')
+const showWorkflowRunDetail = ref(false)
+const workflowRunPollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
 // 头部标题重命名
 const renamingTitle = ref(false)
@@ -182,6 +201,59 @@ const autosaveStatusText = computed(() => {
 
   return currentWorkflowId.value ? '实时保存已开启' : '准备自动保存'
 })
+
+const workflowExecutionButtonText = computed(() => {
+  if (!workflowRunning.value) return '运行工作流'
+  const progress = workflowExecutionProgress.value
+  if (!progress) return workflowStopping.value ? '正在停止…' : '停止运行'
+  return `${workflowStopping.value ? '停止中' : '停止'} · ${progress.current}/${progress.total} ${progress.label}`
+})
+
+const workflowRunStatusText = computed(() => {
+  const run = latestWorkflowRun.value
+  if (!run) return ''
+  const progress = `${run.completedNodes}/${run.totalNodes}`
+  if (run.status === 'RUNNING') return `运行中 ${progress}`
+  if (run.status === 'COMPLETED') return `上次运行成功 ${progress}`
+  if (run.status === 'FAILED') return `上次运行失败 ${progress}`
+  if (run.status === 'CANCELLED') return `上次运行已停止 ${progress}`
+  if (run.status === 'INTERRUPTED') return `上次运行已中断 ${progress}`
+  return `等待运行 ${progress}`
+})
+
+const workflowRunStatusLabel = (status: WorkflowRunDetail['status']) => ({
+  PENDING: '等待运行',
+  RUNNING: '运行中',
+  COMPLETED: '已完成',
+  FAILED: '失败',
+  CANCELLED: '已停止',
+  INTERRUPTED: '已中断',
+}[status])
+
+const workflowNodeRunStatusLabel = (status: WorkflowRunDetail['nodeRuns'][number]['status']) => ({
+  PENDING: '等待',
+  RUNNING: '运行中',
+  COMPLETED: '完成',
+  FAILED: '失败',
+  CANCELLED: '取消',
+}[status])
+
+const readRunNodeOutput = (nodeRun: WorkflowRunDetail['nodeRuns'][number], key: string) => {
+  if (!nodeRun.outputJson || typeof nodeRun.outputJson !== 'object') return ''
+  return String((nodeRun.outputJson as Record<string, unknown>)[key] || '').trim()
+}
+
+const readRunNodeOutputUrl = (nodeRun: WorkflowRunDetail['nodeRuns'][number]) => {
+  const value = readRunNodeOutput(nodeRun, 'outputUrl')
+  if (!value) return ''
+  if (value.startsWith('/')) return value
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : ''
+  } catch {
+    return ''
+  }
+}
 
 const startRenameTitle = () => {
   renameTitleInput.value = currentWorkflowTitle.value
@@ -337,8 +409,16 @@ const tryLoadWorkflowByRoute = async (
   try {
     await flushAutosave()
     const detail = await loadWorkflowDetail(normalizedWorkflowId)
+    const latestRun = await getLatestWorkflowRun(normalizedWorkflowId)
+    showWorkflowRunDetail.value = false
     selectedWorkflowVersionId.value = normalizedVersionId
     applyWorkflowVersionToCanvas(detail, normalizedVersionId || undefined)
+    if (latestRun) {
+      syncWorkflowRunState(latestRun)
+      if (latestRun.status === 'PENDING' || latestRun.status === 'RUNNING') {
+        void pollWorkflowRun(normalizedWorkflowId, latestRun.id)
+      }
+    }
     syncWorkflowFormFromDetail()
     await nextTick()
     fitView({ padding: 0.24 })
@@ -359,8 +439,12 @@ const resetWorkflowDraftForm = () => {
 
 const createWorkflowAction = useAsyncAction(async () => {
   await flushAutosave()
+  clearWorkflowRunPolling()
 
   resetCurrentWorkflowState()
+  latestWorkflowRun.value = null
+  activeWorkflowRunId.value = ''
+  showWorkflowRunDetail.value = false
   selectedWorkflowVersionId.value = ''
   selectedLibraryWorkflowId.value = ''
   selectedLibraryWorkflowDetail.value = null
@@ -387,22 +471,23 @@ const handleCreateWorkflow = () => {
 }
 
 // 添加工作流模板
-const handleAddWorkflow = (workflow: WorkflowTemplateDefinition) => {
+const handleAddWorkflow = async (workflow: WorkflowTemplateDefinition) => {
   const cx = -viewport.value.x / viewport.value.zoom + (window.innerWidth / 2) / viewport.value.zoom
   const cy = -viewport.value.y / viewport.value.zoom + (window.innerHeight / 2) / viewport.value.zoom
   const start = { x: cx - 300, y: cy - 200 }
   const { nodes: newNodes, edges: newEdges } = workflow.createNodes(start)
 
-  newNodes.forEach((node) => {
-    const id = addNode(node.type, node.position, node.data)
-    newEdges.forEach((edge) => {
-      if (edge.source === node.id) edge.source = id
-      if (edge.target === node.id) edge.target = id
+  pauseHistory()
+  try {
+    newNodes.forEach((node) => {
+      const id = addNode(node.type, node.position, node.data)
+      newEdges.forEach((edge) => {
+        if (edge.source === node.id) edge.source = id
+        if (edge.target === node.id) edge.target = id
+      })
+      node.newId = id
     })
-    node.newId = id
-  })
 
-  setTimeout(() => {
     newEdges.forEach(edge => {
       addEdge({
         source: edge.source,
@@ -413,12 +498,16 @@ const handleAddWorkflow = (workflow: WorkflowTemplateDefinition) => {
         data: edge.data,
       })
     })
+    await nextTick()
     newNodes.forEach(node => {
       if (node.newId) {
         updateNodeInternals([node.newId])
       }
     })
-  }, 100)
+  } finally {
+    // 一个模板无论包含多少节点和边，都只占用一条撤销历史。
+    resumeHistory(true)
+  }
 
   showTemplatePanel.value = false
 }
@@ -476,14 +565,23 @@ const applyTypedEdgeConnection = (params: WorkflowAddEdgeParams) => {
 
 // 处理连接
 const onConnect = (params: Connection) => {
+  if (workflowRunning.value) {
+    ElMessage.warning('工作流执行中，暂不能修改连线')
+    return
+  }
   if (!params.source || !params.target) return
-
-  applyTypedEdgeConnection({
+  const connection = {
     source: params.source,
     target: params.target,
     sourceHandle: params.sourceHandle ?? undefined,
     targetHandle: params.targetHandle ?? undefined,
-  })
+  }
+  const validation = validateWorkflowConnection(connection)
+  if (!validation.valid) {
+    ElMessage.warning(validation.message || '当前连接无效')
+    return
+  }
+  applyTypedEdgeConnection(connection)
 }
 
 const hasExistingEdge = (source: string, target: string, sourceHandle?: string, targetHandle?: string) => {
@@ -635,6 +733,180 @@ const handleLoadWorkflowVersion = (workflow: WorkflowDefinitionSummary, versionI
   void loadWorkflowVersionAction.run(workflow, versionId)
 }
 
+const rollbackWorkflowVersionAction = useAsyncAction(async (workflow: WorkflowDefinitionSummary, versionId: string) => {
+  await flushAutosave()
+  const rollbackVersion = await rollbackWorkflowDefinitionVersion(workflow.id, versionId)
+  const detail = await loadWorkflowDetail(workflow.id)
+  selectedLibraryWorkflowDetail.value = detail
+  selectedWorkflowVersionId.value = rollbackVersion.id
+  applyWorkflowVersionToCanvas(detail, rollbackVersion.id)
+  syncWorkflowFormFromDetail()
+  await reloadWorkflowList({ scene: 'WORKFLOW_CANVAS', keyword: workflowListKeyword.value || undefined })
+  await syncWorkflowRouteQuery(workflow.id)
+  showWorkflowLibraryPanel.value = false
+  await nextTick()
+  fitView({ padding: 0.24 })
+}, { globalKey: 'blocking', globalText: '正在回滚版本…' })
+
+const handleRollbackWorkflowVersion = async (workflow: WorkflowDefinitionSummary, versionId: string) => {
+  const version = selectedLibraryWorkflowDetail.value?.versions.find(item => item.id === versionId)
+  try {
+    await ElMessageBox.confirm(
+      `将基于 V${version?.versionNo || ''} 创建一个新的当前草稿，已有历史版本不会被修改。`,
+      '确认版本回滚',
+      {
+        confirmButtonText: '确认回滚',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    throw error
+  }
+  await rollbackWorkflowVersionAction.run(workflow, versionId)
+}
+
+const clearWorkflowRunPolling = () => {
+  if (workflowRunPollTimer.value) clearTimeout(workflowRunPollTimer.value)
+  workflowRunPollTimer.value = null
+}
+
+const applyServerRunOutputs = (run: WorkflowRunDetail) => {
+  run.nodeRuns.forEach(nodeRun => {
+    if (nodeRun.status !== 'COMPLETED') return
+    const configNode = nodes.value.find(node => node.id === nodeRun.nodeId)
+    if (!configNode) return
+    const taskRecordId = nodeRun.generationRecordId || readRunNodeOutput(nodeRun, 'taskRecordId')
+    const outputContent = readRunNodeOutput(nodeRun, 'outputContent')
+    const outputUrl = readRunNodeOutputUrl(nodeRun)
+
+    if (configNode.type === 'llmConfig') {
+      updateNode(configNode.id, {
+        loading: false,
+        error: '',
+        executed: true,
+        taskRecordId,
+        outputContent,
+      })
+      return
+    }
+    if (configNode.type !== 'imageConfig' || !outputUrl) return
+
+    const existingOutput = edges.value
+      .filter(edge => edge.source === configNode.id)
+      .map(edge => nodes.value.find(node => node.id === edge.target))
+      .find(node => node?.type === 'image')
+    const outputNodeId = existingOutput?.id || addNode('image', {
+      x: (configNode.position?.x || 0) + 400,
+      y: configNode.position?.y || 0,
+    }, { url: outputUrl, label: '生成图片', loading: false })
+    if (!existingOutput) {
+      addEdge({ source: configNode.id, target: outputNodeId, sourceHandle: 'right', targetHandle: 'left' })
+    }
+    updateNode(outputNodeId, { url: outputUrl, label: '生成图片', loading: false, error: '' })
+    updateNode(configNode.id, {
+      loading: false,
+      error: '',
+      executed: true,
+      taskRecordId,
+      outputNodeId,
+    })
+  })
+}
+
+const syncWorkflowRunState = (run: WorkflowRunDetail, notifyTerminal = false) => {
+  const wasRunning = workflowRunning.value
+  latestWorkflowRun.value = run
+  applyServerRunOutputs(run)
+  const active = run.status === 'PENDING' || run.status === 'RUNNING'
+  workflowRunning.value = active
+  activeWorkflowRunId.value = active ? run.id : ''
+  const current = run.nodeRuns.find(nodeRun => nodeRun.nodeId === run.currentNodeId)
+  workflowExecutionProgress.value = active && current
+    ? { current: Math.min(run.completedNodes + 1, run.totalNodes), total: run.totalNodes, nodeId: current.nodeId, label: current.label || current.nodeId }
+    : null
+  if (!active) {
+    clearWorkflowRunPolling()
+    if (wasRunning) void flushAutosave()
+    if (notifyTerminal && run.status === 'COMPLETED') ElMessage.success(`工作流执行完成，共执行 ${run.completedNodes} 个节点`)
+    if (notifyTerminal && run.status === 'FAILED') ElMessage.error(run.errorMessage || '工作流执行失败')
+  }
+}
+
+const pollWorkflowRun = async (workflowId: string, runId: string) => {
+  clearWorkflowRunPolling()
+  try {
+    const run = await getLatestWorkflowRun(workflowId)
+    if (!run || run.id !== runId) return
+    syncWorkflowRunState(run, true)
+    if (run.status === 'PENDING' || run.status === 'RUNNING') {
+      workflowRunPollTimer.value = setTimeout(() => void pollWorkflowRun(workflowId, runId), 1000)
+    }
+  } catch (error) {
+    console.error('刷新工作流运行状态失败', error)
+    workflowRunPollTimer.value = setTimeout(() => void pollWorkflowRun(workflowId, runId), 2500)
+  }
+}
+
+const handleRunWorkflow = async () => {
+  if (workflowRunning.value) return
+  await flushAutosave()
+  const plan = getWorkflowExecutionPlan()
+  const workflowId = currentWorkflowId.value
+  const version = currentWorkflowDetail.value?.definition.currentVersion
+    || currentWorkflowDetail.value?.definition.latestVersion
+    || currentWorkflowDetail.value?.versions[0]
+  if (!workflowId || !version?.id) {
+    ElMessage.error('工作流尚未保存，无法创建运行记录')
+    return
+  }
+
+  try {
+    const run = await createWorkflowRun(workflowId, {
+      versionId: version.id,
+      nodes: plan,
+      executor: 'SERVER',
+    })
+    syncWorkflowRunState(run)
+    showWorkflowRunDetail.value = true
+    ElMessage.success('工作流已提交到服务端，关闭页面后仍会继续运行')
+    void pollWorkflowRun(workflowId, run.id)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '创建工作流运行记录失败')
+  }
+}
+
+const handleStopWorkflow = async () => {
+  if (!workflowRunning.value || workflowStopping.value) return
+  workflowStopping.value = true
+  try {
+    if (currentWorkflowId.value && activeWorkflowRunId.value) {
+      const run = await stopWorkflowRun(currentWorkflowId.value, activeWorkflowRunId.value)
+      syncWorkflowRunState(run)
+      ElMessage.info('工作流已停止')
+    }
+  } catch (error: any) {
+    ElMessage.warning(error?.message || '工作流停止请求未确认')
+  } finally {
+    workflowStopping.value = false
+  }
+}
+
+const handleRetryWorkflowRun = async () => {
+  const workflowId = currentWorkflowId.value
+  const run = latestWorkflowRun.value
+  if (!workflowId || !run || !['FAILED', 'INTERRUPTED'].includes(run.status)) return
+  try {
+    const retried = await retryWorkflowRun(workflowId, run.id)
+    syncWorkflowRunState(retried)
+    ElMessage.success('已从失败节点重新提交')
+    void pollWorkflowRun(workflowId, retried.id)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '重新运行失败')
+  }
+}
+
 const performAutosave = async () => {
   autosaveState.value = 'saving'
   autosaveErrorMessage.value = ''
@@ -657,7 +929,7 @@ const performAutosave = async () => {
 }
 
 const scheduleAutosave = () => {
-  if (!autosaveReady.value || workflowLoadingByRoute.value || !isCanvasDirty.value) {
+  if (workflowRunning.value || !autosaveReady.value || workflowLoadingByRoute.value || !isCanvasDirty.value) {
     return
   }
 
@@ -841,6 +1113,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleSpaceDown)
   window.removeEventListener('keyup', handleSpaceUp)
   clearAutosaveTimer()
+  clearWorkflowRunPolling()
 })
 
 watch(() => route.query.workflowId, (workflowId) => {
@@ -882,7 +1155,13 @@ watch(currentCanvasSnapshot, () => {
 </script>
 
 <template>
-  <div class="workflow-container" :class="{ 'workflow-right-panel-open': !isAssistantCollapsed }">
+  <div
+    class="workflow-container"
+    :class="{
+      'workflow-right-panel-open': !isAssistantCollapsed,
+      'workflow-running': workflowRunning,
+    }"
+  >
     <div class="workflow-workbench">
       <div class="workflow-main">
         <div
@@ -906,7 +1185,8 @@ watch(currentCanvasSnapshot, () => {
             :multi-selection-key-code="'Shift'"
             :selection-mode="SelectionMode.Partial"
             :pan-on-drag="panOnDragValue"
-            :nodes-draggable="!isSpacePressed"
+            :nodes-draggable="!isSpacePressed && !workflowRunning"
+            :nodes-connectable="!workflowRunning"
             :pan-on-scroll="false"
             :connect-on-click="false"
             :connection-line-component="CanvasConnectionLine"
@@ -956,6 +1236,67 @@ watch(currentCanvasSnapshot, () => {
           </div>
 
           <div class="workflow-header-right">
+            <button
+              class="wf-btn wf-btn-md wf-btn-primary wf-run-workflow-btn"
+              :class="{ 'wf-btn-danger': workflowRunning }"
+              type="button"
+              :disabled="workflowStopping"
+              :title="workflowRunning ? '停止当前工作流运行' : '校验并运行全部生成节点'"
+              @click="workflowRunning ? handleStopWorkflow() : handleRunWorkflow()"
+            >
+              <span v-if="workflowRunning" class="wf-spinner"></span>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M8 5v14l11-7L8 5z" fill="currentColor"/>
+              </svg>
+              <span>{{ workflowExecutionButtonText }}</span>
+            </button>
+            <div v-if="latestWorkflowRun" class="wf-run-history">
+              <button
+                class="wf-btn wf-btn-sm wf-run-history__trigger"
+                type="button"
+                :class="{ active: showWorkflowRunDetail }"
+                @click="showWorkflowRunDetail = !showWorkflowRunDetail"
+              >
+                运行记录
+              </button>
+              <div v-if="showWorkflowRunDetail" class="wf-run-history__panel" @click.stop>
+                <div class="wf-run-history__header">
+                  <div>
+                    <strong>{{ workflowRunStatusLabel(latestWorkflowRun.status) }}</strong>
+                    <span>V{{ latestWorkflowRun.workflowVersion.versionNo }}</span>
+                  </div>
+                  <span>{{ latestWorkflowRun.completedNodes }}/{{ latestWorkflowRun.totalNodes }}</span>
+                </div>
+                <div v-if="latestWorkflowRun.errorMessage" class="wf-run-history__error">
+                  {{ latestWorkflowRun.errorMessage }}
+                </div>
+                <button
+                  v-if="latestWorkflowRun.executor === 'SERVER' && ['FAILED', 'INTERRUPTED'].includes(latestWorkflowRun.status)"
+                  class="wf-btn wf-btn-sm wf-run-history__retry"
+                  type="button"
+                  @click="handleRetryWorkflowRun"
+                >从失败节点重试</button>
+                <div class="wf-run-history__nodes">
+                  <div v-for="nodeRun in latestWorkflowRun.nodeRuns" :key="nodeRun.id" class="wf-run-history__node">
+                    <div class="wf-run-history__node-title">
+                      <span>{{ nodeRun.label || nodeRun.nodeId }}</span>
+                      <span :data-status="nodeRun.status">{{ workflowNodeRunStatusLabel(nodeRun.status) }}</span>
+                    </div>
+                    <div v-if="nodeRun.errorMessage" class="wf-run-history__error">{{ nodeRun.errorMessage }}</div>
+                    <div v-if="readRunNodeOutput(nodeRun, 'outputContent')" class="wf-run-history__output">
+                      {{ readRunNodeOutput(nodeRun, 'outputContent') }}
+                    </div>
+                    <a
+                      v-if="readRunNodeOutputUrl(nodeRun)"
+                      class="wf-run-history__link"
+                      :href="readRunNodeOutputUrl(nodeRun)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >查看生成结果</a>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div class="wf-header-meta">
               <input
                 v-if="renamingTitle"
@@ -975,7 +1316,9 @@ watch(currentCanvasSnapshot, () => {
               >
                 {{ currentWorkflowTitle }}
               </span>
-              <span class="wf-header-meta__status">{{ currentWorkflowStatusText }} · {{ autosaveStatusText }}</span>
+              <span class="wf-header-meta__status">
+                {{ currentWorkflowStatusText }} · {{ autosaveStatusText }}<template v-if="workflowRunStatusText"> · {{ workflowRunStatusText }}</template>
+              </span>
             </div>
           </div>
         </header>
@@ -1044,13 +1387,13 @@ watch(currentCanvasSnapshot, () => {
 
             <div class="wf-divider"></div>
 
-            <button class="wf-btn wf-btn-icon" :disabled="!canUndo" @click="undo()" title="撤销">
+            <button class="wf-btn wf-btn-icon" :disabled="workflowRunning || !canUndo" @click="undo()" title="撤销">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M3 10h10a5 5 0 015 5v0a5 5 0 01-5 5H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M7 14l-4-4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </button>
-            <button class="wf-btn wf-btn-icon" :disabled="!canRedo" @click="redo()" title="重做">
+            <button class="wf-btn wf-btn-icon" :disabled="workflowRunning || !canRedo" @click="redo()" title="重做">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M21 10H11a5 5 0 00-5 5v0a5 5 0 005 5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M17 14l4-4-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1182,7 +1525,7 @@ watch(currentCanvasSnapshot, () => {
                       v-else-if="selectedLibraryWorkflowDetail?.versions?.length"
                       class="wf-workflow-list__version-list"
                     >
-                      <button
+                      <div
                         v-for="version in selectedLibraryWorkflowDetail.versions"
                         :key="version.id"
                         class="wf-workflow-list__version-item"
@@ -1200,7 +1543,15 @@ watch(currentCanvasSnapshot, () => {
                         <span class="wf-workflow-list__version-badge">
                           {{ version.status === 'PUBLISHED' ? '已发布' : version.status === 'DEPRECATED' ? '已废弃' : '草稿' }}
                         </span>
-                      </button>
+                        <button
+                          v-if="version.id !== selectedLibraryWorkflowDetail.definition.currentVersionId"
+                          class="wf-btn wf-btn-sm"
+                          type="button"
+                          @click.stop="handleRollbackWorkflowVersion(workflow, version.id)"
+                        >
+                          回滚到此版本
+                        </button>
+                      </div>
                     </div>
 
                     <div v-else class="wf-workflow-list__empty">

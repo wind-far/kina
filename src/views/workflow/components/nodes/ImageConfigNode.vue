@@ -53,6 +53,7 @@ interface WorkflowImageModelLike {
 
 const isTextNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'text'> => node?.type === 'text'
 const isImageNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'image'> => node?.type === 'image'
+const isLlmNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'llmConfig'> => node?.type === 'llmConfig'
 const readPromptOrder = (data: unknown) => (data && typeof data === 'object' && 'promptOrder' in data
   ? Number((data as { promptOrder?: number }).promptOrder) || 1
   : 1)
@@ -132,6 +133,9 @@ const collectInputs = () => {
     if (isTextNode(src)) {
       const content = src.data.content || ''
       if (content) prompts.push({ order: readPromptOrder(edge.data), content })
+    } else if (isLlmNode(src)) {
+      const content = src.data.outputContent || ''
+      if (content) prompts.push({ order: readPromptOrder(edge.data), content })
     } else if (isImageNode(src)) {
       const imageData = src.data.url || src.data.base64
       if (imageData) refImages.push({ order: readImageOrder(edge.data), imageData })
@@ -168,11 +172,7 @@ const readRecordImageUrl = (record: {
   return ''
 }
 
-const bindTaskStream = (taskRecordId: string, outputNodeId: string) => {
-  cleanupTaskStream()
-  const controller = new AbortController()
-  taskStreamController.value = controller
-
+const bindTaskStream = (taskRecordId: string, outputNodeId: string, controller: AbortController) => {
   void subscribeGenerationTaskEvents(taskRecordId, {
     signal: controller.signal,
     onEvent: (event) => {
@@ -189,11 +189,14 @@ const bindTaskStream = (taskRecordId: string, outputNodeId: string) => {
         if (url) {
           updateNode(outputNodeId, { url, label: '生成结果', loading: false, error: '' })
           updateNode(props.id, {
-            loading: false,
+            loading: !event.done,
             error: '',
-            executed: true,
+            executed: Boolean(event.done),
             outputNodeId,
           })
+        } else if (event.done) {
+          updateNode(outputNodeId, { label: '生成失败', loading: false, error: '任务完成但未返回图片' })
+          updateNode(props.id, { loading: false, error: '任务完成但未返回图片', executed: false })
         }
       }
 
@@ -242,6 +245,8 @@ const handleGenerate = async () => {
 
   isGenerating.value = true
   cleanupTaskStream()
+  const controller = new AbortController()
+  taskStreamController.value = controller
   let outputNodeId: string | null = null
   try {
     const { providerId, modelKey } = resolveGenerationTaskModel({
@@ -270,13 +275,20 @@ const handleGenerate = async () => {
       ? appendImageReferencesToRequestBody(requestBody, refImages)
       : requestBody
 
-    // 先创建带 loading 状态的输出节点
+    // 模板可能已经预置结果节点；优先复用，避免重复运行不断新增输出节点。
     const node = nodes.value.find(n => n.id === props.id)
-    outputNodeId = addNode('image', {
+    const existingOutput = edges.value
+      .filter(edge => edge.source === props.id)
+      .map(edge => nodes.value.find(candidate => candidate.id === edge.target))
+      .find(candidate => candidate?.type === 'image')
+    outputNodeId = existingOutput?.id || addNode('image', {
       x: (node?.position?.x || 0) + 400,
-      y: node?.position?.y || 0
+      y: node?.position?.y || 0,
     }, { url: '', label: '生成中...', loading: true })
-    addEdge({ source: props.id, target: outputNodeId, sourceHandle: 'right', targetHandle: 'left' })
+    updateNode(outputNodeId, { url: '', label: '生成中...', loading: true, error: '' })
+    if (!existingOutput) {
+      addEdge({ source: props.id, target: outputNodeId, sourceHandle: 'right', targetHandle: 'left' })
+    }
     const createdOutputNodeId = outputNodeId
     setTimeout(() => updateNodeInternals([createdOutputNodeId]), 50)
 
@@ -297,7 +309,7 @@ const handleGenerate = async () => {
       modelKey,
       referenceImages: [...refImages],
       requestBody: normalizedRequestBody,
-    })
+    }, { signal: controller.signal })
 
     const taskRecordId = String(saved.id || '').trim()
     if (!taskRecordId) {
@@ -309,13 +321,16 @@ const handleGenerate = async () => {
       loading: true,
       error: '',
     })
-    bindTaskStream(taskRecordId, createdOutputNodeId)
+    bindTaskStream(taskRecordId, createdOutputNodeId, controller)
   } catch (err: unknown) {
     console.error('图片生成失败:', err)
-    const msg = err instanceof Error ? err.message : '图片生成失败'
+    const msg = err instanceof DOMException && err.name === 'AbortError'
+      ? '工作流执行已取消'
+      : err instanceof Error ? err.message : '图片生成失败'
     if (outputNodeId) updateNode(outputNodeId, { label: '生成失败', loading: false, error: msg })
     updateNode(props.id, { loading: false, error: msg })
     isGenerating.value = false
+    cleanupTaskStream()
   }
 }
 
@@ -339,6 +354,21 @@ watch(
       setTimeout(() => handleGenerate(), 200)
     }
   }
+)
+
+watch(
+  () => props.data?.executionCancelToken,
+  (token) => {
+    if (!token) return
+    cleanupTaskStream()
+    isGenerating.value = false
+    updateNode(props.id, {
+      autoExecute: false,
+      loading: false,
+      executed: false,
+      error: '工作流执行已取消',
+    })
+  },
 )
 </script>
 

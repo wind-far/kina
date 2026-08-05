@@ -10,10 +10,18 @@ const props = defineProps({
   title: {
     type: String,
     default: '未命名项目'
-  }
+  },
+  saveStatus: {
+    type: String,
+    default: ''
+  },
+  backLoading: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const emit = defineEmits(['update:title', 'toggle-panel'])
+const emit = defineEmits(['update:title', 'toggle-panel', 'menu-action', 'back'])
 
 const isEditing = ref(false)
 const editTitle = ref(props.title)
@@ -99,7 +107,7 @@ const handleMenuClick = (action) => {
   if (action === 'settings') {
     showSettingsModal.value = true
   } else {
-    console.log('Menu action:', action)
+    emit('menu-action', action)
   }
 }
 
@@ -125,7 +133,14 @@ onUnmounted(() => {
     <!-- 左侧 -->
     <div class="top-bar-left">
       <div class="top-bar-left-inner">
-        <button class="back-button" type="button">
+        <button
+          class="back-button"
+          type="button"
+          title="返回上一级"
+          aria-label="返回上一级"
+          :disabled="backLoading"
+          @click="emit('back')"
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <path d="M18.104 14.462c-1.359 2.008-2.203 4.3-1.87 6.566a.723.723 0 0 1-.397.76.747.747 0 0 1-.852-.162c-1.603-1.683-3.903-2.463-6.301-2.643a26.536 26.536 0 0 0 5.107-1.877 26.004 26.004 0 0 0 4.316-2.647l-.003.003ZM6.339 2.258a.575.575 0 0 1 .732.202c3.953 5.991 8.172 7.646 13.622 6.642a.931.931 0 0 1 .997.496c.415.832-.438 1.344-.964 1.832-1.485 1.198-4.25 2.932-7.573 4.553-3.326 1.621-6.397 2.734-8.251 3.166-.402.063-.808.188-1.216.202-.81-.054-1.2-1.119-.583-1.669C7.235 14.016 8.323 9.77 6.047 2.96a.574.574 0 0 1 .292-.701Z" fill="currentColor"/>
           </svg>
@@ -141,6 +156,7 @@ onUnmounted(() => {
             @keydown="handleKeydown"
             autofocus
           />
+          <span v-if="saveStatus" class="save-status">{{ saveStatus }}</span>
         </div>
         
         <div class="menu-trigger" ref="menuRef">
@@ -168,6 +184,12 @@ onUnmounted(() => {
                   <path d="M4 5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5Zm10 0a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V5ZM4 15a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4Zm13-1a1 1 0 0 1 1 1v2h2a1 1 0 1 1 0 2h-2v2a1 1 0 1 1-2 0v-2h-2a1 1 0 1 1 0-2h2v-2a1 1 0 0 1 1-1Z" fill="currentColor"/>
                 </svg>
                 <span>新建项目</span>
+              </div>
+              <div class="menu-item" @click="handleMenuClick('open')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                </svg>
+                <span>打开项目</span>
               </div>
               <!-- 深色模式 -->
               <div
@@ -341,12 +363,25 @@ onUnmounted(() => {
   background: var(--bg-block-primary-hover);
 }
 
+.back-button:disabled {
+  cursor: wait;
+  opacity: 0.45;
+}
+
 .menu-trigger {
   position: relative;
 }
 
 .title-container {
   max-width: 200px;
+  display: flex;
+  align-items: center;
+}
+
+.save-status {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .title {

@@ -89,6 +89,8 @@ export interface WorkflowDefinitionCreatePayload {
 }
 
 export interface WorkflowDefinitionVersionPayload {
+  baseVersionId?: string | null
+  baseVersionUpdatedAt?: string | null
   versionName?: string | null
   changeSummary?: string | null
   status?: string
@@ -109,6 +111,11 @@ export interface WorkflowDefinitionUpdatePayload {
   isEnabled?: boolean
   sortOrder?: number
   tagsJson?: unknown
+}
+
+export interface WorkflowDefinitionRollbackPayload {
+  versionName?: string | null
+  changeSummary?: string | null
 }
 
 const WORKFLOW_DEFINITIONS_PATH = '/api/workflows'
@@ -232,5 +239,18 @@ export const publishWorkflowDefinition = async (workflowId: string, versionId?: 
     method: 'POST',
     data: versionId ? { versionId } : {},
     successMessage: '工作流版本已发布',
+  })
+}
+
+export const rollbackWorkflowDefinitionVersion = async (
+  workflowId: string,
+  versionId: string,
+  payload: WorkflowDefinitionRollbackPayload = {},
+) => {
+  return await requestWorkflowApi<WorkflowDefinitionVersionDetail>({
+    url: `${WORKFLOW_DEFINITIONS_PATH}/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(versionId)}/rollback`,
+    method: 'POST',
+    data: payload,
+    successMessage: '已回滚为新的草稿版本',
   })
 }

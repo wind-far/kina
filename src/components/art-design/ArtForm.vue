@@ -185,15 +185,15 @@
 
   const emit = defineEmits<FormEmits>()
 
-  const modelValue = defineModel<Record<string, any>>({ default: {} })
+  const modelValue = defineModel<Record<string, any>>({ default: () => ({}) })
 
   const rootProps = ['label', 'labelWidth', 'key', 'type', 'hidden', 'span', 'slots']
 
-  const getProps = (item: FormItem) => {
+  const getProps = (item: FormItem): Record<string, any> => {
     if (item.props) return item.props
-    const props = { ...item }
-    rootProps.forEach((key) => delete (props as Record<string, any>)[key])
-    return props
+    const dynamicProps: Record<string, any> = { ...item }
+    rootProps.forEach((key) => delete dynamicProps[key])
+    return dynamicProps
   }
 
   // 获取插槽
@@ -254,7 +254,7 @@
 
     // 清空所有表单项值(包含隐藏项)
     Object.assign(
-      modelValue.value,
+      modelValue.value as Record<string, any>,
       Object.fromEntries(props.items.map(({ key }) => [key, undefined]))
     )
 

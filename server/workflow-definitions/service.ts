@@ -6,12 +6,15 @@ import type {
   WorkflowVersionStatus,
 } from '@prisma/client'
 import { prisma } from '../db/prisma'
-import type {
-  WorkflowDefinitionCreatePayload,
-  WorkflowDefinitionListQuery,
-  WorkflowDefinitionPublishPayload,
-  WorkflowDefinitionUpdatePayload,
-  WorkflowDefinitionVersionPayload,
+import {
+  assertWorkflowAutosaveBaseVersion,
+  WorkflowDefinitionConflictError,
+  type WorkflowDefinitionCreatePayload,
+  type WorkflowDefinitionListQuery,
+  type WorkflowDefinitionPublishPayload,
+  type WorkflowDefinitionRollbackPayload,
+  type WorkflowDefinitionUpdatePayload,
+  type WorkflowDefinitionVersionPayload,
 } from './shared'
 
 interface WorkflowAccessContext {
@@ -39,6 +42,7 @@ type WorkflowDefinitionWithRelations = Prisma.WorkflowDefinitionGetPayload<{
 
 const WORKFLOW_SCENE_VALUES: WorkflowScene[] = [
   'WORKFLOW_CANVAS',
+  'INFINITE_CANVAS',
   'AGENT_WORKSPACE',
   'GENERATION_PIPELINE',
 ]
@@ -427,8 +431,14 @@ export const deleteWorkflowDefinition = async (
 
   ensureWorkflowEditable(workflow, context.currentUserId)
 
-  await prisma.workflowDefinition.delete({
-    where: { id: workflowId },
+  await prisma.$transaction(async (tx) => {
+    // 运行记录对具体版本采用 RESTRICT，先显式删除运行记录，避免版本级审计引用被静默悬空。
+    await tx.workflowRun.deleteMany({
+      where: { workflowId },
+    })
+    await tx.workflowDefinition.delete({
+      where: { id: workflowId },
+    })
   })
 
   return serializeWorkflowRecord({
@@ -607,6 +617,7 @@ export const autosaveWorkflowDefinitionDraft = async (
         select: {
           id: true,
           status: true,
+          updatedAt: true,
         },
       },
     },
@@ -617,14 +628,60 @@ export const autosaveWorkflowDefinitionDraft = async (
   }
 
   ensureWorkflowEditable(workflow, context.currentUserId)
+  assertWorkflowAutosaveBaseVersion(workflow.currentVersion, payload)
 
-  const result = await prisma.$transaction(async (tx) => {
-    if (workflow.currentVersion?.id && workflow.currentVersion.status === 'DRAFT') {
-      const draftVersion = await tx.workflowDefinitionVersion.update({
-        where: { id: workflow.currentVersion.id },
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      if (workflow.currentVersion?.id && workflow.currentVersion.status === 'DRAFT') {
+        const expectedUpdatedAt = payload.baseVersionUpdatedAt
+          ? new Date(payload.baseVersionUpdatedAt)
+          : null
+        const updatedDraft = await tx.workflowDefinitionVersion.updateMany({
+          where: {
+            id: workflow.currentVersion.id,
+            ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}),
+          },
+          data: {
+            versionName: normalizeString(payload.versionName),
+            changeSummary: normalizeString(payload.changeSummary),
+            definitionJson: toNullableJsonInput(payload.definitionJson),
+            nodesJson: toNullableJsonInput(payload.nodesJson),
+            edgesJson: toNullableJsonInput(payload.edgesJson),
+            viewportJson: toNullableJsonInput(payload.viewportJson),
+            inputSchemaJson: toNullableJsonInput(payload.inputSchemaJson),
+            outputSchemaJson: toNullableJsonInput(payload.outputSchemaJson),
+            runtimeConfigJson: toNullableJsonInput(payload.runtimeConfigJson),
+          },
+        })
+
+        if (updatedDraft.count !== 1) {
+          throw new WorkflowDefinitionConflictError()
+        }
+
+        const updatedWorkflow = await tx.workflowDefinition.updateMany({
+          where: { id: workflowId, currentVersionId: workflow.currentVersion.id },
+          data: {
+            status: workflow.status === 'ARCHIVED' ? workflow.status : 'DRAFT',
+          },
+        })
+        if (updatedWorkflow.count !== 1) {
+          throw new WorkflowDefinitionConflictError()
+        }
+
+        return await tx.workflowDefinitionVersion.findUniqueOrThrow({
+          where: { id: workflow.currentVersion.id },
+        })
+      }
+
+      const nextVersionNo = workflow.latestVersionNo + 1
+      const nextDraftVersion = await tx.workflowDefinitionVersion.create({
         data: {
+          workflowId,
+          createdBy: context.currentUserId,
+          versionNo: nextVersionNo,
           versionName: normalizeString(payload.versionName),
           changeSummary: normalizeString(payload.changeSummary),
+          status: 'DRAFT',
           definitionJson: toNullableJsonInput(payload.definitionJson),
           nodesJson: toNullableJsonInput(payload.nodesJson),
           edgesJson: toNullableJsonInput(payload.edgesJson),
@@ -635,48 +692,32 @@ export const autosaveWorkflowDefinitionDraft = async (
         },
       })
 
-      await tx.workflowDefinition.update({
-        where: { id: workflowId },
+      const updatedWorkflow = await tx.workflowDefinition.updateMany({
+        where: {
+          id: workflowId,
+          currentVersionId: workflow.currentVersionId,
+          latestVersionNo: workflow.latestVersionNo,
+        },
         data: {
+          latestVersionNo: nextVersionNo,
+          currentVersionId: nextDraftVersion.id,
           status: workflow.status === 'ARCHIVED' ? workflow.status : 'DRAFT',
         },
       })
+      if (updatedWorkflow.count !== 1) {
+        throw new WorkflowDefinitionConflictError()
+      }
 
-      return draftVersion
+      return nextDraftVersion
+    })
+
+    return serializeWorkflowRecord(result)
+  } catch (error: any) {
+    if (error instanceof WorkflowDefinitionConflictError || error?.code === 'P2002') {
+      throw new WorkflowDefinitionConflictError()
     }
-
-    const nextVersionNo = workflow.latestVersionNo + 1
-    const nextDraftVersion = await tx.workflowDefinitionVersion.create({
-      data: {
-        workflowId,
-        createdBy: context.currentUserId,
-        versionNo: nextVersionNo,
-        versionName: normalizeString(payload.versionName),
-        changeSummary: normalizeString(payload.changeSummary),
-        status: 'DRAFT',
-        definitionJson: toNullableJsonInput(payload.definitionJson),
-        nodesJson: toNullableJsonInput(payload.nodesJson),
-        edgesJson: toNullableJsonInput(payload.edgesJson),
-        viewportJson: toNullableJsonInput(payload.viewportJson),
-        inputSchemaJson: toNullableJsonInput(payload.inputSchemaJson),
-        outputSchemaJson: toNullableJsonInput(payload.outputSchemaJson),
-        runtimeConfigJson: toNullableJsonInput(payload.runtimeConfigJson),
-      },
-    })
-
-    await tx.workflowDefinition.update({
-      where: { id: workflowId },
-      data: {
-        latestVersionNo: nextVersionNo,
-        currentVersionId: nextDraftVersion.id,
-        status: workflow.status === 'ARCHIVED' ? workflow.status : 'DRAFT',
-      },
-    })
-
-    return nextDraftVersion
-  })
-
-  return serializeWorkflowRecord(result)
+    throw error
+  }
 }
 
 export const publishWorkflowDefinition = async (
@@ -748,6 +789,83 @@ export const publishWorkflowDefinition = async (
     })
 
     return publishedVersion
+  })
+
+  return serializeWorkflowRecord(result)
+}
+
+// 将指定历史版本复制为一个新的当前草稿，保留原有版本链和审计语义。
+export const rollbackWorkflowDefinitionVersion = async (
+  workflowId: string,
+  targetVersionId: string,
+  payload: WorkflowDefinitionRollbackPayload,
+  context: WorkflowAccessContext,
+) => {
+  const normalizedTargetVersionId = normalizeRequiredString(targetVersionId, '目标版本 ID')
+
+  const result = await prisma.$transaction(async (tx) => {
+    const workflow = await tx.workflowDefinition.findUnique({
+      where: { id: workflowId },
+      select: {
+        id: true,
+        userId: true,
+        isBuiltIn: true,
+        latestVersionNo: true,
+        status: true,
+      },
+    })
+
+    if (!workflow) {
+      throw new Error('工作流不存在')
+    }
+    ensureWorkflowEditable(workflow, context.currentUserId)
+
+    const targetVersion = await tx.workflowDefinitionVersion.findFirst({
+      where: {
+        id: normalizedTargetVersionId,
+        workflowId,
+      },
+    })
+    if (!targetVersion) {
+      throw new Error('目标版本不存在')
+    }
+
+    const nextVersionNo = workflow.latestVersionNo + 1
+    const rollbackVersion = await tx.workflowDefinitionVersion.create({
+      data: {
+        workflowId,
+        createdBy: context.currentUserId,
+        versionNo: nextVersionNo,
+        versionName: normalizeString(payload.versionName) || `回滚至 V${targetVersion.versionNo}`,
+        changeSummary: normalizeString(payload.changeSummary) || `基于历史版本 V${targetVersion.versionNo} 创建的回滚草稿`,
+        status: 'DRAFT',
+        definitionJson: toNullableJsonInput(targetVersion.definitionJson),
+        nodesJson: toNullableJsonInput(targetVersion.nodesJson),
+        edgesJson: toNullableJsonInput(targetVersion.edgesJson),
+        viewportJson: toNullableJsonInput(targetVersion.viewportJson),
+        inputSchemaJson: toNullableJsonInput(targetVersion.inputSchemaJson),
+        outputSchemaJson: toNullableJsonInput(targetVersion.outputSchemaJson),
+        runtimeConfigJson: toNullableJsonInput({
+          ...(targetVersion.runtimeConfigJson && typeof targetVersion.runtimeConfigJson === 'object'
+            ? targetVersion.runtimeConfigJson as Record<string, unknown>
+            : {}),
+          rollbackFromVersionId: targetVersion.id,
+          rollbackFromVersionNo: targetVersion.versionNo,
+          rolledBackAt: new Date().toISOString(),
+        }),
+      },
+    })
+
+    await tx.workflowDefinition.update({
+      where: { id: workflowId },
+      data: {
+        latestVersionNo: nextVersionNo,
+        currentVersionId: rollbackVersion.id,
+        status: workflow.status === 'ARCHIVED' ? 'ARCHIVED' : 'DRAFT',
+      },
+    })
+
+    return rollbackVersion
   })
 
   return serializeWorkflowRecord(result)

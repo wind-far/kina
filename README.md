@@ -94,7 +94,11 @@ Pro 版本对比：https://reaicc.com/pricing
 - 3 类自定义边：`imageRole / promptOrder / imageOrder`
 - 4 类内置工作流模板：`text_to_image / text_to_image_to_video / storyboard / multi_angle_storyboard`
 - 工作流定义入库与版本快照（`WorkflowDefinition + WorkflowDefinitionVersion`）
+- 历史版本回滚会创建新草稿版本，不覆盖既有快照
+- 整图运行前校验依赖图，由服务端按拓扑顺序执行 LLM / 图片生成节点；视频整图执行仍在接入中
 - 节点生成统一通过任务事件订阅获取进度
+
+无限画布与工作流的当前完成度、运行边界和验收步骤见 [功能状态说明](docs/CANVAS_WORKFLOW_STATUS.md)。
 
 ### 管理后台
 

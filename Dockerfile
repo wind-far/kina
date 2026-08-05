@@ -6,17 +6,22 @@ FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS deps
 # 设置工作目录。
 WORKDIR /app
 
-# 复制依赖声明文件与 Prisma 生成所需元数据。
-COPY package.json ./
+# 使用仓库锁定的 pnpm 版本和依赖锁文件，避免镜像依赖随构建时间漂移。
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+RUN corepack enable
+
+# 复制依赖声明、锁文件、构建脚本白名单与 Prisma 生成所需元数据。
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 
 # 安装构建阶段所需依赖。
 # Prisma 7 在 postinstall 的 prisma generate 阶段会读取 DATABASE_URL，
 # 这里提供一个仅用于生成客户端的占位值，避免镜像构建期因缺少真实数据库配置而失败。
-RUN --mount=type=cache,target=/root/.npm \
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   DATABASE_URL='mysql://root:placeholder@127.0.0.1:3306/canana_mind' \
-  npm install --include=dev --no-fund --no-audit
+  pnpm install --frozen-lockfile
 # ==================== Stage 2: 构建产物 ====================
 FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS builder
 

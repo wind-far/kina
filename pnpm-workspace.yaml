@@ -1,0 +1,14 @@
+allowBuilds:
+  '@prisma/engines': true
+  esbuild: true
+  onnxruntime-node: true
+  prisma: true
+  protobufjs: true
+  sharp: true
+  vue-demi: true
+
+overrides:
+  adm-zip: 0.6.0
+  dompurify: 3.4.12
+  fast-uri: 3.1.5
+  sharp: 0.35.0

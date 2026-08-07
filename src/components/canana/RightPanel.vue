@@ -20,7 +20,8 @@ import { useAssistantSessions } from '@/composables/useAssistantSessions'
 const props = defineProps({
   title: { type: String, default: '' },
   visible: { type: Boolean, default: false },
-  initialMessage: { type: String, default: '' }
+  initialMessage: { type: String, default: '' },
+  contextReferences: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits(['close', 'message-received', 'add-image-to-canvas'])
@@ -124,6 +125,22 @@ const hoveredImageId = ref(null)
 const lastCreationType = ref('agent')
 // 最近一次 ContentGenerator 透传过来的图片生成参数（count/model/ratio/quality 等）
 const lastImageOptions = ref({})
+
+const canvasContextReferences = computed(() => (Array.isArray(props.contextReferences)
+  ? props.contextReferences.filter(item => item && item.id).slice(0, 12)
+  : []))
+const canvasContextImageUrls = computed(() => [...new Set(canvasContextReferences.value
+  .filter(item => item.type === 'image' && item.url)
+  .map(item => item.url))])
+const buildContextualPrompt = (content) => {
+  if (!canvasContextReferences.value.length) return content
+  const contextLines = canvasContextReferences.value.map((item) => {
+    const relation = item.relation === 'selected' ? '选中' : '上游'
+    const details = item.content ? `：${String(item.content).slice(0, 800)}` : item.url ? `：${item.url}` : ''
+    return `- [${relation}/${item.type}] ${item.label}${details}`
+  })
+  return `${content}\n\n以下是当前画布上下文，请仅在相关时使用：\n${contextLines.join('\n')}`
+}
 
 // 跟踪进行中的流式请求，用于卸载时统一 abort
 const activeStreams = []
@@ -482,7 +499,11 @@ const sendMessage = async () => {
   hasMessages.value = true
 
   const userId = Date.now()
-  const refImages = uploadedImages.value.map(img => img.src)
+  const goImage = hasImagesLocal || lastCreationType.value === 'image'
+  const refImages = [...new Set([
+    ...uploadedImages.value.map(img => img.src),
+    ...(goImage ? canvasContextImageUrls.value : []),
+  ])]
 
   if (hasImagesLocal) {
     messages.value.push({
@@ -505,7 +526,6 @@ const sendMessage = async () => {
   scrollToBottom()
 
   // 路由到对应模型 API：有参考图 / 显式选 image → 图片生成；否则走文本对话
-  const goImage = hasImagesLocal || lastCreationType.value === 'image'
   if (goImage) {
     messages.value.push({
       id: userId + 1,
@@ -528,7 +548,7 @@ const sendMessage = async () => {
       error: '',
     })
     scrollToBottom()
-    await runChatStream(content, tailMessage())
+    await runChatStream(buildContextualPrompt(content), tailMessage())
   }
 }
 
@@ -586,7 +606,7 @@ watch(() => props.initialMessage, async (newMessage) => {
     error: '',
   })
   scrollToBottom()
-  await runChatStream(newMessage, tailMessage())
+  await runChatStream(buildContextualPrompt(newMessage), tailMessage())
 })
 
 // 计算内容生成器高度（用于任务指示器定位）
@@ -780,6 +800,16 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
         </template>
       </div>
 
+      <div v-if="canvasContextReferences.length" class="canvas-context-strip" aria-label="当前画布上下文">
+        <span class="canvas-context-strip__label">画布上下文</span>
+        <span v-for="item in canvasContextReferences" :key="item.id" class="canvas-context-chip" :title="`${item.relation === 'selected' ? '选中' : '上游'} · ${item.type}`">
+          <img v-if="item.type === 'image' && item.url" :src="item.url" alt="">
+          <span v-else class="canvas-context-chip__type">{{ item.type === 'text' ? 'T' : '◆' }}</span>
+          <span>{{ item.label }}</span>
+          <small>{{ item.relation === 'selected' ? '选中' : '上游' }}</small>
+        </span>
+      </div>
+
       <!-- 底部内容生成器 -->
       <ContentGenerator
         class="dimension-layout-FUl4Nj canvas-layout content-generator-XxJXPs"
@@ -816,6 +846,62 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
 </template>
 
 <style scoped>
+.canvas-context-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 6px 12px;
+  overflow-x: auto;
+  border-top: 1px solid var(--stroke-secondary);
+  background: var(--bg-block-primary-default);
+  scrollbar-width: none;
+}
+.canvas-context-strip::-webkit-scrollbar { display: none; }
+.canvas-context-strip__label {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+.canvas-context-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 180px;
+  padding: 4px 7px;
+  border: 1px solid var(--stroke-secondary);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: var(--canvas-float-block-default);
+  font-size: 11px;
+}
+.canvas-context-chip img {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  object-fit: cover;
+}
+.canvas-context-chip > span:not(.canvas-context-chip__type) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.canvas-context-chip__type {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  background: rgba(2, 219, 163, 0.1);
+  color: var(--brand-main-default);
+}
+.canvas-context-chip small {
+  color: var(--text-tertiary);
+  font-size: 9px;
+}
+
 /* AI 图片加载/错误态 */
 .ai-images-loading {
   align-items: center;

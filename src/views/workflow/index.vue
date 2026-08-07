@@ -1112,6 +1112,37 @@ const { selectAll, selectedNodeIds } = useCanvasSelection()
 const { copySelected, pasteFromSlot, hasClipboard } = useCanvasClipboard()
 const { onDrop: onCanvasFileDrop, onDragOver: onCanvasFileDragOver } = useCanvasDrop()
 
+// 画布助手上下文：选中节点优先，并沿入边收集上游节点（最多 12 个，避免提示词失控）。
+const assistantContextReferences = computed(() => {
+  const selectedIds = new Set(selectedNodeIds.value)
+  const queue = [...selectedIds]
+  const seen = new Set<string>()
+  const result: Array<{ id: string; type: string; label: string; relation: 'selected' | 'upstream'; url?: string; content?: string }> = []
+
+  while (queue.length && result.length < 12) {
+    const id = queue.shift()!
+    if (seen.has(id)) continue
+    seen.add(id)
+    const node = nodes.value.find(item => item.id === id)
+    if (!node) continue
+    const data = node.data as Record<string, unknown>
+    const content = String(data.content || data.outputContent || data.systemPrompt || '').trim()
+    const url = node.type === 'image' || node.type === 'video' ? String(data.url || '') : ''
+    result.push({
+      id,
+      type: node.type,
+      label: String(data.label || `${node.type} 节点`),
+      relation: selectedIds.has(id) ? 'selected' : 'upstream',
+      ...(url ? { url } : {}),
+      ...(content ? { content: content.slice(0, 1200) } : {}),
+    })
+    for (const edge of edges.value) {
+      if (edge.target === id && !seen.has(edge.source)) queue.push(edge.source)
+    }
+  }
+  return result
+})
+
 // 输入栏跟随选中节点和画布视口移动，并为左侧工具栏保留安全区域。
 const workflowCanvasWrap = ref<HTMLElement | null>(null)
 const workflowPromptDockStyle = ref<Record<string, string>>({})
@@ -2070,6 +2101,7 @@ watch(currentCanvasSnapshot, () => {
           :title="currentWorkflowTitle"
           :visible="!isAssistantCollapsed"
           :initial-message="pendingAssistantMessage"
+          :context-references="assistantContextReferences"
           @close="toggleAssistantPanel"
           @message-received="pendingAssistantMessage = ''"
           @add-image-to-canvas="handleAssistantAddImage"

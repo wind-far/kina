@@ -2,6 +2,7 @@ import { buildApiUrl } from './http'
 import { readApiData } from './response'
 import {
   AGENTIC_ASSETS_CANVAS_PATH,
+  AGENTIC_ASSETS_WORKFLOW_PATH,
   isLegacyCanvasWorkflowItem,
 } from '@/shared/home-side-menu-route'
 
@@ -541,7 +542,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
     },
     {
       key: 'workflow',
-      title: '全能设计',
+      title: '工作流',
       section: 'center',
       groupKey: 'group-center-main',
       iconSource: 'default',
@@ -553,7 +554,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       badgeText: '',
       badgeTone: 'default',
       actionType: 'route',
-      actionValue: '/workflow',
+      actionValue: AGENTIC_ASSETS_WORKFLOW_PATH,
       sortOrder: 50,
     },
     {
@@ -1164,6 +1165,11 @@ const normalizeHomeSideMenuSettings = (value?: SystemHomeSideMenuSettingsConfig 
 
     if (nextItem.key === 'canvas' && nextItem.actionType === 'route') {
       nextItem.actionValue = AGENTIC_ASSETS_CANVAS_PATH
+    }
+
+    if (nextItem.key === 'workflow' && nextItem.actionType === 'route') {
+      nextItem.actionValue = AGENTIC_ASSETS_WORKFLOW_PATH
+      if (nextItem.title === '全能设计') nextItem.title = '工作流'
     }
 
     // 旧版默认展示 APP/API、隐藏设置；仅迁移这一组旧默认，保留后台的其他自定义组合。

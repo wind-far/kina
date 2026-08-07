@@ -1,4 +1,5 @@
 export const AGENTIC_ASSETS_CANVAS_PATH = '/agentic-assets-canvas'
+export const AGENTIC_ASSETS_WORKFLOW_PATH = '/agentic-assets-workflow'
 
 export interface HomeSideMenuRouteItem {
   key: string
@@ -20,6 +21,10 @@ export const resolveHomeSideMenuRoutePath = (item: HomeSideMenuRouteItem) => {
 
   if (item.key === 'canvas' || isLegacyCanvasWorkflowItem(item)) {
     return AGENTIC_ASSETS_CANVAS_PATH
+  }
+
+  if (item.key === 'workflow') {
+    return AGENTIC_ASSETS_WORKFLOW_PATH
   }
 
   return item.actionValue

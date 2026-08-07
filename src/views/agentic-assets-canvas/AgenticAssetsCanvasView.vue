@@ -19,10 +19,10 @@
 
             <AssetsGridSection
               :workflows="workflowList"
-              @create="handleCreateWorkflow"
-              @delete="handleDeleteWorkflow"
-              @open="handleOpenWorkflow"
-              @rename="handleRenameWorkflow"
+              @create="handleCreateProject"
+              @delete="handleDeleteProject"
+              @open="handleOpenProject"
+              @rename="handleRenameProject"
             />
           </div>
         </div>
@@ -36,20 +36,33 @@ import { ElMessageBox } from 'element-plus'
 // 显式引入 message-box 样式入口（含 base + input + button + overlay + message-box）：
 // 程序化 API 调用时 AutoImport 不一定能注入侧效 CSS，导致弹窗未带样式
 import 'element-plus/es/components/message-box/style/css'
-import { nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
 import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import AssetsGridSection from '@/views/agentic-assets-canvas/components/AssetsGridSection.vue'
 import type { CreationType } from '@/components/generate/selectors'
 import {
+  createWorkflowDefinition,
   deleteWorkflowDefinition,
   listWorkflowDefinitions,
   type WorkflowDefinitionSummary,
   updateWorkflowDefinition,
 } from '@/views/workflow/api/definitions'
 import { useAsyncAction } from '@/composables'
+import {
+  buildBlankCanvasProjectPayload,
+  buildBlankWorkflowProjectPayload,
+} from '@/views/agentic-assets-canvas/new-agentic-project'
 import './agentic-assets-canvas.css'
+
+type AgenticProjectKind = 'canvas' | 'workflow'
+
+const props = withDefaults(defineProps<{
+  projectKind?: AgenticProjectKind
+}>(), {
+  projectKind: 'canvas',
+})
 
 interface GeneratorSendOptions {
   model?: string
@@ -72,16 +85,18 @@ const workflowListPage = ref(1)
 const workflowListPageSize = 12
 const workflowListHasMore = ref(true)
 const workflowListTotal = ref(0)
+const isWorkflowProject = computed(() => props.projectKind === 'workflow')
+const projectScene = computed(() => isWorkflowProject.value ? 'WORKFLOW_CANVAS' : 'INFINITE_CANVAS')
 
 const fetchWorkflowPage = async (page: number) => {
   return await listWorkflowDefinitions({
-    scene: 'WORKFLOW_CANVAS',
+    scene: projectScene.value,
     page,
     pageSize: workflowListPageSize,
   })
 }
 
-// 智能画布页直接使用工作流定义列表，承接最近项目展示。
+// 画布与工作流共用列表外观，但按 scene 隔离各自项目。
 const loadWorkflowList = async () => {
   workflowListLoading.value = true
   try {
@@ -157,26 +172,46 @@ const ensureScrollableWorkflowList = async () => {
   }
 }
 
-const handleCreateWorkflow = () => {
-  void router.push({
+const openProjectEditor = async (
+  project: WorkflowDefinitionSummary,
+  fallbackVersionId = '',
+) => {
+  if (!isWorkflowProject.value) {
+    await router.push({
+      path: '/canvas',
+      query: {
+        returnTo: route.fullPath,
+        projectId: project.id,
+      },
+    })
+    return
+  }
+
+  const targetVersionId = project.currentVersionId || project.latestVersion?.id || fallbackVersionId
+  await router.push({
     path: '/workflow',
     query: {
       returnTo: route.fullPath,
+      workflowId: project.id,
+      ...(targetVersionId ? { versionId: targetVersionId } : {}),
     },
   })
 }
 
-const handleOpenWorkflow = (workflow: WorkflowDefinitionSummary) => {
-  const targetVersionId = workflow.currentVersionId || workflow.latestVersion?.id || ''
+const createProjectAction = useAsyncAction(async () => {
+  const payload = isWorkflowProject.value
+    ? buildBlankWorkflowProjectPayload()
+    : buildBlankCanvasProjectPayload()
+  const detail = await createWorkflowDefinition(payload)
+  await openProjectEditor(detail.definition, detail.versions[0]?.id || '')
+}, { globalKey: 'blocking', globalText: '正在新建项目…' })
 
-  void router.push({
-    path: '/workflow',
-    query: {
-      returnTo: route.fullPath,
-      workflowId: workflow.id,
-      ...(targetVersionId ? { versionId: targetVersionId } : {}),
-    },
-  })
+const handleCreateProject = () => {
+  void createProjectAction.run()
+}
+
+const handleOpenProject = (project: WorkflowDefinitionSummary) => {
+  void openProjectEditor(project)
 }
 
 const renameWorkflowAction = useAsyncAction(async (workflowId: string, nextName: string) => {
@@ -185,7 +220,7 @@ const renameWorkflowAction = useAsyncAction(async (workflowId: string, nextName:
   await refillWorkflowListAfterMutation(loadedItemCount)
 }, { globalKey: 'blocking', globalText: '正在保存…' })
 
-const handleRenameWorkflow = async (workflow: WorkflowDefinitionSummary) => {
+const handleRenameProject = async (workflow: WorkflowDefinitionSummary) => {
   let nextName: string
   try {
     const { value } = await ElMessageBox.prompt('请输入新的项目名称', '重命名项目', {
@@ -216,7 +251,7 @@ const deleteWorkflowAction = useAsyncAction(async (workflowId: string) => {
   await refillWorkflowListAfterMutation(nextExpectedCount)
 }, { globalKey: 'blocking', globalText: '正在删除…' })
 
-const handleDeleteWorkflow = async (workflow: WorkflowDefinitionSummary) => {
+const handleDeleteProject = async (workflow: WorkflowDefinitionSummary) => {
   try {
     await ElMessageBox.confirm(
       `确定删除项目“${workflow.name || '未命名项目'}”吗？该操作不可恢复。`,
@@ -258,6 +293,16 @@ const handleSend = (message: string, type: CreationType, options?: GeneratorSend
 }
 
 onMounted(() => {
+  void (async () => {
+    await loadWorkflowList()
+    await ensureScrollableWorkflowList()
+  })()
+})
+
+watch(() => props.projectKind, () => {
+  workflowList.value = []
+  workflowListPage.value = 1
+  workflowListHasMore.value = true
   void (async () => {
     await loadWorkflowList()
     await ensureScrollableWorkflowList()

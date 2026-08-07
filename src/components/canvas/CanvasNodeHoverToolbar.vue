@@ -44,24 +44,38 @@ defineProps<{
       @mousedown.stop
       @click.stop
     >
-      <button
+      <el-tooltip
         v-for="action in actions"
         :key="action.id"
-        type="button"
-        class="canvas-node-hover-toolbar__btn"
-        :class="{
-          'is-danger': action.danger,
-          'is-disabled': action.disabled,
-          'is-active': action.active,
-        }"
-        :disabled="action.disabled"
-        :title="action.label"
-        @click.stop="action.onClick"
+        :content="action.label"
+        placement="right"
+        effect="dark"
+        :show-after="120"
+        :hide-after="0"
+        :enterable="false"
+        :teleported="true"
+        popper-class="canvas-node-hover-tooltip"
       >
-        <el-icon class="canvas-node-hover-toolbar__icon">
-          <component :is="action.icon" />
-        </el-icon>
-      </button>
+        <!-- Tooltip 需要可接收 hover 的外层，禁用按钮本身不会派发鼠标事件。 -->
+        <span class="canvas-node-hover-toolbar__trigger">
+          <button
+            type="button"
+            class="canvas-node-hover-toolbar__btn"
+            :class="{
+              'is-danger': action.danger,
+              'is-disabled': action.disabled,
+              'is-active': action.active,
+            }"
+            :disabled="action.disabled"
+            :aria-label="action.label"
+            @click.stop="action.onClick"
+          >
+            <el-icon class="canvas-node-hover-toolbar__icon">
+              <component :is="action.icon" />
+            </el-icon>
+          </button>
+        </span>
+      </el-tooltip>
     </div>
   </Transition>
 </template>
@@ -101,6 +115,12 @@ defineProps<{
   font-size: 14px;
   transition: background-color 0.12s, color 0.12s;
 }
+
+.canvas-node-hover-toolbar__trigger {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+}
 .canvas-node-hover-toolbar__btn:hover:not(.is-disabled) {
   background: var(--canvas-float-block-hover);
   color: var(--text-primary);
@@ -132,5 +152,15 @@ defineProps<{
 .canvas-node-hover-toolbar-leave-to {
   opacity: 0;
   transform: translateY(-50%) translateX(-4px);
+}
+</style>
+
+<style>
+.canvas-node-hover-tooltip.el-popper {
+  padding: 6px 9px;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 18px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
 }
 </style>

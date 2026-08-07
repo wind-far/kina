@@ -84,6 +84,13 @@ const routes: RouteRecordRaw[] = [
     path: '/agentic-assets-canvas',
     name: 'AgenticAssetsCanvas',
     component: AgenticAssetsCanvasView,
+    props: { projectKind: 'canvas' },
+  },
+  {
+    path: '/agentic-assets-workflow',
+    name: 'AgenticAssetsWorkflow',
+    component: AgenticAssetsCanvasView,
+    props: { projectKind: 'workflow' },
   },
   {
     path: '/policies/:type',

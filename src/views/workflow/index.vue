@@ -70,7 +70,10 @@ import {
   workflowPromptFileToDataUrl,
 } from '@/shared/workflow-prompt-references'
 import { resolveWorkflowPromptImageParameters } from '@/shared/workflow-prompt-image-parameters'
-import { isWorkflowPromptAnchorNodeType } from '@/shared/workflow-prompt-visibility'
+import {
+  isWorkflowPromptAnchorNodeType,
+  shouldDismissWorkflowPromptDock,
+} from '@/shared/workflow-prompt-visibility'
 import { resolveWorkflowVideoReferenceRole } from '@/shared/workflow-video-prompt'
 import { collectWorkflowAssistantContext } from '@/shared/workflow-assistant-context'
 import {
@@ -778,6 +781,23 @@ const onPaneClick = () => {
   // Vue Flow 在部分缩放/拖拽状态下会把节点点击继续解释为 pane-click。
   // 忽略紧随节点点击产生的清理事件；真正点击空白画布仍会正常关闭输入栏。
   if (Date.now() - promptAnchorLastNodeClickAt.value < 240) return
+  promptAnchorNodeId.value = ''
+}
+
+// 输入栏属于当前图片节点：点击输入栏、当前节点或灵感弹窗时保留，
+// 点击画布空白、其他节点以及页面上的其他控件时立即关闭。
+const handleWorkflowPromptOutsidePointerDown = (event: PointerEvent) => {
+  const anchorNodeId = promptAnchorNodeId.value
+  if (!anchorNodeId || !(event.target instanceof Element)) return
+
+  const clickedNodeId = event.target.closest<HTMLElement>('.vue-flow__node')?.dataset.id
+  if (!shouldDismissWorkflowPromptDock({
+    anchorNodeId,
+    clickedNodeId,
+    clickInsideDock: Boolean(event.target.closest('.workflow-prompt-dock')),
+    clickInsideModal: Boolean(event.target.closest('.workflow-inspiration-backdrop')),
+  })) return
+
   promptAnchorNodeId.value = ''
 }
 
@@ -1551,6 +1571,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleSpaceDown)
   window.addEventListener('keyup', handleSpaceUp)
   window.addEventListener('resize', updateWorkflowPromptDockMode)
+  document.addEventListener('pointerdown', handleWorkflowPromptOutsidePointerDown, true)
 
   const initialWorkflowId = String(route.query.workflowId || '').trim()
   const initialVersionId = String(route.query.versionId || '').trim()
@@ -1569,6 +1590,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleSpaceDown)
   window.removeEventListener('keyup', handleSpaceUp)
   window.removeEventListener('resize', updateWorkflowPromptDockMode)
+  document.removeEventListener('pointerdown', handleWorkflowPromptOutsidePointerDown, true)
   cancelAnimationFrame(promptDockPositionFrame)
   clearAutosaveTimer()
   clearWorkflowRunPolling()

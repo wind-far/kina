@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {
   AGENTIC_ASSETS_CANVAS_PATH,
+  AGENTIC_ASSETS_WORKFLOW_PATH,
   isLegacyCanvasWorkflowItem,
   resolveHomeSideMenuRoutePath,
 } from '../../src/shared/home-side-menu-route.ts'
@@ -29,7 +30,7 @@ const workflowItem = {
   actionValue: '/workflow',
 }
 assert.equal(isLegacyCanvasWorkflowItem(workflowItem), false)
-assert.equal(resolveHomeSideMenuRoutePath(workflowItem), '/workflow')
+assert.equal(resolveHomeSideMenuRoutePath(workflowItem), AGENTIC_ASSETS_WORKFLOW_PATH)
 
 const generateItem = {
   key: 'generate',

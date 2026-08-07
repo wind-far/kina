@@ -3,6 +3,16 @@
  */
 export const isWorkflowPromptAnchorNodeType = (nodeType: unknown) => nodeType === 'image'
 
+export const shouldDismissWorkflowPromptDock = (input: {
+  anchorNodeId: string
+  clickedNodeId?: string
+  clickInsideDock: boolean
+  clickInsideModal?: boolean
+}) => Boolean(input.anchorNodeId)
+  && !input.clickInsideDock
+  && !input.clickInsideModal
+  && input.clickedNodeId !== input.anchorNodeId
+
 export const isWorkflowPromptSendDisabled = (input: {
   sending: boolean
   modelKey: string

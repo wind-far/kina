@@ -302,7 +302,22 @@ const scrollSettings = (direction: -1 | 1) => {
 }
 
 const handleDocumentPointerDown = (event: PointerEvent) => {
-  if (!rootRef.value?.contains(event.target as Node)) closePanels()
+  const target = event.target
+  const root = rootRef.value
+  if (!root || !(target instanceof Node)) {
+    closePanels()
+    return
+  }
+
+  // 仅点击当前弹层内容或任一弹层触发按钮时保持状态；点击输入区空白、
+  // 其他普通控件或画布都应关闭。Vue Flow 会阻止事件冒泡，因此监听使用捕获阶段。
+  if (root.contains(target) && target instanceof Element) {
+    const keepsPanelOpen = target.closest('.workflow-prompt-popover')
+      || target.closest('[data-workflow-prompt-panel-trigger]')
+    if (keepsPanelOpen) return
+  }
+
+  closePanels()
 }
 
 const handleDocumentKeydown = (event: KeyboardEvent) => {
@@ -337,14 +352,14 @@ watch(currentMaxCount, maxCount => {
 })
 
 onMounted(() => {
-  document.addEventListener('pointerdown', handleDocumentPointerDown)
+  document.addEventListener('pointerdown', handleDocumentPointerDown, true)
   document.addEventListener('keydown', handleDocumentKeydown)
   window.addEventListener('resize', updateScrollState)
   nextTick(updateScrollState)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('pointerdown', handleDocumentPointerDown)
+  document.removeEventListener('pointerdown', handleDocumentPointerDown, true)
   document.removeEventListener('keydown', handleDocumentKeydown)
   window.removeEventListener('resize', updateScrollState)
 })
@@ -394,13 +409,13 @@ onUnmounted(() => {
       <div class="canvas-prompt-input__settings">
         <button type="button" class="canvas-prompt-input__scroll-btn" aria-label="向左滑动工具" :disabled="!canScrollLeft" @click="scrollSettings(-1)">‹</button>
         <div ref="settingsTrackRef" class="canvas-prompt-input__settings-track" @scroll="updateScrollState">
-          <button v-if="!hideTypeSelector" type="button" class="canvas-prompt-input__pill canvas-prompt-input__type-pill" :aria-expanded="openPanel === 'type'" @click="togglePanel('type')">
+          <button v-if="!hideTypeSelector" type="button" class="canvas-prompt-input__pill canvas-prompt-input__type-pill" data-workflow-prompt-panel-trigger :aria-expanded="openPanel === 'type'" @click="togglePanel('type')">
             <span class="canvas-prompt-input__type-icon" aria-hidden="true">{{ generationMode === 'image' ? '▧' : '◴' }}</span>
             <span>{{ generationMode === 'image' ? '图片生成' : '视频生成' }}</span>
             <el-icon class="canvas-prompt-input__pill-caret"><ArrowDown /></el-icon>
           </button>
 
-          <button type="button" class="canvas-prompt-input__pill canvas-prompt-input__model-pill" :aria-expanded="openPanel === 'model'" @click="togglePanel('model')">
+          <button type="button" class="canvas-prompt-input__pill canvas-prompt-input__model-pill" data-workflow-prompt-panel-trigger :aria-expanded="openPanel === 'model'" @click="togglePanel('model')">
             <span class="canvas-prompt-input__pill-icon" aria-hidden="true">{{ generationMode === 'image' ? '◎' : '◇' }}</span>
             <span class="canvas-prompt-input__model-label">{{ currentModelLabel }}</span>
             <span v-if="generationMode === 'image' && currentModelPrice" class="canvas-prompt-input__model-price">{{ currentModelPrice }}</span>
@@ -408,7 +423,7 @@ onUnmounted(() => {
           </button>
 
           <template v-if="generationMode === 'image'">
-            <button type="button" class="canvas-prompt-input__pill canvas-prompt-input__size-pill" @click="togglePanel('image-size')"><span>{{ imageSizeLabel }}</span></button>
+            <button type="button" class="canvas-prompt-input__pill canvas-prompt-input__size-pill" data-workflow-prompt-panel-trigger @click="togglePanel('image-size')"><span>{{ imageSizeLabel }}</span></button>
             <div class="canvas-prompt-input__count-stepper" aria-label="生成数量">
               <button type="button" aria-label="减少生成数量" :disabled="count <= 1" @click="emit('count-change', Math.max(1, count - 1))">−</button>
               <span>{{ count }}</span>
@@ -417,16 +432,16 @@ onUnmounted(() => {
           </template>
 
           <template v-else>
-            <button type="button" class="canvas-prompt-input__pill canvas-prompt-input__feature-pill" @click="togglePanel('video-feature')"><span>◫</span><span>{{ videoFeatureLabel }}</span><el-icon class="canvas-prompt-input__pill-caret"><ArrowDown /></el-icon></button>
-            <button type="button" class="canvas-prompt-input__pill canvas-prompt-input__video-size-pill" @click="togglePanel('video-size')"><span>{{ videoSizeLabel }}</span></button>
-            <button type="button" class="canvas-prompt-input__pill canvas-prompt-input__duration-pill" @click="togglePanel('duration')"><span>◷</span><span>{{ videoDuration }}s</span><el-icon class="canvas-prompt-input__pill-caret"><ArrowDown /></el-icon></button>
+            <button type="button" class="canvas-prompt-input__pill canvas-prompt-input__feature-pill" data-workflow-prompt-panel-trigger @click="togglePanel('video-feature')"><span>◫</span><span>{{ videoFeatureLabel }}</span><el-icon class="canvas-prompt-input__pill-caret"><ArrowDown /></el-icon></button>
+            <button type="button" class="canvas-prompt-input__pill canvas-prompt-input__video-size-pill" data-workflow-prompt-panel-trigger @click="togglePanel('video-size')"><span>{{ videoSizeLabel }}</span></button>
+            <button type="button" class="canvas-prompt-input__pill canvas-prompt-input__duration-pill" data-workflow-prompt-panel-trigger @click="togglePanel('duration')"><span>◷</span><span>{{ videoDuration }}s</span><el-icon class="canvas-prompt-input__pill-caret"><ArrowDown /></el-icon></button>
           </template>
         </div>
         <button type="button" class="canvas-prompt-input__scroll-btn" aria-label="向右滑动工具" :disabled="!canScrollRight" @click="scrollSettings(1)">›</button>
       </div>
 
       <button v-if="generationMode === 'image'" type="button" class="canvas-prompt-input__footer-action" aria-label="提示词灵感" @click="isInspirationOpen = true"><span aria-hidden="true">☼</span><span>灵感</span></button>
-      <button type="button" class="canvas-prompt-input__footer-action" aria-label="引用主体或素材" :aria-expanded="openPanel === 'reference'" @click="togglePanel('reference')"><span aria-hidden="true">@</span><span>引用</span></button>
+      <button type="button" class="canvas-prompt-input__footer-action" data-workflow-prompt-panel-trigger aria-label="引用主体或素材" :aria-expanded="openPanel === 'reference'" @click="togglePanel('reference')"><span aria-hidden="true">@</span><span>引用</span></button>
       <span v-if="generationMode === 'image' && price" class="canvas-prompt-input__price"><span aria-hidden="true">✦</span>{{ price }}</span>
       <span v-else-if="generationMode === 'video'" class="canvas-prompt-input__video-spark" aria-hidden="true">✦</span>
       <button type="button" class="canvas-prompt-input__send" :disabled="isSendDisabled" aria-label="发送" :title="isSendDisabled ? '请输入内容或引用素材' : '发送 (Enter)'" @click="handleSend"><el-icon><Top /></el-icon></button>

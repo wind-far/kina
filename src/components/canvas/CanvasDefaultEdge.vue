@@ -10,6 +10,8 @@ import { computed, ref } from 'vue'
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, useVueFlow, type Position } from '@vue-flow/core'
 import EdgeDeleteButton from '@/views/workflow/components/EdgeDeleteButton.vue'
 
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps<{
   id: string
   sourceX: number

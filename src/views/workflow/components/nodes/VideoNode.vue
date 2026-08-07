@@ -24,7 +24,11 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
-import ContentGenerator from '@/components/generate/ContentGenerator.vue'
+import WorkflowPromptInput, {
+  type WorkflowPromptModelOption,
+  type WorkflowPromptReference,
+  type WorkflowPromptSendOptions,
+} from '@/components/canvas/WorkflowPromptInput.vue'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
@@ -35,25 +39,42 @@ import {
   addEdge,
   nodes,
   edges,
+  type WorkflowCanvasNode,
   type WorkflowVideoNodeData,
 } from '../../composables/useWorkflowCanvas'
 import { uploadStorageFile } from '@/api/storage'
-import { loadPublicModelCatalog } from '@/config/models'
+import { getAllVideoModels, getDefaultVideoModelKey, loadPublicModelCatalog } from '@/config/models'
+import {
+  getWorkflowPromptAvailableReferenceSlots,
+  mergeWorkflowPromptReferences,
+  workflowPromptFileToDataUrl,
+} from '@/shared/workflow-prompt-references'
+import {
+  resolveWorkflowVideoReferenceRole,
+  type WorkflowVideoFeature,
+} from '@/shared/workflow-video-prompt'
 
 const props = defineProps<{
   id: string
   data: WorkflowVideoNodeData & { selected?: boolean }
   selected?: boolean
 }>()
+const isWorkflowImageNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'image'> => node?.type === 'image'
 const isSelected = computed(() => props.selected || props.data?.selected)
 const titleEdit = useNodeTitleEdit(props.id, () => props.data?.label || 'Video')
-const { updateNodeInternals } = useVueFlow()
+const { updateNodeInternals, addSelectedNodes, removeSelectedNodes, getNodes } = useVueFlow()
 
 const showActions = ref(false)
 const videoUrl = ref(props.data?.url || '')
 const isLoading = ref(!!props.data?.loading)
 const errorMsg = ref(props.data?.error || '')
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const promptText = ref('')
+const promptModel = ref(getDefaultVideoModelKey())
+const promptFeature = ref<WorkflowVideoFeature>('smart-multi-frame')
+const promptCount = ref(1)
+const promptUploadedReferences = ref<WorkflowPromptReference[]>([])
+const promptExcludedReferenceIds = ref<string[]>([])
 
 watch(
   [() => props.data?.url, () => props.data?.loading, () => props.data?.error],
@@ -112,22 +133,16 @@ const handleDuplicate = () => {
   if (newId) setTimeout(() => updateNodeInternals([newId]), 50)
 }
 
-const handleAllReference = () => ElMessage.info('「全能参考」接入中，敬请期待')
-const handleImageToVideo = () => {
-  const node = nodes.value.find((n) => n.id === props.id)
-  if (!node) return
-  const newId = addNode('videoConfig', { x: node.position.x + 380, y: node.position.y })
-  addEdge({
-    source: props.id,
-    target: newId,
-    sourceHandle: 'right',
-    targetHandle: 'left',
-    type: 'imageRole',
-    data: { imageRole: 'input_reference' },
-  })
-  setTimeout(() => updateNodeInternals([newId]), 50)
+const selectPromptMode = (feature: WorkflowVideoFeature) => {
+  promptFeature.value = feature
+  const allNodes = getNodes.value
+  removeSelectedNodes(allNodes.filter(node => node.selected))
+  const current = allNodes.find(node => node.id === props.id)
+  if (current) addSelectedNodes([current])
 }
-const handleFirstLastFrame = () => ElMessage.info('「首尾帧生视频」接入中，敬请期待')
+const handleAllReference = () => selectPromptMode('all-reference')
+const handleImageToVideo = () => selectPromptMode('smart-multi-frame')
+const handleFirstLastFrame = () => selectPromptMode('first-last-frame')
 
 const hoverActions = computed<NodeToolbarAction[]>(() => {
   const list: NodeToolbarAction[] = [
@@ -146,15 +161,121 @@ const emptyMenuItems = [
   { id: 'first-last', label: '首尾帧生视频', icon: Film, onClick: handleFirstLastFrame },
 ]
 
-// 选中态下方浮层：用 ContentGenerator（与 /generate 同款），锁定 video 类型
-onMounted(() => {
-  void loadPublicModelCatalog()
+const promptModelOptions = computed<WorkflowPromptModelOption[]>(() => getAllVideoModels().map(item => ({
+  key: item.key,
+  label: item.label,
+  provider: item.providerName,
+})))
+
+const connectedPromptReferences = computed<WorkflowPromptReference[]>(() => {
+  const referenceTargets = new Set([props.id])
+  for (const edge of edges.value) {
+    if (edge.target !== props.id) continue
+    const source = nodes.value.find(node => node.id === edge.source)
+    if (source?.type === 'videoConfig') referenceTargets.add(source.id)
+  }
+
+  const connected = edges.value
+    .filter(edge => referenceTargets.has(edge.target))
+    .map(edge => nodes.value.find(node => node.id === edge.source))
+    .filter((node): node is WorkflowCanvasNode<'image'> => isWorkflowImageNode(node) && Boolean(node.data.url))
+    .map(node => ({ id: node.id, url: String(node.data.url), label: String(node.data.label || '参考图') }))
+
+  return mergeWorkflowPromptReferences(connected)
 })
-// TODO: 视频生成走 FormData + createVideoTask + pollVideoTask（与 image 任务异步路径不同）
-// 当前只完成 UI 复用，真实视频生成等后续接入
-const handlePromptSend = (text: string) => {
-  ElMessage.success(`发送：${text.slice(0, 30)}…（视频生成 API 接入中）`)
+
+const promptReferences = computed(() => mergeWorkflowPromptReferences(
+  connectedPromptReferences.value,
+  promptUploadedReferences.value,
+).filter(reference => !promptExcludedReferenceIds.value.includes(reference.id)))
+
+const availablePromptReferences = computed<WorkflowPromptReference[]>(() => nodes.value
+  .filter((node): node is WorkflowCanvasNode<'image'> => isWorkflowImageNode(node) && Boolean(node.data.url))
+  .map(node => ({ id: node.id, url: String(node.data.url), label: String(node.data.label || '参考图') })))
+
+const handlePromptFiles = async (files: File[]) => {
+  const availableSlots = getWorkflowPromptAvailableReferenceSlots(promptReferences.value.length)
+  if (!availableSlots) {
+    ElMessage.info('最多支持 4 张参考图')
+    return
+  }
+  const selectedFiles = files.slice(0, availableSlots)
+  const settled = await Promise.allSettled(selectedFiles.map(async file => ({
+    id: `video-upload-${Date.now()}-${file.name}-${Math.random().toString(36).slice(2, 7)}`,
+    url: await workflowPromptFileToDataUrl(file),
+    label: file.name,
+  })))
+  promptUploadedReferences.value.push(...settled
+    .filter((result): result is PromiseFulfilledResult<WorkflowPromptReference & { url: string }> => result.status === 'fulfilled')
+    .map(result => result.value))
 }
+
+const handlePromptRemoveReference = (id: string) => {
+  if (promptUploadedReferences.value.some(reference => reference.id === id)) {
+    promptUploadedReferences.value = promptUploadedReferences.value.filter(reference => reference.id !== id)
+    return
+  }
+  promptExcludedReferenceIds.value = [...new Set([...promptExcludedReferenceIds.value, id])]
+}
+
+const handlePromptSend = (text: string, options: WorkflowPromptSendOptions) => {
+  if (!options.modelKey) {
+    ElMessage.warning('当前暂无可用的视频模型，请先在后台配置模型')
+    return
+  }
+  const currentNode = nodes.value.find(node => node.id === props.id)
+  if (!currentNode) return
+
+  const prompt = text || `根据${options.references.map(reference => reference.label).join('、') || '参考素材'}生成视频`
+  const configPosition = { x: currentNode.position.x - 400, y: currentNode.position.y }
+  const promptNodeId = addNode('text', { x: configPosition.x, y: configPosition.y + 300 }, {
+    content: prompt,
+    label: '视频提示词',
+  })
+  const configNodeId = addNode('videoConfig', configPosition, {
+    prompt,
+    model: options.modelKey,
+    ratio: options.ratio,
+    duration: options.duration || 5,
+    resolution: options.resolution,
+    label: '图生视频',
+    autoExecute: false,
+  })
+  addEdge({ source: promptNodeId, target: configNodeId, sourceHandle: 'right', targetHandle: 'left', type: 'promptOrder', data: { promptOrder: 1 } })
+
+  const connectedIds = new Set<string>()
+  options.references.forEach((reference, index) => {
+    let referenceNodeId = nodes.value.find(node => node.id === reference.id && node.type === 'image')?.id || ''
+    if (!referenceNodeId && reference.url) {
+      referenceNodeId = addNode('image', {
+        x: currentNode.position.x - 800,
+        y: currentNode.position.y + index * 190,
+      }, { url: reference.url, label: reference.label || '参考图' })
+    }
+    if (!referenceNodeId || connectedIds.has(referenceNodeId)) return
+    connectedIds.add(referenceNodeId)
+    addEdge({
+      source: referenceNodeId,
+      target: configNodeId,
+      sourceHandle: 'right',
+      targetHandle: 'left',
+      type: 'imageRole',
+      data: { imageRole: resolveWorkflowVideoReferenceRole(options.feature, index) },
+    })
+  })
+
+  addEdge({ source: configNodeId, target: props.id, sourceHandle: 'right', targetHandle: 'left' })
+  promptText.value = ''
+  window.setTimeout(() => {
+    updateNodeInternals([configNodeId, props.id])
+    updateNode(configNodeId, { autoExecute: true })
+  }, 160)
+}
+
+onMounted(async () => {
+  await loadPublicModelCatalog()
+  promptModel.value = getDefaultVideoModelKey() || promptModelOptions.value[0]?.key || ''
+})
 </script>
 
 <template>
@@ -246,15 +367,21 @@ const handlePromptSend = (text: string) => {
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
 
     <div v-if="isSelected" class="video-node-prompt-panel nodrag nopan" @mousedown.stop>
-      <ContentGenerator
-        layout="sidebar"
-        :collapsible="false"
-        :default-expanded="true"
-        initial-creation-type="video"
+      <WorkflowPromptInput
+        v-model="promptText"
+        v-model:model-key="promptModel"
+        v-model:video-feature="promptFeature"
+        generation-mode="video"
         :hide-type-selector="true"
-        :verbose-toolbar="true"
-        placeholder-override="描述你想生成的视频画面，按 Enter 发送"
-        popup-placement="top"
+        :model-options="promptModelOptions"
+        :references="promptReferences"
+        :available-references="availablePromptReferences"
+        :count="promptCount"
+        placeholder="描述你想生成的视频画面，按 Enter 发送"
+        @add-files="handlePromptFiles"
+        @remove-reference="handlePromptRemoveReference"
+        @create-subject="ElMessage.info('主体功能暂未开放，可先直接引用画布图片')"
+        @count-change="promptCount = $event"
         @send="handlePromptSend"
       />
     </div>

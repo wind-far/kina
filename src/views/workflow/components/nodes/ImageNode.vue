@@ -63,6 +63,13 @@ const imageUrl = ref(props.data?.url || '')
 const isLoading = ref(!!props.data?.loading)
 const errorMsg = ref(props.data?.error || '')
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const cropDialogVisible = ref(false)
+const cropAspect = ref<'original' | '1x1' | '4x3' | '16x9' | '3x4'>('1x1')
+const cropZoom = ref(1)
+const cropX = ref(50)
+const cropY = ref(50)
+const cropSaving = ref(false)
+const cropAspectOptions = ['original', '1x1', '4x3', '16x9', '3x4'] as const
 
 watch(
   [() => props.data?.url, () => props.data?.loading, () => props.data?.error],
@@ -212,7 +219,70 @@ const handleImageToVideo = (role: 'first_frame_image' | 'input_reference' = 'inp
   setTimeout(() => updateNodeInternals([newId]), 50)
 }
 const handleChangeBackground = () => {
-  ElMessage.info('图片换背景接入中，敬请期待')
+  if (!requireImage()) return
+  autoCreateDownstreamImageNode()
+  ElMessage.success('已创建换背景结果节点，请在输入栏描述目标背景')
+}
+
+const openCropDialog = () => {
+  if (!requireImage()) return
+  cropAspect.value = '1x1'
+  cropZoom.value = 1
+  cropX.value = 50
+  cropY.value = 50
+  cropDialogVisible.value = true
+}
+
+const cropAspectValue = computed(() => ({
+  original: 0,
+  '1x1': 1,
+  '4x3': 4 / 3,
+  '16x9': 16 / 9,
+  '3x4': 3 / 4,
+})[cropAspect.value])
+
+const saveCrop = async () => {
+  if (!imageUrl.value || cropSaving.value) return
+  cropSaving.value = true
+  try {
+    const response = await fetch(imageUrl.value)
+    if (!response.ok) throw new Error(`读取图片失败 (${response.status})`)
+    const sourceBlob = await response.blob()
+    const bitmap = await createImageBitmap(sourceBlob)
+    const sourceRatio = bitmap.width / bitmap.height
+    const targetRatio = cropAspectValue.value || sourceRatio
+    let cropWidth = bitmap.width
+    let cropHeight = bitmap.height
+    if (sourceRatio > targetRatio) cropWidth = cropHeight * targetRatio
+    else cropHeight = cropWidth / targetRatio
+    cropWidth /= cropZoom.value
+    cropHeight /= cropZoom.value
+    const sourceX = (bitmap.width - cropWidth) * (cropX.value / 100)
+    const sourceY = (bitmap.height - cropHeight) * (cropY.value / 100)
+    const maxOutput = 2048
+    const scale = Math.min(1, maxOutput / Math.max(cropWidth, cropHeight))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(cropWidth * scale))
+    canvas.height = Math.max(1, Math.round(cropHeight * scale))
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('浏览器不支持图片裁剪')
+    context.drawImage(bitmap, sourceX, sourceY, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height)
+    bitmap.close()
+    const outputBlob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(
+      blob => blob ? resolve(blob) : reject(new Error('裁剪结果导出失败')),
+      'image/png',
+      0.94,
+    ))
+    const uploaded = await uploadStorageFile(new File([outputBlob], `crop-${Date.now()}.png`, { type: 'image/png' }), 'asset')
+    if (!uploaded?.publicUrl) throw new Error('裁剪结果上传失败')
+    updateNode(props.id, { url: uploaded.publicUrl, error: '' })
+    cropDialogVisible.value = false
+    ElMessage.success('图片已裁剪')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '图片裁剪失败')
+  } finally {
+    cropSaving.value = false
+  }
 }
 
 const hoverActions = computed<NodeToolbarAction[]>(() => {
@@ -282,13 +352,14 @@ const upstreamReferenceUrls = computed<string[]>(() => {
 // 顶部悬浮工具栏（参照 RunningHUB .image-toolbar）：仅在选中 + 有图时显示
 const topToolbarItems = computed<NodeTopToolbarItem[]>(() => [
   { id: 'panorama', label: '全景图', icon: Aim, hasDropdown: true, onClick: () => ElMessage.info('全景图：接入中') },
-  { id: 'hd', label: 'HD 增强', icon: PictureFilled, onClick: () => ElMessage.info('HD 增强：接入中') },
-  { id: 'edit-element', label: '编辑元素', icon: EditPen, onClick: () => ElMessage.info('编辑元素：接入中') },
+  { id: 'edit', label: '编辑', icon: EditPen, onClick: openCropDialog },
+  { id: 'mood', label: '情绪', icon: PictureFilled, onClick: () => ElMessage.info('请选择下方输入栏描述目标情绪') },
+  { id: 'grid', label: '宫格切分', icon: Crop, hasDropdown: true, onClick: openCropDialog },
   { id: 'angle', label: '角度', icon: Refresh, onClick: () => ElMessage.info('角度：接入中') },
   { id: 'light', label: '打光', icon: Sunny, onClick: () => ElMessage.info('打光：接入中') },
   { id: 'more', label: '更多', icon: MoreFilled, onClick: () => ElMessage.info('更多：接入中') },
   { type: 'divider' },
-  { id: 'crop', label: '裁剪', icon: Crop, iconOnly: true, onClick: () => ElMessage.info('裁剪：接入中') },
+  { id: 'crop', label: '裁剪', icon: Crop, iconOnly: true, onClick: openCropDialog },
   { id: 'download-mini', label: '下载', icon: Download, iconOnly: true, onClick: handleDownload },
   { id: 'preview', label: '放大预览', icon: ZoomIn, iconOnly: true, onClick: () => imageUrl.value && window.open(imageUrl.value, '_blank') },
   { type: 'divider' },
@@ -541,6 +612,39 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
     <!-- 选中态顶部悬浮工具栏（仅有图时显示） -->
     <CanvasNodeTopToolbar :visible="isSelected && showImage" :items="topToolbarItems" />
 
+    <el-dialog
+      v-model="cropDialogVisible"
+      title="裁剪图片"
+      width="560px"
+      append-to-body
+      class="workflow-image-crop-dialog"
+      :close-on-click-modal="!cropSaving"
+    >
+      <div class="workflow-image-crop">
+        <div class="workflow-image-crop__preview" :style="{ aspectRatio: cropAspectValue || undefined }">
+          <img
+            :src="imageUrl"
+            alt="裁剪预览"
+            :style="{
+              transform: `translate(${(cropX - 50) * -0.7}%, ${(cropY - 50) * -0.7}%) scale(${cropZoom})`,
+            }"
+          />
+        </div>
+        <div class="workflow-image-crop__ratios">
+          <button v-for="item in cropAspectOptions" :key="item" type="button" :class="{ 'is-active': cropAspect === item }" @click="cropAspect = item">
+            {{ item === 'original' ? '原比例' : item.replace('x', ':') }}
+          </button>
+        </div>
+        <label><span>缩放</span><input v-model.number="cropZoom" type="range" min="1" max="3" step="0.05"><b>{{ cropZoom.toFixed(2) }}×</b></label>
+        <label><span>水平位置</span><input v-model.number="cropX" type="range" min="0" max="100" step="1"><b>{{ cropX }}%</b></label>
+        <label><span>垂直位置</span><input v-model.number="cropY" type="range" min="0" max="100" step="1"><b>{{ cropY }}%</b></label>
+      </div>
+      <template #footer>
+        <el-button :disabled="cropSaving" @click="cropDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="cropSaving" @click="saveCrop">应用裁剪</el-button>
+      </template>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -595,6 +699,49 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
   outline: none;
   box-sizing: border-box;
 }
+
+:global(.workflow-image-crop-dialog .el-dialog__body) { padding-top: 8px; }
+.workflow-image-crop { display: flex; flex-direction: column; gap: 14px; }
+.workflow-image-crop__preview {
+  width: min(100%, 420px);
+  max-height: 320px;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #111;
+  border: 1px solid var(--stroke-secondary);
+}
+.workflow-image-crop__preview img {
+  width: 100%;
+  height: 100%;
+  min-height: 220px;
+  object-fit: cover;
+  transform-origin: center;
+}
+.workflow-image-crop__ratios { display: flex; justify-content: center; gap: 8px; }
+.workflow-image-crop__ratios button {
+  padding: 5px 10px;
+  border: 1px solid var(--stroke-secondary);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.workflow-image-crop__ratios button.is-active {
+  border-color: var(--brand-main-default);
+  color: var(--brand-main-default);
+  background: rgba(2, 219, 163, 0.08);
+}
+.workflow-image-crop label {
+  display: grid;
+  grid-template-columns: 76px 1fr 48px;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.workflow-image-crop label input { width: 100%; accent-color: var(--brand-main-default); }
+.workflow-image-crop label b { color: var(--text-tertiary); font-weight: 500; text-align: right; }
 
 .image-node-card {
   position: relative;

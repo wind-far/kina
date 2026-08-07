@@ -61,6 +61,13 @@ import WorkflowPromptInput, {
   type WorkflowPromptModelOption,
   type WorkflowPromptSendOptions,
 } from '@/components/canvas/WorkflowPromptInput.vue'
+import {
+  getWorkflowPromptAvailableReferenceSlots,
+  workflowPromptFileToDataUrl,
+} from '@/shared/workflow-prompt-references'
+import { resolveWorkflowPromptImageParameters } from '@/shared/workflow-prompt-image-parameters'
+import { isWorkflowPromptAnchorNodeType } from '@/shared/workflow-prompt-visibility'
+import { resolveWorkflowVideoReferenceRole } from '@/shared/workflow-video-prompt'
 import RightPanel from '@components/canana/RightPanel.vue'
 import { useChatSessions } from '@/composables/useChatSessions'
 import { useAuthStore } from '@/stores/auth'
@@ -80,6 +87,7 @@ import {
   getDefaultImageModelKey,
   getDefaultVideoModelKey,
   loadPublicModelCatalog,
+  SEEDREAM_SIZE_OPTIONS,
 } from '@/config/models'
 
 const router = useRouter()
@@ -131,6 +139,7 @@ const workflowCategory = ref('')
 const workflowListKeyword = ref('')
 const workflowLoadingByRoute = ref(false)
 const promptAnchorNodeId = ref('')
+const promptAnchorLastNodeClickAt = ref(0)
 const initialCanvasBaselineSnapshot = ref('')
 const selectedWorkflowVersionId = ref('')
 const selectedLibraryWorkflowId = ref('')
@@ -646,14 +655,16 @@ const handleNodeClick = (payload: { event: MouseEvent | TouchEvent; node: { id: 
   const originalEvent = payload.event as MouseEvent
   const targetNodeId = payload.node?.id
   if (!targetNodeId) return
+  const shouldOpenPrompt = isWorkflowPromptAnchorNodeType(nodes.value.find(node => node.id === targetNodeId)?.type)
 
   // Vue Flow 的 selected 标记在部分交互路径下不会同步到 v-model 节点数组。
   // 输入栏直接记录用户点击的节点，避免出现“节点已选中、输入栏却消失”的不一致。
-  promptAnchorNodeId.value = targetNodeId
+  promptAnchorLastNodeClickAt.value = Date.now()
+  promptAnchorNodeId.value = shouldOpenPrompt ? targetNodeId : ''
   // Vue Flow 会在节点点击后继续派发 pane-click。延迟一帧重设锚点，避免
   // pane-click 的清理逻辑把刚选中的节点输入栏立即卸载。
   requestAnimationFrame(() => {
-    promptAnchorNodeId.value = targetNodeId
+    promptAnchorNodeId.value = shouldOpenPrompt ? targetNodeId : ''
   })
 
   // 只在按住 Shift 时介入；其他点击一律交回 vue-flow 默认行为。
@@ -726,6 +737,9 @@ const onEdgesChange = (changes: Array<{ type?: string }>) => {
 // 处理画布点击
 const onPaneClick = () => {
   showNodeMenu.value = false
+  // Vue Flow 在部分缩放/拖拽状态下会把节点点击继续解释为 pane-click。
+  // 忽略紧随节点点击产生的清理事件；真正点击空白画布仍会正常关闭输入栏。
+  if (Date.now() - promptAnchorLastNodeClickAt.value < 240) return
   promptAnchorNodeId.value = ''
 }
 
@@ -1245,8 +1259,9 @@ const workflowPromptImageModels = computed<WorkflowPromptModelOption[]>(() => {
     label: model.label || model.modelKey,
     provider: model.providerName || model.providerCode,
     price: readWorkflowPromptModelPrice(model, '张'),
+    maxCount: model.maxImagesPerRequest,
   }))
-  return catalog.length ? catalog : [{ key: 'gpt-image-2', label: 'gpt-image-2', provider: '（慢）OpenAI', price: '1 积分/张' }]
+  return catalog.length ? catalog : [{ key: 'gpt-image-2', label: 'gpt-image-2', provider: '（慢）OpenAI', price: '1 积分/张', maxCount: 1 }]
 })
 
 const workflowPromptVideoModels = computed<WorkflowPromptModelOption[]>(() => getAllVideoModels().map(model => ({
@@ -1324,24 +1339,45 @@ const workflowPromptAvailableReferences = computed(() => nodes.value
   })
   .filter(reference => reference.url || reference.id === selectedImageNodeId.value))
 
-const handleWorkflowPromptFiles = (files: File[]) => {
-  const availableSlots = Math.max(0, 4 - workflowPromptUploadedReferences.value.length)
-  const next = files.slice(0, availableSlots).map(file => ({
+const handleWorkflowPromptFiles = async (files: File[]) => {
+  const availableSlots = getWorkflowPromptAvailableReferenceSlots(workflowPromptReferences.value.length)
+  if (!availableSlots) {
+    ElMessage.info('最多支持 4 张参考图')
+    return
+  }
+
+  const selectedFiles = files.slice(0, availableSlots)
+  if (selectedFiles.length < files.length) {
+    ElMessage.info('最多支持 4 张参考图，已保留前 4 张')
+  }
+
+  const settled = await Promise.allSettled(selectedFiles.map(async file => ({
     id: `upload-${Date.now()}-${file.name}-${Math.random().toString(36).slice(2, 7)}`,
-    url: URL.createObjectURL(file),
+    url: await workflowPromptFileToDataUrl(file),
     label: file.name,
-  }))
+  })))
+  const next = settled
+    .filter((result): result is PromiseFulfilledResult<{ id: string; url: string; label: string }> => result.status === 'fulfilled' && Boolean(result.value.url))
+    .map(result => result.value)
   workflowPromptUploadedReferences.value.push(...next)
+
+  if (next.length < selectedFiles.length) {
+    ElMessage.warning('部分参考图读取失败，请重新选择')
+  }
 }
 
 const handleWorkflowPromptRemoveReference = (id: string) => {
   const uploaded = workflowPromptUploadedReferences.value.find(reference => reference.id === id)
   if (uploaded) {
-    URL.revokeObjectURL(uploaded.url)
+    if (uploaded.url.startsWith('blob:')) URL.revokeObjectURL(uploaded.url)
     workflowPromptUploadedReferences.value = workflowPromptUploadedReferences.value.filter(reference => reference.id !== id)
     return
   }
   workflowPromptExcludedReferenceIds.value = [...new Set([...workflowPromptExcludedReferenceIds.value, id])]
+}
+
+const handleWorkflowPromptCreateSubject = () => {
+  ElMessage.info('主体功能暂未开放，可先直接引用画布图片')
 }
 
 const createWorkflowVideoFromPrompt = (text: string, options: WorkflowPromptSendOptions) => {
@@ -1383,13 +1419,7 @@ const createWorkflowVideoFromPrompt = (text: string, options: WorkflowPromptSend
     }
     if (!referenceNodeId || connectedNodeIds.has(referenceNodeId)) return
     connectedNodeIds.add(referenceNodeId)
-    const role = options.feature === 'all-reference'
-      ? 'input_reference'
-      : index === 0
-        ? 'first_frame_image'
-        : options.feature === 'first-last-frame' && index === 1
-          ? 'last_frame_image'
-          : 'input_reference'
+    const role = resolveWorkflowVideoReferenceRole(options.feature, index)
     addEdge({
       source: referenceNodeId,
       target: configNodeId,
@@ -1406,13 +1436,23 @@ const createWorkflowVideoFromPrompt = (text: string, options: WorkflowPromptSend
 
 const handleWorkflowPromptSend = (text: string, options: WorkflowPromptSendOptions) => {
   if (options.mode === 'image' && selectedImageNodeId.value) {
+    const selectedModel = getAllImageModels().find(model => model.key === options.modelKey)
+    const imageParameters = resolveWorkflowPromptImageParameters({
+      ratio: options.ratio,
+      resolution: options.resolution,
+      defaultSize: String(selectedModel?.defaultParams?.size || ''),
+      baseSizeOptions: selectedModel?.getSizesByQuality ? SEEDREAM_SIZE_OPTIONS : undefined,
+      sizeOptions: selectedModel?.getSizesByQuality
+        ? selectedModel.getSizesByQuality(options.resolution === '4k' ? '4k' : 'standard')
+        : undefined,
+    })
     window.dispatchEvent(new CustomEvent('canvasmind:workflow-image-prompt', {
       detail: {
         nodeId: selectedImageNodeId.value,
         text,
         modelKey: options.modelKey,
-        ratio: options.ratio,
-        resolution: options.resolution,
+        ratio: imageParameters.size,
+        resolution: imageParameters.quality,
         count: options.count,
         referenceImages: options.references.map(reference => reference.url).filter(Boolean),
       },
@@ -1614,6 +1654,7 @@ watch(currentCanvasSnapshot, () => {
             placeholder="描述你想基于当前图片生成的内容，可切换为视频；按 Enter 发送"
             @add-files="handleWorkflowPromptFiles"
             @remove-reference="handleWorkflowPromptRemoveReference"
+            @create-subject="handleWorkflowPromptCreateSubject"
             @count-change="workflowPromptCount = $event"
             @send="handleWorkflowPromptSend"
           />

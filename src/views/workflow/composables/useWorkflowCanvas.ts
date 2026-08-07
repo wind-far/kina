@@ -24,6 +24,7 @@ import type { WorkflowCanvasPosition } from './workflow-orchestrator-types'
 import workflowReferenceSample from '@/assets/workflow-reference-sample.svg'
 
 export type WorkflowNodeType = 'text' | 'imageConfig' | 'videoConfig' | 'image' | 'video' | 'llmConfig'
+export type WorkflowNodeAddMenuType = 'text' | 'image' | 'video' | 'director' | 'audio' | 'reference'
 
 export interface WorkflowNodeDataBase {
   label?: string
@@ -456,6 +457,66 @@ export const addEdge = (params: WorkflowAddEdgeParams) => {
   }
   edges.value = [...edges.value, nextEdge]
   return nextEdge.id
+}
+
+/** 按节点类型补齐连线语义，供拖拽连线和节点外侧加号复用。 */
+export const addTypedWorkflowEdge = (params: WorkflowAddEdgeParams) => {
+  const sourceNode = nodes.value.find(node => node.id === params.source)
+  const targetNode = nodes.value.find(node => node.id === params.target)
+
+  if (sourceNode?.type === 'text' && targetNode?.type === 'imageConfig') {
+    const promptOrder = edges.value.filter(edge => edge.target === params.target && edge.type === 'promptOrder').length + 1
+    return addEdge({ ...params, type: 'promptOrder', data: { promptOrder } })
+  }
+  if (sourceNode?.type === 'image' && targetNode?.type === 'imageConfig') {
+    const imageOrder = edges.value.filter(edge => edge.target === params.target && edge.type === 'imageOrder').length + 1
+    return addEdge({ ...params, type: 'imageOrder', data: { imageOrder } })
+  }
+  if (sourceNode?.type === 'image' && targetNode?.type === 'videoConfig') {
+    return addEdge({ ...params, type: 'imageRole', data: { imageRole: 'first_frame_image' } })
+  }
+  if (sourceNode?.type === 'text' && targetNode?.type === 'videoConfig') {
+    return addEdge({ ...params, type: 'promptOrder', data: { promptOrder: 1 } })
+  }
+  return addEdge(params)
+}
+
+/**
+ * 参考站左右加号：在锚点同一水平线上创建节点并立即连线。
+ * director/audio 尚无对应节点类型，交由调用方显示未开放提示。
+ */
+export const addConnectedWorkflowNode = (
+  anchorId: string,
+  side: 'left' | 'right',
+  menuType: WorkflowNodeAddMenuType,
+) => {
+  const anchor = nodes.value.find(node => node.id === anchorId)
+  if (!anchor || menuType === 'director' || menuType === 'audio') return null
+
+  const nodeType: WorkflowNodeType = menuType === 'text'
+    ? 'text'
+    : menuType === 'video'
+      ? 'video'
+      : 'image'
+  const label = menuType === 'reference'
+    ? '参考节点'
+    : nodeType === 'text'
+      ? '文本输入'
+      : nodeType === 'video'
+        ? '视频节点'
+        : '图片节点'
+  const id = addNode(nodeType, {
+    x: anchor.position.x + (side === 'right' ? 440 : -440),
+    y: anchor.position.y,
+  }, { label } as Partial<WorkflowNodeDataMap[typeof nodeType]>)
+  const source = side === 'right' ? anchorId : id
+  const target = side === 'right' ? id : anchorId
+  const edgeId = addTypedWorkflowEdge({ source, target, sourceHandle: 'right', targetHandle: 'left' })
+  if (!edgeId) {
+    removeNode(id)
+    return null
+  }
+  return id
 }
 
 // 更新边数据

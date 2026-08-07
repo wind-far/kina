@@ -14,8 +14,10 @@ import {
   duplicateNode,
   addNode,
   addEdge,
+  addConnectedWorkflowNode,
   nodes,
   edges,
+  type WorkflowNodeAddMenuType,
   type WorkflowCanvasNode,
   type WorkflowVideoConfigNodeData,
 } from '../../composables/useWorkflowCanvas'
@@ -30,9 +32,15 @@ const props = defineProps<{
   selected?: boolean
 }>()
 const isSelected = computed(() => props.selected || props.data?.selected)
-const handleAddLeft = () => ElMessage.info('从左侧追加上游节点：接入中')
-const handleAddRight = () => ElMessage.info('从右侧追加下游节点：接入中')
 const { updateNodeInternals } = useVueFlow()
+const handleAddNode = ({ side, type }: { side: 'left' | 'right'; type: WorkflowNodeAddMenuType }) => {
+  if (type === 'director' || type === 'audio') {
+    ElMessage.info(`${type === 'director' ? '导演台' : '音频'}节点暂未开放`)
+    return
+  }
+  const newId = addConnectedWorkflowNode(props.id, side, type)
+  if (newId) window.setTimeout(() => updateNodeInternals([props.id, newId]), 50)
+}
 
 const showActions = ref(false)
 const isGenerating = ref(false)
@@ -253,8 +261,7 @@ watch(
       type="video-config"
       :min-width="320"
       :min-height="240"
-      @add-left="handleAddLeft"
-      @add-right="handleAddRight"
+      @add-node="handleAddNode"
     >
       <div class="wf-node-body" style="display: flex; flex-direction: column; gap: 8px; padding: 16px;">
         <div style="font-size: 11px; color: var(--text-tertiary);">输入: {{ promptCount }}</div>

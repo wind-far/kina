@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ArrowDown, Close, Plus, Search, Top } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import {
+  getWorkflowPromptAvailableReferenceSlots,
+  mergeWorkflowPromptReferences,
+  WORKFLOW_PROMPT_REFERENCE_ACCEPT,
+  WORKFLOW_PROMPT_REFERENCE_LIMIT,
+} from '@/shared/workflow-prompt-references'
+import { isWorkflowPromptSendDisabled } from '@/shared/workflow-prompt-visibility'
+import type { WorkflowVideoFeature } from '@/shared/workflow-video-prompt'
 
 export type WorkflowPromptGenerationMode = 'image' | 'video'
 
@@ -9,6 +18,7 @@ export interface WorkflowPromptModelOption {
   label: string
   provider?: string
   price?: string
+  maxCount?: number
 }
 
 export interface WorkflowPromptReference {
@@ -41,6 +51,8 @@ const props = withDefaults(defineProps<{
   price?: string
   placeholder?: string
   sending?: boolean
+  videoFeature?: WorkflowVideoFeature
+  hideTypeSelector?: boolean
 }>(), {
   generationMode: 'image',
   modelKey: '',
@@ -51,14 +63,17 @@ const props = withDefaults(defineProps<{
   price: '',
   placeholder: '描述你想基于当前图片生成的内容，可切换为视频；按 Enter 发送',
   sending: false,
+  hideTypeSelector: false,
 })
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'update:generationMode', mode: WorkflowPromptGenerationMode): void
   (e: 'update:modelKey', key: string): void
+  (e: 'update:videoFeature', feature: WorkflowVideoFeature): void
   (e: 'add-files', files: File[]): void
   (e: 'remove-reference', id: string): void
+  (e: 'create-subject'): void
   (e: 'count-change', count: number): void
   (e: 'send', text: string, options: WorkflowPromptSendOptions): void
 }>()
@@ -75,7 +90,14 @@ const canScrollRight = ref(false)
 
 const imageRatio = ref('4x3')
 const imageResolution = ref('2k')
-const videoFeature = ref<'all-reference' | 'first-last-frame' | 'smart-multi-frame'>('smart-multi-frame')
+const internalVideoFeature = ref<WorkflowVideoFeature>('smart-multi-frame')
+const videoFeature = computed({
+  get: () => props.videoFeature || internalVideoFeature.value,
+  set: (value: WorkflowVideoFeature) => {
+    internalVideoFeature.value = value
+    emit('update:videoFeature', value)
+  },
+})
 const videoRatio = ref('16x9')
 const videoResolution = ref('720p')
 const videoDuration = ref(5)
@@ -94,6 +116,10 @@ const localText = computed({
 const currentModel = computed(() => props.modelOptions.find(option => option.key === props.modelKey))
 const currentModelLabel = computed(() => currentModel.value?.label || props.modelKey || '请选择模型')
 const currentModelPrice = computed(() => currentModel.value?.price || props.price)
+const currentMaxCount = computed(() => {
+  const value = Number(currentModel.value?.maxCount)
+  return Number.isFinite(value) && value >= 1 ? Math.floor(value) : 1
+})
 const filteredModels = computed(() => {
   const keyword = modelSearch.value.trim().toLowerCase()
   if (!keyword) return props.modelOptions
@@ -105,11 +131,15 @@ const selectedMentionReferences = computed(() => selectedMentionIds.value
   .filter((reference): reference is WorkflowPromptReference => Boolean(reference)))
 
 const mergedSendReferences = computed(() => {
-  const merged = [...props.references, ...selectedMentionReferences.value]
-  return merged.filter((reference, index) => merged.findIndex(item => item.id === reference.id) === index)
+  return mergeWorkflowPromptReferences(props.references, selectedMentionReferences.value)
 })
 
-const isSendDisabled = computed(() => props.sending || (!localText.value.trim() && selectedMentionIds.value.length === 0))
+const isSendDisabled = computed(() => isWorkflowPromptSendDisabled({
+  sending: props.sending,
+  modelKey: props.modelKey,
+  text: localText.value,
+  referenceCount: mergedSendReferences.value.length,
+}))
 const imageRatioOptions = [
   { label: '智能', value: 'smart', shape: 'smart' },
   { label: '21:9', value: '21x9', shape: 'wide' },
@@ -189,17 +219,28 @@ const selectMode = (mode: WorkflowPromptGenerationMode) => {
 
 const selectModel = (model: WorkflowPromptModelOption) => {
   emit('update:modelKey', model.key)
+  const nextMaxCount = Number.isFinite(Number(model.maxCount)) && Number(model.maxCount) >= 1
+    ? Math.floor(Number(model.maxCount))
+    : 1
+  if (props.count > nextMaxCount) emit('count-change', nextMaxCount)
   closePanels()
 }
 
 const handleAddFiles = (event: Event) => {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files || [])
-  if (files.length) emit('add-files', files)
+  const availableSlots = getWorkflowPromptAvailableReferenceSlots(mergedSendReferences.value.length)
+  if (files.length > availableSlots) ElMessage.info(`最多支持 ${WORKFLOW_PROMPT_REFERENCE_LIMIT} 张参考图`)
+  if (availableSlots > 0 && files.length) emit('add-files', files.slice(0, availableSlots))
   input.value = ''
 }
 
 const selectReference = (reference: WorkflowPromptReference) => {
+  const alreadyMerged = mergedSendReferences.value.some(item => item.id === reference.id)
+  if (!alreadyMerged && mergedSendReferences.value.length >= WORKFLOW_PROMPT_REFERENCE_LIMIT) {
+    ElMessage.info(`最多支持 ${WORKFLOW_PROMPT_REFERENCE_LIMIT} 张参考图`)
+    return
+  }
   if (!selectedMentionIds.value.includes(reference.id)) {
     selectedMentionIds.value = [...selectedMentionIds.value, reference.id]
   }
@@ -207,14 +248,15 @@ const selectReference = (reference: WorkflowPromptReference) => {
   nextTick(() => textareaRef.value?.focus())
 }
 
+const isReferenceUnavailable = (reference: WorkflowPromptReference) => selectedMentionIds.value.includes(reference.id)
+  || (mergedSendReferences.value.length >= WORKFLOW_PROMPT_REFERENCE_LIMIT
+    && !mergedSendReferences.value.some(item => item.id === reference.id))
+
 const removeMention = (id: string) => {
   selectedMentionIds.value = selectedMentionIds.value.filter(item => item !== id)
 }
 
-const createSubjectFromCurrentReference = () => {
-  const reference = props.references.find(item => !selectedMentionIds.value.includes(item.id)) || props.references[0]
-  if (reference) selectReference(reference)
-}
+const requestCreateSubject = () => emit('create-subject')
 
 const handleSend = () => {
   if (isSendDisabled.value) return
@@ -223,7 +265,7 @@ const handleSend = () => {
     modelKey: props.modelKey,
     ratio: props.generationMode === 'image' ? imageRatio.value : videoRatio.value,
     resolution: props.generationMode === 'image' ? imageResolution.value : videoResolution.value,
-    count: props.count,
+    count: Math.min(currentMaxCount.value, Math.max(1, props.count)),
     feature: props.generationMode === 'video' ? videoFeature.value : undefined,
     duration: props.generationMode === 'video' ? videoDuration.value : undefined,
     references: mergedSendReferences.value,
@@ -271,9 +313,24 @@ watch(() => props.availableReferences.map(reference => reference.id), (ids) => {
   selectedMentionIds.value = selectedMentionIds.value.filter(id => ids.includes(id))
 }, { deep: true })
 
+watch(() => props.references.map(reference => reference.id), () => {
+  const baseIds = new Set(props.references.map(reference => reference.id))
+  const mentionSlots = getWorkflowPromptAvailableReferenceSlots(baseIds.size)
+  const validMentionIds = selectedMentionIds.value
+    .filter(id => props.availableReferences.some(reference => reference.id === id))
+  selectedMentionIds.value = [
+    ...validMentionIds.filter(id => baseIds.has(id)),
+    ...validMentionIds.filter(id => !baseIds.has(id)).slice(0, mentionSlots),
+  ]
+}, { deep: true })
+
 watch(() => props.generationMode, () => {
   closePanels()
   nextTick(updateScrollState)
+})
+
+watch(currentMaxCount, maxCount => {
+  if (props.count > maxCount) emit('count-change', maxCount)
 })
 
 onMounted(() => {
@@ -292,7 +349,14 @@ onUnmounted(() => {
 
 <template>
   <div ref="rootRef" class="canvas-prompt-input canvas-prompt-input--workflow" @click.stop>
-    <input ref="fileInputRef" class="canvas-prompt-input__file" type="file" accept="image/jpeg,image/png,image/webp,image/bmp" multiple @change="handleAddFiles">
+    <input
+      ref="fileInputRef"
+      class="canvas-prompt-input__file"
+      type="file"
+      :accept="WORKFLOW_PROMPT_REFERENCE_ACCEPT"
+      multiple
+      @change="handleAddFiles"
+    >
 
     <div class="canvas-prompt-input__content">
       <div class="canvas-prompt-input__top">
@@ -307,7 +371,7 @@ onUnmounted(() => {
           <span v-else class="canvas-prompt-input__ref-fallback">{{ reference.label.slice(0, 2) }}</span>
           <button type="button" class="canvas-prompt-input__ref-remove" aria-label="移除参考图" @click.stop="emit('remove-reference', reference.id)"><el-icon><Close /></el-icon></button>
         </div>
-        <button type="button" class="canvas-prompt-input__add" aria-label="添加参考图" title="添加参考图" @click="fileInputRef?.click()"><el-icon><Plus /></el-icon></button>
+        <button type="button" class="canvas-prompt-input__add" aria-label="添加参考图" title="添加参考图" :disabled="mergedSendReferences.length >= WORKFLOW_PROMPT_REFERENCE_LIMIT" @click="fileInputRef?.click()"><el-icon><Plus /></el-icon></button>
       </div>
 
       <div class="canvas-prompt-input__body">
@@ -327,7 +391,7 @@ onUnmounted(() => {
       <div class="canvas-prompt-input__settings">
         <button type="button" class="canvas-prompt-input__scroll-btn" aria-label="向左滑动工具" :disabled="!canScrollLeft" @click="scrollSettings(-1)">‹</button>
         <div ref="settingsTrackRef" class="canvas-prompt-input__settings-track" @scroll="updateScrollState">
-          <button type="button" class="canvas-prompt-input__pill canvas-prompt-input__type-pill" :aria-expanded="openPanel === 'type'" @click="togglePanel('type')">
+          <button v-if="!hideTypeSelector" type="button" class="canvas-prompt-input__pill canvas-prompt-input__type-pill" :aria-expanded="openPanel === 'type'" @click="togglePanel('type')">
             <span class="canvas-prompt-input__type-icon" aria-hidden="true">{{ generationMode === 'image' ? '▧' : '◴' }}</span>
             <span>{{ generationMode === 'image' ? '图片生成' : '视频生成' }}</span>
             <el-icon class="canvas-prompt-input__pill-caret"><ArrowDown /></el-icon>
@@ -345,7 +409,7 @@ onUnmounted(() => {
             <div class="canvas-prompt-input__count-stepper" aria-label="生成数量">
               <button type="button" aria-label="减少生成数量" :disabled="count <= 1" @click="emit('count-change', Math.max(1, count - 1))">−</button>
               <span>{{ count }}</span>
-              <button type="button" aria-label="增加生成数量" :disabled="count >= 4" @click="emit('count-change', Math.min(4, count + 1))">＋</button>
+              <button type="button" aria-label="增加生成数量" :disabled="count >= currentMaxCount" @click="emit('count-change', Math.min(currentMaxCount, count + 1))">＋</button>
             </div>
           </template>
 
@@ -366,7 +430,7 @@ onUnmounted(() => {
     </div>
 
     <Transition name="workflow-prompt-popover">
-      <div v-if="openPanel === 'type'" class="workflow-prompt-popover workflow-prompt-type-popover">
+      <div v-if="!hideTypeSelector && openPanel === 'type'" class="workflow-prompt-popover workflow-prompt-type-popover">
         <div class="workflow-prompt-popover__title">创作类型</div>
         <button type="button" :class="{ 'is-selected': generationMode === 'image' }" @click="selectMode('image')"><span>▧</span><span>图片生成</span><span v-if="generationMode === 'image'">✓</span></button>
         <button type="button" :class="{ 'is-selected': generationMode === 'video' }" @click="selectMode('video')"><span>◴</span><span>视频生成</span><span v-if="generationMode === 'video'">✓</span></button>
@@ -430,9 +494,9 @@ onUnmounted(() => {
     <Transition name="workflow-prompt-popover">
       <div v-if="openPanel === 'reference'" class="workflow-prompt-popover workflow-prompt-reference-popover">
         <div class="workflow-prompt-popover__title">可能 <span>@</span> 的内容</div>
-        <button type="button" class="workflow-prompt-reference-create" :disabled="references.length === 0" @click="createSubjectFromCurrentReference"><span>＋</span><span>创建主体</span></button>
+        <button type="button" class="workflow-prompt-reference-create" @click="requestCreateSubject"><span>＋</span><span>创建主体</span></button>
         <div class="workflow-prompt-reference-list">
-          <button v-for="reference in availableReferences" :key="reference.id" type="button" :disabled="selectedMentionIds.includes(reference.id)" @click="selectReference(reference)"><img v-if="reference.url" :src="reference.url" alt=""><span v-else>{{ reference.label.slice(0, 2) }}</span><strong>{{ reference.label }}</strong><small v-if="selectedMentionIds.includes(reference.id)">已引用</small></button>
+          <button v-for="reference in availableReferences" :key="reference.id" type="button" :disabled="isReferenceUnavailable(reference)" @click="selectReference(reference)"><img v-if="reference.url" :src="reference.url" alt=""><span v-else>{{ reference.label.slice(0, 2) }}</span><strong>{{ reference.label }}</strong><small v-if="selectedMentionIds.includes(reference.id)">已引用</small><small v-else-if="isReferenceUnavailable(reference)">已达上限</small></button>
           <div v-if="availableReferences.length === 0" class="workflow-prompt-reference-empty">画布中暂无可引用素材</div>
         </div>
       </div>
@@ -474,6 +538,7 @@ onUnmounted(() => {
 .canvas-prompt-input__ref-remove .el-icon { font-size: 10px; }
 .canvas-prompt-input__add { position: absolute; top: 51.5px; left: 34.5px; z-index: 8; display: inline-flex; align-items: center; justify-content: center; width: 29px; height: 29px; padding: 0; border: 0; border-radius: 50%; background: #f1f2f3; color: #0f1419; box-shadow: 0 2px 6px rgba(15,20,25,.12); cursor: pointer; }
 .canvas-prompt-input__add .el-icon { font-size: 14px; }
+.canvas-prompt-input__add:disabled { color: rgba(15,20,25,.32); cursor: default; box-shadow: 0 2px 6px rgba(15,20,25,.06); }
 .canvas-prompt-input__body { display: flex; align-content: flex-start; align-items: flex-start; flex: 1 1 auto; flex-wrap: wrap; min-width: 0; height: 96px; min-height: 96px; padding-top: 2px; overflow-y: auto; }
 .canvas-prompt-input__mentions { display: inline-flex; flex-wrap: wrap; gap: 4px; margin: 0 5px 4px 0; }
 .canvas-prompt-input__mention { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 1px 6px 1px 2px; border-radius: 6px; background: rgba(61,176,196,.1); color: #0f1419; font-size: 13px; }

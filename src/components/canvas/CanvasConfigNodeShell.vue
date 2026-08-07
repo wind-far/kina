@@ -12,9 +12,10 @@
  *   - 默认插槽：节点内部表单（textarea / 模型 / 生成按钮等）
  *   - overlay 插槽：节点级浮层（如 hover toolbar / prompt panel）
  */
-import type { Component } from 'vue'
+import { onMounted, onUnmounted, ref, type Component } from 'vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
+import type { WorkflowNodeAddMenuType } from '@/views/workflow/composables/useWorkflowCanvas'
 
 const props = withDefaults(
   defineProps<{
@@ -36,15 +37,38 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  (e: 'add-left'): void
-  (e: 'add-right'): void
+  (e: 'add-node', payload: { side: 'left' | 'right'; type: WorkflowNodeAddMenuType }): void
 }>()
 
 const titleEdit = useNodeTitleEdit(props.nodeId, () => props.label)
+const rootRef = ref<HTMLElement | null>(null)
+const addMenuSide = ref<'left' | 'right' | null>(null)
+const addMenuItems: Array<{ type: WorkflowNodeAddMenuType; label: string; icon: string; badge?: string }> = [
+  { type: 'text', label: '文本', icon: 'T' },
+  { type: 'image', label: '图片', icon: '▧' },
+  { type: 'video', label: '视频', icon: '◴' },
+  { type: 'director', label: '导演台', icon: '⌘', badge: 'NEW' },
+  { type: 'audio', label: '音频', icon: '♫' },
+  { type: 'reference', label: '参考节点', icon: '◎' },
+]
+
+const toggleAddMenu = (side: 'left' | 'right') => {
+  addMenuSide.value = addMenuSide.value === side ? null : side
+}
+const chooseAddNode = (type: WorkflowNodeAddMenuType) => {
+  if (!addMenuSide.value) return
+  emit('add-node', { side: addMenuSide.value, type })
+  addMenuSide.value = null
+}
+const closeAddMenuOutside = (event: PointerEvent) => {
+  if (!rootRef.value?.contains(event.target as Node)) addMenuSide.value = null
+}
+onMounted(() => document.addEventListener('pointerdown', closeAddMenuOutside))
+onUnmounted(() => document.removeEventListener('pointerdown', closeAddMenuOutside))
 </script>
 
 <template>
-  <div class="config-node-wrapper" :data-config-type="type">
+  <div ref="rootRef" class="config-node-wrapper" :data-config-type="type">
     <!-- 节点外置标题 -->
     <div
       class="config-node-title"
@@ -81,8 +105,23 @@ const titleEdit = useNodeTitleEdit(props.nodeId, () => props.label)
     </div>
 
     <!-- 左右 "+" 连接点（CanvasNodeAddHandle 自带 Vue Flow Handle 拖拽连线） -->
-    <CanvasNodeAddHandle side="left" :visible="selected" @click.stop="emit('add-left')" />
-    <CanvasNodeAddHandle side="right" :visible="selected" @click.stop="emit('add-right')" />
+    <CanvasNodeAddHandle side="left" :visible="selected" @click.stop="toggleAddMenu('left')" />
+    <CanvasNodeAddHandle side="right" :visible="selected" @click.stop="toggleAddMenu('right')" />
+
+    <div
+      v-if="addMenuSide"
+      class="wf-canvas-add-menu nodrag nopan"
+      :class="`is-${addMenuSide}`"
+      @mousedown.stop
+      @click.stop
+    >
+      <div class="wf-canvas-add-menu__title">引用该节点生成</div>
+      <button v-for="item in addMenuItems" :key="item.type" type="button" @click="chooseAddNode(item.type)">
+        <span class="wf-canvas-add-menu__icon">{{ item.icon }}</span>
+        <span>{{ item.label }}</span>
+        <small v-if="item.badge">{{ item.badge }}</small>
+      </button>
+    </div>
 
     <!-- overlay 插槽：hover toolbar / prompt panel 等浮层 -->
     <slot name="overlay" />
@@ -254,5 +293,58 @@ const titleEdit = useNodeTitleEdit(props.nodeId, () => props.label)
 }
 .config-node-add-btn:active {
   transform: translateY(-50%) scale(0.95);
+}
+
+.wf-canvas-add-menu {
+  position: absolute;
+  top: 50%;
+  width: 213px;
+  padding: 12px 10px;
+  border: 1px solid var(--stroke-secondary);
+  border-radius: 14px;
+  background: var(--canvas-float-block-default, #202124);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.38);
+  transform: translateY(-10%);
+  z-index: 40;
+}
+.wf-canvas-add-menu.is-left { right: calc(100% + 8px); }
+.wf-canvas-add-menu.is-right { left: calc(100% + 8px); }
+.wf-canvas-add-menu__title {
+  padding: 4px 10px 8px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+.wf-canvas-add-menu button {
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.wf-canvas-add-menu button:hover {
+  background: var(--canvas-float-block-hover, rgba(255, 255, 255, 0.07));
+  color: var(--text-primary);
+}
+.wf-canvas-add-menu__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+.wf-canvas-add-menu small {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(2, 219, 163, 0.16);
+  color: var(--brand-main-default);
+  font-size: 9px;
 }
 </style>

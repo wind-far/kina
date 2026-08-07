@@ -7,6 +7,8 @@ import { BaseEdge, EdgeLabelRenderer, getBezierPath, useVueFlow } from '@vue-flo
 import { edges } from '../../composables/useWorkflowCanvas'
 import EdgeDeleteButton from '../EdgeDeleteButton.vue'
 
+defineOptions({ inheritAttrs: false })
+
 const { updateEdgeData, onEdgeMouseEnter, onEdgeMouseLeave } = useVueFlow()
 
 const props = defineProps<{

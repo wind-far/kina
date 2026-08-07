@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-07T02:05:00+08:00",
+  "generatedAt": "2026-08-07T18:45:01+08:00",
   "scope": "agentic assets canvas and workflow canvas visual regression",
   "referenceUrl": "https://reaicc.com/agentic-assets-canvas",
   "viewport": {
@@ -175,9 +175,15 @@
           "typeSwitch": ["图片生成", "视频生成"],
           "ratioOptions": ["智能", "21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
           "resolutionOptions": ["高清 2K", "超清 4K"],
-          "generationCount": "1 to 4",
+          "generationCount": "1 to the selected model capabilityJson.maxImagesPerRequest limit; missing capability falls back to 1",
           "inspiration": "source-matched modal, categories, search, real reference poster assets and use-prompt action",
-          "references": "existing image nodes and uploaded images can be inserted, removed and submitted"
+          "references": "existing image nodes and uploaded images can be inserted, removed and submitted",
+          "referenceOnlySend": "send is enabled when a canvas or uploaded reference exists even if the prompt text is empty; the image node applies a safe fallback prompt",
+          "createSubject": "live reference control is active but has no observable action; local control preserves the entry and shows an honest not-yet-available message instead of inventing a subject record",
+          "modelParameters": "ratio keys remain unchanged for ratio-based models; Seedream ratios resolve to model-specific 2K/4K pixel sizes and standard/4k quality values",
+          "uploadTransport": "uploaded raster files are converted to data URLs so both image-task JSON and video FormData can consume them",
+          "uploadLimit": "4 references total, including the selected canvas image",
+          "referenceQuota": "uploaded files and @ canvas mentions share one deduplicated four-item quota; additional entry points disable at the limit"
         },
         "videoMode": {
           "features": ["全能参考", "首尾帧", "智能多帧"],
@@ -210,7 +216,10 @@
       "runBehaviorPreserved": "pass via workspace panel",
       "openingAndPointerSamples": "captured",
       "controlInteractions": "pass: zoom to 800%, fit view, appearance switches, shortcut dialog",
-      "nodePromptInput": "pass: source-relative geometry, type/model/parameter controls, inspiration library, references and upload entry aligned",
+      "nodePromptInput": "pass: source-relative geometry, type/model/parameter controls, inspiration library, references and upload entry aligned; remains open after node click and closes on a later blank-canvas click; create-subject placeholder behavior independently verified against the live reference",
+      "nodePromptVisibility": "pass: opens only for image nodes, matching the live reference; text and configuration nodes retain their own in-node editors without the floating prompt",
+      "videoModelGuard": "pass: when the video catalog is empty and the model control shows 请选择模型, send remains disabled like the live reference",
+      "edgeRuntimeWarnings": "pass: custom multi-root edge components explicitly disable unused attribute inheritance, eliminating repeated Vue extraneous-attribute warnings without changing edge behavior",
       "promptGenerationRouting": "pass: image requests use the existing image task path; video requests create and execute a text-to-video workflow with reference-image edges",
       "dprParity": "pass"
     }

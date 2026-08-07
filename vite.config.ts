@@ -84,6 +84,8 @@ export default defineConfig(({ mode }) => {
     // Element Plus 按需引入：自动注册模板中 <el-xxx> 组件
     Components({
       dts: false,
+      // 两个 TypeSelector 都由业务组件显式导入，排除自动注册以避免同名扫描冲突。
+      excludeNames: ['TypeSelector'],
       resolvers: [ElementPlusResolver()],
     }),
     // 仅保留前端本地调试所需的 mock 文件服务。

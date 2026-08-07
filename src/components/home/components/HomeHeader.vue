@@ -13,6 +13,7 @@
     </div>
     <div
       v-if="showWorkbenchGenerator"
+      class="home-header-generator-wrap"
       :class="{ 'home-header-preview-mask': previewReadonly }"
     >
       <!-- 首页配置：不可折叠、默认展开、弹窗强制向下弹出 -->
@@ -174,9 +175,30 @@ const handleSend = (message: string, type: CreationType, options?: HomeHeaderSen
 </script>
 
 <style scoped>
+.home-header {
+  width: 100%;
+}
+
+.home-header-generator-wrap {
+  width: 100%;
+  align-self: stretch;
+  box-sizing: border-box;
+}
+
 .home-header-content-generator {
-  width: min(1195px, calc(100vw - 32px));
+  width: 100%;
   margin: 0 auto;
+}
+
+.home-header :deep(.dimension-layout-FUl4Nj.default-layout-eH8Zi1),
+.home-header :deep(.default-layout-bOIxyJ),
+.home-header :deep(.content-generator-root),
+.home-header :deep(.content-generator-container),
+.home-header :deep(.generator-panel),
+.home-header :deep(.float-generator) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .home-header-site-description-canana {

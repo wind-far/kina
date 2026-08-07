@@ -5,8 +5,9 @@ export type ThemeMode = 'dark' | 'light' | 'system'
 export type ResolvedTheme = 'dark' | 'light'
 
 const THEME_MODE_STORAGE_KEY = 'theme-mode'
-const themeMode = ref<ThemeMode>('dark')
-const currentTheme = ref<ResolvedTheme>('dark')
+const THEME_MODE_EXPLICIT_STORAGE_KEY = 'theme-mode-explicit'
+const themeMode = ref<ThemeMode>('light')
+const currentTheme = ref<ResolvedTheme>('light')
 const allowUserToggle = ref(true)
 const supportSystemMode = ref(true)
 const mediaListenerBound = ref(false)
@@ -21,7 +22,7 @@ const getSystemTheme = (): ResolvedTheme => {
 }
 
 const normalizeThemeMode = (value: unknown): ThemeMode => {
-  return value === 'light' || value === 'system' ? value : 'dark'
+  return value === 'dark' || value === 'system' ? value : 'light'
 }
 
 const normalizeResolvedTheme = (mode: ThemeMode): ResolvedTheme => {
@@ -42,17 +43,21 @@ const applyThemeAttributes = (theme: ResolvedTheme) => {
   document.body.setAttribute('lv-theme-version', '2.0')
 }
 
-const setStoredThemeMode = (mode: ThemeMode) => {
+const setStoredThemeMode = (mode: ThemeMode, explicit: boolean) => {
   if (!isClient()) {
     return
   }
 
-  if (allowUserToggle.value) {
+  if (allowUserToggle.value && explicit) {
     window.localStorage.setItem(THEME_MODE_STORAGE_KEY, mode)
+    window.localStorage.setItem(THEME_MODE_EXPLICIT_STORAGE_KEY, '1')
     return
   }
 
-  window.localStorage.removeItem(THEME_MODE_STORAGE_KEY)
+  if (!allowUserToggle.value) {
+    window.localStorage.removeItem(THEME_MODE_STORAGE_KEY)
+    window.localStorage.removeItem(THEME_MODE_EXPLICIT_STORAGE_KEY)
+  }
 }
 
 const syncCurrentTheme = () => {
@@ -88,8 +93,14 @@ const resolveEffectiveThemeMode = (settings?: SystemGlobalThemeSettingsConfig | 
   allowUserToggle.value = nextAllowUserToggle
   supportSystemMode.value = nextSupportSystemMode
 
-  const savedThemeMode = isClient() && nextAllowUserToggle
-    ? normalizeThemeMode(window.localStorage.getItem(THEME_MODE_STORAGE_KEY))
+  const hasExplicitThemePreference = isClient() && nextAllowUserToggle
+    ? window.localStorage.getItem(THEME_MODE_EXPLICIT_STORAGE_KEY) === '1'
+    : false
+  const savedThemeModeRaw = hasExplicitThemePreference
+    ? window.localStorage.getItem(THEME_MODE_STORAGE_KEY)
+    : null
+  const savedThemeMode = savedThemeModeRaw === 'dark' || savedThemeModeRaw === 'light' || savedThemeModeRaw === 'system'
+    ? savedThemeModeRaw
     : null
 
   if (savedThemeMode === 'system' && !nextSupportSystemMode) {
@@ -106,14 +117,15 @@ export function useThemePreferenceStore() {
     syncCurrentTheme()
 
     if (persist) {
-      setStoredThemeMode(normalizedMode)
+      setStoredThemeMode(normalizedMode, true)
     }
   }
 
   const syncThemePolicy = (settings?: SystemGlobalThemeSettingsConfig | null) => {
     bindSystemThemeListener()
     const nextMode = resolveEffectiveThemeMode(settings)
-    setThemeMode(nextMode, allowUserToggle.value)
+    // 系统初始化只能应用后台默认值，不能把默认主题误写成用户偏好。
+    setThemeMode(nextMode, false)
   }
 
   return {

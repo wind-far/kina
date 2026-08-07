@@ -284,7 +284,7 @@ watch(
 
 @media (min-width: 1280px) {
   .home-content-shell {
-    padding-inline: 10px;
+    padding: 0 44px 0 40px;
   }
 }
 

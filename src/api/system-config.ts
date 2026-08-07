@@ -1,5 +1,9 @@
 import { buildApiUrl } from './http'
 import { readApiData } from './response'
+import {
+  AGENTIC_ASSETS_CANVAS_PATH,
+  isLegacyCanvasWorkflowItem,
+} from '@/shared/home-side-menu-route'
 
 export interface SystemSiteInfoConfig {
   siteName: string
@@ -532,12 +536,12 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       badgeText: '',
       badgeTone: 'default',
       actionType: 'route',
-      actionValue: '/canvas',
+      actionValue: AGENTIC_ASSETS_CANVAS_PATH,
       sortOrder: 40,
     },
     {
       key: 'workflow',
-      title: '工作流',
+      title: '全能设计',
       section: 'center',
       groupKey: 'group-center-main',
       iconSource: 'default',
@@ -549,7 +553,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       badgeText: '',
       badgeTone: 'default',
       actionType: 'route',
-      actionValue: '/agentic-assets-canvas',
+      actionValue: '/workflow',
       sortOrder: 50,
     },
     {
@@ -631,11 +635,28 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       inactiveIconUrl: '',
       activeIconUrl: '',
       visible: true,
+      badgeText: '1',
+      badgeTone: 'danger',
+      actionType: 'none',
+      actionValue: '',
+      sortOrder: 30,
+    },
+    {
+      key: 'theme',
+      title: '主题',
+      section: 'bottom',
+      groupKey: 'group-bottom-system',
+      iconSource: 'default',
+      iconType: 'system',
+      icon: 'theme',
+      inactiveIconUrl: '',
+      activeIconUrl: '',
+      visible: true,
       badgeText: '',
       badgeTone: 'default',
       actionType: 'none',
       actionValue: '',
-      sortOrder: 30,
+      sortOrder: 35,
     },
     {
       key: 'app-download',
@@ -647,7 +668,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       icon: 'app-download',
       inactiveIconUrl: '',
       activeIconUrl: '',
-      visible: true,
+      visible: false,
       badgeText: '',
       badgeTone: 'default',
       actionType: 'none',
@@ -664,7 +685,7 @@ export const createDefaultHomeSideMenuSettings = (): SystemHomeSideMenuSettingsC
       icon: 'api-entry',
       inactiveIconUrl: '',
       activeIconUrl: '',
-      visible: true,
+      visible: false,
       badgeText: '',
       badgeTone: 'default',
       actionType: 'none',
@@ -1100,6 +1121,13 @@ const normalizeHomeSideMenuSettings = (value?: SystemHomeSideMenuSettingsConfig 
   const defaults = createDefaultHomeSideMenuSettings()
   const incomingGroups = Array.isArray(value?.groups) ? value!.groups : []
   const incomingItems = Array.isArray(value?.items) ? value!.items : []
+  const legacyCanvasItem = incomingItems.find(item => isLegacyCanvasWorkflowItem(item))
+  const legacyAppDownloadItem = incomingItems.find(item => item.key === 'app-download')
+  const legacyApiEntryItem = incomingItems.find(item => item.key === 'api-entry')
+  const legacySettingsItem = incomingItems.find(item => item.key === 'settings')
+  const usesLegacyBottomMenuVisibility = legacyAppDownloadItem?.visible !== false
+    && legacyApiEntryItem?.visible !== false
+    && legacySettingsItem?.visible === false
 
   const normalizedGroups = defaults.groups.map(defaultGroup => {
     const matchedGroup = incomingGroups.find(group => group.key === defaultGroup.key)
@@ -1112,15 +1140,40 @@ const normalizeHomeSideMenuSettings = (value?: SystemHomeSideMenuSettingsConfig 
   const extraGroups = incomingGroups.filter(group => !normalizedGroups.some(defaultGroup => defaultGroup.key === group.key))
 
   const normalizedItems = defaults.items.map(defaultItem => {
-    const matchedItem = incomingItems.find(item => item.key === defaultItem.key)
+    let matchedItem = incomingItems.find(item => item.key === defaultItem.key)
+
+    if (defaultItem.key === 'canvas' && !matchedItem && legacyCanvasItem) {
+      matchedItem = {
+        ...legacyCanvasItem,
+        key: 'canvas',
+        title: '画布',
+        icon: 'canvas',
+        actionValue: AGENTIC_ASSETS_CANVAS_PATH,
+        sortOrder: defaultItem.sortOrder,
+      }
+    }
+
+    if (defaultItem.key === 'workflow' && matchedItem && isLegacyCanvasWorkflowItem(matchedItem)) {
+      matchedItem = undefined
+    }
+
     const nextItem = {
       ...defaultItem,
       ...(matchedItem || {}),
     }
 
-    // 工作流入口统一接入新的画布工作台页面，兼容旧配置里残留的 /workflow。
-    if (nextItem.key === 'workflow' && nextItem.actionType === 'route') {
-      nextItem.actionValue = '/agentic-assets-canvas'
+    if (nextItem.key === 'canvas' && nextItem.actionType === 'route') {
+      nextItem.actionValue = AGENTIC_ASSETS_CANVAS_PATH
+    }
+
+    // 旧版默认展示 APP/API、隐藏设置；仅迁移这一组旧默认，保留后台的其他自定义组合。
+    if (usesLegacyBottomMenuVisibility && ['app-download', 'api-entry', 'settings'].includes(nextItem.key)) {
+      nextItem.visible = defaultItem.visible
+    }
+
+    if (usesLegacyBottomMenuVisibility && nextItem.key === 'notification' && !nextItem.badgeText) {
+      nextItem.badgeText = defaultItem.badgeText
+      nextItem.badgeTone = defaultItem.badgeTone
     }
 
     return {

@@ -1,0 +1,27 @@
+<svg width="960" height="760" viewBox="0 0 960 760" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="76" y1="30" x2="852" y2="722" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#CDEBF2"/>
+      <stop offset="0.48" stop-color="#F6E8D1"/>
+      <stop offset="1" stop-color="#D2DFF8"/>
+    </linearGradient>
+    <linearGradient id="orb" x1="340" y1="150" x2="642" y2="555" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FAFEFF"/>
+      <stop offset="1" stop-color="#9AC9D9"/>
+    </linearGradient>
+    <filter id="shadow" x="130" y="53" width="700" height="655" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="22" stdDeviation="26" flood-color="#587896" flood-opacity=".2"/>
+    </filter>
+  </defs>
+  <rect width="960" height="760" rx="36" fill="url(#bg)"/>
+  <circle cx="160" cy="118" r="164" fill="#FFF6DC" fill-opacity=".72"/>
+  <circle cx="817" cy="650" r="210" fill="#B5C7F0" fill-opacity=".5"/>
+  <g filter="url(#shadow)">
+    <path d="M289 207C289 158 329 118 378 118H582C631 118 671 158 671 207V459C671 508 631 548 582 548H378C329 548 289 508 289 459V207Z" fill="url(#orb)"/>
+    <path d="M342 290C342 229 391 180 452 180H508C569 180 618 229 618 290V370C618 431 569 480 508 480H452C391 480 342 431 342 370V290Z" fill="#EAF7F9"/>
+    <circle cx="430" cy="326" r="31" fill="#1E4554"/>
+    <circle cx="530" cy="326" r="31" fill="#1E4554"/>
+    <path d="M419 398C454 431 506 431 541 398" stroke="#1E4554" stroke-width="17" stroke-linecap="round"/>
+  </g>
+  <path d="M125 588C232 541 301 601 384 624C467 647 553 621 629 576C705 531 776 530 848 568" stroke="#FDFDFD" stroke-width="30" stroke-linecap="round" opacity=".72"/>
+</svg>

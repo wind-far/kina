@@ -61,14 +61,16 @@ const DEFAULT_HOME_SIDE_MENU_ITEMS = [
   { key: 'home', title: '灵感', section: 'center', iconSource: 'default', iconType: 'system', icon: 'home', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/', sortOrder: 10 },
   { key: 'generate', title: '生成', section: 'center', iconSource: 'default', iconType: 'system', icon: 'generate', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'primary', actionType: 'route', actionValue: '/generate', sortOrder: 20 },
   { key: 'asset', title: '资产', section: 'center', iconSource: 'default', iconType: 'system', icon: 'asset', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/asset', sortOrder: 30 },
-  { key: 'workflow', title: '工作流', section: 'center', iconSource: 'default', iconType: 'system', icon: 'workflow', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/workflow', sortOrder: 40 },
-  { key: 'account', title: '账号', section: 'center', iconSource: 'default', iconType: 'system', icon: 'account', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/account', sortOrder: 50 },
-  { key: 'publish', title: '发布', section: 'center', iconSource: 'default', iconType: 'system', icon: 'publish', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/publish', sortOrder: 60 },
+  { key: 'canvas', title: '画布', section: 'center', iconSource: 'default', iconType: 'system', icon: 'canvas', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/agentic-assets-canvas', sortOrder: 40 },
+  { key: 'workflow', title: '全能设计', section: 'center', iconSource: 'default', iconType: 'system', icon: 'workflow', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/workflow', sortOrder: 50 },
+  { key: 'account', title: '账号', section: 'center', iconSource: 'default', iconType: 'system', icon: 'account', inactiveIconUrl: '', activeIconUrl: '', visible: false, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/account', sortOrder: 50 },
+  { key: 'publish', title: '发布', section: 'center', iconSource: 'default', iconType: 'system', icon: 'publish', inactiveIconUrl: '', activeIconUrl: '', visible: false, badgeText: '', badgeTone: 'default', actionType: 'route', actionValue: '/publish', sortOrder: 60 },
   { key: 'marketing', title: '福利', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'marketing', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'dialog', actionValue: 'marketing', sortOrder: 10 },
   { key: 'account-entry', title: '登录', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'account', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'dialog', actionValue: 'login', sortOrder: 20 },
-  { key: 'notification', title: '通知', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'notification', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'none', actionValue: '', sortOrder: 30 },
-  { key: 'app-download', title: 'APP下载', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'app-download', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'none', actionValue: '', sortOrder: 40 },
-  { key: 'api-entry', title: 'API', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'api-entry', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'none', actionValue: '', sortOrder: 50 },
+  { key: 'notification', title: '通知', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'notification', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '1', badgeTone: 'danger', actionType: 'none', actionValue: '', sortOrder: 30 },
+  { key: 'theme', title: '主题', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'theme', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'none', actionValue: '', sortOrder: 35 },
+  { key: 'app-download', title: 'APP下载', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'app-download', inactiveIconUrl: '', activeIconUrl: '', visible: false, badgeText: '', badgeTone: 'default', actionType: 'none', actionValue: '', sortOrder: 40 },
+  { key: 'api-entry', title: 'API', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'api-entry', inactiveIconUrl: '', activeIconUrl: '', visible: false, badgeText: '', badgeTone: 'default', actionType: 'none', actionValue: '', sortOrder: 50 },
   { key: 'settings', title: '设置', section: 'bottom', iconSource: 'default', iconType: 'system', icon: 'settings', inactiveIconUrl: '', activeIconUrl: '', visible: true, badgeText: '', badgeTone: 'default', actionType: 'none', actionValue: '', sortOrder: 60 },
 ] as const
 
@@ -82,7 +84,7 @@ const DEFAULT_HOME_BANNER_ITEMS = [
 
 const createDefaultSystemConfig = () => ({
   siteInfo: {
-    siteName: 'Canana',
+    siteName: 'CanvasMind',
     siteDescription: '',
     siteLogoUrl: '',
     siteIconUrl: '',
@@ -153,7 +155,7 @@ const createDefaultSystemConfig = () => ({
         generatorEnabled: true,
         taskIndicatorEnabled: true,
         bannerEnabled: true,
-        showSiteName: true,
+        showSiteName: false,
         prefixText: '开启你的',
         suffixText: '即刻造梦！',
         showModeSelectorInTitle: true,
@@ -209,7 +211,7 @@ const createDefaultSystemConfig = () => ({
   globalThemeSettings: {
     modePolicy: {
       allowUserToggle: true,
-      defaultMode: 'dark',
+      defaultMode: 'light',
       supportSystemMode: true,
     },
     themes: {
@@ -229,11 +231,11 @@ const createDefaultSystemConfig = () => ({
       },
     },
     brandColors: {
-      primary: '#6f35ff',
-      primaryHover: '#5b28e6',
-      primaryActive: '#4c20c4',
-      secondary: '#00c2d6',
-      accent: '#ff7a59',
+      primary: '#55b8cc',
+      primaryHover: '#55b8cc',
+      primaryActive: '#55b8cc',
+      secondary: '#55b8cc',
+      accent: '#55b8cc',
       success: '#18b566',
       warning: '#ffb020',
       danger: '#f04438',

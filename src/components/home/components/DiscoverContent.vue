@@ -194,6 +194,17 @@ import { buildAssetUrl } from '@/api/http'
 import discoverContent from '@/data/homeDiscoverContent.json'
 
 const emit = defineEmits(['open-work-detail'])
+const DEFAULT_DISCOVER_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='48' fill='%23E8F5F7'/%3E%3Ccircle cx='48' cy='37' r='16' fill='%2355B8CC'/%3E%3Cpath d='M20 82c5-17 17-26 28-26s23 9 28 26' fill='%2355B8CC'/%3E%3C/svg%3E"
+
+// 首页兜底素材随前端构建发布，避免历史 OSS 链接失效后出现破图。
+const localDiscoverImages = Object.entries(import.meta.glob('@/assets/image/dreamina_*.png', {
+  eager: true,
+  import: 'default',
+}))
+  .sort(([left], [right]) => left.localeCompare(right))
+  .map(([, url]) => url)
+
+const getLocalDiscoverImage = (index) => localDiscoverImages[index % localDiscoverImages.length] || ''
 
 // 解析类似 9:16、2/3、1x1 的比例字符串，转换成布局可用的宽高比。
 const parseAspectRatioSize = (value) => {
@@ -229,7 +240,7 @@ const buildFeedItemFromAsset = (item) => ({
   user: {
     id: item.owner?.id || '',
     name: item.owner?.name || '创作者',
-    avatarSrc: buildAssetUrl(item.owner?.avatarSrc || ''),
+    avatarSrc: buildAssetUrl(item.owner?.avatarSrc || '') || DEFAULT_DISCOVER_AVATAR,
   },
   favoriteCount: item.favoriteCount || 0,
   layoutSize: resolveLayoutSize({
@@ -247,15 +258,15 @@ const buildFeedItemFromAsset = (item) => ({
 })
 
 const buildFallbackFeedItems = () => (
-  discoverContent.feedItems.map((item) => ({
+  discoverContent.feedItems.map((item, index) => ({
     id: item.id,
-    src: item.imageSrc,
+    src: getLocalDiscoverImage(index) || item.imageSrc,
     alt: item.alt,
     promptText: item.promptText,
-    user: item.user || {
-      id: '',
-      name: '创作者',
-      avatarSrc: '',
+    user: {
+      id: item.user?.id || '',
+      name: item.user?.name || '创作者',
+      avatarSrc: item.user?.avatarSrc || DEFAULT_DISCOVER_AVATAR,
     },
     favoriteCount: item.favoriteCount || 0,
     layoutSize: resolveLayoutSize({
@@ -324,6 +335,15 @@ function onFeedImgLoad(ev, index) {
 }
 
 function onFeedImgError(index) {
+  const fallbackSrc = getLocalDiscoverImage(index)
+  const currentItem = feedItems.value[index]
+  if (fallbackSrc && currentItem && currentItem.src !== fallbackSrc) {
+    feedItems.value = feedItems.value.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, src: fallbackSrc } : item
+    ))
+    return
+  }
+
   if (feedNaturalSizes.value[index]) return
   const fallbackSize = feedItems.value[index]?.layoutSize
   if (!fallbackSize) return

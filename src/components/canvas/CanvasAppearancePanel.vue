@@ -14,6 +14,19 @@ import {
   type WorkflowBackgroundMode,
 } from '@/views/workflow/composables/useWorkflowCanvas'
 
+withDefaults(defineProps<{
+  snapToGrid?: boolean
+  alignmentGuides?: boolean
+}>(), {
+  snapToGrid: true,
+  alignmentGuides: true,
+})
+
+const emit = defineEmits<{
+  (event: 'toggleSnapToGrid'): void
+  (event: 'toggleAlignmentGuides'): void
+}>()
+
 const themePref = useThemePreferenceStore()
 
 const isDark = computed(() => themePref.currentTheme.value === 'dark')
@@ -84,17 +97,21 @@ const setBackground = (mode: WorkflowBackgroundMode) => {
 
     <div class="canvas-appearance-panel__divider" />
 
-<!--    <div class="canvas-appearance-panel__row">-->
-<!--      <span class="canvas-appearance-panel__label">图片信息</span>-->
-<!--      <label class="canvas-appearance-panel__switch">-->
-<!--        <input-->
-<!--          type="checkbox"-->
-<!--          :checked="canvasShowImageInfo"-->
-<!--          @change="(e) => toggleShowImageInfo((e.target as HTMLInputElement).checked)"-->
-<!--        />-->
-<!--        <span class="canvas-appearance-panel__switch-slider" />-->
-<!--      </label>-->
-<!--    </div>-->
+    <div class="canvas-appearance-panel__row">
+      <span class="canvas-appearance-panel__label">网格吸附</span>
+      <label class="canvas-appearance-panel__switch">
+        <input type="checkbox" :checked="snapToGrid" @change="emit('toggleSnapToGrid')" />
+        <span class="canvas-appearance-panel__switch-slider" />
+      </label>
+    </div>
+
+    <div class="canvas-appearance-panel__row">
+      <span class="canvas-appearance-panel__label">对齐参考线</span>
+      <label class="canvas-appearance-panel__switch">
+        <input type="checkbox" :checked="alignmentGuides" @change="emit('toggleAlignmentGuides')" />
+        <span class="canvas-appearance-panel__switch-slider" />
+      </label>
+    </div>
   </div>
 </template>
 
@@ -106,7 +123,7 @@ const setBackground = (mode: WorkflowBackgroundMode) => {
   backdrop-filter: blur(var(--canvas-float-backdrop-blur));
   -webkit-backdrop-filter: blur(var(--canvas-float-backdrop-blur));
   border: 0.5px solid var(--stroke-secondary);
-  border-radius: var(--lv-border-radius-large);
+  border-radius: 8px;
   box-shadow: var(--shadow-generator-float-block);
   color: var(--text-primary);
   user-select: none;

@@ -131,8 +131,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { WorkflowDefinitionSummary, WorkflowDefinitionVersionDetail } from '@/views/workflow/api/definitions'
-import type { WorkflowCanvasNode } from '@/views/workflow/composables/useWorkflowCanvas'
+import { buildAssetUrl } from '@/api/http'
+import type { WorkflowDefinitionSummary } from '@/views/workflow/api/definitions'
+import { extractWorkflowPreviewImages } from '@/views/agentic-assets-canvas/workflow-preview'
 
 const emit = defineEmits<{
   create: []
@@ -168,29 +169,6 @@ const formatWorkflowDate = (value?: string | null) => {
   }).format(date)
 }
 
-const readWorkflowPreviewVersion = (workflow: WorkflowDefinitionSummary) => {
-  return workflow.currentVersion || workflow.latestVersion || null
-}
-
-// 只复用现有卡片结构，所以这里只保留已有预览图的工作流数据。
-const extractPreviewImages = (version: WorkflowDefinitionVersionDetail | null) => {
-  if (!version || !Array.isArray(version.nodesJson)) {
-    return []
-  }
-
-  const nodes = version.nodesJson as WorkflowCanvasNode[]
-  const urls = nodes
-    .map((node) => {
-      if (node?.type === 'image' || node?.type === 'video') {
-        return String((node.data as { url?: string })?.url || '').trim()
-      }
-      return ''
-    })
-    .filter(Boolean)
-
-  return Array.from(new Set(urls)).slice(0, 4)
-}
-
 const buildMetaText = (workflow: WorkflowDefinitionSummary) => {
   const dateText = formatWorkflowDate(workflow.updatedAt || workflow.createdAt)
   return `${dateText}修改`
@@ -199,8 +177,7 @@ const buildMetaText = (workflow: WorkflowDefinitionSummary) => {
 const projectCards = computed<ProjectCardItem[]>(() => {
   return props.workflows
     .map((workflow) => {
-      const version = readWorkflowPreviewVersion(workflow)
-      const images = extractPreviewImages(version)
+      const images = extractWorkflowPreviewImages(workflow).map(buildAssetUrl)
 
       return {
         id: workflow.id,

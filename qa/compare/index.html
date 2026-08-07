@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智能画布视觉对比</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px;
+      background: #eef0f3;
+      color: #111820;
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    h2 { margin: 36px 0 8px; font-size: 20px; }
+    p { margin: 0 0 24px; color: #66717d; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+    }
+    figure {
+      margin: 0;
+      overflow: hidden;
+      border: 1px solid #d8dde3;
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: 0 10px 30px rgba(17, 24, 32, .08);
+    }
+    figcaption {
+      padding: 14px 16px;
+      border-bottom: 1px solid #e7eaee;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    img {
+      display: block;
+      width: 100%;
+      height: 520px;
+      object-fit: contain;
+      background: #f8f9fa;
+    }
+    @media (max-width: 900px) {
+      body { padding: 18px; }
+      .grid { grid-template-columns: 1fr; }
+      img { height: auto; max-height: 70vh; }
+    }
+  </style>
+</head>
+<body>
+  <h1>智能画布视觉对比</h1>
+  <p>参考截图、参考站实时状态与本地实现使用同一组交互状态核验，包括项目卡片和侧栏主题菜单。</p>
+  <div class="grid">
+    <figure>
+      <figcaption>参考截图：空缩略图悬停态</figcaption>
+      <img src="./original_card_blank.png" alt="参考空缩略图卡片">
+    </figure>
+    <figure>
+      <figcaption>参考截图：有图卡片与展开菜单</figcaption>
+      <img src="./original_card_menu.png" alt="参考有图卡片与菜单">
+    </figure>
+    <figure>
+      <figcaption>参考站：1280×720 悬停态</figcaption>
+      <img src="./original_live_hover.png" alt="参考站悬停态">
+    </figure>
+    <figure>
+      <figcaption>本地修正前：菜单向下展开</figcaption>
+      <img src="./local_card_menu.png" alt="本地卡片与菜单">
+    </figure>
+    <figure>
+      <figcaption>本地修正后：菜单向上展开，移除底部预留</figcaption>
+      <img src="./local_card_menu_above.png" alt="本地卡片菜单向上展开">
+    </figure>
+    <figure>
+      <figcaption>参考站：浅色主题菜单</figcaption>
+      <img src="./original_side_menu_theme_light.png" alt="参考站浅色主题菜单">
+    </figure>
+    <figure>
+      <figcaption>本地实现：浅色主题菜单</figcaption>
+      <img src="./local_side_menu_theme_light.png" alt="本地浅色主题菜单">
+    </figure>
+    <figure>
+      <figcaption>目标截图：登录态侧栏与未读角标</figcaption>
+      <img src="./original_side_menu_logged_in.png" alt="目标登录态侧栏">
+    </figure>
+    <figure>
+      <figcaption>本地修正前：默认头像与缺失角标</figcaption>
+      <img src="./local_side_menu_before_state_refinement.png" alt="本地修正前侧栏">
+    </figure>
+    <figure>
+      <figcaption>本地修正后：彩色头像、未读铃铛与主题激活态</figcaption>
+      <img src="./local_side_menu_logged_in.png" alt="本地修正后登录态侧栏">
+    </figure>
+  </div>
+
+  <h2>工作流画布：参考页与本地复刻</h2>
+  <p>使用同一 Google Chrome 会话、1191×662 CSS 视口和 DPR 2 核验。2026-08-07 的权威复查中，参考工作流已登录并正常加载 54 个节点；本地保留 3 个真实节点，只复刻画布壳与交互。</p>
+  <div class="grid">
+    <figure>
+      <figcaption>参考页：稳定画布外壳</figcaption>
+      <img src="./original_stable.png" alt="参考工作流稳定态">
+    </figure>
+    <figure>
+      <figcaption>本地页：保留 3 个真实节点的稳定态</figcaption>
+      <img src="./local_stable.png" alt="本地工作流稳定态">
+    </figure>
+    <figure>
+      <figcaption>参考页：Agent 右侧指针响应</figcaption>
+      <img src="./original_agent_right.png" alt="参考 Agent 指针响应">
+    </figure>
+    <figure>
+      <figcaption>本地页：Agent 右侧指针响应</figcaption>
+      <img src="./local_agent_right.png" alt="本地 Agent 指针响应">
+    </figure>
+    <figure>
+      <figcaption>本地页：缩放弹层</figcaption>
+      <img src="./local_zoom_popover.png" alt="本地缩放弹层">
+    </figure>
+    <figure>
+      <figcaption>本地页：工作区中的运行入口</figcaption>
+      <img src="./local_workspace_actions.png" alt="本地工作区运行入口">
+    </figure>
+    <figure>
+      <figcaption>历史非权威状态：其他浏览器会话曾返回无权限（已由 Chrome 登录态复查纠正）</figcaption>
+      <img src="./original_access_denied_after_login.png" alt="历史浏览器会话的无权访问提示">
+    </figure>
+    <figure>
+      <figcaption>参考页：打开序列 t0080</figcaption>
+      <img src="./original_loader_t0080.png" alt="参考页打开序列首帧">
+    </figure>
+    <figure>
+      <figcaption>本地页：打开序列 t0080</figcaption>
+      <img src="./local_loader_t0080.png" alt="本地页打开序列首帧">
+    </figure>
+  </div>
+</body>
+</html>

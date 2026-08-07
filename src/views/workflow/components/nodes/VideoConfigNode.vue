@@ -59,6 +59,7 @@ const readVideoResultUrl = (result: { data?: Array<{ url?: string }> | Record<st
 
 const model = ref(props.data?.model || getDefaultVideoModelKey())
 const ratio = ref(props.data?.ratio || '16x9')
+const resolution = ref(props.data?.resolution || '720p')
 const duration = ref(props.data?.duration || 5)
 
 const currentModel = computed<WorkflowVideoModelLike | null>(() => getModelByName(model.value) as WorkflowVideoModelLike | null)
@@ -73,10 +74,11 @@ const durationOptions = computed(() => (currentModel.value?.durs || []).map((d) 
 const promptCount = computed(() => edges.value.filter(e => e.target === props.id && (e.type === 'promptOrder' || !e.type)).length)
 
 watch(
-  [() => props.data?.model, () => props.data?.ratio, () => props.data?.duration],
-  ([m, r, d]) => {
+  [() => props.data?.model, () => props.data?.ratio, () => props.data?.resolution, () => props.data?.duration],
+  ([m, r, q, d]) => {
     if (m !== undefined) model.value = m
     if (r !== undefined) ratio.value = r
+    if (q !== undefined) resolution.value = q
     if (d !== undefined) duration.value = d
   },
 )
@@ -91,7 +93,7 @@ onUnmounted(() => {
 })
 
 const updateConfig = () => {
-  updateNode(props.id, { model: model.value, ratio: ratio.value, duration: duration.value })
+  updateNode(props.id, { model: model.value, ratio: ratio.value, resolution: resolution.value, duration: duration.value })
 }
 
 // 收集输入
@@ -137,6 +139,7 @@ const handleGenerate = async () => {
     formData.append('model', modelKey)
     if (prompt) formData.append('prompt', prompt)
     formData.append('ratio', ratio.value)
+    formData.append('quality', resolution.value)
     formData.append('duration', String(duration.value))
 
     for (const img of images) {

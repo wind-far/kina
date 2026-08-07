@@ -111,6 +111,7 @@ import { useMarketingCenterStore } from '@/stores/marketing-center'
 import { useMarketingModalStore } from '@/stores/marketing-modal'
 import { useSystemSettingsStore } from '@/stores/system-settings'
 import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
+import { resolveHomeSideMenuRoutePath } from '@/shared/home-side-menu-route'
 import HomeSideMenuIcon from './HomeSideMenuIcon.vue'
 
 const route = useRoute()
@@ -148,13 +149,6 @@ const actionItems = computed(() => {
   return bottomItems.value.filter(item => !['marketing', 'account-entry'].includes(item.key))
 })
 
-const resolveMenuRoutePath = (item: { key: string, actionType: string, actionValue: string }) => {
-  if (item.key === 'workflow' && item.actionType === 'route') {
-    return '/agentic-assets-canvas'
-  }
-  return item.actionValue
-}
-
 const isItemActive = (item: { key: string, actionType: string, actionValue: string }) => {
   if (item.key === 'home') {
     return currentPath.value === '/'
@@ -162,7 +156,7 @@ const isItemActive = (item: { key: string, actionType: string, actionValue: stri
   if (item.key === 'account') {
     return currentPath.value === '/account'
   }
-  return item.actionType === 'route' && currentPath.value === resolveMenuRoutePath(item)
+  return item.actionType === 'route' && currentPath.value === resolveHomeSideMenuRoutePath(item)
 }
 
 const handleMenuClick = (item: { key: string, actionType: string, actionValue: string }) => {
@@ -178,7 +172,7 @@ const handleMenuClick = (item: { key: string, actionType: string, actionValue: s
     return
   }
 
-  void router.push(resolveMenuRoutePath(item) || '/')
+  void router.push(resolveHomeSideMenuRoutePath(item) || '/')
 }
 
 const handleTopItemClick = (item?: { actionType?: string, actionValue?: string }) => {

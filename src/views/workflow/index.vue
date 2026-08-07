@@ -44,6 +44,7 @@ import ImageNode from './components/nodes/ImageNode.vue'
 import VideoConfigNode from './components/nodes/VideoConfigNode.vue'
 import VideoNode from './components/nodes/VideoNode.vue'
 import LlmConfigNode from './components/nodes/LlmConfigNode.vue'
+import AgentFab from './components/AgentFab.vue'
 
 // 边组件
 import ImageRoleEdge from './components/edges/ImageRoleEdge.vue'
@@ -56,8 +57,13 @@ import CanvasContextMenu from '@/components/canvas/CanvasContextMenu.vue'
 import CanvasZoomControls from '@/components/canvas/CanvasZoomControls.vue'
 import CanvasMiniMap from '@/components/canvas/CanvasMiniMap.vue'
 import CanvasConnectionLine from '@/components/canvas/CanvasConnectionLine.vue'
+import WorkflowPromptInput, {
+  type WorkflowPromptModelOption,
+  type WorkflowPromptSendOptions,
+} from '@/components/canvas/WorkflowPromptInput.vue'
 import RightPanel from '@components/canana/RightPanel.vue'
 import { useChatSessions } from '@/composables/useChatSessions'
+import { useAuthStore } from '@/stores/auth'
 import { useCanvasSelection } from '@/composables/useCanvasSelection'
 import { useCanvasClipboard } from '@/composables/useCanvasClipboard'
 import { useCanvasDrop } from '@/composables/useCanvasDrop'
@@ -68,9 +74,17 @@ import {
   clearCanvas,
 } from './composables/useWorkflowCanvas'
 import type { ContextMenuItem, ContextMenuPosition } from '@/types/canvas-interaction'
+import {
+  getAllImageModels,
+  getAllVideoModels,
+  getDefaultImageModelKey,
+  getDefaultVideoModelKey,
+  loadPublicModelCatalog,
+} from '@/config/models'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 const { viewport, zoomIn, zoomOut, fitView, updateNodeInternals, screenToFlowCoordinate } = useVueFlow()
 
 // 注册自定义节点类型
@@ -108,12 +122,15 @@ const {
 const showNodeMenu = ref(false)
 const showTemplatePanel = ref(false)
 const showWorkflowLibraryPanel = ref(false)
+const canvasSnapToGrid = ref(true)
+const canvasAlignmentGuides = ref(true)
 const workflowName = ref('')
 const workflowCode = ref('')
 const workflowDescription = ref('')
 const workflowCategory = ref('')
 const workflowListKeyword = ref('')
 const workflowLoadingByRoute = ref(false)
+const promptAnchorNodeId = ref('')
 const initialCanvasBaselineSnapshot = ref('')
 const selectedWorkflowVersionId = ref('')
 const selectedLibraryWorkflowId = ref('')
@@ -181,6 +198,13 @@ interface WorkflowNodeOption {
 const currentWorkflowTitle = computed(() => {
   return currentWorkflowDetail.value?.definition?.name || workflowName.value || '未命名工作流'
 })
+
+const workflowUserName = computed(() => {
+  const user = authStore.currentUser.value
+  return user?.name || user?.maskedPhone || user?.maskedEmail || '个人账户'
+})
+
+const workflowUserInitial = computed(() => workflowUserName.value.slice(0, 1).toUpperCase())
 
 const currentWorkflowStatusText = computed(() => {
   return currentWorkflowDetail.value?.definition?.status === 'ACTIVE' ? '已发布' : '草稿'
@@ -421,6 +445,7 @@ const tryLoadWorkflowByRoute = async (
     }
     syncWorkflowFormFromDetail()
     await nextTick()
+    updateNodeInternals(nodes.value.map(node => node.id))
     fitView({ padding: 0.24 })
   } catch (error: any) {
     ElMessage.error(error?.message || '打开工作流失败')
@@ -522,11 +547,35 @@ const nodeTypeOptions: WorkflowNodeOption[] = [
   { type: 'video', name: '视频节点', color: '#ef4444', icon: 'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z' },
 ]
 
-// 工具栏按钮
+const handleOpenAssistant = () => {
+  if (isAssistantCollapsed.value) toggleAssistantPanel()
+}
+
+const handleAutoArrange = async () => {
+  if (!nodes.value.length) return
+
+  pauseHistory()
+  try {
+    nodes.value = nodes.value.map((node, index) => ({
+      ...node,
+      position: {
+        x: 115 + (index % 2) * 560,
+        y: 118 + Math.floor(index / 2) * 380,
+      },
+    }))
+    await nextTick()
+    updateNodeInternals(nodes.value.map(node => node.id))
+  } finally {
+    resumeHistory(true)
+  }
+  ElMessage.success('已整理画布节点')
+}
+
+// 工具栏按钮：其余节点类型仍可从“添加节点”菜单进入。
 const tools = [
+  { id: 'assistant', name: 'AI 编排', icon: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z', action: handleOpenAssistant },
   { id: 'text', name: '文本', icon: 'M4 6h16M4 12h8m-8 6h16', action: () => addNewNode('text') },
-  { id: 'imageConfig', name: '文生图', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z', action: () => addNewNode('imageConfig') },
-  { id: 'videoConfig', name: '视频生成', icon: 'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z', action: () => addNewNode('videoConfig') },
+  { id: 'arrange', name: '一键整理', icon: 'M5 7h14M5 12h10M5 17h14', action: () => void handleAutoArrange() },
 ]
 
 // 添加新节点
@@ -595,13 +644,22 @@ const hasExistingEdge = (source: string, target: string, sourceHandle?: string, 
 
 const handleNodeClick = (payload: { event: MouseEvent | TouchEvent; node: { id: string } }) => {
   const originalEvent = payload.event as MouseEvent
+  const targetNodeId = payload.node?.id
+  if (!targetNodeId) return
+
+  // Vue Flow 的 selected 标记在部分交互路径下不会同步到 v-model 节点数组。
+  // 输入栏直接记录用户点击的节点，避免出现“节点已选中、输入栏却消失”的不一致。
+  promptAnchorNodeId.value = targetNodeId
+  // Vue Flow 会在节点点击后继续派发 pane-click。延迟一帧重设锚点，避免
+  // pane-click 的清理逻辑把刚选中的节点输入栏立即卸载。
+  requestAnimationFrame(() => {
+    promptAnchorNodeId.value = targetNodeId
+  })
+
   // 只在按住 Shift 时介入；其他点击一律交回 vue-flow 默认行为。
   if (!(originalEvent && 'shiftKey' in originalEvent && originalEvent.shiftKey)) {
     return
   }
-
-  const targetNodeId = payload.node?.id
-  if (!targetNodeId) return
 
   if (!quickLinkSourceId.value) {
     quickLinkSourceId.value = targetNodeId
@@ -653,7 +711,10 @@ const cancelQuickLink = () => {
 }
 
 // 处理视口变化
-const handleViewportChange = (v: typeof canvasViewport.value) => updateViewport(v)
+const handleViewportChange = (v: typeof canvasViewport.value) => {
+  updateViewport(v)
+  updateWorkflowPromptDockPosition()
+}
 
 // 处理边变化
 const onEdgesChange = (changes: Array<{ type?: string }>) => {
@@ -665,6 +726,7 @@ const onEdgesChange = (changes: Array<{ type?: string }>) => {
 // 处理画布点击
 const onPaneClick = () => {
   showNodeMenu.value = false
+  promptAnchorNodeId.value = ''
 }
 
 // 返回首页：保存草稿 → 跳转。globalKey:'blocking' 期间会弹遮罩"正在保存草稿…"，
@@ -984,7 +1046,7 @@ useShortcut('CmdOrCtrl+N', () => {
 
 // 空格临时平移：按住 Space 时禁用节点拖拽，左键也加入 panOnDrag
 const isSpacePressed = ref(false)
-const panOnDragValue = computed<true | number[]>(() => (isSpacePressed.value ? [0, 1, 2] : true))
+const panOnDragValue = computed<number[]>(() => (isSpacePressed.value ? [0, 1, 2] : [1, 2]))
 
 const isEditableSpaceTarget = (el: EventTarget | null): boolean => {
   if (!(el instanceof HTMLElement)) return false
@@ -994,6 +1056,23 @@ const isEditableSpaceTarget = (el: EventTarget | null): boolean => {
 }
 
 const handleSpaceDown = (event: KeyboardEvent) => {
+  if ((event.metaKey || event.ctrlKey) && !isEditableSpaceTarget(event.target)) {
+    if (event.key === '+' || event.key === '=') {
+      event.preventDefault()
+      zoomIn({ duration: 160 })
+      return
+    }
+    if (event.key === '-') {
+      event.preventDefault()
+      zoomOut({ duration: 160 })
+      return
+    }
+    if (event.key === '0') {
+      event.preventDefault()
+      fitView({ duration: 220, padding: 0.2 })
+      return
+    }
+  }
   if (event.code !== 'Space' || event.repeat) return
   if (isEditableSpaceTarget(event.target)) return
   event.preventDefault()
@@ -1011,15 +1090,77 @@ const onNodeDragStart = () => {
 }
 const onNodeDragStop = () => {
   resumeHistory()
+  updateWorkflowPromptDockPosition()
 }
 
 // === 选择 / 剪贴板 / 拖入 / 右键菜单 ===
-const { selectAll } = useCanvasSelection()
+const { selectAll, selectedNodeIds } = useCanvasSelection()
 const { copySelected, pasteFromSlot, hasClipboard } = useCanvasClipboard()
 const { onDrop: onCanvasFileDrop, onDragOver: onCanvasFileDragOver } = useCanvasDrop()
 
+// 输入栏跟随选中节点和画布视口移动，并为左侧工具栏保留安全区域。
+const workflowCanvasWrap = ref<HTMLElement | null>(null)
+const workflowPromptDockStyle = ref<Record<string, string>>({})
+const workflowPromptDockMode = ref<'compact' | 'mini'>('compact')
+let promptDockPositionFrame = 0
+
+// 尺寸只随浏览器可视高度适配；不受画布节点或视口移动影响。
+const updateWorkflowPromptDockMode = () => {
+  workflowPromptDockMode.value = window.innerWidth <= 768 ? 'mini' : 'compact'
+}
+
+const updateWorkflowPromptDockPosition = () => {
+  cancelAnimationFrame(promptDockPositionFrame)
+  void nextTick(() => {
+    promptDockPositionFrame = requestAnimationFrame(() => {
+      const wrap = workflowCanvasWrap.value
+      const selectedNodeId = promptAnchorNodeId.value || Array.from(selectedNodeIds.value)[0]
+      // 小屏仍使用底部抽屉，避免大输入框从节点下方溢出屏幕。
+      if (window.innerWidth <= 768 || !wrap || !selectedNodeId) {
+        workflowPromptDockStyle.value = {}
+        return
+      }
+
+      const node = wrap.querySelector<HTMLElement>(`.vue-flow__node[data-id="${selectedNodeId}"]`)
+      const dock = wrap.querySelector<HTMLElement>('.workflow-prompt-dock')
+      if (!node || !dock) return
+
+      const wrapRect = wrap.getBoundingClientRect()
+      const nodeRect = node.getBoundingClientRect()
+      const dockRect = dock.getBoundingClientRect()
+      const gutter = 24
+      const nodeGap = 12
+      const leftToolbarClearance = 132
+      const left = Math.min(
+        Math.max(leftToolbarClearance, nodeRect.left - wrapRect.left + nodeRect.width / 2 - dockRect.width / 2),
+        Math.max(leftToolbarClearance, wrapRect.width - dockRect.width - gutter),
+      )
+      const top = Math.max(gutter, nodeRect.bottom - wrapRect.top + nodeGap)
+
+      workflowPromptDockStyle.value = {
+        left: `${Math.round(left)}px`,
+        top: `${Math.round(top)}px`,
+        bottom: 'auto',
+      }
+    })
+  })
+}
+
+watch([selectedNodeIds, promptAnchorNodeId], () => updateWorkflowPromptDockPosition(), { flush: 'post' })
+
+// 节点被快捷键、右键菜单或画布操作删除时，及时清理输入栏锚点，避免悬浮残留。
+watch(
+  () => nodes.value.map(node => node.id),
+  (nodeIds) => {
+    if (promptAnchorNodeId.value && !nodeIds.includes(promptAnchorNodeId.value)) {
+      promptAnchorNodeId.value = ''
+      workflowPromptDockStyle.value = {}
+    }
+  },
+)
+
 // 小地图开关
-const isMiniMapOpen = ref(true)
+const isMiniMapOpen = ref(false)
 const toggleMiniMap = () => {
   isMiniMapOpen.value = !isMiniMapOpen.value
 }
@@ -1082,6 +1223,214 @@ useShortcut('CmdOrCtrl+V', () => {
 // 助手面板（复用 canana 视图的 RightPanel）
 const { isPanelCollapsed: isAssistantCollapsed, togglePanel: toggleAssistantPanel } = useChatSessions()
 const pendingAssistantMessage = ref('')
+const workflowPrompt = ref('')
+const workflowPromptGenerationMode = ref<'image' | 'video'>('image')
+const workflowPromptImageModel = ref('gpt-image-2')
+const workflowPromptVideoModel = ref('')
+const workflowPromptCount = ref(1)
+const workflowPromptUploadedReferences = ref<Array<{ id: string; url: string; label: string }>>([])
+const workflowPromptExcludedReferenceIds = ref<string[]>([])
+
+const readWorkflowPromptModelPrice = (model: { defaultParams?: Record<string, unknown> }, unit: '张' | '次') => {
+  const billingRule = model.defaultParams?.billingRule
+  const power = billingRule && typeof billingRule === 'object'
+    ? Number((billingRule as Record<string, unknown>).power)
+    : 0
+  return `${Number.isFinite(power) && power > 0 ? power : 1} 积分/${unit}`
+}
+
+const workflowPromptImageModels = computed<WorkflowPromptModelOption[]>(() => {
+  const catalog = getAllImageModels().map(model => ({
+    key: model.key,
+    label: model.label || model.modelKey,
+    provider: model.providerName || model.providerCode,
+    price: readWorkflowPromptModelPrice(model, '张'),
+  }))
+  return catalog.length ? catalog : [{ key: 'gpt-image-2', label: 'gpt-image-2', provider: '（慢）OpenAI', price: '1 积分/张' }]
+})
+
+const workflowPromptVideoModels = computed<WorkflowPromptModelOption[]>(() => getAllVideoModels().map(model => ({
+  key: model.key,
+  label: model.label || model.modelKey,
+  provider: model.providerName || model.providerCode,
+  price: readWorkflowPromptModelPrice(model, '次'),
+})))
+
+const workflowPromptModels = computed(() => workflowPromptGenerationMode.value === 'image'
+  ? workflowPromptImageModels.value
+  : workflowPromptVideoModels.value)
+
+const workflowPromptModel = computed({
+  get: () => workflowPromptGenerationMode.value === 'image' ? workflowPromptImageModel.value : workflowPromptVideoModel.value,
+  set: (value: string) => {
+    if (workflowPromptGenerationMode.value === 'image') workflowPromptImageModel.value = value
+    else workflowPromptVideoModel.value = value
+  },
+})
+
+const workflowPromptPrice = computed(() => workflowPromptGenerationMode.value === 'image'
+  ? workflowPromptImageModels.value.find(model => model.key === workflowPromptImageModel.value)?.price || '1 积分/张'
+  : '')
+
+const selectedImageNodeId = computed(() => {
+  const nodeId = promptAnchorNodeId.value || Array.from(selectedNodeIds.value)[0]
+  return nodes.value.find(node => node.id === nodeId && node.type === 'image')?.id || ''
+})
+
+const resolveWorkflowPromptReferenceUrl = (node: (typeof nodes.value)[number] | undefined) => {
+  if (!node) return ''
+  const data = (node.data || {}) as Record<string, unknown>
+  const candidates = ['url', 'imageUrl', 'outputUrl', 'previewUrl', 'thumbnailUrl', 'coverUrl', 'src']
+  for (const key of candidates) {
+    const value = data[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return ''
+}
+
+const workflowPromptReferences = computed(() => {
+  const selectedId = selectedImageNodeId.value
+  if (!selectedId) return workflowPromptUploadedReferences.value
+  const incomingIds = edges.value
+    .filter(edge => edge.target === selectedId)
+    .map(edge => edge.source)
+  const candidates = [selectedId, ...incomingIds]
+    .map(id => nodes.value.find(node => node.id === id))
+    .filter((node): node is (typeof nodes.value)[number] => Boolean(node))
+  const referenceNode = candidates.find(node => resolveWorkflowPromptReferenceUrl(node))
+    || candidates.find(node => node.type === 'image')
+    || candidates[0]
+  if (!referenceNode) return workflowPromptUploadedReferences.value
+  const data = (referenceNode.data || {}) as Record<string, unknown>
+  const connectedReference = {
+    id: referenceNode.id,
+    url: resolveWorkflowPromptReferenceUrl(referenceNode) || undefined,
+    label: String(data.label || data.name || '参考图'),
+  }
+  return [connectedReference, ...workflowPromptUploadedReferences.value]
+    .filter(reference => !workflowPromptExcludedReferenceIds.value.includes(reference.id))
+    .slice(0, 4)
+})
+
+const workflowPromptAvailableReferences = computed(() => nodes.value
+  .filter(node => node.type === 'image')
+  .map(node => {
+    const data = (node.data || {}) as Record<string, unknown>
+    return {
+      id: node.id,
+      url: resolveWorkflowPromptReferenceUrl(node) || undefined,
+      label: String(data.label || data.name || 'image'),
+    }
+  })
+  .filter(reference => reference.url || reference.id === selectedImageNodeId.value))
+
+const handleWorkflowPromptFiles = (files: File[]) => {
+  const availableSlots = Math.max(0, 4 - workflowPromptUploadedReferences.value.length)
+  const next = files.slice(0, availableSlots).map(file => ({
+    id: `upload-${Date.now()}-${file.name}-${Math.random().toString(36).slice(2, 7)}`,
+    url: URL.createObjectURL(file),
+    label: file.name,
+  }))
+  workflowPromptUploadedReferences.value.push(...next)
+}
+
+const handleWorkflowPromptRemoveReference = (id: string) => {
+  const uploaded = workflowPromptUploadedReferences.value.find(reference => reference.id === id)
+  if (uploaded) {
+    URL.revokeObjectURL(uploaded.url)
+    workflowPromptUploadedReferences.value = workflowPromptUploadedReferences.value.filter(reference => reference.id !== id)
+    return
+  }
+  workflowPromptExcludedReferenceIds.value = [...new Set([...workflowPromptExcludedReferenceIds.value, id])]
+}
+
+const createWorkflowVideoFromPrompt = (text: string, options: WorkflowPromptSendOptions) => {
+  if (!options.modelKey) {
+    ElMessage.warning('当前暂无可用的视频模型，请先在后台配置模型')
+    return false
+  }
+  const selectedNode = nodes.value.find(node => node.id === selectedImageNodeId.value)
+  if (!selectedNode) {
+    ElMessage.warning('请先选择一张图片作为视频参考')
+    return false
+  }
+
+  const promptText = text || `根据${options.references.map(reference => reference.label).join('、') || '参考素材'}生成视频`
+  const configPosition = { x: selectedNode.position.x + 380, y: selectedNode.position.y }
+  const promptNodeId = addNode('text', { x: configPosition.x, y: configPosition.y + 300 }, {
+    content: promptText,
+    label: '视频提示词',
+  })
+  const configNodeId = addNode('videoConfig', configPosition, {
+    prompt: promptText,
+    model: options.modelKey,
+    ratio: options.ratio,
+    duration: options.duration || 5,
+    resolution: options.resolution,
+    label: '图生视频',
+    autoExecute: false,
+  })
+  addEdge({ source: promptNodeId, target: configNodeId, sourceHandle: 'right', targetHandle: 'left', type: 'promptOrder', data: { promptOrder: 1 } })
+
+  const connectedNodeIds = new Set<string>()
+  options.references.forEach((reference, index) => {
+    let referenceNodeId = nodes.value.find(node => node.id === reference.id && node.type === 'image')?.id || ''
+    if (!referenceNodeId && reference.url) {
+      referenceNodeId = addNode('image', {
+        x: selectedNode.position.x,
+        y: selectedNode.position.y + 300 + index * 190,
+      }, { url: reference.url, label: reference.label || '参考图' })
+    }
+    if (!referenceNodeId || connectedNodeIds.has(referenceNodeId)) return
+    connectedNodeIds.add(referenceNodeId)
+    const role = options.feature === 'all-reference'
+      ? 'input_reference'
+      : index === 0
+        ? 'first_frame_image'
+        : options.feature === 'first-last-frame' && index === 1
+          ? 'last_frame_image'
+          : 'input_reference'
+    addEdge({
+      source: referenceNodeId,
+      target: configNodeId,
+      sourceHandle: 'right',
+      targetHandle: 'left',
+      type: 'imageRole',
+      data: { imageRole: role },
+    })
+  })
+
+  window.setTimeout(() => updateNode(configNodeId, { autoExecute: true }), 160)
+  return true
+}
+
+const handleWorkflowPromptSend = (text: string, options: WorkflowPromptSendOptions) => {
+  if (options.mode === 'image' && selectedImageNodeId.value) {
+    window.dispatchEvent(new CustomEvent('canvasmind:workflow-image-prompt', {
+      detail: {
+        nodeId: selectedImageNodeId.value,
+        text,
+        modelKey: options.modelKey,
+        ratio: options.ratio,
+        resolution: options.resolution,
+        count: options.count,
+        referenceImages: options.references.map(reference => reference.url).filter(Boolean),
+      },
+    }))
+    workflowPrompt.value = ''
+    return
+  }
+  if (options.mode === 'video' && createWorkflowVideoFromPrompt(text, options)) {
+    workflowPrompt.value = ''
+    return
+  }
+  if (!text) return
+  pendingAssistantMessage.value = text
+  workflowPrompt.value = ''
+  if (isAssistantCollapsed.value) {
+    toggleAssistantPanel()
+  }
+}
 
 // 助手生成的图片落到画布：在视口中心创建 image 节点
 const handleAssistantAddImage = ({ url }: { url: string }) => {
@@ -1090,13 +1439,26 @@ const handleAssistantAddImage = ({ url }: { url: string }) => {
   addNode('image', center, { url, label: '助手生成' })
 }
 
+watch(selectedImageNodeId, () => {
+  workflowPromptExcludedReferenceIds.value = []
+})
+
 onMounted(() => {
   initSampleData()
   initHistory()
+  void loadPublicModelCatalog().then(() => {
+    const nextImageModel = getDefaultImageModelKey() || workflowPromptImageModels.value[0]?.key || 'gpt-image-2'
+    const nextVideoModel = getDefaultVideoModelKey() || workflowPromptVideoModels.value[0]?.key || ''
+    if (!workflowPromptImageModels.value.some(model => model.key === workflowPromptImageModel.value)) {
+      workflowPromptImageModel.value = nextImageModel
+    }
+    workflowPromptVideoModel.value = nextVideoModel
+  })
   initialCanvasBaselineSnapshot.value = currentCanvasSnapshot.value
 
   window.addEventListener('keydown', handleSpaceDown)
   window.addEventListener('keyup', handleSpaceUp)
+  window.addEventListener('resize', updateWorkflowPromptDockMode)
 
   const initialWorkflowId = String(route.query.workflowId || '').trim()
   const initialVersionId = String(route.query.versionId || '').trim()
@@ -1107,13 +1469,20 @@ onMounted(() => {
   }
 
   autosaveReady.value = true
+  updateWorkflowPromptDockMode()
+  updateWorkflowPromptDockPosition()
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleSpaceDown)
   window.removeEventListener('keyup', handleSpaceUp)
+  window.removeEventListener('resize', updateWorkflowPromptDockMode)
+  cancelAnimationFrame(promptDockPositionFrame)
   clearAutosaveTimer()
   clearWorkflowRunPolling()
+  for (const reference of workflowPromptUploadedReferences.value) {
+    URL.revokeObjectURL(reference.url)
+  }
 })
 
 watch(() => route.query.workflowId, (workflowId) => {
@@ -1165,7 +1534,12 @@ watch(currentCanvasSnapshot, () => {
     <div class="workflow-workbench">
       <div class="workflow-main">
         <div
+          ref="workflowCanvasWrap"
           class="workflow-canvas-wrap"
+          :class="{
+            'workflow-canvas-wrap--prompt-open': Boolean(promptAnchorNodeId),
+            'workflow-canvas-wrap--alignment-guides': canvasAlignmentGuides,
+          }"
           @dragover="onCanvasFileDragOver"
           @drop="onCanvasFileDrop"
         >
@@ -1177,11 +1551,11 @@ watch(currentCanvasSnapshot, () => {
             :edge-types="edgeTypes"
             :default-viewport="canvasViewport"
             :min-zoom="0.1"
-            :max-zoom="2"
-            :snap-to-grid="true"
+            :max-zoom="8"
+            :snap-to-grid="canvasSnapToGrid"
             :snap-grid="[20, 20]"
             :delete-key-code="['Delete', 'Backspace']"
-            :selection-key-code="'Meta'"
+            :selection-key-code="true"
             :multi-selection-key-code="'Shift'"
             :selection-mode="SelectionMode.Partial"
             :pan-on-drag="panOnDragValue"
@@ -1197,6 +1571,7 @@ watch(currentCanvasSnapshot, () => {
             @viewport-change="handleViewportChange"
             @edges-change="onEdgesChange"
             @node-drag-start="onNodeDragStart"
+            @node-drag="updateWorkflowPromptDockPosition"
             @node-drag-stop="onNodeDragStop"
             @pane-context-menu="openPaneContextMenu"
             @node-context-menu="openNodeContextMenu"
@@ -1214,8 +1589,33 @@ watch(currentCanvasSnapshot, () => {
           <CanvasMiniMap :visible="isMiniMapOpen" />
           <CanvasZoomControls
             :mini-map-open="isMiniMapOpen"
+            :snap-to-grid="canvasSnapToGrid"
+            :alignment-guides="canvasAlignmentGuides"
             @toggle-mini-map="toggleMiniMap"
+            @toggle-snap-to-grid="canvasSnapToGrid = !canvasSnapToGrid"
+            @toggle-alignment-guides="canvasAlignmentGuides = !canvasAlignmentGuides"
+            @open-asset-library="showWorkflowLibraryPanel = true"
             @clear="clearCanvasWithConfirm"
+          />
+          <WorkflowPromptInput
+            v-if="promptAnchorNodeId"
+            :key="promptAnchorNodeId"
+            v-model="workflowPrompt"
+            v-model:generation-mode="workflowPromptGenerationMode"
+            v-model:model-key="workflowPromptModel"
+            class="workflow-prompt-dock"
+            :class="{ 'workflow-prompt-dock--mini': workflowPromptDockMode === 'mini' }"
+            :style="workflowPromptDockStyle"
+            :model-options="workflowPromptModels"
+            :references="workflowPromptReferences"
+            :available-references="workflowPromptAvailableReferences"
+            :count="workflowPromptCount"
+            :price="workflowPromptPrice"
+            placeholder="描述你想基于当前图片生成的内容，可切换为视频；按 Enter 发送"
+            @add-files="handleWorkflowPromptFiles"
+            @remove-reference="handleWorkflowPromptRemoveReference"
+            @count-change="workflowPromptCount = $event"
+            @send="handleWorkflowPromptSend"
           />
           <CanvasContextMenu
             :visible="contextMenuVisible"
@@ -1232,10 +1632,33 @@ watch(currentCanvasSnapshot, () => {
                 <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </button>
-            <span style="font-size: 13px; color: var(--text-primary); padding: 0 8px;">工作流</span>
+            <div class="wf-header-meta">
+              <input
+                v-if="renamingTitle"
+                v-model="renameTitleInput"
+                class="wf-header-meta__title wf-header-meta__title-input"
+                type="text"
+                maxlength="80"
+                @blur="submitRenameTitle"
+                @keyup.enter.prevent="submitRenameTitle"
+                @keyup.esc.prevent="cancelRenameTitle"
+              />
+              <span
+                v-else
+                class="wf-header-meta__title"
+                title="点击重命名工作流"
+                @click="startRenameTitle"
+              >
+                {{ currentWorkflowTitle }}
+              </span>
+              <span class="wf-header-meta__status">
+                {{ currentWorkflowStatusText }} · {{ autosaveStatusText }}<template v-if="workflowRunStatusText"> · {{ workflowRunStatusText }}</template>
+              </span>
+            </div>
           </div>
 
           <div class="workflow-header-right">
+            <div class="wf-header-run-controls">
             <button
               class="wf-btn wf-btn-md wf-btn-primary wf-run-workflow-btn"
               :class="{ 'wf-btn-danger': workflowRunning }"
@@ -1297,29 +1720,20 @@ watch(currentCanvasSnapshot, () => {
                 </div>
               </div>
             </div>
-            <div class="wf-header-meta">
-              <input
-                v-if="renamingTitle"
-                v-model="renameTitleInput"
-                class="wf-header-meta__title wf-header-meta__title-input"
-                type="text"
-                maxlength="80"
-                @blur="submitRenameTitle"
-                @keyup.enter.prevent="submitRenameTitle"
-                @keyup.esc.prevent="cancelRenameTitle"
-              />
-              <span
-                v-else
-                class="wf-header-meta__title"
-                title="点击重命名工作流"
-                @click="startRenameTitle"
-              >
-                {{ currentWorkflowTitle }}
-              </span>
-              <span class="wf-header-meta__status">
-                {{ currentWorkflowStatusText }} · {{ autosaveStatusText }}<template v-if="workflowRunStatusText"> · {{ workflowRunStatusText }}</template>
-              </span>
             </div>
+            <button
+              class="wf-account-chip"
+              type="button"
+              title="打开账户中心"
+              @click="router.push('/account')"
+            >
+              <img v-if="authStore.currentUser.value?.avatarUrl" :src="authStore.currentUser.value.avatarUrl" alt="" />
+              <span v-else class="wf-account-chip__fallback">{{ workflowUserInitial }}</span>
+              <span class="wf-account-chip__name">{{ workflowUserName }}</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m7 10 5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
           </div>
         </header>
 
@@ -1348,6 +1762,17 @@ watch(currentCanvasSnapshot, () => {
           <div class="workflow-left-toolbar-container">
             <button
               class="wf-btn wf-btn-icon"
+              :class="{ active: showWorkflowLibraryPanel }"
+              title="工作区"
+              @click="showWorkflowLibraryPanel = !showWorkflowLibraryPanel"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" stroke-width="2"/>
+                <path d="M9 5v14M4 10h16" stroke="currentColor" stroke-width="2"/>
+              </svg>
+            </button>
+            <button
+              class="wf-btn wf-btn-icon"
               :class="{ active: showNodeMenu }"
               @click="showNodeMenu = !showNodeMenu"
               title="添加节点"
@@ -1371,10 +1796,21 @@ watch(currentCanvasSnapshot, () => {
               </svg>
             </button>
 
+            <button
+              v-if="tools[0]"
+              class="wf-btn wf-btn-icon"
+              @click="tools[0].action"
+              :title="tools[0].name"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path :d="tools[0].icon" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+
             <div class="wf-divider"></div>
 
             <button
-              v-for="tool in tools"
+              v-for="tool in tools.slice(1)"
               :key="tool.id"
               class="wf-btn wf-btn-icon"
               @click="tool.action"
@@ -1476,6 +1912,16 @@ watch(currentCanvasSnapshot, () => {
 
               <div class="wf-persistence-toolbar">
                 <input v-model="workflowListKeyword" class="wf-persistence-input" placeholder="按名称、编码、分类搜索" @keyup.enter="handleRefreshWorkflowList" />
+                <button
+                  class="wf-btn wf-btn-md wf-btn-primary"
+                  :class="{ 'wf-btn-danger': workflowRunning }"
+                  type="button"
+                  :disabled="workflowStopping"
+                  @click="workflowRunning ? handleStopWorkflow() : handleRunWorkflow()"
+                >
+                  <span v-if="workflowRunning" class="wf-spinner"></span>
+                  {{ workflowExecutionButtonText }}
+                </button>
                 <button class="wf-btn wf-btn-md" :disabled="workflowListLoading" @click="handleRefreshWorkflowList">
                   {{ workflowListLoading ? '加载中...' : '刷新' }}
                 </button>
@@ -1590,16 +2036,7 @@ watch(currentCanvasSnapshot, () => {
       </aside>
 
       <!-- 折叠态下的展开把手 -->
-      <button
-        v-if="isAssistantCollapsed"
-        class="canvas-assistant-toggle"
-        title="展开助手面板"
-        @click="toggleAssistantPanel"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M15 18l-6-6 6-6" />
-        </svg>
-      </button>
+      <AgentFab v-if="isAssistantCollapsed" @open="toggleAssistantPanel" />
     </div>
   </div>
 </template>

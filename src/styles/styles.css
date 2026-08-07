@@ -2299,7 +2299,7 @@ body,html {
 
         @media screen and (max-height: 799px) {
             .container-moSF_y {
-                --side-menu-padding:20px 12px 8px 12px
+                --side-menu-padding:20px 10px 8px 10px
             }
         }
 

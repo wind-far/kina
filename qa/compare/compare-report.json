@@ -1,0 +1,230 @@
+{
+  "generatedAt": "2026-08-07T02:05:00+08:00",
+  "scope": "agentic assets canvas and workflow canvas visual regression",
+  "referenceUrl": "https://reaicc.com/agentic-assets-canvas",
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "dpr": 1
+  },
+  "referenceFrames": [
+    {
+      "file": "original_card_blank.png",
+      "state": "workflow card hovered without preview image",
+      "source": "user supplied screenshot"
+    },
+    {
+      "file": "original_card_menu.png",
+      "state": "workflow card with preview image and actions menu expanded",
+      "source": "user supplied screenshot"
+    },
+    {
+      "file": "original_live_hover.png",
+      "state": "public reference page new-project card hovered",
+      "source": "live URL"
+    },
+    {
+      "file": "local_card_menu.png",
+      "state": "local workflow card before upward-menu correction",
+      "source": "local Vite preview"
+    },
+    {
+      "file": "local_card_menu_above.png",
+      "state": "local workflow card with actions menu expanded upward",
+      "source": "local Vite preview"
+    },
+    {
+      "file": "original_side_menu_theme_light.png",
+      "state": "public reference page light theme menu expanded",
+      "source": "live URL"
+    },
+    {
+      "file": "local_side_menu_theme_light.png",
+      "state": "local light theme menu expanded",
+      "source": "local Vite preview"
+    },
+    {
+      "file": "original_side_menu_logged_in.png",
+      "state": "target logged-in sidebar with unread notification and expanded theme menu",
+      "source": "user supplied screenshot"
+    },
+    {
+      "file": "local_side_menu_before_state_refinement.png",
+      "state": "local logged-in sidebar before state visual refinement",
+      "source": "user supplied screenshot"
+    },
+    {
+      "file": "local_side_menu_logged_in.png",
+      "state": "local logged-in sidebar after avatar, unread and icon state refinement",
+      "source": "local Vite preview"
+    }
+  ],
+  "originalLive": {
+    "card": {
+      "width": 268,
+      "height": 182.75,
+      "borderRadius": 12,
+      "hoverBackground": "rgba(204, 221, 255, 0.08)",
+      "hoverOutline": "0 0 0 4px rgba(204, 221, 255, 0.08)"
+    },
+    "thumbnail": {
+      "width": 268,
+      "height": 150.75,
+      "borderRadius": 12
+    }
+  },
+  "local": {
+    "card": {
+      "width": 268,
+      "height": 202.75,
+      "borderRadius": 12,
+      "hoverBackground": "rgba(0, 0, 0, 0.05)",
+      "hoverOutline": "0 0 0 4px rgba(0, 0, 0, 0.05)"
+    },
+    "menu": {
+      "width": 200,
+      "height": 85,
+      "borderRadius": 12,
+      "placement": "52px above the card bottom, above the more button",
+      "items": ["重命名", "删除"]
+    },
+    "pageBottom": {
+      "contentPadding": 32,
+      "scrollHeight": 725,
+      "viewportHeight": 720
+    },
+    "currentData": {
+      "workflowCount": 2,
+      "workflowsWithPreviewImage": 0,
+      "note": "Current saved workflows contain no preview-capable image data, so the correct source-equivalent state is the blank gray thumbnail."
+    },
+    "sideThemeMenu": {
+      "anchor": { "x": 10, "y": 624, "width": 56, "height": 40 },
+      "portal": { "x": 86, "y": 579, "width": 196, "height": 130, "viewportBottomGap": 11 },
+      "items": ["浅色模式", "深色模式", "跟随系统 · 浅色"]
+    },
+    "loggedInSidebar": {
+      "fallbackAvatar": "🤪",
+      "unreadBadge": { "x": 54, "y": 574, "width": 16, "height": 16, "text": "1" },
+      "notificationIcon": "filled when unread",
+      "themeIconColorWhenOpen": "rgb(15, 20, 25)",
+      "settingsIcon": "simple two-line variant"
+    }
+  },
+  "implementation": {
+    "previewSources": [
+      "workflow tags cover/thumbnail/preview fields",
+      "image node url/imageUrl/outputUrl/previewUrl/thumbnailUrl/coverUrl/src",
+      "image node base64",
+      "batchChildren/images/outputs collections",
+      "video poster/thumbnail/cover fields"
+    ],
+    "videoFileUrlRenderedAsImage": false,
+    "maximumPreviewImages": 4
+  },
+  "workflowClone": {
+    "referenceUrl": "https://reaicc.com/workflow?returnTo=/agentic-assets-canvas&workflowId=cmseuo4jn007y25py3hxnjtyh&versionId=cmseuo4k2007z25py3rckv8nt",
+    "localUrl": "http://127.0.0.1:5010/workflow?returnTo=/agentic-assets-canvas&workflowId=cmshp8cmy0000yrqscfq4r6or&versionId=cmshp8cod0001yrqs92d2xibk",
+    "comparisonViewport": { "width": 1191, "height": 662 },
+    "captureRuntime": {
+      "referenceReportedDpr": 2,
+      "localReportedDpr": 2,
+      "note": "The authenticated reference and local workflow were rechecked in the same Google Chrome runtime using identical CSS viewport and DPR values."
+    },
+    "dataState": {
+      "referenceFreshCapture": "authenticated workflow with 54 nodes",
+      "authenticatedRecheck": "The exact supplied workflow/version URL was opened from the authenticated Google Chrome session. The page loaded successfully under account 474847062 and exposed 54 nodes; the earlier access-denied state came from a different browser session and is not authoritative.",
+      "local": "authenticated workflow with 3 nodes",
+      "policy": "preserve local workflow data and business behavior; compare shell geometry rather than copying reference data"
+    },
+    "stableGeometry": {
+      "reference": {
+        "toolbar": [12, 156.5, 52, 349],
+        "zoomControls": [20, 602, 315, 40],
+        "agentFab": [1097, 72, 82, 82],
+        "headerLeft": [12, 8, 179.73, 44],
+        "headerRight": [1038.07, 12, 140.93, 36]
+      },
+      "local": {
+        "toolbar": [12, 156.5, 52, 349],
+        "zoomControls": [20, 602, 315, 40],
+        "agentFab": [1097, 72, 82, 82],
+        "headerLeft": [12, 8, 169.1, 44],
+        "headerRight": [1038, 12, 141, 36]
+      },
+      "contentDependentWidths": "Header widths differ only because workflow titles and account labels are different dynamic data."
+    },
+    "states": {
+      "globalPromptDockVisible": false,
+      "headerRunControlVisible": false,
+      "workspacePanelRunAction": "运行工作流",
+      "minimapDefaultVisible": false,
+      "localNodeCount": 3,
+      "referenceNodeCount": 54,
+      "zoomRange": "10% to 800%",
+      "appearanceOptions": ["light or dark theme", "dots grid or blank background", "snap to grid", "alignment guides"],
+      "shortcutHelp": "four-column 1150x400 panel",
+      "nodePromptInput": {
+        "size": [760, 178],
+        "nodeGap": 12,
+        "contentBodyRelativeRect": [93, 15, 650, 96],
+        "footerTypeRelativeRect": [57, 125, 110, 36],
+        "footerSendRelativeRect": [709, 126, 34, 34],
+        "referenceUpload": "native multi-image picker",
+        "imageMode": {
+          "typeSwitch": ["图片生成", "视频生成"],
+          "ratioOptions": ["智能", "21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
+          "resolutionOptions": ["高清 2K", "超清 4K"],
+          "generationCount": "1 to 4",
+          "inspiration": "source-matched modal, categories, search, real reference poster assets and use-prompt action",
+          "references": "existing image nodes and uploaded images can be inserted, removed and submitted"
+        },
+        "videoMode": {
+          "features": ["全能参考", "首尾帧", "智能多帧"],
+          "ratioOptions": ["16:9", "4:3", "1:1", "3:4", "9:16"],
+          "resolutionOptions": ["720P", "480P"],
+          "duration": "4 to 15 seconds",
+          "modelEmptyState": "暂无可用的模型"
+        }
+      }
+    },
+    "evidence": {
+      "stable": ["local_stable.png"],
+      "historicalNonAuthoritative": ["original_stable.png", "original_access_denied_after_login.png"],
+      "authenticatedChromeInspection": "2026-08-07: reference account 474847062, 54 nodes, 1191x662 CSS viewport, DPR 2",
+      "opening": [
+        "original_loader_t0080.png", "original_loader_t2600.png", "original_loader_t3600.png", "original_loader_t5200.png",
+        "original_loader_t5600.png", "original_loader_t6000.png", "original_loader_t6400.png", "original_loader_t7000.png",
+        "local_loader_t0080.png", "local_loader_t2600.png", "local_loader_t3600.png", "local_loader_t5200.png",
+        "local_loader_t5600.png", "local_loader_t6000.png", "local_loader_t6400.png", "local_loader_t7000.png"
+      ],
+      "pointer": [
+        "original_agent_left.png", "original_agent_center.png", "original_agent_right.png",
+        "local_agent_left.png", "local_agent_center.png", "local_agent_right.png"
+      ],
+      "localInteractions": ["local_zoom_popover.png", "local_workspace_actions.png"]
+    },
+    "result": {
+      "shellGeometry": "pass",
+      "dynamicDataPreserved": "pass",
+      "runBehaviorPreserved": "pass via workspace panel",
+      "openingAndPointerSamples": "captured",
+      "controlInteractions": "pass: zoom to 800%, fit view, appearance switches, shortcut dialog",
+      "nodePromptInput": "pass: source-relative geometry, type/model/parameter controls, inspiration library, references and upload entry aligned",
+      "promptGenerationRouting": "pass: image requests use the existing image task path; video requests create and execute a text-to-video workflow with reference-image edges",
+      "dprParity": "pass"
+    }
+  },
+  "result": {
+    "hoverGeometry": "pass",
+    "emptyThumbnail": "pass",
+    "actionsMenu": "pass",
+    "menuPlacement": "pass, opens upward",
+    "bottomWhitespace": "pass, reduced to normal 32px content padding",
+    "sideMenuGeometry": "pass, matches the live reference at 1280x720",
+    "themeMenu": "pass, matching portal size, placement, labels and selected check",
+    "loggedInSidebarState": "pass, matching fallback avatar, unread badge, filled bell and active theme state",
+    "previewExtraction": "pass by regression test",
+    "imageCardVisual": "pending a saved workflow that actually contains an image"
+  }
+}

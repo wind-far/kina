@@ -96,6 +96,19 @@
     <g><path data-follow-fill="currentColor" d="M5 5.3a2.2 2.2 0 0 0 0 4.4h14a2.2 2.2 0 1 0 0-4.4H5Zm0 2.4a.2.2 0 0 1 0-.4h14a.2.2 0 1 1 0 .4H5Zm0 6.6a2.2 2.2 0 1 0 0 4.4h8a2.2 2.2 0 1 0 0-4.4H5Zm0 2.4a.2.2 0 1 1 0-.4h8a.2.2 0 1 1 0 .4H5Zm11-1.4a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm0-9a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z" fill="currentColor"></path></g>
   </svg>
 
+  <svg v-else-if="iconKey === 'theme-light'" width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M12 18.3a1.2 1.2 0 0 1 1.2 1.2v2a1.2 1.2 0 0 1-2.4 0v-2a1.2 1.2 0 0 1 1.2-1.2Zm-6.152-1.845a1.201 1.201 0 0 1 1.698 1.697L6.13 19.566a1.2 1.2 0 0 1-1.697-1.697l1.414-1.414Zm10.606 0a1.2 1.2 0 0 1 1.697 0l1.415 1.413a1.2 1.2 0 0 1-1.698 1.697l-1.414-1.414a1.2 1.2 0 0 1 0-1.697ZM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm-7.5 1.8a1.2 1.2 0 0 1 0 2.4h-2a1.2 1.2 0 0 1 0-2.4h2Zm17 0a1.2 1.2 0 0 1 0 2.4h-2a1.2 1.2 0 0 1 0-2.4h2ZM4.434 4.434a1.2 1.2 0 0 1 1.697 0l1.414 1.414a1.201 1.201 0 0 1-1.697 1.698L4.434 6.13a1.2 1.2 0 0 1 0-1.697Zm13.434 0a1.201 1.201 0 0 1 1.698 1.697l-1.415 1.414a1.2 1.2 0 0 1-1.697-1.697l1.414-1.414ZM12 1.3a1.2 1.2 0 0 1 1.2 1.2v2a1.2 1.2 0 0 1-2.4 0v-2A1.2 1.2 0 0 1 12 1.3Z"></path>
+  </svg>
+
+  <svg v-else-if="iconKey === 'theme-dark' || iconKey === 'theme'" width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M18.822 12.633a7.5 7.5 0 0 1-9.82-6.96A7.002 7.002 0 0 0 12 19a7 7 0 0 0 6.975-6.402.95.95 0 0 0-.153.035Zm.526-.018h-.002.002Zm-1.145-1.884C19.407 10.34 21 10.734 21 12A9 9 0 1 1 9.064 3.49C10.155 3.113 11 4.345 11 5.5a5.5 5.5 0 0 0 7.203 5.231Z"></path>
+  </svg>
+
+  <svg v-else-if="iconKey === 'theme-system'" width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2" y="4" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"></rect>
+    <path d="M8 21h8m-4-3v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+  </svg>
+
   <svg v-else-if="iconKey === 'marketing' && active" width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
     <g><path data-follow-fill="currentColor" d="M12.5 2.25c.31 0 .592.185.719.47l1.67 3.765a4.5 4.5 0 0 0 2.275 2.274l3.765 1.67a.785.785 0 0 1 0 1.438l-3.765 1.67a4.5 4.5 0 0 0-2.274 2.275l-1.67 3.765a.785.785 0 0 1-1.438 0l-1.67-3.765a4.5 4.5 0 0 0-2.275-2.274l-3.765-1.67a.785.785 0 0 1 0-1.438l3.765-1.67a4.5 4.5 0 0 0 2.274-2.275l1.67-3.765a.785.785 0 0 1 .72-.47Z" fill="currentColor"></path></g>
   </svg>

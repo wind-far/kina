@@ -1625,3 +1625,886 @@ html[data-theme='light'] .wf-quick-link-banner__close {
   opacity: 0;
   transform: translate(-50%, -8px);
 }
+
+/* ========== ReAI 工作流画布视觉基线 ========== */
+/* 仅作用于工作流页，避免站点主题切换影响此处的创作画布。 */
+.workflow-container {
+  --canvas-bg: #f7f8fa;
+  --canvas-workflow-bg: #f7f8fa;
+  --canvas-bg-block-default: #ffffff;
+  --canvas-float-block-default: rgba(255, 255, 255, 0.96);
+  --canvas-float-block-hover: rgba(15, 23, 42, 0.05);
+  --canvas-sidebar-bg: #ffffff;
+  --canvas-selection-border: #57bfd2;
+  --canvas-float-backdrop-blur: 16px;
+  --brand-main-default: #57bfd2;
+  --brand-main-hover: #43aec3;
+  --brand-main-active: #379fb4;
+  --brand-main-block-default: rgba(87, 191, 210, 0.12);
+  --text-primary: #121820;
+  --text-secondary: #647384;
+  --text-tertiary: rgba(18, 24, 32, 0.44);
+  --text-placeholder: #9aa7b4;
+  --stroke-secondary: rgba(15, 23, 42, 0.1);
+  --stroke-tertiary: rgba(15, 23, 42, 0.07);
+  --bg-block-primary-default: rgba(15, 23, 42, 0.05);
+  --bg-block-primary-hover: rgba(15, 23, 42, 0.08);
+  --bg-block-primary-pressed: rgba(15, 23, 42, 0.12);
+  --shadow-generator-float-block: 0 12px 32px rgba(15, 23, 42, 0.1);
+  background: #f7f8fa;
+  font-family: "CapCut Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+}
+
+html[data-theme='dark'] .workflow-container,
+body[lv-theme='dark'] .workflow-container {
+  background: #f7f8fa !important;
+}
+
+html[data-theme='dark'] .workflow-canvas .vue-flow__background,
+body[lv-theme='dark'] .workflow-canvas .vue-flow__background,
+.workflow-canvas .vue-flow__background {
+  background: #f7f8fa !important;
+}
+
+html[data-theme='dark'] .workflow-canvas .vue-flow__background pattern path,
+body[lv-theme='dark'] .workflow-canvas .vue-flow__background pattern path,
+.workflow-canvas .vue-flow__background pattern path {
+  stroke: rgba(15, 23, 42, 0.055) !important;
+}
+
+html[data-theme='dark'] .workflow-canvas .vue-flow__background pattern circle,
+body[lv-theme='dark'] .workflow-canvas .vue-flow__background pattern circle,
+.workflow-canvas .vue-flow__background pattern circle {
+  fill: rgba(15, 23, 42, 0.11) !important;
+}
+
+.workflow-header {
+  height: 56px;
+  padding: 0 16px;
+}
+
+.workflow-header-left,
+.workflow-header-right {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-radius: 0;
+  height: 44px;
+}
+
+.workflow-header-left {
+  left: 16px;
+  gap: 7px;
+  padding: 0;
+}
+
+.workflow-header-right {
+  right: 16px;
+  gap: 6px;
+  padding: 0;
+}
+
+.wf-header-meta {
+  gap: 2px;
+  padding: 0 4px;
+}
+
+.wf-header-meta__title {
+  color: #121820;
+  font-size: 13px;
+  font-weight: 600;
+  max-width: min(36vw, 320px);
+}
+
+.wf-header-meta__status {
+  color: #7b8794;
+  font-size: 11px;
+}
+
+.workflow-container .wf-btn {
+  color: #18212b;
+}
+
+.workflow-container .wf-btn:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.workflow-container .wf-run-workflow-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  gap: 0;
+  border-radius: 10px;
+  background: #57bfd2;
+  color: #ffffff;
+}
+
+.workflow-container .wf-run-workflow-btn > span:last-child {
+  display: none;
+}
+
+.workflow-container .wf-run-history__panel {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(15, 23, 42, 0.1);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.14);
+  color: #18212b;
+}
+
+.wf-account-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  max-width: 170px;
+  padding: 0 5px 0 2px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #18212b;
+  cursor: pointer;
+}
+
+.wf-account-chip:hover {
+  background: rgba(15, 23, 42, 0.055);
+}
+
+.wf-account-chip img,
+.wf-account-chip__fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  background: linear-gradient(135deg, #f9b85a, #f26879 50%, #7b79e9);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.wf-account-chip__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.workflow-left-toolbar {
+  left: 12px;
+  top: 156px;
+  transform: none;
+}
+
+.workflow-left-toolbar-container {
+  width: 48px;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  outline-color: rgba(15, 23, 42, 0.08);
+}
+
+.workflow-left-toolbar .wf-btn-icon {
+  width: 40px;
+  height: 36px;
+  color: #1b2630;
+}
+
+.workflow-left-toolbar .wf-divider {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.workflow-canvas .vue-flow__node.selected .wf-node {
+  box-shadow: 0 0 0 2px #57bfd2, 0 8px 20px rgba(15, 23, 42, 0.1);
+}
+
+.workflow-canvas .vue-flow__edge-path {
+  stroke: #8bdbe8;
+}
+
+.workflow-canvas .vue-flow__handle {
+  background: #57bfd2;
+  border-color: #f7f8fa;
+}
+
+.workflow-prompt-dock {
+  position: absolute;
+  z-index: 110;
+  bottom: 0;
+  left: 0;
+  width: min(720px, calc(100vw - 16px));
+  pointer-events: auto;
+}
+
+/* CanvasPromptInput 根节点自带 position: relative；这里提高选择器优先级，
+ * 让它作为画布浮层。实际 left/top 由选中节点的屏幕位置动态写入。 */
+.workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input {
+  position: absolute;
+  z-index: 110;
+  bottom: auto;
+  left: 24px;
+  width: min(86.6%, calc(100% - 48px));
+  max-width: none;
+  min-height: 190px;
+  padding: 16px 22px 14px;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 42px;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.1);
+  box-sizing: border-box;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__top {
+  position: absolute;
+  top: 18px;
+  left: 26px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__add {
+  width: 58px;
+  height: 76px;
+  border: 1px dashed rgba(15, 23, 42, 0.12);
+  border-radius: 5px;
+  background: #f7f7f6;
+  color: #69727c;
+  transform: rotate(-8deg);
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__add span {
+  display: none;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__add .el-icon {
+  font-size: 22px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__body {
+  min-height: 76px;
+  margin-left: 90px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__textarea {
+  color: #18212b;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.45;
+  min-height: 72px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__textarea::placeholder {
+  color: #7e8791;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__footer {
+  min-height: 42px;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__pill {
+  min-height: 40px;
+  padding: 0 14px;
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.1);
+  border-radius: 16px;
+  color: #1f2933;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__selector:first-child .canvas-prompt-input__pill {
+  min-width: 280px;
+  justify-content: flex-start;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__pill-icon {
+  font-size: 17px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__pill-caret {
+  margin-left: auto;
+  font-size: 14px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__count-stepper {
+  min-width: 130px;
+  height: 40px;
+  border-radius: 16px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__count-stepper button {
+  width: 34px;
+  font-size: 18px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__count-stepper span {
+  font-size: 16px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__price {
+  padding: 0 4px;
+  background: transparent;
+  color: #596878;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__send {
+  width: 44px;
+  height: 44px;
+  background: #9aa1a9;
+  color: #ffffff;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__send .el-icon {
+  font-size: 20px;
+}
+
+/* 低高度视口由脚本切换为 mini 版；节点拖动不会影响输入栏尺寸。 */
+.workflow-canvas-wrap .workflow-prompt-dock.workflow-prompt-dock--mini {
+  min-height: 132px;
+  padding: 12px 16px 10px;
+  gap: 6px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock.workflow-prompt-dock--mini .canvas-prompt-input__top {
+  display: none;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock.workflow-prompt-dock--mini .canvas-prompt-input__body {
+  min-height: 48px;
+  margin-left: 0;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock.workflow-prompt-dock--mini .canvas-prompt-input__textarea {
+  min-height: 46px;
+  font-size: 15px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock.workflow-prompt-dock--mini .canvas-prompt-input__footer {
+  min-height: 36px;
+  gap: 6px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock.workflow-prompt-dock--mini .canvas-prompt-input__pill {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock.workflow-prompt-dock--mini .canvas-prompt-input__selector:first-child .canvas-prompt-input__pill {
+  min-width: 200px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock.workflow-prompt-dock--mini .canvas-prompt-input__count-stepper {
+  min-width: 108px;
+  height: 34px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock.workflow-prompt-dock--mini .canvas-prompt-input__count-stepper button {
+  width: 28px;
+  font-size: 16px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock.workflow-prompt-dock--mini .canvas-prompt-input__count-stepper span,
+.workflow-canvas-wrap .workflow-prompt-dock.workflow-prompt-dock--mini .canvas-prompt-input__price {
+  font-size: 13px;
+}
+
+.workflow-canvas-wrap .workflow-prompt-dock.workflow-prompt-dock--mini .canvas-prompt-input__send {
+  width: 38px;
+  height: 38px;
+}
+
+@media (max-width: 1366px) and (min-width: 769px) {
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__pill {
+    min-height: 40px;
+    padding: 0 14px;
+    font-size: 15px;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__selector:first-child .canvas-prompt-input__pill {
+    min-width: 260px;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__count-stepper {
+    min-width: 130px;
+    height: 40px;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__count-stepper button {
+    width: 34px;
+    font-size: 18px;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__count-stepper span,
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__price {
+    font-size: 15px;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__send {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* 生成器占据左下区域时，将画布控制条置于其右侧，保持每项控制可操作。 */
+.workflow-canvas-wrap .canvas-zoom-controls {
+  left: 16px !important;
+  bottom: 16px !important;
+  z-index: 111;
+}
+
+.workflow-canvas-wrap--prompt-open .canvas-zoom-controls {
+  display: none;
+}
+
+.canvas-assistant-toggle {
+  right: 24px;
+  top: 72px;
+  transform: none;
+  width: 72px;
+  height: 72px;
+  border: 1px solid rgba(65, 179, 93, 0.34);
+  border-radius: 50%;
+  background: #b9f3b0;
+  box-shadow: 0 0 0 11px rgba(150, 236, 133, 0.16), 0 8px 20px rgba(65, 179, 93, 0.18);
+  color: #1c4f2e;
+}
+
+.canvas-assistant-toggle:hover {
+  background: #a9efa0;
+  color: #123b22;
+}
+
+@media (max-width: 768px) {
+  .workflow-header-right .wf-run-history {
+    display: none;
+  }
+
+  .workflow-prompt-dock {
+    width: 100%;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input {
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    min-height: 150px;
+    padding: 18px;
+    border-radius: 22px 22px 0 0;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__top {
+    display: none;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__body {
+    min-height: 72px;
+    margin-left: 0;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__textarea {
+    min-height: 72px;
+    font-size: 16px;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__footer {
+    min-height: 40px;
+    overflow-x: auto;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__pill,
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__count-stepper {
+    min-height: 38px;
+    height: 38px;
+    min-width: auto;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__send {
+    width: 38px;
+    height: 38px;
+  }
+
+  .workflow-canvas-wrap--prompt-open .canvas-zoom-controls {
+    left: 16px !important;
+    bottom: 136px !important;
+  }
+
+  .canvas-assistant-toggle {
+    right: 16px;
+    top: 72px;
+    width: 52px;
+    height: 52px;
+  }
+}
+
+/* 参考工作流的节点内生成器：桌面端固定屏幕尺寸并跟随所选图片节点。 */
+@media (min-width: 769px) {
+  .workflow-canvas-wrap--prompt-open .canvas-zoom-controls {
+    display: inline-flex;
+    left: calc(20px + var(--canvas-left-chrome-offset, 0px)) !important;
+    bottom: 20px !important;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow {
+    width: 760px;
+    max-width: 760px;
+    height: 178px;
+    min-height: 178px;
+    padding: 14px 16px 16px;
+    gap: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.03);
+    border-radius: 24px;
+    background: #fefeff;
+    box-shadow: none;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__content {
+    flex: 0 0 98px;
+    height: 98px;
+    gap: 16px;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__top {
+    position: relative;
+    top: auto;
+    left: auto;
+    display: flex;
+    flex: 0 0 60px;
+    width: 60px;
+    height: 98px;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__ref,
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__add {
+    border-radius: 5px;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__ref {
+    top: 12px;
+    left: 10px;
+    width: 44px;
+    height: 61px;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__add {
+    top: 51.5px;
+    left: 34.5px;
+    width: 29px;
+    height: 29px;
+    border: 0;
+    border-radius: 50%;
+    transform: none;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__body {
+    height: 96px;
+    min-height: 96px;
+    margin-left: 0;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__textarea {
+    height: 96px;
+    min-height: 96px;
+    color: #0f1419;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 24px;
+    padding-top: 2px;
+    box-sizing: border-box;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__textarea::placeholder {
+    color: rgba(83, 100, 113, 0.64);
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__footer {
+    flex: 0 0 36px;
+    height: 36px;
+    min-height: 36px;
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__pill {
+    height: 36px;
+    min-height: 36px;
+    padding: 0 12px;
+    border-color: rgba(0, 0, 0, 0.05);
+    border-radius: 10px;
+    background: transparent;
+    color: #0f1419;
+    font-size: 12px;
+    font-weight: 450;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__count-stepper {
+    min-width: 78px;
+    height: 28px;
+    border: 0;
+    background: transparent;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__count-stepper button {
+    width: 22px;
+    font-size: 16px;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__count-stepper span,
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__price {
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__footer > .canvas-prompt-input__pill {
+    height: 32px;
+    min-height: 32px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 999px;
+    font-size: 14px;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__price {
+    padding: 0 4px;
+    background: transparent;
+    color: #536471;
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__send {
+    width: 34px;
+    height: 34px;
+    background: rgba(15, 20, 25, 0.28);
+    color: rgba(255, 255, 255, 0.72);
+  }
+}
+
+/* ========== ReAI 精确回归覆盖（同视口视觉锚点） ========== */
+.workflow-container {
+  --canvas-bg: #f1f2f3;
+  --canvas-workflow-bg: #f1f2f3;
+  --canvas-dot-color: rgba(15, 20, 25, 0.12);
+  --canvas-bg-block-default: rgba(241, 242, 243, 0.92);
+  --canvas-float-block-default: #fefeff;
+  --canvas-float-block-hover: rgba(245, 245, 245, 0.92);
+  --canvas-sidebar-bg: #ffffff;
+  --canvas-selection-border: #55b8cc;
+  --canvas-float-backdrop-blur: 32px;
+  --brand-main-default: #55b8cc;
+  --brand-main-hover: #45a8bd;
+  --brand-main-active: #3799ae;
+  --brand-main-block-default: rgba(85, 184, 204, 0.12);
+  --text-primary: #0f1419;
+  --text-secondary: #536471;
+  --text-tertiary: #72808a;
+  --text-placeholder: rgba(83, 100, 113, 0.64);
+  --stroke-secondary: rgba(0, 0, 0, 0.05);
+  --stroke-tertiary: rgba(0, 0, 0, 0.03);
+  --bg-block-primary-default: rgba(15, 20, 25, 0.05);
+  --bg-block-primary-hover: rgba(15, 20, 25, 0.07);
+  --bg-block-primary-pressed: rgba(15, 20, 25, 0.1);
+  --shadow-generator-float-block: none;
+  background: #f1f2f3;
+  color: #0f1419;
+  font-family: "CapCut Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+  font-size: 14px;
+}
+
+html[data-theme='dark'] .workflow-container,
+body[lv-theme='dark'] .workflow-container,
+html[data-theme='dark'] .workflow-canvas .vue-flow__background,
+body[lv-theme='dark'] .workflow-canvas .vue-flow__background,
+.workflow-canvas .vue-flow__background {
+  background: #f1f2f3 !important;
+}
+
+html[data-theme='dark'] .workflow-canvas .vue-flow__background pattern path,
+body[lv-theme='dark'] .workflow-canvas .vue-flow__background pattern path,
+.workflow-canvas .vue-flow__background pattern path {
+  stroke: rgba(15, 20, 25, 0.055) !important;
+}
+
+html[data-theme='dark'] .workflow-canvas .vue-flow__background pattern circle,
+body[lv-theme='dark'] .workflow-canvas .vue-flow__background pattern circle,
+.workflow-canvas .vue-flow__background pattern circle {
+  fill: var(--canvas-dot-color) !important;
+}
+
+.workflow-header {
+  height: 60px;
+  padding: 0 12px;
+}
+
+.workflow-header-left {
+  left: 12px;
+  height: 36px;
+  gap: 4px;
+  padding: 4px 8px 4px 4px;
+  border-radius: 8px;
+  background: var(--canvas-bg-block-default);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+}
+
+.workflow-header-right {
+  right: 12px;
+  height: 36px;
+  gap: 8px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--canvas-bg-block-default);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+}
+
+.wf-header-run-controls {
+  display: none;
+}
+
+.wf-header-meta {
+  gap: 1px;
+  padding: 0;
+}
+
+.wf-header-meta__title {
+  max-width: min(36vw, 320px);
+  color: #0f1419;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.wf-header-meta__status {
+  color: #536471;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.workflow-container .wf-btn {
+  color: #0f1419;
+}
+
+.workflow-container .wf-btn:hover {
+  background: var(--canvas-float-block-hover);
+}
+
+.wf-account-chip {
+  width: 133px;
+  max-width: 133px;
+  height: 36px;
+  gap: 7px;
+  padding: 0 4px 0 2px;
+  border-radius: 8px;
+  color: #0f1419;
+}
+
+.wf-account-chip:hover {
+  background: var(--canvas-float-block-hover);
+}
+
+.wf-account-chip img,
+.wf-account-chip__fallback {
+  width: 28px;
+  height: 28px;
+}
+
+.wf-account-chip__name {
+  flex: 1 1 auto;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.workflow-left-toolbar {
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.workflow-left-toolbar-container {
+  width: 44px;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #fefeff;
+  box-shadow: none;
+  outline: 0.5px solid rgba(0, 0, 0, 0.03);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+}
+
+.workflow-left-toolbar .wf-btn-icon {
+  width: 36px;
+  height: 36px;
+  color: #0f1419;
+}
+
+.workflow-left-toolbar .wf-divider {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.workflow-canvas .vue-flow__node.selected .wf-node {
+  box-shadow: 0 0 0 2px #55b8cc;
+}
+
+.workflow-canvas .vue-flow__handle {
+  background: #55b8cc;
+  border-color: #f1f2f3;
+}
+
+.workflow-canvas-wrap .canvas-zoom-controls {
+  left: calc(20px + var(--canvas-left-chrome-offset, 0px)) !important;
+  bottom: 20px !important;
+  z-index: 50;
+}
+
+.workflow-container .agent-fab.canvas-assistant-toggle {
+  top: 72px;
+  right: 12px;
+  width: 82px;
+  height: 82px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.workflow-container .agent-fab.canvas-assistant-toggle:hover {
+  background: transparent;
+}
+
+@media (max-width: 768px) {
+  .workflow-header-left {
+    max-width: calc(100vw - 88px);
+  }
+
+  .wf-header-meta__title {
+    max-width: calc(100vw - 150px);
+  }
+
+  .wf-account-chip {
+    width: 36px;
+    padding: 0 4px;
+  }
+
+  .wf-account-chip__name,
+  .wf-account-chip > svg {
+    display: none;
+  }
+
+  .workflow-container .agent-fab.canvas-assistant-toggle {
+    top: 68px;
+    right: 8px;
+    width: 68px;
+    height: 68px;
+  }
+}

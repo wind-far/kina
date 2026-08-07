@@ -49,6 +49,7 @@ import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter, useRoute } from 'vue-router'
 import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
+import { resolveHomeSideMenuRoutePath } from '@/shared/home-side-menu-route'
 import HomeSideMenuIcon from './HomeSideMenuIcon.vue'
 import type { SystemConfigPayload } from '@/api/system-config'
 
@@ -77,14 +78,6 @@ const { sideMenuSettings, centerItems } = useHomeSideMenuConfig({
 
 const currentPath = computed(() => props.activePathOverride || route.path)
 
-const resolveMenuRoutePath = (item: { key: string; actionType: string; actionValue: string }) => {
-  if (item.key === 'workflow' && item.actionType === 'route') {
-    return '/agentic-assets-canvas'
-  }
-
-  return item.actionValue
-}
-
 const resolveMenuItemId = (key: string) => {
   const idMap: Record<string, string> = {
     home: 'Home',
@@ -110,7 +103,7 @@ const isItemActive = (item: { key: string; actionType: string; actionValue: stri
   if (item.key === 'account') {
     return currentPath.value === '/account'
   }
-  return item.actionType === 'route' && currentPath.value === resolveMenuRoutePath(item)
+  return item.actionType === 'route' && currentPath.value === resolveHomeSideMenuRoutePath(item)
 }
 
 const handleMenuClick = (item: { key: string; actionType: string; actionValue: string }) => {
@@ -132,6 +125,6 @@ const handleMenuClick = (item: { key: string; actionType: string; actionValue: s
     return
   }
 
-  router.push(resolveMenuRoutePath(item) || '/')
+  router.push(resolveHomeSideMenuRoutePath(item) || '/')
 }
 </script>

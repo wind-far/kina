@@ -21,6 +21,7 @@
 import { computed, ref, watch } from 'vue'
 import { getDefaultChatModelKey, getDefaultImageModelKey, getDefaultVideoModelKey, getModelByName } from '@/config/models'
 import type { WorkflowCanvasPosition } from './workflow-orchestrator-types'
+import workflowReferenceSample from '@/assets/workflow-reference-sample.svg'
 
 export type WorkflowNodeType = 'text' | 'imageConfig' | 'videoConfig' | 'image' | 'video' | 'llmConfig'
 
@@ -54,6 +55,7 @@ export interface WorkflowImageConfigNodeData extends WorkflowNodeDataBase {
 export interface WorkflowVideoConfigNodeData extends WorkflowNodeDataBase {
   prompt?: string
   ratio?: string
+  resolution?: string
   duration?: number
   model?: string
 }
@@ -314,6 +316,7 @@ const getDefaultNodeData = <T extends WorkflowNodeType>(type: T): WorkflowNodeDa
       return {
         prompt: '',
         ratio: model?.defaultParams?.ratio || '16x9',
+        resolution: String(model?.defaultParams?.quality || '720p'),
         duration: model?.defaultParams?.duration || 5,
         model: getDefaultVideoModelKey(),
         label: '图生视频'
@@ -581,14 +584,14 @@ export const manualSaveHistory = () => {
  */
 export const initSampleData = () => {
   clearCanvas()
-  addNode('text', { x: 150, y: 150 }, {
-    content: '一只金毛寻回犬在草地上奔跑，摇着尾巴，脸上带着快乐的表情。',
-    label: '文本输入'
+  const sourceId = addNode('image', { x: 115, y: 45 }, {
+    url: workflowReferenceSample,
+    label: '图片节点',
   })
-  addNode('imageConfig', { x: 500, y: 150 }, { label: '文生图' })
+  const targetId = addNode('image', { x: 812, y: 155 }, { label: 'Image' })
   addEdge({
-    source: 'node_0',
-    target: 'node_1',
+    source: sourceId,
+    target: targetId,
     sourceHandle: 'right',
     targetHandle: 'left'
   })

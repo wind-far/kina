@@ -11,7 +11,7 @@
  *   - 选中后下方浮出 CanvasPromptInput（图片模型 + 尺寸/质量/价格 chip）
  *   - 保留批量生图组叠卡能力
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import {
   CopyDocument,
@@ -32,7 +32,6 @@ import {
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasNodeTopToolbar, { type NodeTopToolbarItem } from '@/components/canvas/CanvasNodeTopToolbar.vue'
-import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
@@ -83,6 +82,17 @@ const showError = computed(() => !isLoading.value && !!errorMsg.value)
 const showImage = computed(() => !isLoading.value && !errorMsg.value && !!imageUrl.value)
 const showReady = computed(() => !showLoading.value && !showError.value && !showImage.value && hasUpstream.value)
 const showEmpty = computed(() => !showLoading.value && !showError.value && !showImage.value && !showReady.value)
+
+// 图片加载、状态切换会改变卡片尺寸；同步通知 Vue Flow 重测 Handle，
+// 否则已存在的边会继续使用旧端点，视觉上像是断在节点外的“+”处。
+const refreshNodeInternals = () => {
+  void nextTick(() => {
+    requestAnimationFrame(() => updateNodeInternals([props.id]))
+  })
+}
+
+watch([showImage, showReady, () => props.data?.url], refreshNodeInternals)
+onMounted(refreshNodeInternals)
 
 const triggerUpload = () => fileInputRef.value?.click()
 const handleFileChange = async (event: Event) => {
@@ -293,7 +303,7 @@ const handlePromptSend = async (
   _type: string,
   options?: { modelKey?: string; ratio?: string; resolution?: string; count?: number; referenceImages?: string[] },
 ) => {
-  if (!message?.trim() || isGenerating.value) return
+  if ((!message?.trim() && !options?.referenceImages?.length) || isGenerating.value) return
   // 优先用 ContentGenerator 自带的参考图选项（用户在生成器内单独添加的）
   // 没有时落到上游连线的图
   const rawRefImages = Array.isArray(options?.referenceImages) && options.referenceImages.length
@@ -315,9 +325,10 @@ const handlePromptSend = async (
       category: 'IMAGE',
       missingModelMessage: '未匹配到有效图片模型，请先在后台配置模型',
     })
+    const normalizedPrompt = message?.trim() || '请根据引用素材生成一张新的图片'
     const requestBody: Record<string, unknown> = {
       model: modelKey,
-      prompt: message,
+      prompt: normalizedPrompt,
       n: Math.max(1, Math.min(8, Number(options?.count) || 1)),
       providerId,
     }
@@ -330,7 +341,7 @@ const handlePromptSend = async (
       source: 'workflow',
       type: 'image',
       requestMode: hasRef ? 'image-edit' : 'image-generation',
-      prompt: message,
+      prompt: normalizedPrompt,
       modelKey,
       ratio: options?.ratio,
       resolution: options?.resolution,
@@ -369,6 +380,31 @@ const handlePromptSend = async (
     isGenerating.value = false
   }
 }
+
+type WorkflowImagePromptDetail = {
+  nodeId: string
+  text: string
+  modelKey?: string
+  ratio?: string
+  resolution?: string
+  count?: number
+  referenceImages?: string[]
+}
+
+const handleWorkflowImagePrompt = (event: Event) => {
+  const detail = (event as CustomEvent<WorkflowImagePromptDetail>).detail
+  if (!detail || detail.nodeId !== props.id) return
+  void handlePromptSend(detail.text, 'image', {
+    modelKey: detail.modelKey,
+    ratio: detail.ratio,
+    resolution: detail.resolution,
+    count: detail.count,
+    referenceImages: detail.referenceImages,
+  })
+}
+
+onMounted(() => window.addEventListener('canvasmind:workflow-image-prompt', handleWorkflowImagePrompt))
+onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt', handleWorkflowImagePrompt))
 </script>
 
 <template>
@@ -455,7 +491,7 @@ const handlePromptSend = async (
           <div class="image-node-batch-frame image-node-batch-frame--2" aria-hidden="true" />
           <div class="image-node-batch-frame image-node-batch-frame--1" aria-hidden="true" />
         </template>
-        <img :src="imageUrl" alt="生成图片" class="image-node-image" />
+        <img :src="imageUrl" alt="生成图片" class="image-node-image" @load="refreshNodeInternals" />
         <button
           class="image-node-replace-btn nodrag nopan"
           title="替换图片"
@@ -505,22 +541,6 @@ const handlePromptSend = async (
     <!-- 选中态顶部悬浮工具栏（仅有图时显示） -->
     <CanvasNodeTopToolbar :visible="isSelected && showImage" :items="topToolbarItems" />
 
-    <!-- 选中态下方浮出 prompt：仅 ready-state（有上游连线 + 自身空）时显示
-         自身有图 / 空态菜单 时不显示，符合 RunningHUB 设计 -->
-    <div v-if="isSelected && showReady" class="image-node-prompt-panel nodrag nopan" @mousedown.stop>
-      <ContentGenerator
-        layout="sidebar"
-        :collapsible="false"
-        :default-expanded="true"
-        initial-creation-type="image"
-        :hide-type-selector="true"
-        :verbose-toolbar="true"
-        :external-reference-images="upstreamReferenceUrls"
-        placeholder-override="描述你想生成的图片内容，使用上游节点的图作为参考"
-        popup-placement="top"
-        @send="handlePromptSend"
-      />
-    </div>
   </div>
 </template>
 
@@ -578,13 +598,13 @@ const handlePromptSend = async (
 
 .image-node-card {
   position: relative;
-  width: 100%;
-  height: 100%;
-  min-width: 380px;
-  min-height: 280px;
+  width: 333px;
+  height: 262px;
+  min-width: 333px;
+  min-height: 262px;
   background: var(--canvas-node-bg);
   /*border: 1px solid var(--canvas-node-border);*/
-  border-radius: 16px;
+  border-radius: 12px;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -594,8 +614,10 @@ const handlePromptSend = async (
 }
 /* 有图态：节点变宽，图片居中（参照 RunningHUB 生成结果布局 img_11） */
 .image-node-card:has(.image-node-display) {
-  min-width: 580px;
-  min-height: 340px;
+  width: 475px;
+  height: 458px;
+  min-width: 475px;
+  min-height: 458px;
 }
 .image-node-card.is-selected {
   border-color: var(--canvas-selection-border);
@@ -774,17 +796,18 @@ const handlePromptSend = async (
   flex: 1 1 0;
   display: inline-flex;
   justify-content: center;
+  align-items: stretch;
   overflow: hidden;
 }
 .image-node-image {
-  max-width: 320px;
-  max-height: 100%;
-  width: auto;
-  height: auto;
-  object-fit: contain;
+  max-width: none;
+  max-height: none;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   position: relative;
   z-index: 1;
-  border-radius: var(--lv-border-radius-medium);
+  border-radius: 12px;
 }
 .image-node-batch-frame {
   position: absolute;

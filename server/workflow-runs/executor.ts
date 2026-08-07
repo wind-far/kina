@@ -15,7 +15,7 @@ type RuntimeOutput = {
 }
 
 const activeRuns = new Map<string, AbortController>()
-const EXECUTABLE_NODE_TYPES = new Set(['llmConfig', 'imageConfig'])
+const EXECUTABLE_NODE_TYPES = new Set(['llmConfig', 'imageConfig', 'videoConfig'])
 const TERMINAL_RUN_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELLED', 'INTERRUPTED'])
 
 const asObjects = (value: unknown) => (Array.isArray(value)
@@ -64,14 +64,19 @@ const topologicalOrder = (nodes: JsonObject[], edges: JsonObject[]) => {
   return ordered
 }
 
-const resolveModel = async (rawModel: string, category: 'CHAT' | 'IMAGE') => {
+const resolveModel = async (rawModel: string, category: 'CHAT' | 'IMAGE' | 'VIDEO') => {
   const catalog = await getPublicModelCatalog()
-  const models = category === 'CHAT' ? catalog.models.chat : catalog.models.image
+  const modelCategory = category === 'CHAT' ? 'chat' : category === 'IMAGE' ? 'image' : 'video'
+  const models = catalog.models[modelCategory]
   const raw = String(rawModel || '').trim()
   const matched = models.find(item => item.selectionKey === raw || item.modelKey === raw)
-    || (!raw ? models.find(item => item.selectionKey === catalog.defaults[category === 'CHAT' ? 'chat' : 'image']) : null)
+    || (!raw ? models.find(item => item.selectionKey === catalog.defaults[modelCategory]) : null)
     || (!raw ? models[0] : null)
-  if (!matched) throw new Error(category === 'CHAT' ? '未配置可用的对话模型' : '未配置可用的图片模型')
+  if (!matched) {
+    throw new Error(category === 'CHAT'
+      ? '未配置可用的对话模型'
+      : category === 'IMAGE' ? '未配置可用的图片模型' : '未配置可用的视频模型')
+  }
   return matched
 }
 
@@ -91,6 +96,7 @@ const collectInputs = (
       - Number(second.data?.promptOrder || second.data?.imageOrder || 0))
   const prompts: string[] = []
   const images: string[] = []
+  const imageRoles: string[] = []
 
   for (const edge of incoming) {
     const sourceId = String(edge.source || '')
@@ -111,11 +117,14 @@ const collectInputs = (
       const producer = edges.find(candidate => String(candidate.target || '') === sourceId)
       const url = readOutputUrl(outputs.get(String(producer?.source || '')))
         || String(data.url || '').trim()
-      if (url) images.push(url)
+      if (url) {
+        images.push(url)
+        imageRoles.push(String(edge.data?.imageRole || 'input_reference'))
+      }
     }
   }
 
-  return { prompt: prompts.join('\n\n'), images }
+  return { prompt: prompts.join('\n\n'), images, imageRoles }
 }
 
 const waitForGenerationTask = async (
@@ -145,7 +154,7 @@ const waitForGenerationTask = async (
 
 const buildTaskPayload = async (
   node: JsonObject,
-  input: { prompt: string; images: string[] },
+  input: { prompt: string; images: string[]; imageRoles: string[] },
   executionAttemptId: string,
 ): Promise<GenerationTaskStartPayload> => {
   const data = readNodeData(node)
@@ -170,6 +179,33 @@ const buildTaskPayload = async (
         model: model.modelKey,
         messages,
         stream: true,
+        __workflowExecutionId: executionAttemptId,
+      },
+    }
+  }
+
+  if (node.type === 'videoConfig') {
+    const model = await resolveModel(String(data.model || ''), 'VIDEO')
+    const prompt = input.prompt || String(data.prompt || '').trim()
+    if (!prompt && !input.images.length) throw new Error(`节点“${data.label || node.id}”缺少视频生成输入`)
+    return {
+      source: 'workflow-server',
+      type: 'video',
+      prompt,
+      model: model.label,
+      modelKey: model.modelKey,
+      ratio: String(data.ratio || ''),
+      resolution: String(data.resolution || ''),
+      duration: String(data.duration || ''),
+      referenceImages: input.images,
+      requestBody: {
+        providerId: model.providerId,
+        model: model.modelKey,
+        prompt,
+        ratio: String(data.ratio || ''),
+        quality: String(data.resolution || ''),
+        duration: String(data.duration || ''),
+        referenceImageRoles: input.imageRoles,
         __workflowExecutionId: executionAttemptId,
       },
     }
@@ -204,7 +240,7 @@ const buildTaskPayload = async (
 const executeNode = async (
   run: { id: string; userId: string },
   node: JsonObject,
-  input: { prompt: string; images: string[] },
+  input: { prompt: string; images: string[]; imageRoles: string[] },
   signal: AbortSignal,
 ) => {
   const payload = await buildTaskPayload(node, input, `${run.id}:${String(node.id)}:${Date.now()}`)
@@ -217,10 +253,12 @@ const executeNode = async (
   })
   const completed = await waitForGenerationTask(recordId, run.userId, run.id, signal)
   const images = Array.isArray(completed.images) ? completed.images.map(String).filter(Boolean) : []
+  const videoUrl = asObjects(completed.outputs)
+    .find(output => String(output.outputType || '').toLowerCase() === 'video')?.url
   return {
     generationRecordId: recordId,
     content: String(completed.content || '').trim(),
-    url: images[0] || '',
+    url: String(videoUrl || images[0] || ''),
     images,
   } satisfies RuntimeOutput
 }

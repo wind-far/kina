@@ -8,6 +8,8 @@
 - 文本节点补齐格式化、表格、全屏编辑、文档导入和图片反推提示词。
 - 新增可保存、可连线的导演台与音频素材节点；音频上传增加格式、空文件和 100MB 上限校验。
 - 主体引用支持创建、取消、持久化、去重，并与其他引用共同遵守最多 4 张限制。
+- 服务端工作流执行器支持视频节点：后台提交 FormData、按任务 ID 轮询、写入视频生成记录与资产，并复用停止、失败、退点和重试语义。
+- 数据库集成回归覆盖节点、连线、V1/V2 发布、V3 回滚、运行记录、主体引用和画布助手上下文的持久化恢复。
 - GitHub `代码质量` 工作流在 `main` 推送和 Pull Request 上执行类型检查、脚本测试和生产构建。
 - Docker 发布与自动部署改为显式变量开关，未配置发布凭据时不会误触发失败部署。
 
@@ -16,6 +18,7 @@
 - `npm run type-check`
 - `npm run test:scripts`
 - `npm run build`
+- `npm run build:service`
 - `npx tsx --env-file=.env.development scripts/tests/test-workflow-runs-integration.mjs`
 - 工作流自动保存、刷新恢复、节点工具、主体引用和助手输入栏已在 Chrome 中进行交互检查。
 

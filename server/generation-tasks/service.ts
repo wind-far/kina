@@ -55,6 +55,8 @@ import {
 import { GenerationTaskRequestError } from './shared'
 import { getGenerationTaskExecutionStrategy, type TaskAbortReason } from './execution-strategies'
 import { executeImageTask } from './image-task-executor'
+import { executeVideoTask } from './video-task-executor'
+import { requestVideoGeneration } from './video-upstream'
 import { executeAgentChatTaskFlow } from './agent-chat-task-executor'
 import { executeAgentWorkspaceTaskFlow } from './agent-workspace-task-executor'
 import { executeResearchTaskFlow } from '../research/executor'
@@ -112,6 +114,10 @@ const GENERATION_TASK_STAGE_LABELS: Record<string, string> = {
   'image_task:request_success': '图片任务请求成功',
   'image_task:stopped': '图片任务已停止',
   'image_task:failed': '图片任务执行失败',
+  'video_task:request_start': '视频任务开始请求',
+  'video_task:request_success': '视频任务请求成功',
+  'video_task:stopped': '视频任务已停止',
+  'video_task:failed': '视频任务执行失败',
   'agent_task:failed': '智能体对话任务执行失败',
   'agent_workspace_task:failed': '智能体工作台任务执行失败',
   'research_task:completed': '研究任务执行完成',
@@ -164,6 +170,7 @@ const buildGatewayAssociationNo = () => {
 // 统一构造任务执行策略上下文，先把停止/失败收口逻辑从中心 service 中迁出。
 const buildTaskExecutionStrategyContext = () => ({
   executeImageGenerationTask,
+  executeVideoGenerationTask,
   executeAgentChatTask,
   executeAgentWorkspaceTask,
   executeResearchReportTask,
@@ -214,6 +221,20 @@ const executeImageGenerationTask = async (task: RunningGenerationTask, payload: 
         logGenerationTask,
       }),
     }),
+    buildInitialRecordPayload,
+    updateGenerationRecord,
+    getGenerationRecordById,
+    emitTaskStreamEvent: (recordId, event) => emitTaskStreamEvent(recordId, event, taskEventEmitterContext),
+    logGenerationTask,
+  })
+}
+
+const executeVideoGenerationTask = async (task: RunningGenerationTask, payload: GenerationTaskStartPayload) => {
+  await executeVideoTask(task, payload, {
+    syncSharedTaskRuntime,
+    ensureTaskNotAborted: runningTask => ensureTaskNotAborted(runningTask, { abortTaskWithReason }),
+    emitTaskProgressEvent: (recordId, input) => emitTaskProgressEvent(recordId, input, taskEventEmitterContext),
+    requestVideoGeneration,
     buildInitialRecordPayload,
     updateGenerationRecord,
     getGenerationRecordById,

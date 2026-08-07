@@ -74,7 +74,7 @@ interface TaskLifecycleContext {
   resolveGenerationPointCost: (input: {
     providerId: string
     modelKey: string
-    endpointType: 'chat' | 'image'
+    endpointType: 'chat' | 'image' | 'video'
     capabilityFlags?: ModelCapabilityFlags | null
   }) => Promise<BillingDetail>
   consumeGenerationPoints: (input: {
@@ -82,7 +82,7 @@ interface TaskLifecycleContext {
     pointCost: number
     sourceId: string
     associationNo: string
-    endpointType: 'chat' | 'image'
+    endpointType: 'chat' | 'image' | 'video'
     providerId: string
     modelKey: string
     modelName: string
@@ -173,13 +173,17 @@ const resolveTaskBillingTarget = (
   const providerId = String((payload.requestBody || {}).providerId || '').trim()
   const modelKey = String(payload.modelKey || '').trim()
   const isImageTask = strategyKey === 'image'
+  const isVideoTask = strategyKey === 'video'
 
   if (!providerId) {
     throw new GenerationTaskRequestError(400, '未匹配到后台模型配置，请先在后台配置可用模型')
   }
 
   if (!modelKey) {
-    throw new GenerationTaskRequestError(400, isImageTask ? '缺少图片模型标识' : '缺少对话模型标识')
+    throw new GenerationTaskRequestError(
+      400,
+      isImageTask ? '缺少图片模型标识' : isVideoTask ? '缺少视频模型标识' : '缺少对话模型标识',
+    )
   }
 
   return {
@@ -264,7 +268,7 @@ export const startGenerationTask = async (
       const task: RunningGenerationTask = {
         recordId: createdRecord.id,
         userId: currentUserId,
-        type: payload.type,
+        type: strategy.key === 'research-report' ? 'research' : 'agent',
         strategyKey: strategy.key,
         abortController: new AbortController(),
         associationNo,
@@ -396,10 +400,11 @@ export const startGenerationTask = async (
       skillKey,
     })
 
+    const mediaEndpointType = strategy.key === 'video' ? 'video' : 'image'
     const billingDetail = await context.resolveGenerationPointCost({
       providerId,
       modelKey,
-      endpointType: 'image',
+      endpointType: mediaEndpointType,
     })
     const associationNo = context.buildGatewayAssociationNo()
     const pointLog = billingDetail.pointCost > 0
@@ -408,7 +413,7 @@ export const startGenerationTask = async (
         pointCost: billingDetail.pointCost,
         sourceId: associationNo,
         associationNo,
-        endpointType: 'image',
+        endpointType: mediaEndpointType,
         providerId,
         modelKey,
         modelName: billingDetail.modelName,
@@ -431,11 +436,11 @@ export const startGenerationTask = async (
     const task: RunningGenerationTask = {
       recordId: createdRecord.id,
       userId: currentUserId,
-      type: 'image',
+      type: mediaEndpointType,
       strategyKey: strategy.key,
       abortController: new AbortController(),
       associationNo,
-      billedEndpointType: 'image',
+      billedEndpointType: mediaEndpointType,
       billedPointCost: pointLog ? billingDetail.pointCost : 0,
       billedProviderId: providerId,
       billedModelKey: modelKey,

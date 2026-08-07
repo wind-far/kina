@@ -95,9 +95,6 @@ export const createWorkflowRun = async (
   if (!version) throw new WorkflowRunRequestError(404, '工作流版本不存在')
   const runNodes = normalizeWorkflowRunNodes(payload.nodes, version.nodesJson)
   const executor = payload.executor === 'SERVER' ? 'SERVER' : 'BROWSER'
-  if (executor === 'SERVER' && runNodes.some(node => node.nodeType === 'videoConfig')) {
-    throw new WorkflowRunRequestError(400, '服务端执行暂不支持视频节点；请先移除视频节点或改用单节点手动生成')
-  }
   const now = new Date()
 
   return await prisma.$transaction(async (tx) => {

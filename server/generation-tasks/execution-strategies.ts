@@ -26,6 +26,7 @@ type EmitTaskStreamEvent = (recordId: string, event: GenerationTaskStreamEvent) 
 
 export interface GenerationTaskExecutionStrategyContext {
   executeImageGenerationTask: (task: SettlementTask, payload: GenerationTaskStartPayload) => Promise<void>
+  executeVideoGenerationTask: (task: SettlementTask, payload: GenerationTaskStartPayload) => Promise<void>
   executeAgentChatTask: (task: SettlementTask, payload: GenerationTaskStartPayload) => Promise<void>
   executeAgentWorkspaceTask: (task: SettlementTask, payload: GenerationTaskStartPayload) => Promise<void>
   executeResearchReportTask: (task: SettlementTask, payload: GenerationTaskStartPayload) => Promise<void>
@@ -37,7 +38,7 @@ export interface GenerationTaskExecutionStrategyContext {
   emitTaskProgressEvent: EmitTaskProgressEvent
   emitTaskStreamEvent: EmitTaskStreamEvent
   buildInitialRecordPayload: (payload: GenerationTaskStartPayload) => GenerationRecordPayload
-  updateGenerationRecord: (recordId: string, payload: GenerationRecordPayload, currentUserId: string) => Promise<void>
+  updateGenerationRecord: (recordId: string, payload: GenerationRecordPayload, currentUserId: string) => Promise<unknown>
   getGenerationRecordById: (recordId: string, currentUserId: string) => Promise<SettlementRecord>
   syncSharedTaskRuntime: (task: SettlementTask, status: 'stopped' | 'failed') => Promise<void>
   buildAgentStoppedRun: (agentRun: AgentRunState, message: string) => AgentRunState
@@ -152,6 +153,81 @@ const imageTaskExecutionStrategy: GenerationTaskExecutionStrategy = {
     }
 
     return context.normalizeGenerationErrorMessage(error, '图片生成失败')
+  },
+}
+
+const videoTaskExecutionStrategy: GenerationTaskExecutionStrategy = {
+  key: 'video',
+  execute(task, payload, context) {
+    return context.executeVideoGenerationTask(task, payload)
+  },
+  async handleStopped(task, payload, context) {
+    await context.refundTaskPointsIfNeeded(task, 'task_aborted')
+    await context.markTaskExecutionState(task, {
+      lastErrorAt: new Date().toISOString(),
+      lastErrorMessage: '任务已收到停止指令',
+    })
+    context.emitTaskProgressEvent(task.recordId, {
+      stage: 'stopping',
+      stopped: true,
+      message: '视频任务已收到停止指令，正在收口状态',
+    })
+    await context.updateGenerationRecord(task.recordId, {
+      ...context.buildInitialRecordPayload(payload),
+      done: true,
+      stopped: true,
+      error: '',
+      outputs: [],
+    }, task.userId)
+    const stoppedRecord = await context.getGenerationRecordById(task.recordId, task.userId)
+    await context.syncSharedTaskRuntime(task, 'stopped')
+    context.emitTaskStreamEvent(task.recordId, {
+      type: 'stopped',
+      recordId: task.recordId,
+      done: true,
+      stopped: true,
+      record: stoppedRecord,
+      stage: 'stopped',
+      message: '视频任务已停止',
+    })
+    context.logGenerationTask('video_task:stopped', { recordId: task.recordId, userId: task.userId })
+  },
+  async handleFailed(task, payload, error, errorMessage, context) {
+    await context.refundTaskPointsIfNeeded(task, 'task_failed')
+    await context.markTaskExecutionState(task, {
+      lastErrorAt: new Date().toISOString(),
+      lastErrorMessage: errorMessage,
+    })
+    context.emitTaskProgressEvent(task.recordId, {
+      stage: 'failing',
+      message: '视频任务执行异常，正在写入失败状态',
+    })
+    await context.updateGenerationRecord(task.recordId, {
+      ...context.buildInitialRecordPayload(payload),
+      done: true,
+      stopped: false,
+      error: errorMessage,
+      outputs: [],
+    }, task.userId)
+    const failedRecord = await context.getGenerationRecordById(task.recordId, task.userId)
+    await context.syncSharedTaskRuntime(task, 'failed')
+    context.emitTaskStreamEvent(task.recordId, {
+      type: 'failed',
+      recordId: task.recordId,
+      done: true,
+      stopped: false,
+      record: failedRecord,
+      stage: 'failed',
+      message: errorMessage,
+    })
+    context.logGenerationTaskError('video_task:failed', error, {
+      recordId: task.recordId,
+      userId: task.userId,
+    })
+  },
+  resolveFailureMessage(error, abortReason, context) {
+    if (abortReason === 'execution_lock_lost') return '任务执行锁已失效，系统已中断本次视频生成'
+    return context.normalizeGenerationErrorMessage(error, '视频生成失败')
   },
 }
 
@@ -395,6 +471,7 @@ const researchReportTaskExecutionStrategy: GenerationTaskExecutionStrategy = {
 
 const EXECUTION_STRATEGY_REGISTRY: Record<GenerationTaskStrategyKey, GenerationTaskExecutionStrategy> = {
   image: imageTaskExecutionStrategy,
+  video: videoTaskExecutionStrategy,
   'agent-chat': agentChatTaskExecutionStrategy,
   'agent-workspace': agentWorkspaceTaskExecutionStrategy,
   'research-report': researchReportTaskExecutionStrategy,

@@ -17,13 +17,16 @@ const savedNodes = [
   { id: 'input', type: 'text', data: { label: '输入' } },
   { id: 'llm', type: 'llmConfig', data: { label: '文本生成' } },
   { id: 'image', type: 'imageConfig', data: { label: '图片生成' } },
+  { id: 'video', type: 'videoConfig', data: { label: '视频生成' } },
 ]
 assert.deepEqual(normalizeWorkflowRunNodes([
   { id: 'llm', type: 'llmConfig' },
   { id: 'image', type: 'imageConfig', label: '自定义图片节点' },
+  { id: 'video', type: 'videoConfig' },
 ], savedNodes), [
   { nodeId: 'llm', nodeType: 'llmConfig', label: '文本生成', sortOrder: 0 },
   { nodeId: 'image', nodeType: 'imageConfig', label: '自定义图片节点', sortOrder: 1 },
+  { nodeId: 'video', nodeType: 'videoConfig', label: '视频生成', sortOrder: 2 },
 ])
 
 assert.throws(

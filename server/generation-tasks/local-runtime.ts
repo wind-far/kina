@@ -3,7 +3,7 @@ import type { GenerationTaskStreamEvent } from './shared'
 export interface LocalRunningGenerationTask {
   recordId: string
   userId: string
-  type: 'image' | 'agent' | 'research'
+  type: 'image' | 'video' | 'agent' | 'research'
   strategyKey: string
   abortController: AbortController
   associationNo: string

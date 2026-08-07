@@ -15,6 +15,10 @@ import {
   getDefaultChatModelKey,
 } from '@/config/models'
 import { appendImageReferencesToRequestBody } from '@/shared/image-generation-request'
+import {
+  buildWorkflowAssistantContextPrompt,
+  collectWorkflowAssistantImageReferences,
+} from '@/shared/workflow-assistant-context'
 import { useAssistantSessions } from '@/composables/useAssistantSessions'
 
 const props = defineProps({
@@ -129,18 +133,6 @@ const lastImageOptions = ref({})
 const canvasContextReferences = computed(() => (Array.isArray(props.contextReferences)
   ? props.contextReferences.filter(item => item && item.id).slice(0, 12)
   : []))
-const canvasContextImageUrls = computed(() => [...new Set(canvasContextReferences.value
-  .filter(item => item.type === 'image' && item.url)
-  .map(item => item.url))])
-const buildContextualPrompt = (content) => {
-  if (!canvasContextReferences.value.length) return content
-  const contextLines = canvasContextReferences.value.map((item) => {
-    const relation = item.relation === 'selected' ? '选中' : '上游'
-    const details = item.content ? `：${String(item.content).slice(0, 800)}` : item.url ? `：${item.url}` : ''
-    return `- [${relation}/${item.type}] ${item.label}${details}`
-  })
-  return `${content}\n\n以下是当前画布上下文，请仅在相关时使用：\n${contextLines.join('\n')}`
-}
 
 // 跟踪进行中的流式请求，用于卸载时统一 abort
 const activeStreams = []
@@ -500,10 +492,11 @@ const sendMessage = async () => {
 
   const userId = Date.now()
   const goImage = hasImagesLocal || lastCreationType.value === 'image'
-  const refImages = [...new Set([
-    ...uploadedImages.value.map(img => img.src),
-    ...(goImage ? canvasContextImageUrls.value : []),
-  ])]
+  const refImages = collectWorkflowAssistantImageReferences(
+    uploadedImages.value.map(img => img.src),
+    canvasContextReferences.value,
+    goImage ? 'image' : 'agent',
+  )
 
   if (hasImagesLocal) {
     messages.value.push({
@@ -548,7 +541,7 @@ const sendMessage = async () => {
       error: '',
     })
     scrollToBottom()
-    await runChatStream(buildContextualPrompt(content), tailMessage())
+    await runChatStream(buildWorkflowAssistantContextPrompt(content, canvasContextReferences.value), tailMessage())
   }
 }
 

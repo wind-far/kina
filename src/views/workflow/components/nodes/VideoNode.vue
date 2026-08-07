@@ -179,19 +179,41 @@ const connectedPromptReferences = computed<WorkflowPromptReference[]>(() => {
     .filter(edge => referenceTargets.has(edge.target))
     .map(edge => nodes.value.find(node => node.id === edge.source))
     .filter((node): node is WorkflowCanvasNode<'image'> => isWorkflowImageNode(node) && Boolean(node.data.url))
-    .map(node => ({ id: node.id, url: String(node.data.url), label: String(node.data.label || '参考图') }))
+    .map(node => ({ id: node.id, url: String(node.data.url), label: String(node.data.label || '参考图'), isSubject: Boolean(node.data.isSubject) }))
 
   return mergeWorkflowPromptReferences(connected)
 })
 
+const subjectPromptReferences = computed<WorkflowPromptReference[]>(() => nodes.value
+  .filter((node): node is WorkflowCanvasNode<'image'> => isWorkflowImageNode(node) && Boolean(node.data.url) && Boolean(node.data.isSubject))
+  .map(node => ({ id: node.id, url: String(node.data.url), label: String(node.data.label || '主体'), isSubject: true })))
+
 const promptReferences = computed(() => mergeWorkflowPromptReferences(
   connectedPromptReferences.value,
+  subjectPromptReferences.value,
   promptUploadedReferences.value,
 ).filter(reference => !promptExcludedReferenceIds.value.includes(reference.id)))
 
 const availablePromptReferences = computed<WorkflowPromptReference[]>(() => nodes.value
   .filter((node): node is WorkflowCanvasNode<'image'> => isWorkflowImageNode(node) && Boolean(node.data.url))
-  .map(node => ({ id: node.id, url: String(node.data.url), label: String(node.data.label || '参考图') })))
+  .map(node => ({ id: node.id, url: String(node.data.url), label: String(node.data.label || '参考图'), isSubject: Boolean(node.data.isSubject) })))
+
+const promptSubjectCandidate = computed(() => connectedPromptReferences.value[0])
+const handleCreateSubject = () => {
+  const candidate = promptSubjectCandidate.value
+  if (!candidate) {
+    ElMessage.info('请先连接一张参考图片，再创建主体')
+    return
+  }
+  const imageNode = nodes.value.find((node): node is WorkflowCanvasNode<'image'> => (
+    node.id === candidate.id && isWorkflowImageNode(node)
+  ))
+  if (!imageNode) return
+  const nextValue = !Boolean(imageNode.data.isSubject)
+  updateNode(imageNode.id, { isSubject: nextValue })
+  promptExcludedReferenceIds.value = promptExcludedReferenceIds.value.filter(id => id !== imageNode.id)
+  ElMessage.success(nextValue ? '已设为主体，并加入当前参考' : '已取消主体标记')
+}
 
 const handlePromptFiles = async (files: File[]) => {
   const availableSlots = getWorkflowPromptAvailableReferenceSlots(promptReferences.value.length)
@@ -376,11 +398,12 @@ onMounted(async () => {
         :model-options="promptModelOptions"
         :references="promptReferences"
         :available-references="availablePromptReferences"
+        :create-subject-label="promptSubjectCandidate?.isSubject ? '取消主体' : '创建主体'"
         :count="promptCount"
         placeholder="描述你想生成的视频画面，按 Enter 发送"
         @add-files="handlePromptFiles"
         @remove-reference="handlePromptRemoveReference"
-        @create-subject="ElMessage.info('主体功能暂未开放，可先直接引用画布图片')"
+        @create-subject="handleCreateSubject"
         @count-change="promptCount = $event"
         @send="handlePromptSend"
       />

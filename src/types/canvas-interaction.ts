@@ -194,4 +194,6 @@ export const NODE_SIZE_DEFAULTS: Record<WorkflowNodeType, NodeSizeConstraint> = 
   imageConfig: { minWidth: 280, minHeight: 200 },
   videoConfig: { minWidth: 280, minHeight: 200 },
   llmConfig: { minWidth: 320, minHeight: 220 },
+  director: { minWidth: 360, minHeight: 310 },
+  audio: { minWidth: 340, minHeight: 230 },
 }

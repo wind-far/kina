@@ -25,6 +25,7 @@ export interface WorkflowPromptReference {
   id: string
   url?: string
   label: string
+  isSubject?: boolean
 }
 
 export interface WorkflowPromptSendOptions {
@@ -53,6 +54,7 @@ const props = withDefaults(defineProps<{
   sending?: boolean
   videoFeature?: WorkflowVideoFeature
   hideTypeSelector?: boolean
+  createSubjectLabel?: string
 }>(), {
   generationMode: 'image',
   modelKey: '',
@@ -64,6 +66,7 @@ const props = withDefaults(defineProps<{
   placeholder: '描述你想基于当前图片生成的内容，可切换为视频；按 Enter 发送',
   sending: false,
   hideTypeSelector: false,
+  createSubjectLabel: '创建主体',
 })
 
 const emit = defineEmits<{
@@ -494,9 +497,9 @@ onUnmounted(() => {
     <Transition name="workflow-prompt-popover">
       <div v-if="openPanel === 'reference'" class="workflow-prompt-popover workflow-prompt-reference-popover">
         <div class="workflow-prompt-popover__title">可能 <span>@</span> 的内容</div>
-        <button type="button" class="workflow-prompt-reference-create" @click="requestCreateSubject"><span>＋</span><span>创建主体</span></button>
+        <button type="button" class="workflow-prompt-reference-create" @click="requestCreateSubject"><span>＋</span><span>{{ createSubjectLabel }}</span></button>
         <div class="workflow-prompt-reference-list">
-          <button v-for="reference in availableReferences" :key="reference.id" type="button" :disabled="isReferenceUnavailable(reference)" @click="selectReference(reference)"><img v-if="reference.url" :src="reference.url" alt=""><span v-else>{{ reference.label.slice(0, 2) }}</span><strong>{{ reference.label }}</strong><small v-if="selectedMentionIds.includes(reference.id)">已引用</small><small v-else-if="isReferenceUnavailable(reference)">已达上限</small></button>
+          <button v-for="reference in availableReferences" :key="reference.id" type="button" :disabled="isReferenceUnavailable(reference)" @click="selectReference(reference)"><img v-if="reference.url" :src="reference.url" alt=""><span v-else>{{ reference.label.slice(0, 2) }}</span><strong>{{ reference.label }}</strong><em v-if="reference.isSubject">主体</em><small v-if="selectedMentionIds.includes(reference.id)">已引用</small><small v-else-if="isReferenceUnavailable(reference)">已达上限</small></button>
           <div v-if="availableReferences.length === 0" class="workflow-prompt-reference-empty">画布中暂无可引用素材</div>
         </div>
       </div>
@@ -630,12 +633,13 @@ onUnmounted(() => {
 .workflow-prompt-reference-create { display: flex; align-items: center; gap: 12px; width: 100%; height: 48px; padding: 0 14px; border: 0; border-radius: 10px; background: #f1f2f3; color: #0f1419; cursor: pointer; }
 .workflow-prompt-reference-create:disabled { opacity: .45; cursor: default; }
 .workflow-prompt-reference-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; max-height: 190px; overflow-y: auto; }
-.workflow-prompt-reference-list button { display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 10px; min-height: 48px; padding: 4px 10px; border: 0; border-radius: 9px; background: transparent; color: #0f1419; text-align: left; cursor: pointer; }
+.workflow-prompt-reference-list button { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 48px; padding: 4px 10px; border: 0; border-radius: 9px; background: transparent; color: #0f1419; text-align: left; cursor: pointer; }
 .workflow-prompt-reference-list button:hover { background: #f7f8f8; }
 .workflow-prompt-reference-list button:disabled { opacity: .55; cursor: default; }
 .workflow-prompt-reference-list img, .workflow-prompt-reference-list button > span:first-child { width: 36px; height: 36px; border-radius: 5px; object-fit: cover; }
 .workflow-prompt-reference-list button > span:first-child { display: flex; align-items: center; justify-content: center; background: #eef0f2; color: #536471; font-size: 11px; }
 .workflow-prompt-reference-list strong { font-size: 13px; font-weight: 500; }
+.workflow-prompt-reference-list em { padding: 2px 6px; border-radius: 999px; background: #e8fff8; color: #008d69; font-size: 10px; font-style: normal; }
 .workflow-prompt-reference-list small { color: #8899a6; font-size: 11px; }
 .workflow-prompt-reference-empty { padding: 26px 0; color: #8899a6; font-size: 12px; text-align: center; }
 .workflow-prompt-popover-enter-active, .workflow-prompt-popover-leave-active { transition: opacity .12s, transform .12s; }

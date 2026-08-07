@@ -5,7 +5,6 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { CopyDocument, Delete, VideoCamera } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasConfigNodeShell from '@/components/canvas/CanvasConfigNodeShell.vue'
 import {
@@ -34,10 +33,6 @@ const props = defineProps<{
 const isSelected = computed(() => props.selected || props.data?.selected)
 const { updateNodeInternals } = useVueFlow()
 const handleAddNode = ({ side, type }: { side: 'left' | 'right'; type: WorkflowNodeAddMenuType }) => {
-  if (type === 'director' || type === 'audio') {
-    ElMessage.info(`${type === 'director' ? '导演台' : '音频'}节点暂未开放`)
-    return
-  }
   const newId = addConnectedWorkflowNode(props.id, side, type)
   if (newId) window.setTimeout(() => updateNodeInternals([props.id, newId]), 50)
 }

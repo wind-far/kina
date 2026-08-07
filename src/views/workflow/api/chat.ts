@@ -19,6 +19,7 @@ interface WorkflowChatMessage {
 interface WorkflowChatStreamPayload {
   model?: string
   messages?: WorkflowChatMessage[]
+  referenceImages?: string[]
   [key: string]: unknown
 }
 
@@ -51,6 +52,9 @@ export async function* streamChatCompletions(
   signal?.addEventListener('abort', abortWithExternalSignal, { once: true })
 
   const messages = Array.isArray(data.messages) ? data.messages : []
+  const referenceImages = Array.isArray(data.referenceImages)
+    ? data.referenceImages.map(item => String(item || '').trim()).filter(Boolean)
+    : []
   const { providerId, modelKey } = resolveGenerationTaskModel({
     modelKey: typeof data.model === 'string' ? data.model : '',
     category: 'CHAT',
@@ -64,10 +68,12 @@ export async function* streamChatCompletions(
     model: typeof data.model === 'string' ? data.model : modelKey,
     modelKey,
     skill: 'general',
+    referenceImages,
     requestBody: {
       providerId,
       model: modelKey,
       messages,
+      referenceImages,
       stream: true,
     },
   }, { signal: controller.signal })

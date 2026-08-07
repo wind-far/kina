@@ -22,8 +22,9 @@ import { computed, ref, watch } from 'vue'
 import { getDefaultChatModelKey, getDefaultImageModelKey, getDefaultVideoModelKey, getModelByName } from '@/config/models'
 import type { WorkflowCanvasPosition } from './workflow-orchestrator-types'
 import workflowReferenceSample from '@/assets/workflow-reference-sample.svg'
+import { resolveWorkflowNodeMenuTarget } from '@/shared/workflow-node-menu'
 
-export type WorkflowNodeType = 'text' | 'imageConfig' | 'videoConfig' | 'image' | 'video' | 'llmConfig'
+export type WorkflowNodeType = 'text' | 'imageConfig' | 'videoConfig' | 'image' | 'video' | 'llmConfig' | 'director' | 'audio'
 export type WorkflowNodeAddMenuType = 'text' | 'image' | 'video' | 'director' | 'audio' | 'reference'
 
 export interface WorkflowNodeDataBase {
@@ -63,6 +64,8 @@ export interface WorkflowVideoConfigNodeData extends WorkflowNodeDataBase {
 
 export interface WorkflowImageNodeData extends WorkflowNodeDataBase {
   url: string
+  /** 作为画布主体引用，随工作流持久化并自动加入生成参考 */
+  isSubject?: boolean
   base64?: string
   duration?: number
   /** 批量生图组首标记（节点内自渲染叠卡） */
@@ -87,6 +90,19 @@ export interface WorkflowLlmConfigNodeData extends WorkflowNodeDataBase {
   outputContent?: string
 }
 
+export interface WorkflowDirectorNodeData extends WorkflowNodeDataBase {
+  brief: string
+  shotPlan: string
+  mode?: 'storyboard' | 'commercial' | 'short-video'
+}
+
+export interface WorkflowAudioNodeData extends WorkflowNodeDataBase {
+  url: string
+  fileName?: string
+  transcript?: string
+  duration?: number
+}
+
 export interface WorkflowNodeDataMap {
   text: WorkflowTextNodeData
   imageConfig: WorkflowImageConfigNodeData
@@ -94,6 +110,8 @@ export interface WorkflowNodeDataMap {
   image: WorkflowImageNodeData
   video: WorkflowVideoNodeData
   llmConfig: WorkflowLlmConfigNodeData
+  director: WorkflowDirectorNodeData
+  audio: WorkflowAudioNodeData
 }
 
 export type WorkflowNodeData = WorkflowNodeDataMap[WorkflowNodeType]
@@ -335,6 +353,20 @@ const getDefaultNodeData = <T extends WorkflowNodeType>(type: T): WorkflowNodeDa
         outputContent: '',
         label: 'LLM文本生成'
       } as WorkflowNodeDataMap[T]
+    case 'director':
+      return {
+        brief: '',
+        shotPlan: '',
+        mode: 'storyboard',
+        label: '导演台',
+      } as WorkflowNodeDataMap[T]
+    case 'audio':
+      return {
+        url: '',
+        transcript: '',
+        duration: 0,
+        label: '音频节点',
+      } as WorkflowNodeDataMap[T]
     default:
       throw new Error(`不支持的节点类型: ${String(type)}`)
   }
@@ -481,30 +513,16 @@ export const addTypedWorkflowEdge = (params: WorkflowAddEdgeParams) => {
   return addEdge(params)
 }
 
-/**
- * 参考站左右加号：在锚点同一水平线上创建节点并立即连线。
- * director/audio 尚无对应节点类型，交由调用方显示未开放提示。
- */
+/** 参考站左右加号：按菜单类型创建真实节点，并立即连线。 */
 export const addConnectedWorkflowNode = (
   anchorId: string,
   side: 'left' | 'right',
   menuType: WorkflowNodeAddMenuType,
 ) => {
   const anchor = nodes.value.find(node => node.id === anchorId)
-  if (!anchor || menuType === 'director' || menuType === 'audio') return null
+  if (!anchor) return null
 
-  const nodeType: WorkflowNodeType = menuType === 'text'
-    ? 'text'
-    : menuType === 'video'
-      ? 'video'
-      : 'image'
-  const label = menuType === 'reference'
-    ? '参考节点'
-    : nodeType === 'text'
-      ? '文本输入'
-      : nodeType === 'video'
-        ? '视频节点'
-        : '图片节点'
+  const { nodeType, label } = resolveWorkflowNodeMenuTarget(menuType)
   const id = addNode(nodeType, {
     x: anchor.position.x + (side === 'right' ? 440 : -440),
     y: anchor.position.y,

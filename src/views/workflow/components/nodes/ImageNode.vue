@@ -158,6 +158,46 @@ const autoCreateDownstreamImageNode = () => {
   }, 100)
 }
 
+const focusNode = (nodeId: string) => {
+  setTimeout(() => {
+    updateNodeInternals([nodeId])
+    const allNodes = getNodes.value
+    removeSelectedNodes(allNodes.filter(node => node.selected))
+    const target = allNodes.find(node => node.id === nodeId)
+    if (target) addSelectedNodes([target])
+  }, 80)
+}
+
+const createDownstreamImageNode = (label: string) => {
+  const node = nodes.value.find(item => item.id === props.id)
+  if (!node) return ''
+  const siblingCount = edges.value.filter(edge => edge.source === props.id).length
+  const newId = addNode('image', {
+    x: node.position.x + 470,
+    y: node.position.y + siblingCount * 310,
+  }, { label })
+  addEdge({
+    source: props.id,
+    target: newId,
+    sourceHandle: 'right',
+    targetHandle: 'left',
+    type: 'imageOrder',
+    data: { imageOrder: siblingCount + 1 },
+  })
+  focusNode(newId)
+  return newId
+}
+
+const queueImageVariation = (label: string, prompt: string) => {
+  if (!requireImage()) return
+  const newId = createDownstreamImageNode(label)
+  if (!newId) return
+  window.dispatchEvent(new CustomEvent('canvasmind:workflow-image-tool-preset', {
+    detail: { nodeId: newId, text: prompt },
+  }))
+  ElMessage.success(`已创建“${label}”结果节点，可在输入栏继续调整后生成`)
+}
+
 const handleDownload = async () => {
   if (!imageUrl.value) return
   try {
@@ -285,6 +325,79 @@ const saveCrop = async () => {
   }
 }
 
+const gridSaving = ref(false)
+const splitImageGrid = async (rows: number, columns: number) => {
+  if (!imageUrl.value || gridSaving.value || !requireImage()) return
+  gridSaving.value = true
+  try {
+    const response = await fetch(imageUrl.value)
+    if (!response.ok) throw new Error(`读取图片失败 (${response.status})`)
+    const bitmap = await createImageBitmap(await response.blob())
+    const cellWidth = bitmap.width / columns
+    const cellHeight = bitmap.height / rows
+    const outputBlobs: Blob[] = []
+    for (let row = 0; row < rows; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(cellWidth))
+        canvas.height = Math.max(1, Math.round(cellHeight))
+        const context = canvas.getContext('2d')
+        if (!context) throw new Error('浏览器不支持宫格切分')
+        context.drawImage(
+          bitmap,
+          column * cellWidth,
+          row * cellHeight,
+          cellWidth,
+          cellHeight,
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        )
+        outputBlobs.push(await new Promise<Blob>((resolve, reject) => canvas.toBlob(
+          blob => blob ? resolve(blob) : reject(new Error('切分图片导出失败')),
+          'image/png',
+          0.94,
+        )))
+      }
+    }
+    bitmap.close()
+    const uploaded = await Promise.all(outputBlobs.map((blob, index) => uploadStorageFile(
+      new File([blob], `grid-${rows}x${columns}-${index + 1}.png`, { type: 'image/png' }),
+      'asset',
+    )))
+    const sourceNode = nodes.value.find(node => node.id === props.id)
+    if (!sourceNode) throw new Error('原图片节点不存在')
+    const startX = sourceNode.position.x + 470
+    const startY = sourceNode.position.y
+    let lastNodeId = ''
+    uploaded.forEach((file, index) => {
+      if (!file?.publicUrl) return
+      const row = Math.floor(index / columns)
+      const column = index % columns
+      const newId = addNode('image', {
+        x: startX + column * 365,
+        y: startY + row * 315,
+      }, { url: file.publicUrl, label: `宫格 ${index + 1}` })
+      addEdge({
+        source: props.id,
+        target: newId,
+        sourceHandle: 'right',
+        targetHandle: 'left',
+        type: 'imageOrder',
+        data: { imageOrder: index + 1 },
+      })
+      lastNodeId = newId
+    })
+    if (lastNodeId) focusNode(lastNodeId)
+    ElMessage.success(`已切分为 ${rows * columns} 张图片`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '宫格切分失败')
+  } finally {
+    gridSaving.value = false
+  }
+}
+
 const hoverActions = computed<NodeToolbarAction[]>(() => {
   const list: NodeToolbarAction[] = [
     { id: 'duplicate', label: '复制', icon: CopyDocument, onClick: handleDuplicate },
@@ -349,21 +462,81 @@ const upstreamReferenceUrls = computed<string[]>(() => {
   return refs
 })
 
-// 顶部悬浮工具栏（参照 RunningHUB .image-toolbar）：仅在选中 + 有图时显示
+const handleToolbarMenu = (group: string, command: string) => {
+  const presets: Record<string, { label: string; prompt: string }> = {
+    'panorama:wide': { label: '横向全景', prompt: '将参考图扩展为 2:1 横向全景构图，补全两侧环境，保持主体、风格与光线一致。' },
+    'panorama:vertical': { label: '纵向全景', prompt: '将参考图扩展为 9:16 纵向全景构图，补全上下环境，保持主体、风格与光线一致。' },
+    'panorama:360': { label: '360° 环景', prompt: '基于参考图生成 360 度环景视图，场景衔接自然，保持空间结构和光线一致。' },
+    'angle:front': { label: '正视角', prompt: '将参考图调整为正面视角，保持主体外观、服装、材质和场景风格一致。' },
+    'angle:side': { label: '侧面 45°', prompt: '将参考图调整为侧面 45 度视角，保持主体外观、材质和光线一致。' },
+    'angle:top': { label: '俯视角', prompt: '将参考图调整为从上向下的俯视视角，保持主体与场景一致。' },
+    'angle:low': { label: '低机位仰视', prompt: '将参考图调整为低机位仰视视角，保持主体与场景一致。' },
+    'light:natural': { label: '自然日光', prompt: '将参考图改为柔和自然日光，保持主体、构图和材质一致。' },
+    'light:studio': { label: '摄影棚光', prompt: '将参考图改为专业摄影棚布光，轮廓清晰，保持主体和构图一致。' },
+    'light:golden': { label: '黄金时刻', prompt: '将参考图改为黄金时刻的温暖侧光，保持主体与场景结构一致。' },
+    'light:night': { label: '霓虹夜景', prompt: '将参考图改为霓虹夜景光效，保持主体、构图与场景结构一致。' },
+    'more:upscale': { label: '高清修复', prompt: '高清修复参考图，增强细节与清晰度，保持内容、构图和风格不变。' },
+    'more:remove-bg': { label: '去除背景', prompt: '移除参考图背景并输出干净的纯色背景，保持主体边缘与细节完整。' },
+    'more:consistent': { label: '风格一致化', prompt: '优化参考图的整体风格一致性，保持主体、构图与关键元素不变。' },
+  }
+  if (group === 'grid') {
+    const [rows, columns] = command.split('x').map(Number)
+    void splitImageGrid(rows, columns)
+    return
+  }
+  if (group === 'more' && command === 'duplicate') {
+    handleDuplicate()
+    return
+  }
+  const preset = presets[`${group}:${command}`]
+  if (preset) queueImageVariation(preset.label, preset.prompt)
+}
+
+const addImageToAssistant = () => {
+  if (!requireImage()) return
+  window.dispatchEvent(new CustomEvent('canvasmind:open-workflow-assistant', {
+    detail: { nodeId: props.id },
+  }))
+}
+
+// 顶部悬浮工具栏：结构与参考页一致，AI 变换先创建下游节点并预填提示词，不自动消耗额度。
 const topToolbarItems = computed<NodeTopToolbarItem[]>(() => [
-  { id: 'panorama', label: '全景图', icon: Aim, hasDropdown: true, onClick: () => ElMessage.info('全景图：接入中') },
+  { id: 'panorama', label: '全景图', icon: Aim, hasDropdown: true, menuItems: [
+    { id: 'wide', label: '横向全景 2:1' },
+    { id: 'vertical', label: '纵向全景 9:16' },
+    { id: '360', label: '360° 环景' },
+  ], onMenuSelect: command => handleToolbarMenu('panorama', command) },
   { id: 'edit', label: '编辑', icon: EditPen, onClick: openCropDialog },
-  { id: 'mood', label: '情绪', icon: PictureFilled, onClick: () => ElMessage.info('请选择下方输入栏描述目标情绪') },
-  { id: 'grid', label: '宫格切分', icon: Crop, hasDropdown: true, onClick: openCropDialog },
-  { id: 'angle', label: '角度', icon: Refresh, onClick: () => ElMessage.info('角度：接入中') },
-  { id: 'light', label: '打光', icon: Sunny, onClick: () => ElMessage.info('打光：接入中') },
-  { id: 'more', label: '更多', icon: MoreFilled, onClick: () => ElMessage.info('更多：接入中') },
+  { id: 'mood', label: '情绪', icon: PictureFilled, onClick: () => queueImageVariation('情绪调整', '调整参考图的情绪氛围与色彩表达，保持主体、构图和关键元素一致。') },
+  { id: 'grid', label: '宫格切分', icon: Crop, hasDropdown: true, disabled: gridSaving.value, menuItems: [
+    { id: '2x2', label: '四宫格 2×2' },
+    { id: '2x3', label: '六宫格 2×3' },
+    { id: '3x3', label: '九宫格 3×3' },
+  ], onMenuSelect: command => handleToolbarMenu('grid', command) },
+  { id: 'angle', label: '角度', icon: Refresh, hasDropdown: true, menuItems: [
+    { id: 'front', label: '正视角' },
+    { id: 'side', label: '侧面 45°' },
+    { id: 'top', label: '俯视角' },
+    { id: 'low', label: '低机位仰视' },
+  ], onMenuSelect: command => handleToolbarMenu('angle', command) },
+  { id: 'light', label: '打光', icon: Sunny, hasDropdown: true, menuItems: [
+    { id: 'natural', label: '自然日光' },
+    { id: 'studio', label: '摄影棚光' },
+    { id: 'golden', label: '黄金时刻' },
+    { id: 'night', label: '霓虹夜景' },
+  ], onMenuSelect: command => handleToolbarMenu('light', command) },
+  { id: 'more', label: '更多', icon: MoreFilled, hasDropdown: true, menuItems: [
+    { id: 'upscale', label: '高清修复' },
+    { id: 'remove-bg', label: '去除背景' },
+    { id: 'consistent', label: '风格一致化' },
+    { id: 'duplicate', label: '复制节点' },
+  ], onMenuSelect: command => handleToolbarMenu('more', command) },
   { type: 'divider' },
   { id: 'crop', label: '裁剪', icon: Crop, iconOnly: true, onClick: openCropDialog },
   { id: 'download-mini', label: '下载', icon: Download, iconOnly: true, onClick: handleDownload },
   { id: 'preview', label: '放大预览', icon: ZoomIn, iconOnly: true, onClick: () => imageUrl.value && window.open(imageUrl.value, '_blank') },
   { type: 'divider' },
-  { id: 'agent', label: '加入 Agent', textMark: 'R', onClick: () => ElMessage.info('加入 Agent：接入中') },
+  { id: 'agent', label: '加入 Agent', textMark: 'R', onClick: addImageToAssistant },
 ])
 
 // ContentGenerator 发送：用上游图作为参考 + 用户 prompt 调图生图，结果回填到当前节点

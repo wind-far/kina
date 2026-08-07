@@ -44,6 +44,8 @@ import ImageNode from './components/nodes/ImageNode.vue'
 import VideoConfigNode from './components/nodes/VideoConfigNode.vue'
 import VideoNode from './components/nodes/VideoNode.vue'
 import LlmConfigNode from './components/nodes/LlmConfigNode.vue'
+import DirectorNode from './components/nodes/DirectorNode.vue'
+import AudioNode from './components/nodes/AudioNode.vue'
 import AgentFab from './components/AgentFab.vue'
 
 // 边组件
@@ -59,15 +61,23 @@ import CanvasMiniMap from '@/components/canvas/CanvasMiniMap.vue'
 import CanvasConnectionLine from '@/components/canvas/CanvasConnectionLine.vue'
 import WorkflowPromptInput, {
   type WorkflowPromptModelOption,
+  type WorkflowPromptReference,
   type WorkflowPromptSendOptions,
 } from '@/components/canvas/WorkflowPromptInput.vue'
 import {
   getWorkflowPromptAvailableReferenceSlots,
+  mergeWorkflowPromptReferences,
   workflowPromptFileToDataUrl,
 } from '@/shared/workflow-prompt-references'
 import { resolveWorkflowPromptImageParameters } from '@/shared/workflow-prompt-image-parameters'
 import { isWorkflowPromptAnchorNodeType } from '@/shared/workflow-prompt-visibility'
 import { resolveWorkflowVideoReferenceRole } from '@/shared/workflow-video-prompt'
+import { collectWorkflowAssistantContext } from '@/shared/workflow-assistant-context'
+import {
+  collectWorkflowSubjectReferences,
+  isWorkflowSubjectNode,
+  resolveWorkflowReferenceUrl,
+} from '@/shared/workflow-subject-references'
 import RightPanel from '@components/canana/RightPanel.vue'
 import { useChatSessions } from '@/composables/useChatSessions'
 import { useAuthStore } from '@/stores/auth'
@@ -103,6 +113,8 @@ const nodeTypes = {
   videoConfig: markRaw(VideoConfigNode),
   video: markRaw(VideoNode),
   llmConfig: markRaw(LlmConfigNode),
+  director: markRaw(DirectorNode),
+  audio: markRaw(AudioNode),
 } as any
 
 // 注册自定义边类型
@@ -554,11 +566,37 @@ const nodeTypeOptions: WorkflowNodeOption[] = [
   { type: 'llmConfig', name: 'LLM 文本生成', color: '#a855f7', icon: 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z' },
   { type: 'image', name: '图片节点', color: '#8b5cf6', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
   { type: 'video', name: '视频节点', color: '#ef4444', icon: 'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z' },
+  { type: 'director', name: '导演台', color: '#ec4899', icon: 'M4 6h16v12H4zM8 3l2 3m4-3 2 3M9 10h6m-6 4h4' },
+  { type: 'audio', name: '音频节点', color: '#06b6d4', icon: 'M9 18V5l10-2v13M9 9l10-2M6 21a3 3 0 100-6 3 3 0 000 6zm10-2a3 3 0 100-6 3 3 0 000 6z' },
 ]
 
 const handleOpenAssistant = () => {
   if (isAssistantCollapsed.value) toggleAssistantPanel()
 }
+
+const handleOpenWorkflowAssistant = (event: Event) => {
+  const detail = (event as CustomEvent<{ nodeId?: string }>).detail
+  if (detail?.nodeId) promptAnchorNodeId.value = detail.nodeId
+  handleOpenAssistant()
+}
+
+const handleWorkflowImageToolPreset = (event: Event) => {
+  const detail = (event as CustomEvent<{ nodeId?: string; text?: string }>).detail
+  if (!detail?.nodeId || !nodes.value.some(node => node.id === detail.nodeId && node.type === 'image')) return
+  promptAnchorNodeId.value = detail.nodeId
+  workflowPromptGenerationMode.value = 'image'
+  workflowPrompt.value = String(detail.text || '')
+}
+
+onMounted(() => {
+  window.addEventListener('canvasmind:open-workflow-assistant', handleOpenWorkflowAssistant)
+  window.addEventListener('canvasmind:workflow-image-tool-preset', handleWorkflowImageToolPreset)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('canvasmind:open-workflow-assistant', handleOpenWorkflowAssistant)
+  window.removeEventListener('canvasmind:workflow-image-tool-preset', handleWorkflowImageToolPreset)
+})
 
 const handleAutoArrange = async () => {
   if (!nodes.value.length) return
@@ -1114,33 +1152,7 @@ const { onDrop: onCanvasFileDrop, onDragOver: onCanvasFileDragOver } = useCanvas
 
 // 画布助手上下文：选中节点优先，并沿入边收集上游节点（最多 12 个，避免提示词失控）。
 const assistantContextReferences = computed(() => {
-  const selectedIds = new Set(selectedNodeIds.value)
-  const queue = [...selectedIds]
-  const seen = new Set<string>()
-  const result: Array<{ id: string; type: string; label: string; relation: 'selected' | 'upstream'; url?: string; content?: string }> = []
-
-  while (queue.length && result.length < 12) {
-    const id = queue.shift()!
-    if (seen.has(id)) continue
-    seen.add(id)
-    const node = nodes.value.find(item => item.id === id)
-    if (!node) continue
-    const data = node.data as Record<string, unknown>
-    const content = String(data.content || data.outputContent || data.systemPrompt || '').trim()
-    const url = node.type === 'image' || node.type === 'video' ? String(data.url || '') : ''
-    result.push({
-      id,
-      type: node.type,
-      label: String(data.label || `${node.type} 节点`),
-      relation: selectedIds.has(id) ? 'selected' : 'upstream',
-      ...(url ? { url } : {}),
-      ...(content ? { content: content.slice(0, 1200) } : {}),
-    })
-    for (const edge of edges.value) {
-      if (edge.target === id && !seen.has(edge.source)) queue.push(edge.source)
-    }
-  }
-  return result
+  return collectWorkflowAssistantContext(nodes.value, edges.value, selectedNodeIds.value)
 })
 
 // 输入栏跟随选中节点和画布视口移动，并为左侧工具栏保留安全区域。
@@ -1224,6 +1236,8 @@ const openPaneContextMenu = (event: MouseEvent) => {
     { id: 'add-text', label: '新建文本', onClick: () => addNode('text', flowPos) },
     { id: 'add-image', label: '新建图片', onClick: () => addNode('image', flowPos) },
     { id: 'add-video', label: '新建视频', onClick: () => addNode('video', flowPos) },
+    { id: 'add-director', label: '新建导演台', onClick: () => addNode('director', flowPos) },
+    { id: 'add-audio', label: '新建音频', onClick: () => addNode('audio', flowPos) },
     { id: 'add-image-config', label: '新建文生图配置', onClick: () => addNode('imageConfig', flowPos) },
     { id: 'divider', label: '', type: 'divider' },
     {
@@ -1323,20 +1337,18 @@ const selectedImageNodeId = computed(() => {
   return nodes.value.find(node => node.id === nodeId && node.type === 'image')?.id || ''
 })
 
+const selectedImageIsSubject = computed(() => isWorkflowSubjectNode(nodes.value.find(
+  node => node.id === selectedImageNodeId.value,
+)))
+
 const resolveWorkflowPromptReferenceUrl = (node: (typeof nodes.value)[number] | undefined) => {
-  if (!node) return ''
-  const data = (node.data || {}) as Record<string, unknown>
-  const candidates = ['url', 'imageUrl', 'outputUrl', 'previewUrl', 'thumbnailUrl', 'coverUrl', 'src']
-  for (const key of candidates) {
-    const value = data[key]
-    if (typeof value === 'string' && value.trim()) return value.trim()
-  }
-  return ''
+  return resolveWorkflowReferenceUrl(node)
 }
 
 const workflowPromptReferences = computed(() => {
   const selectedId = selectedImageNodeId.value
-  if (!selectedId) return workflowPromptUploadedReferences.value
+  const subjectReferences: WorkflowPromptReference[] = collectWorkflowSubjectReferences(nodes.value)
+  if (!selectedId) return mergeWorkflowPromptReferences<WorkflowPromptReference>(subjectReferences, workflowPromptUploadedReferences.value)
   const incomingIds = edges.value
     .filter(edge => edge.target === selectedId)
     .map(edge => edge.source)
@@ -1346,14 +1358,14 @@ const workflowPromptReferences = computed(() => {
   const referenceNode = candidates.find(node => resolveWorkflowPromptReferenceUrl(node))
     || candidates.find(node => node.type === 'image')
     || candidates[0]
-  if (!referenceNode) return workflowPromptUploadedReferences.value
+  if (!referenceNode) return mergeWorkflowPromptReferences<WorkflowPromptReference>(subjectReferences, workflowPromptUploadedReferences.value)
   const data = (referenceNode.data || {}) as Record<string, unknown>
-  const connectedReference = {
+  const connectedReference: WorkflowPromptReference = {
     id: referenceNode.id,
     url: resolveWorkflowPromptReferenceUrl(referenceNode) || undefined,
     label: String(data.label || data.name || '参考图'),
   }
-  return [connectedReference, ...workflowPromptUploadedReferences.value]
+  return mergeWorkflowPromptReferences<WorkflowPromptReference>([connectedReference], subjectReferences, workflowPromptUploadedReferences.value)
     .filter(reference => !workflowPromptExcludedReferenceIds.value.includes(reference.id))
     .slice(0, 4)
 })
@@ -1366,6 +1378,7 @@ const workflowPromptAvailableReferences = computed(() => nodes.value
       id: node.id,
       url: resolveWorkflowPromptReferenceUrl(node) || undefined,
       label: String(data.label || data.name || 'image'),
+      isSubject: Boolean(data.isSubject),
     }
   })
   .filter(reference => reference.url || reference.id === selectedImageNodeId.value))
@@ -1408,7 +1421,15 @@ const handleWorkflowPromptRemoveReference = (id: string) => {
 }
 
 const handleWorkflowPromptCreateSubject = () => {
-  ElMessage.info('主体功能暂未开放，可先直接引用画布图片')
+  const node = nodes.value.find(item => item.id === selectedImageNodeId.value && item.type === 'image')
+  if (!node || !resolveWorkflowPromptReferenceUrl(node)) {
+    ElMessage.info('请先选择一张已有图片，再创建主体')
+    return
+  }
+  const nextValue = !isWorkflowSubjectNode(node)
+  updateNode(node.id, { isSubject: nextValue })
+  workflowPromptExcludedReferenceIds.value = workflowPromptExcludedReferenceIds.value.filter(id => id !== node.id)
+  ElMessage.success(nextValue ? '已设为主体，并加入当前参考' : '已取消主体标记')
 }
 
 const createWorkflowVideoFromPrompt = (text: string, options: WorkflowPromptSendOptions) => {
@@ -1680,6 +1701,7 @@ watch(currentCanvasSnapshot, () => {
             :model-options="workflowPromptModels"
             :references="workflowPromptReferences"
             :available-references="workflowPromptAvailableReferences"
+            :create-subject-label="selectedImageIsSubject ? '取消主体' : '创建主体'"
             :count="workflowPromptCount"
             :price="workflowPromptPrice"
             placeholder="描述你想基于当前图片生成的内容，可切换为视频；按 Enter 发送"

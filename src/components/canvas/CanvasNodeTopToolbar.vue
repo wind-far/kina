@@ -25,6 +25,9 @@ export interface NodeTopToolbarItem {
   iconOnly?: boolean
   /** true 时尾部加 ▾ 下拉箭头 */
   hasDropdown?: boolean
+  /** 点击后展示的菜单项；存在时由工具栏统一承载下拉交互 */
+  menuItems?: Array<{ id: string; label: string; disabled?: boolean; danger?: boolean }>
+  onMenuSelect?: (id: string) => void
   /** 自定义文字标记（如 "R"，代替 icon） */
   textMark?: string
   disabled?: boolean
@@ -47,6 +50,44 @@ defineProps<{
     >
       <template v-for="(item, idx) in items" :key="item.id || `divider-${idx}`">
         <div v-if="item.type === 'divider'" class="canvas-node-top-toolbar__divider" />
+        <el-dropdown
+          v-else-if="item.menuItems?.length"
+          trigger="click"
+          placement="bottom-start"
+          popper-class="canvas-node-toolbar-dropdown"
+          @command="item.onMenuSelect && item.onMenuSelect(String($event))"
+          @click.stop
+        >
+          <button
+            type="button"
+            class="canvas-node-top-toolbar__btn has-dropdown"
+            :class="{ 'is-disabled': item.disabled }"
+            :disabled="item.disabled"
+            :title="item.label"
+          >
+            <el-icon v-if="item.icon" class="canvas-node-top-toolbar__icon">
+              <component :is="item.icon" />
+            </el-icon>
+            <span v-else-if="item.textMark" class="canvas-node-top-toolbar__text-mark">{{ item.textMark }}</span>
+            <span v-if="!item.iconOnly && item.label" class="canvas-node-top-toolbar__label">{{ item.label }}</span>
+            <svg class="canvas-node-top-toolbar__chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M3 5l3 3 3-3" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="menuItem in item.menuItems"
+                :key="menuItem.id"
+                :command="menuItem.id"
+                :disabled="menuItem.disabled"
+                :class="{ 'is-danger': menuItem.danger }"
+              >
+                {{ menuItem.label }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <button
           v-else
           type="button"
@@ -171,4 +212,23 @@ defineProps<{
   opacity: 0;
   transform: translateX(-50%) translateY(4px);
 }
+</style>
+
+<style>
+.canvas-node-toolbar-dropdown.el-popper {
+  min-width: 148px;
+  border-color: var(--stroke-secondary, rgba(255, 255, 255, 0.1));
+  background: var(--canvas-float-block-default, #252525);
+}
+.canvas-node-toolbar-dropdown .el-dropdown-menu { background: transparent; }
+.canvas-node-toolbar-dropdown .el-dropdown-menu__item {
+  color: var(--text-secondary, #ccc);
+  font-size: 12px;
+}
+.canvas-node-toolbar-dropdown .el-dropdown-menu__item:not(.is-disabled):focus,
+.canvas-node-toolbar-dropdown .el-dropdown-menu__item:not(.is-disabled):hover {
+  color: var(--text-primary, #fff);
+  background: rgba(255, 255, 255, 0.08);
+}
+.canvas-node-toolbar-dropdown .el-dropdown-menu__item.is-danger { color: #f56c6c; }
 </style>

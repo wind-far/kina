@@ -43,6 +43,12 @@ import {
 } from '../../composables/useWorkflowCanvas'
 import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
 import { streamChatCompletions } from '../../api/chat'
+import { uploadStorageFile } from '@/api/storage'
+import {
+  buildWorkflowMarkdownTable,
+  formatWorkflowText,
+  insertWorkflowTextAtSelection,
+} from '@/shared/workflow-text-format'
 
 const props = defineProps<{
   id: string
@@ -61,6 +67,9 @@ const fontSize = ref(props.data?.fontSize ?? 14)
 const forceEditMode = ref(false)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const reverseImageInputRef = ref<HTMLInputElement | null>(null)
+const fullScreenVisible = ref(false)
+const fullScreenDraft = ref('')
 
 const FONT_SIZE_MIN = 10
 const FONT_SIZE_MAX = 28
@@ -170,9 +179,41 @@ const createVideoConfig = () => {
   setTimeout(() => updateNodeInternals([newId]), 50)
 }
 
-// 空态菜单：图片反推提示词（占位，等接 ai-gateway 的 reverse-prompt 能力）
 const handleReversePrompt = () => {
-  ElMessage.info('图片反推提示词接入中，敬请期待')
+  reverseImageInputRef.value?.click()
+}
+
+const handleReverseImageChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file || isPolishing.value) return
+  isPolishing.value = true
+  forceEditMode.value = true
+  const original = content.value
+  try {
+    const uploaded = await uploadStorageFile(file, 'asset')
+    if (!uploaded?.publicUrl) throw new Error('图片上传失败')
+    let result = ''
+    for await (const chunk of streamChatCompletions({
+      model: polishModel.value,
+      referenceImages: [uploaded.publicUrl],
+      messages: [
+        { role: 'system', content: '你是视觉提示词专家。请根据参考图片反推出可直接用于图片生成的中文提示词，准确描述主体、构图、镜头、光线、色彩、材质与风格。只输出提示词。' },
+        { role: 'user', content: '请反推这张图片的生成提示词。' },
+      ],
+    })) {
+      result += chunk
+      content.value = result
+    }
+    if (!result) throw new Error('未返回反推结果')
+    updateNode(props.id, { content: result })
+  } catch (error) {
+    content.value = original
+    ElMessage.error(error instanceof Error ? error.message : '图片反推提示词失败')
+  } finally {
+    isPolishing.value = false
+    input.value = ''
+  }
 }
 
 // hover 工具栏配置
@@ -225,8 +266,37 @@ const handleCopyText = async () => {
     ElMessage.warning('复制失败，请手动选择')
   }
 }
-const handleFullScreen = () => ElMessage.info('全屏编辑：接入中')
-const handleTablePicker = () => ElMessage.info('插入表格：接入中')
+const handleFullScreen = () => {
+  fullScreenDraft.value = content.value
+  fullScreenVisible.value = true
+}
+const saveFullScreen = () => {
+  content.value = fullScreenDraft.value
+  updateNode(props.id, { content: content.value })
+  fullScreenVisible.value = false
+}
+const handleTablePicker = (size: string) => {
+  const [rows, columns] = size.split('x').map(Number)
+  const table = buildWorkflowMarkdownTable(rows, columns)
+  const textarea = textareaRef.value
+  content.value = insertWorkflowTextAtSelection(
+    content.value,
+    table,
+    textarea?.selectionStart ?? content.value.length,
+    textarea?.selectionEnd ?? content.value.length,
+  )
+  updateNode(props.id, { content: content.value })
+}
+const handleAutoFormat = () => {
+  const formatted = formatWorkflowText(content.value)
+  if (formatted === content.value) {
+    ElMessage.info('当前文本已是整洁格式')
+    return
+  }
+  content.value = formatted
+  updateNode(props.id, { content: formatted })
+  ElMessage.success('已自动整理段落与空行')
+}
 
 const topToolbarItems = computed<NodeTopToolbarItem[]>(() => [
   { id: 'bold', label: '粗体', textMark: 'B', onClick: () => applyMarkdownWrap('**') },
@@ -237,10 +307,14 @@ const topToolbarItems = computed<NodeTopToolbarItem[]>(() => [
   { id: 'h2', label: '标题 2', textMark: 'H₂', onClick: () => applyLinePrefix('## ') },
   { id: 'h3', label: '标题 3', textMark: 'H₃', onClick: () => applyLinePrefix('### ') },
   { type: 'divider' },
-  { id: 'paragraph', label: '自动排版', textMark: '¶', onClick: () => ElMessage.info('自动排版：接入中') },
+  { id: 'paragraph', label: '自动排版', textMark: '¶', onClick: handleAutoFormat },
   { id: 'copy-text', label: '复制', icon: CopyDocument, iconOnly: true, onClick: handleCopyText },
   { id: 'fullscreen', label: '全屏', icon: FullScreen, iconOnly: true, onClick: handleFullScreen },
-  { id: 'table', label: '插入表格', icon: Grid, iconOnly: true, onClick: handleTablePicker },
+  { id: 'table', label: '插入表格', icon: Grid, iconOnly: true, hasDropdown: true, menuItems: [
+    { id: '2x2', label: '2 行 × 2 列' },
+    { id: '3x3', label: '3 行 × 3 列' },
+    { id: '4x4', label: '4 行 × 4 列' },
+  ], onMenuSelect: handleTablePicker },
 ])
 
 // 选中态下方浮层 prompt：仅在节点被选中时显示
@@ -374,6 +448,13 @@ watch(content, async () => {
         style="display: none"
         @change="handleFileChange"
       />
+      <input
+        ref="reverseImageInputRef"
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/bmp"
+        style="display: none"
+        @change="handleReverseImageChange"
+      />
     </div>
 
     <!-- 左右连接点：用 CanvasNodeAddHandle 直接做 "+" 按钮 + 拖拽连线 -->
@@ -402,6 +483,25 @@ watch(content, async () => {
         @send="handlePromptSend"
       />
     </div>
+
+    <el-dialog
+      v-model="fullScreenVisible"
+      title="全屏编辑"
+      width="min(920px, 92vw)"
+      append-to-body
+      class="workflow-text-fullscreen-dialog"
+    >
+      <textarea
+        v-model="fullScreenDraft"
+        class="workflow-text-fullscreen-editor"
+        placeholder="输入文本内容..."
+        autofocus
+      />
+      <template #footer>
+        <el-button @click="fullScreenVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveFullScreen">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -411,6 +511,22 @@ watch(content, async () => {
   width: 100%;
   height: 100%;
 }
+
+:global(.workflow-text-fullscreen-dialog .el-dialog__body) { padding-top: 8px; }
+.workflow-text-fullscreen-editor {
+  width: 100%;
+  min-height: 58vh;
+  resize: vertical;
+  box-sizing: border-box;
+  border: 1px solid var(--stroke-secondary);
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--canvas-node-bg, #202020);
+  color: var(--text-primary, #fff);
+  font: 14px/1.7 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  outline: none;
+}
+.workflow-text-fullscreen-editor:focus { border-color: var(--brand-main-default); }
 
 .text-node-title {
   position: absolute;

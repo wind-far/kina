@@ -48,6 +48,10 @@ import { uploadStorageFile } from '@/api/storage'
 import { loadPublicModelCatalog } from '@/config/models'
 import { createGenerationTask, subscribeGenerationTaskEvents, resolveGenerationTaskModel } from '@/api/generation-tasks'
 import { appendImageReferencesToRequestBody } from '@/shared/image-generation-request'
+import {
+  commitWorkflowGridNodesAtomically,
+  requireCompleteWorkflowGridUpload,
+} from '@/shared/workflow-grid-transaction'
 
 const props = defineProps<{
   id: string
@@ -362,33 +366,35 @@ const splitImageGrid = async (rows: number, columns: number) => {
       }
     }
     bitmap.close()
-    const uploaded = await Promise.all(outputBlobs.map((blob, index) => uploadStorageFile(
+    const uploaded = requireCompleteWorkflowGridUpload(await Promise.all(outputBlobs.map((blob, index) => uploadStorageFile(
       new File([blob], `grid-${rows}x${columns}-${index + 1}.png`, { type: 'image/png' }),
       'asset',
-    )))
+    ))), outputBlobs.length)
     const sourceNode = nodes.value.find(node => node.id === props.id)
     if (!sourceNode) throw new Error('原图片节点不存在')
     const startX = sourceNode.position.x + 470
     const startY = sourceNode.position.y
-    let lastNodeId = ''
-    uploaded.forEach((file, index) => {
-      if (!file?.publicUrl) return
-      const row = Math.floor(index / columns)
-      const column = index % columns
-      const newId = addNode('image', {
-        x: startX + column * 365,
-        y: startY + row * 315,
-      }, { url: file.publicUrl, label: `宫格 ${index + 1}` })
-      addEdge({
+    const createdNodeIds = commitWorkflowGridNodesAtomically({
+      items: uploaded,
+      createNode: (file, index) => {
+        const row = Math.floor(index / columns)
+        const column = index % columns
+        return addNode('image', {
+          x: startX + column * 365,
+          y: startY + row * 315,
+        }, { url: file.publicUrl, label: `宫格 ${index + 1}` })
+      },
+      connectNode: (newId, _file, index) => addEdge({
         source: props.id,
         target: newId,
         sourceHandle: 'right',
         targetHandle: 'left',
         type: 'imageOrder',
         data: { imageOrder: index + 1 },
-      })
-      lastNodeId = newId
+      }),
+      rollbackNode: removeNode,
     })
+    const lastNodeId = createdNodeIds.at(-1) || ''
     if (lastNodeId) focusNode(lastNodeId)
     ElMessage.success(`已切分为 ${rows * columns} 张图片`)
   } catch (error) {

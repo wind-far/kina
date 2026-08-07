@@ -11,7 +11,7 @@ on:
 jobs:
   deploy:
     name: 拉取最新镜像并重启容器
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && vars.DOCKER_DEPLOY_ENABLED == 'true') }}
     runs-on: ubuntu-latest
 
     steps:

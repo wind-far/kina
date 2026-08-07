@@ -1,0 +1,48 @@
+name: 代码质量
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: 类型检查、测试与构建
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: mysql://root:placeholder@127.0.0.1:3306/canana_mind
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 启用 Corepack
+        run: corepack enable
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查
+        run: pnpm type-check
+
+      - name: 脚本测试
+        run: pnpm test:scripts
+
+      - name: 生产构建
+        run: pnpm build

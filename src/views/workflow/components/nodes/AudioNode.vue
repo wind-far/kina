@@ -6,6 +6,7 @@ import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/can
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import { uploadStorageFile } from '@/api/storage'
+import { validateWorkflowAudioFile, WORKFLOW_AUDIO_ACCEPT } from '@/shared/workflow-audio-file'
 import {
   duplicateNode,
   removeNode,
@@ -35,6 +36,12 @@ const handleFileChange = async (event: Event) => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
+  const validation = validateWorkflowAudioFile(file)
+  if (!validation.valid) {
+    ElMessage.warning(validation.message)
+    input.value = ''
+    return
+  }
   uploading.value = true
   try {
     const uploaded = await uploadStorageFile(file, 'asset')
@@ -101,7 +108,7 @@ const hoverActions = computed<NodeToolbarAction[]>(() => [
         <span>字幕 / 备注</span>
         <textarea v-model="transcript" class="nodrag nopan" placeholder="可填写旁白、歌词或音频说明…" @input="persistTranscript" @mousedown.stop />
       </label>
-      <input ref="fileInputRef" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg" hidden @change="handleFileChange">
+      <input ref="fileInputRef" type="file" :accept="WORKFLOW_AUDIO_ACCEPT" hidden @change="handleFileChange">
     </div>
     <CanvasNodeAddHandle side="left" :visible="isSelected" />
     <CanvasNodeAddHandle side="right" :visible="isSelected" />

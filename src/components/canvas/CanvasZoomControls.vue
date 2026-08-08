@@ -146,7 +146,7 @@ onUnmounted(() => {
       class="canvas-zoom-controls__btn"
       :class="{ 'is-active': miniMapOpen }"
       aria-label="小地图"
-      title="小地图"
+      data-tooltip="显示或隐藏小地图"
       @click="emit('toggleMiniMap')"
     >
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -161,6 +161,7 @@ onUnmounted(() => {
         class="canvas-zoom-controls__percent"
         :class="{ 'is-active': zoomMenuOpen }"
         aria-label="缩放百分比"
+        data-tooltip="设置画布缩放"
         @click="toggleZoomMenu"
       >{{ zoomPercent }}%</button>
 
@@ -205,7 +206,7 @@ onUnmounted(() => {
       :class="{ 'is-active': snapToGrid }"
       :aria-pressed="snapToGrid"
       aria-label="网格吸附"
-      title="网格吸附"
+      data-tooltip="切换网格吸附"
       @click="emit('toggleSnapToGrid')"
     >
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -214,14 +215,14 @@ onUnmounted(() => {
       </svg>
     </button>
 
-    <button type="button" class="canvas-zoom-controls__btn" :class="{ 'is-active': appearanceOpen }" aria-label="画布外观" title="画布外观" @click="toggleAppearance">
+    <button type="button" class="canvas-zoom-controls__btn" :class="{ 'is-active': appearanceOpen }" aria-label="画布外观" data-tooltip="画布外观" @click="toggleAppearance">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <circle cx="12" cy="12" r="2.2" stroke="currentColor" stroke-width="1.6"/>
         <path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.64 5.64l1.77 1.77m9.18 9.18 1.77 1.77m0-12.72-1.77 1.77m-9.18 9.18-1.77 1.77" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
       </svg>
     </button>
 
-    <button type="button" class="canvas-zoom-controls__btn" aria-label="剪辑" title="适应画布" @click="handleFitView">
+    <button type="button" class="canvas-zoom-controls__btn" aria-label="适应画布" data-tooltip="适应画布（Ctrl/Command + 0）" @click="handleFitView">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <circle cx="6.5" cy="17.5" r="2.5" stroke="currentColor" stroke-width="1.6"/>
         <circle cx="6.5" cy="6.5" r="2.5" stroke="currentColor" stroke-width="1.6"/>
@@ -229,15 +230,15 @@ onUnmounted(() => {
       </svg>
     </button>
 
-    <button type="button" class="canvas-zoom-controls__btn" aria-label="素材库" title="素材库" @click="emit('openAssetLibrary')">
+    <button type="button" class="canvas-zoom-controls__btn" aria-label="素材库" data-tooltip="打开工作流库" @click="emit('openAssetLibrary')">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 7.5h6l2-2h9v13h-17v-11Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M3.5 9.5h17" stroke="currentColor" stroke-width="1.7"/></svg>
     </button>
 
-    <button type="button" class="canvas-zoom-controls__btn canvas-zoom-controls__btn--danger" aria-label="清空画布" title="清空画布" @click="emit('clear')">
+    <button type="button" class="canvas-zoom-controls__btn canvas-zoom-controls__btn--danger" aria-label="清空画布" data-tooltip="清空画布" @click="emit('clear')">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 7h14m-9-3h4m-7 3 1 13h8l1-13M10 11v5m4-5v5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
 
-    <button type="button" class="canvas-zoom-controls__btn" :class="{ 'is-active': shortcutsOpen }" aria-label="快捷键" title="快捷键" @click="toggleShortcuts">
+    <button type="button" class="canvas-zoom-controls__btn" :class="{ 'is-active': shortcutsOpen }" aria-label="快捷键" data-tooltip="查看快捷键" @click="toggleShortcuts">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M7 10h2m2 0h2m2 0h2M7 14h7m2 0h1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
     </button>
 
@@ -285,6 +286,10 @@ onUnmounted(() => {
 .canvas-zoom-controls__btn:hover,.canvas-zoom-controls__percent:hover,.canvas-zoom-controls__btn.is-active,.canvas-zoom-controls__percent.is-active { background:var(--canvas-float-block-hover); color:var(--text-primary); }
 .canvas-zoom-controls__btn:nth-of-type(2).is-active { background:var(--brand-main-block-default); color:var(--brand-main-default); }
 .canvas-zoom-controls__btn--danger:hover { background:rgba(239,68,68,.12); color:#ef4444; }
+.canvas-zoom-controls [data-tooltip] { position:relative; }
+.canvas-zoom-controls [data-tooltip]::after { position:absolute; bottom:calc(100% + 8px); left:50%; z-index:80; width:max-content; max-width:220px; padding:6px 9px; border-radius:7px; background:rgba(17,18,22,.96); box-shadow:0 6px 16px rgba(0,0,0,.18); color:#fff; content:attr(data-tooltip); font-size:12px; line-height:1.35; opacity:0; pointer-events:none; transform:translate(-50%,4px); transition:opacity .08s ease-out,transform .08s ease-out; visibility:hidden; white-space:nowrap; }
+.canvas-zoom-controls [data-tooltip]:focus-visible::after { opacity:1; transform:translate(-50%,0); visibility:visible; }
+@media (hover:hover) and (pointer:fine) { .canvas-zoom-controls [data-tooltip]:hover::after { opacity:1; transform:translate(-50%,0); visibility:visible; } }
 .canvas-zoom-controls__divider { width:1px; height:20px; margin:0 2px; background:var(--stroke-tertiary); }
 .canvas-zoom-controls__appearance { position:absolute; bottom:calc(100% + 8px); left:0; z-index:60; }
 .canvas-zoom-menu { position:absolute; left:0; bottom:36px; z-index:61; width:238px; padding:8px; box-sizing:border-box; border:1px solid var(--stroke-secondary); border-radius:14px; background:var(--canvas-float-block-default); box-shadow:0 8px 56px rgba(0,0,0,.08); backdrop-filter:blur(var(--canvas-float-backdrop-blur)); }

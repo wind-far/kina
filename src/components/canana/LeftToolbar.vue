@@ -205,9 +205,7 @@ const selectTool = (toolId) => {
 }
 
 /* Tooltip 动画 */
-.tooltip-enter-active {
-  animation: tooltip-fadein-right 0.3s cubic-bezier(0.34, 0.69, 0.1, 1) forwards;
-}
+.tooltip-enter-active { animation: tooltip-fadein-right 0.08s ease-out forwards; }
 
 .tooltip-leave-active {
   animation: tooltip-fadein-right 0.1s cubic-bezier(0.3, 1.3, 0.3, 1) reverse forwards;

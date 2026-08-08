@@ -13,6 +13,11 @@ dist-service
 dist-ssr
 uploads/
 
+# 本地智能画布参考资源与视觉回归图，不上传仓库
+src/assets/canvas/ai-editorial-poster.*
+public/local-canvas-assets/
+qa/canvas-reference/*.png
+
 # 不维护 npm lock，CI 使用 npm install（无 setup-node 缓存）
 package-lock.json
 *.local

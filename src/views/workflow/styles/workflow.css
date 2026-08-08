@@ -262,6 +262,42 @@ body[lv-theme='dark'] .workflow-canvas .vue-flow__background pattern circle {
   max-width: min(70vw, 720px);
 }
 
+/* 工作流菜单即时提示：替代原生 title 的延迟，同时支持键盘焦点。 */
+.workflow-header [data-tooltip],
+.workflow-left-toolbar [data-tooltip] { position: relative; }
+.workflow-header [data-tooltip]::after,
+.workflow-left-toolbar [data-tooltip]::after {
+  position: absolute;
+  z-index: 180;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  width: max-content;
+  max-width: min(260px, calc(100vw - 24px));
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: rgba(17, 18, 22, .96);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .18);
+  color: #fff;
+  content: attr(data-tooltip);
+  font-size: 12px;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity .08s ease-out, transform .08s ease-out;
+  visibility: hidden;
+  white-space: nowrap;
+}
+.workflow-header [data-tooltip]:focus-visible::after,
+.workflow-left-toolbar [data-tooltip]:focus-visible::after { opacity: 1; transform: translate(-50%, 0); visibility: visible; }
+@media (hover: hover) and (pointer: fine) {
+  .workflow-header [data-tooltip]:hover::after,
+  .workflow-left-toolbar [data-tooltip]:hover::after { opacity: 1; transform: translate(-50%, 0); visibility: visible; }
+}
+.workflow-left-toolbar [data-tooltip]::after { left: calc(100% + 9px); top: 50%; bottom: auto; transform: translate(-4px, -50%); }
+.workflow-left-toolbar [data-tooltip]:focus-visible::after { transform: translate(0, -50%); }
+@media (hover: hover) and (pointer: fine) { .workflow-left-toolbar [data-tooltip]:hover::after { transform: translate(0, -50%); } }
+
 .wf-header-meta {
   align-items: flex-start;
   display: flex;

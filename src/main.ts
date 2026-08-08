@@ -22,9 +22,22 @@ const authStore = useAuthStore()
 const systemInitStore = useSystemInitStore()
 const systemSettingsStore = useSystemSettingsStore()
 
-void Promise.allSettled([
-  systemInitStore.loadStatus(),
-  authStore.loadSession(),
-  authStore.loadMethods(),
-  systemSettingsStore.loadPublicSettings(),
-])
+let runtimeBootStarted = false
+
+const bootstrapSharedRuntime = () => {
+  if (runtimeBootStarted || router.currentRoute.value.path === '/canvas') {
+    return
+  }
+
+  runtimeBootStarted = true
+  void Promise.allSettled([
+    systemInitStore.loadStatus(),
+    authStore.loadSession(),
+    authStore.loadMethods(),
+    systemSettingsStore.loadPublicSettings(),
+  ])
+}
+
+// 本地参考画布保持完全离线；离开该路由后再恢复应用原有的共享初始化。
+void router.isReady().then(bootstrapSharedRuntime)
+router.afterEach(bootstrapSharedRuntime)

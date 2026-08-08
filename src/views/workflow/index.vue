@@ -1743,7 +1743,7 @@ watch(currentCanvasSnapshot, () => {
 
         <header class="workflow-header">
           <div class="workflow-header-left">
-            <button class="wf-btn wf-btn-sm" :disabled="goBackLoading" @click="goBack" title="返回">
+            <button class="wf-btn wf-btn-sm" :disabled="goBackLoading" aria-label="返回" data-tooltip="返回上一页" @click="goBack">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
@@ -1780,7 +1780,7 @@ watch(currentCanvasSnapshot, () => {
               :class="{ 'wf-btn-danger': workflowRunning }"
               type="button"
               :disabled="workflowStopping"
-              :title="workflowRunning ? '停止当前工作流运行' : '校验并运行全部生成节点'"
+              :data-tooltip="workflowRunning ? '停止当前工作流运行' : '校验并运行全部生成节点'"
               @click="workflowRunning ? handleStopWorkflow() : handleRunWorkflow()"
             >
               <span v-if="workflowRunning" class="wf-spinner"></span>
@@ -1794,6 +1794,7 @@ watch(currentCanvasSnapshot, () => {
                 class="wf-btn wf-btn-sm wf-run-history__trigger"
                 type="button"
                 :class="{ active: showWorkflowRunDetail }"
+                data-tooltip="查看最近一次运行详情"
                 @click="showWorkflowRunDetail = !showWorkflowRunDetail"
               >
                 运行记录
@@ -1840,7 +1841,7 @@ watch(currentCanvasSnapshot, () => {
             <button
               class="wf-account-chip"
               type="button"
-              title="打开账户中心"
+              data-tooltip="打开账户中心"
               @click="router.push('/account')"
             >
               <img v-if="authStore.currentUser.value?.avatarUrl" :src="authStore.currentUser.value.avatarUrl" alt="" />
@@ -1879,7 +1880,8 @@ watch(currentCanvasSnapshot, () => {
             <button
               class="wf-btn wf-btn-icon"
               :class="{ active: showWorkflowLibraryPanel }"
-              title="工作区"
+              aria-label="工作区"
+              data-tooltip="打开工作流库"
               @click="showWorkflowLibraryPanel = !showWorkflowLibraryPanel"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -1890,8 +1892,9 @@ watch(currentCanvasSnapshot, () => {
             <button
               class="wf-btn wf-btn-icon"
               :class="{ active: showNodeMenu }"
+              aria-label="添加节点"
+              data-tooltip="添加节点"
               @click="showNodeMenu = !showNodeMenu"
-              title="添加节点"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M12 5v14m-7-7h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -1901,8 +1904,9 @@ watch(currentCanvasSnapshot, () => {
             <button
               class="wf-btn wf-btn-icon"
               :class="{ active: showTemplatePanel }"
+              aria-label="工作流模板"
+              data-tooltip="插入工作流模板"
               @click="showTemplatePanel = !showTemplatePanel"
-              title="工作流模板"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
@@ -1916,7 +1920,8 @@ watch(currentCanvasSnapshot, () => {
               v-if="tools[0]"
               class="wf-btn wf-btn-icon"
               @click="tools[0].action"
-              :title="tools[0].name"
+              :aria-label="tools[0].name"
+              :data-tooltip="tools[0].name"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path :d="tools[0].icon" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1930,7 +1935,8 @@ watch(currentCanvasSnapshot, () => {
               :key="tool.id"
               class="wf-btn wf-btn-icon"
               @click="tool.action"
-              :title="tool.name"
+              :aria-label="tool.name"
+              :data-tooltip="tool.name"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path :d="tool.icon" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1939,13 +1945,13 @@ watch(currentCanvasSnapshot, () => {
 
             <div class="wf-divider"></div>
 
-            <button class="wf-btn wf-btn-icon" :disabled="workflowRunning || !canUndo" @click="undo()" title="撤销">
+            <button class="wf-btn wf-btn-icon" :disabled="workflowRunning || !canUndo" aria-label="撤销" data-tooltip="撤销（Ctrl/Command + Z）" @click="undo()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M3 10h10a5 5 0 015 5v0a5 5 0 01-5 5H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M7 14l-4-4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </button>
-            <button class="wf-btn wf-btn-icon" :disabled="workflowRunning || !canRedo" @click="redo()" title="重做">
+            <button class="wf-btn wf-btn-icon" :disabled="workflowRunning || !canRedo" aria-label="重做" data-tooltip="重做（Ctrl/Command + Shift + Z）" @click="redo()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M21 10H11a5 5 0 00-5 5v0a5 5 0 005 5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M17 14l4-4-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>

@@ -6,7 +6,7 @@ import { useLoadingStore } from '../stores/loading'
 // 核心页面懒加载，避免全部进入主 bundle 拖慢首屏
 const Home = () => import('../views/home/home.vue')
 const Generate = () => import('../views/generate/generate.vue')
-const Canana = () => import('../views/canana/canana.vue')
+const Canana = () => import('../views/canana/CanvasWorkspaceView.vue')
 const AccountManagement = () => import('../views/account/AccountManagement.vue')
 const PublishCenter = () => import('../views/publish/PublishCenter.vue')
 const AssetManagement = () => import('../views/asset/AssetManagement.vue')
@@ -56,6 +56,9 @@ const routes: RouteRecordRaw[] = [
     path: '/canvas',
     name: 'Canvas',
     component: Canana,
+    meta: {
+      skipSystemInit: true,
+    },
   },
   {
     path: '/account',
@@ -297,23 +300,26 @@ router.beforeEach(async (to) => {
   // 路由切换开启全局进度条
   useLoadingStore().start('route')
 
-  const systemInitStore = useSystemInitStore()
-  if (!systemInitStore.systemInitInitialized.value || systemInitStore.systemInitLoading.value) {
-    await systemInitStore.loadStatus()
-  }
-
-  if (!systemInitStore.isInitialized.value && to.path !== '/install') {
-    return {
-      path: '/install',
-      query: to.fullPath && to.fullPath !== '/install'
-        ? { redirect: to.fullPath }
-        : undefined,
+  const skipSystemInit = to.meta?.skipSystemInit === true
+  if (!skipSystemInit) {
+    const systemInitStore = useSystemInitStore()
+    if (!systemInitStore.systemInitInitialized.value || systemInitStore.systemInitLoading.value) {
+      await systemInitStore.loadStatus()
     }
-  }
 
-  if (systemInitStore.isInitialized.value && to.path === '/install') {
-    return {
-      path: '/',
+    if (!systemInitStore.isInitialized.value && to.path !== '/install') {
+      return {
+        path: '/install',
+        query: to.fullPath && to.fullPath !== '/install'
+          ? { redirect: to.fullPath }
+          : undefined,
+      }
+    }
+
+    if (systemInitStore.isInitialized.value && to.path === '/install') {
+      return {
+        path: '/',
+      }
     }
   }
 

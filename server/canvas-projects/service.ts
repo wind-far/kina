@@ -5,7 +5,7 @@ import {
   type CanvasSnapshotV3,
 } from '../../src/shared/canvas-snapshot'
 import { createWorkflowDefinition, getWorkflowDefinitionDetail } from '../workflow-definitions/service'
-import { saveUploadedBuffer } from '../storage/service'
+import { deleteUploadedStorageFile, saveUploadedBuffer, type StoredUploadReference } from '../storage/service'
 import { applyTargetCanvasAssetUrls, parseTargetCanvasArchive, selectTargetCanvasArchiveProject } from './target-archive'
 
 export interface CanvasProjectAccessContext { currentUserId: string }
@@ -113,6 +113,16 @@ const isSupportedCanvasArchiveAsset = (mimeType: string) => [
   'audio/mpeg', 'audio/wav', 'audio/ogg',
 ].includes(mimeType.toLowerCase())
 
+const cleanupFailedCanvasArchiveProjectUploads = async (uploads: StoredUploadReference[], warnings: string[], projectIndex: number) => {
+  for (const upload of uploads.reverse()) {
+    try {
+      await deleteUploadedStorageFile(upload)
+    } catch {
+      warnings.push(`第 ${projectIndex + 1} 个项目有一个已上传资源未能自动回收，请在存储中人工检查。`)
+    }
+  }
+}
+
 /**
  * 导入目标项目完整 ZIP：资源内容先通过 CanvasMind 的现有存储策略落到对象存储
  * 或本地 uploads，再把其公开 URL 回写到快照。未支持的 MIME 和缺失资源不会阻断
@@ -125,6 +135,7 @@ export const importCanvasProjectArchive = async (archive: Buffer, name: string |
   for (const projectIndex of parsed.projectIndexes) {
     const project = selectTargetCanvasArchiveProject(parsed, projectIndex)
     const assetUrls = new Map<string, string>()
+    const uploadedReferences: StoredUploadReference[] = []
     for (const asset of project.assets) {
       if (!isSupportedCanvasArchiveAsset(asset.mimeType)) {
         warnings.push(`第 ${projectIndex + 1} 个项目的资源 ${asset.storageKey} MIME 类型 ${asset.mimeType || '未知'} 不受支持，已保留引用。`)
@@ -138,6 +149,11 @@ export const importCanvasProjectArchive = async (archive: Buffer, name: string |
           category: `canvas-import/${context.currentUserId}`,
         })
         assetUrls.set(asset.storageKey, saved.publicUrl)
+        uploadedReferences.push({
+          relativePath: saved.relativePath,
+          storageType: saved.storageType,
+          storageCode: saved.storageCode,
+        })
       } catch {
         warnings.push(`第 ${projectIndex + 1} 个项目的资源 ${asset.storageKey} 上传失败，已保留原始引用。`)
       }
@@ -150,6 +166,7 @@ export const importCanvasProjectArchive = async (archive: Buffer, name: string |
       details.push(result.detail)
       warnings.push(...result.warnings.map(warning => `第 ${projectIndex + 1} 个项目：${warning}`))
     } catch (error: any) {
+      await cleanupFailedCanvasArchiveProjectUploads(uploadedReferences, warnings, projectIndex)
       warnings.push(`第 ${projectIndex + 1} 个项目导入失败：${error?.message || '未知错误'}`)
     }
   }

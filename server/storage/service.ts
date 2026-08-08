@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { uploadBufferToActiveObjectStorage } from '../storage-config/service'
+import { deleteObjectFromActiveObjectStorage, uploadBufferToActiveObjectStorage } from '../storage-config/service'
 
 // 默认上传根目录。
 const DEFAULT_UPLOADS_DIR = path.resolve(process.cwd(), 'uploads')
@@ -155,6 +155,42 @@ export const saveUploadedBuffer = async (input: {
     size: input.buffer.byteLength,
     storageType: 'local',
     storageCode: 'local',
+  }
+}
+
+export interface StoredUploadReference {
+  relativePath: string
+  storageType?: 'local' | 'object'
+  storageCode?: string
+}
+
+const resolveLocalUploadPath = (relativePath: string) => {
+  const uploadsDir = readUploadsDir()
+  const normalized = String(relativePath || '').replace(/^[/\\]+/, '')
+  const target = path.resolve(uploadsDir, normalized)
+  const root = `${path.resolve(uploadsDir)}${path.sep}`
+  if (!normalized || !target.startsWith(root)) throw new Error('本地资源回收路径不合法。')
+  return target
+}
+
+/**
+ * 回收由 saveUploadedBuffer 返回的单个引用。仅接受相对路径，且本地路径必须仍在
+ * uploads 根目录内；对象存储配置变化时会拒绝删除以避免误删其他存储桶的对象。
+ */
+export const deleteUploadedStorageFile = async (input: StoredUploadReference) => {
+  const storageType = input.storageType || 'local'
+  if (storageType === 'object') {
+    return await deleteObjectFromActiveObjectStorage({
+      key: input.relativePath,
+      storageCode: input.storageCode,
+    })
+  }
+  try {
+    await fs.unlink(resolveLocalUploadPath(input.relativePath))
+    return true
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return false
+    throw error
   }
 }
 

@@ -5,6 +5,8 @@ import {
   type CanvasSnapshotV3,
 } from '../../src/shared/canvas-snapshot'
 import { createWorkflowDefinition, getWorkflowDefinitionDetail } from '../workflow-definitions/service'
+import { saveUploadedBuffer } from '../storage/service'
+import { applyTargetCanvasAssetUrls, parseTargetCanvasArchive } from './target-archive'
 
 export interface CanvasProjectAccessContext { currentUserId: string }
 
@@ -103,6 +105,45 @@ export const importCanvasProject = async (payload: { name?: string; data?: unkno
     ...canvasSnapshotToWorkflowPayload(snapshot),
   }, context)
   return { detail, warnings }
+}
+
+const isSupportedCanvasArchiveAsset = (mimeType: string) => [
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+  'video/mp4', 'video/webm',
+  'audio/mpeg', 'audio/wav', 'audio/ogg',
+].includes(mimeType.toLowerCase())
+
+/**
+ * 导入目标项目完整 ZIP：资源内容先通过 CanvasMind 的现有存储策略落到对象存储
+ * 或本地 uploads，再把其公开 URL 回写到快照。未支持的 MIME 和缺失资源不会阻断
+ * 项目导入，但会在迁移报告中明确列出。
+ */
+export const importCanvasProjectArchive = async (archive: Buffer, name: string | undefined, context: CanvasProjectAccessContext) => {
+  const parsed = parseTargetCanvasArchive(archive)
+  const warnings = [...parsed.warnings]
+  const assetUrls = new Map<string, string>()
+  for (const asset of parsed.assets) {
+    if (!isSupportedCanvasArchiveAsset(asset.mimeType)) {
+      warnings.push(`资源 ${asset.storageKey} 的 MIME 类型 ${asset.mimeType || '未知'} 不受支持，已保留引用。`)
+      continue
+    }
+    try {
+      const saved = await saveUploadedBuffer({
+        buffer: asset.buffer,
+        filename: asset.path.split('/').pop() || 'canvas-asset',
+        mimeType: asset.mimeType,
+        category: `canvas-import/${context.currentUserId}`,
+      })
+      assetUrls.set(asset.storageKey, saved.publicUrl)
+    } catch {
+      warnings.push(`资源 ${asset.storageKey} 上传失败，已保留原始引用。`)
+    }
+  }
+  const result = await importCanvasProject({
+    name,
+    data: applyTargetCanvasAssetUrls(parsed.data, assetUrls),
+  }, context)
+  return { ...result, warnings: [...result.warnings, ...warnings] }
 }
 
 const collectAssistantContext = (snapshot: CanvasSnapshotV3, selection: unknown) => {

@@ -28,6 +28,7 @@ import {
   exportCanvasProject as exportCanvasProjectFile,
   exportCanvasProjectSelection as exportCanvasProjectSelectionFile,
   importCanvasProject as importCanvasProjectFile,
+  importCanvasProjectArchive as importCanvasProjectArchiveFile,
   previewCanvasAssistantOperation,
   type CanvasAssistantPreviewOperation,
 } from './api/canvas-projects'
@@ -1008,14 +1009,16 @@ const downloadSelectedCanvasNodes = async () => {
 const importCanvasProjectFromFile = () => {
   const input = document.createElement('input')
   input.type = 'file'
-  input.accept = 'application/json,.json'
+  input.accept = 'application/json,.json,application/zip,.zip'
   input.onchange = () => {
     const file = input.files?.[0]
     if (!file) return
     void (async () => {
       try {
-        const data = JSON.parse(await file.text())
-        const result = await importCanvasProjectFile(data, file.name.replace(/\.json$/i, ''))
+        const isZip = /\.zip$/i.test(file.name) || file.type === 'application/zip' || file.type === 'application/x-zip-compressed'
+        const result = isZip
+          ? await importCanvasProjectArchiveFile(file, file.name.replace(/\.zip$/i, ''))
+          : await importCanvasProjectFile(JSON.parse(await file.text()), file.name.replace(/\.json$/i, ''))
         const workflowId = String(result.detail?.definition?.id || '').trim()
         if (!workflowId) throw new Error('导入结果缺少项目标识')
         if (!result.warnings.length) ElMessage.success('无限画布已导入')
@@ -1030,7 +1033,7 @@ const importCanvasProjectFromFile = () => {
           })
         }
       } catch (error: any) {
-        ElMessage.error(error?.message || '导入画布失败，请检查 JSON 文件。')
+        ElMessage.error(error?.message || '导入画布失败，请检查 JSON 或 ZIP 文件。')
       }
     })()
   }

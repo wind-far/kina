@@ -115,7 +115,7 @@ const adaptTargetInfiniteCanvasNode = (value: unknown): Record<string, unknown> 
     : sourceType
   const content = String(metadata.content || metadata.composerContent || metadata.prompt || '')
   const resourceKey = String(metadata.storageKey || primaryImage.storageKey || '')
-  const resourceContent = String(primaryImage.content || metadata.content || '')
+  const resourceContent = String(primaryImage.assetUrl || metadata.assetUrl || primaryImage.content || metadata.content || '')
   const data: Record<string, unknown> = {
     label: String(input.title || sourceType || '导入节点'),
     content,

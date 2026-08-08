@@ -24,6 +24,19 @@ export interface CanvasProjectExport {
 export const exportCanvasProject = (projectId: string) => requestCanvasApi<CanvasProjectExport>(`/api/canvas/projects/${encodeURIComponent(projectId)}/export`)
 export const exportCanvasProjectSelection = (projectId: string, selection: string[]) => requestCanvasApi<CanvasProjectExport & { scope: 'selection' }>(`/api/canvas/projects/${encodeURIComponent(projectId)}/export-selection`, 'POST', { selection })
 export const importCanvasProject = (data: unknown, name?: string) => requestCanvasApi<{ detail: any; warnings: string[] }>('/api/canvas/projects/import', 'POST', { data, name })
+export const importCanvasProjectArchive = async (file: File, name?: string) => {
+  const response = await fetch(buildApiUrl('/api/canvas/projects/import-archive'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/zip',
+      ...(name ? { 'x-canvas-project-name': encodeURIComponent(name) } : {}),
+    },
+    body: file,
+  })
+  handleUnauthorizedResponse(response.status, 'canvas-projects')
+  return await readApiData<{ detail: any; warnings: string[] }>(response)
+}
 export interface CanvasAssistantPreviewOperation {
   type: 'insert_text_node' | 'insert_director_node' | 'connect_nodes'
   clientKey?: string

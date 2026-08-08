@@ -2,7 +2,7 @@ import { readJsonBody, sendJson } from '../ai-gateway/shared'
 import { requireCurrentSessionUser } from '../auth/session'
 import { isPrismaConfigured } from '../db/prisma'
 import { CANVAS_PROJECTS_BASE_PATH } from './constants'
-import { exportCanvasProject, exportCanvasProjectSelection, importCanvasProject, previewCanvasAssistantOperation } from './service'
+import { exportCanvasProject, exportCanvasProjectSelection, importCanvasProject, importCanvasProjectArchive, previewCanvasAssistantOperation } from './service'
 import { handleCanvasPluginsRequest } from '../canvas-plugins/request-handler'
 import { handleCanvasPromptsRequest } from '../canvas-prompts/request-handler'
 
@@ -17,6 +17,30 @@ const matchProjectAction = (requestPath: string, action: 'export' | 'export-sele
   return matched ? decodeURIComponent(matched[1]) : ''
 }
 
+const MAX_ARCHIVE_REQUEST_BYTES = 50 * 1024 * 1024
+
+const readCanvasArchiveBody = async (req: any) => {
+  const declaredLength = Number(req.headers['content-length'])
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_ARCHIVE_REQUEST_BYTES) {
+    const error = new Error('导入归档超过 50MB 限制。') as Error & { status?: number }
+    error.status = 413
+    throw error
+  }
+  const chunks: Buffer[] = []
+  let total = 0
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    total += buffer.byteLength
+    if (total > MAX_ARCHIVE_REQUEST_BYTES) {
+      const error = new Error('导入归档超过 50MB 限制。') as Error & { status?: number }
+      error.status = 413
+      throw error
+    }
+    chunks.push(buffer)
+  }
+  return Buffer.concat(chunks)
+}
+
 export const handleCanvasProjectsRequest = async (req: any, res: any) => {
   try {
     if (!isPrismaConfigured()) return sendCanvasError(res, 500, '缺少 DATABASE_URL，暂时无法使用无限画布项目。')
@@ -28,6 +52,16 @@ export const handleCanvasProjectsRequest = async (req: any, res: any) => {
     const exportProjectId = matchProjectAction(requestPath, 'export')
     const selectionExportProjectId = matchProjectAction(requestPath, 'export-selection')
     const assistantProjectId = matchProjectAction(requestPath, 'assistant-preview')
+    if (req.method === 'POST' && requestPath === `${CANVAS_PROJECTS_BASE_PATH}/projects/import-archive`) {
+      const contentType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase()
+      if (!['application/zip', 'application/x-zip-compressed', 'application/octet-stream'].includes(contentType)) {
+        return sendCanvasError(res, 415, '仅支持 ZIP 格式的目标画布导入文件。')
+      }
+      const name = decodeURIComponent(String(req.headers['x-canvas-project-name'] || '')).trim()
+      const data = await importCanvasProjectArchive(await readCanvasArchiveBody(req), name || undefined, { currentUserId: currentUser.id })
+      sendJson(res, 200, { data, message: '无限画布归档已导入' })
+      return
+    }
     if (req.method === 'POST' && requestPath === `${CANVAS_PROJECTS_BASE_PATH}/projects/import`) {
       const data = await importCanvasProject(await readJsonBody(req), { currentUserId: currentUser.id })
       sendJson(res, 200, { data, message: '无限画布已导入' })

@@ -86,6 +86,7 @@ import {
 } from '@/shared/workflow-prompt-visibility'
 import { resolveWorkflowVideoReferenceRole } from '@/shared/workflow-video-prompt'
 import { buildCanvasAssistantSessionSource } from '@/shared/canvas-assistant-session'
+import { formatCanvasImportMigrationReport } from '@/shared/canvas-import-report'
 import { collectWorkflowAssistantContext } from '@/shared/workflow-assistant-context'
 import {
   collectWorkflowSubjectReferences,
@@ -991,11 +992,17 @@ const importCanvasProjectFromFile = () => {
         const result = await importCanvasProjectFile(data, file.name.replace(/\.json$/i, ''))
         const workflowId = String(result.detail?.definition?.id || '').trim()
         if (!workflowId) throw new Error('导入结果缺少项目标识')
-        if (result.warnings.length) ElMessage.warning(`已导入，${result.warnings.length} 项需要在画布中确认。`)
-        else ElMessage.success('无限画布已导入')
+        if (!result.warnings.length) ElMessage.success('无限画布已导入')
         await tryLoadWorkflowByRoute(workflowId)
         await syncWorkflowRouteQuery(workflowId)
         await handleRefreshWorkflowList()
+        const migrationReport = formatCanvasImportMigrationReport(result.warnings)
+        if (migrationReport) {
+          await ElMessageBox.alert(migrationReport, '导入迁移报告', {
+            confirmButtonText: '已了解',
+            type: 'warning',
+          })
+        }
       } catch (error: any) {
         ElMessage.error(error?.message || '导入画布失败，请检查 JSON 文件。')
       }

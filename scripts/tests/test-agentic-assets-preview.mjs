@@ -5,7 +5,7 @@ const buildWorkflow = (overrides = {}) => ({
   id: 'workflow-1',
   userId: 'user-1',
   code: 'workflow-1',
-  name: '未命名工作流',
+  name: '未命名项目',
   description: null,
   category: null,
   scene: 'WORKFLOW_CANVAS',

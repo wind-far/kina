@@ -186,7 +186,7 @@ export const createWorkflowDefinition = async (payload: WorkflowDefinitionCreate
     url: WORKFLOW_DEFINITIONS_PATH,
     method: 'POST',
     data: payload,
-    successMessage: '工作流已创建',
+    successMessage: '项目已创建',
   })
 }
 
@@ -210,7 +210,7 @@ export const updateWorkflowDefinition = async (
     url: `${WORKFLOW_DEFINITIONS_PATH}/${encodeURIComponent(workflowId)}`,
     method: 'PATCH',
     data: payload,
-    successMessage: '工作流已更新',
+    successMessage: '项目已更新',
   })
 }
 
@@ -218,7 +218,7 @@ export const deleteWorkflowDefinition = async (workflowId: string) => {
   return await requestWorkflowApi<{ id: string; name: string; deleted: boolean }>({
     url: `${WORKFLOW_DEFINITIONS_PATH}/${encodeURIComponent(workflowId)}`,
     method: 'DELETE',
-    successMessage: '工作流已删除',
+    successMessage: '项目已删除',
   })
 }
 

@@ -6,7 +6,6 @@ import { useLoadingStore } from '../stores/loading'
 // 核心页面懒加载，避免全部进入主 bundle 拖慢首屏
 const Home = () => import('../views/home/home.vue')
 const Generate = () => import('../views/generate/generate.vue')
-const Canana = () => import('../views/canana/CanvasWorkspaceView.vue')
 const AccountManagement = () => import('../views/account/AccountManagement.vue')
 const PublishCenter = () => import('../views/publish/PublishCenter.vue')
 const AssetManagement = () => import('../views/asset/AssetManagement.vue')
@@ -55,9 +54,10 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/canvas',
     name: 'Canvas',
-    component: Canana,
+    // 画布入口统一承载工作流；原本的本地参考画布不再作为运行时界面暴露。
+    component: Workflow,
     meta: {
-      skipSystemInit: true,
+      workspace: 'workflow',
     },
   },
   {

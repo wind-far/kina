@@ -216,6 +216,8 @@ img {
 } 
 
 .header-2wr .filter-wxj .filter-qxo  { 
+    background: transparent;
+    border: 0;
     color: var(--text-secondary,rgba(224,245,255,.6)); 
     cursor: pointer; 
     font-family: PingFang SC; 
@@ -372,6 +374,12 @@ img {
     padding: 12px; 
     position: relative;
 } 
+
+.canvasCard-yoo--create {
+    border: 0;
+    font: inherit;
+    text-align: left;
+}
 
 .canvasCard-yoo:hover { 
     background: var(--bg-block-primary-hover); 
@@ -731,6 +739,12 @@ img {
 } 
 
 .canvasCard-yoo .canvasControls-rkg  { 
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: var(--text-secondary,rgba(224,245,255,.6));
+    cursor: pointer;
+    display: flex;
     border-radius: 8px; 
     bottom: 14px; 
     height: 16px; 
@@ -741,6 +755,104 @@ img {
     visibility: hidden; 
     width: 16px;
 } 
+
+.canvas-project-preview-empty {
+    align-items: center;
+    bottom: 0;
+    color: var(--text-tertiary,rgba(224,245,255,.35));
+    display: flex;
+    justify-content: center;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+}
+
+.canvas-project-menu {
+    background: var(--bg-float,var(--bg-block-primary-default,#24252a));
+    border: 1px solid var(--stroke-secondary,rgba(204,221,255,.12));
+    border-radius: 8px;
+    bottom: 8px;
+    box-shadow: 0 10px 24px rgba(0,0,0,.2);
+    display: grid;
+    gap: 2px;
+    padding: 4px;
+    position: absolute;
+    right: 8px;
+    transform: translateY(100%);
+    width: 112px;
+    z-index: 3;
+}
+
+.canvas-project-menu button {
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    color: var(--text-primary,#f5fbff);
+    cursor: pointer;
+    font: inherit;
+    padding: 7px 8px;
+    text-align: left;
+}
+
+.canvas-project-menu button:hover {
+    background: var(--bg-block-secondary-hover,rgba(204,221,255,.08));
+}
+
+.canvas-project-menu .canvas-project-menu__danger {
+    color: var(--text-error,#ff6b6b);
+}
+
+.canvas-project-status,
+.canvas-project-load-more {
+    color: var(--text-placeholder,rgba(224,245,255,.35));
+    display: block;
+    font-size: 13px;
+    margin: 24px auto;
+    text-align: center;
+}
+
+.canvas-project-load-more {
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    padding: 8px 12px;
+}
+
+.canvas-project-load-more:disabled {
+    cursor: wait;
+}
+
+.canvas-project-search {
+    align-items: center;
+    display: flex;
+    gap: 6px;
+    min-width: 164px;
+    padding: 0 6px;
+}
+
+.canvas-project-search input {
+    background: transparent;
+    border: 0;
+    color: var(--text-primary,#f5fbff);
+    font: inherit;
+    min-width: 0;
+    outline: none;
+    width: 116px;
+}
+
+.canvas-project-search input::placeholder {
+    color: var(--text-placeholder,rgba(224,245,255,.35));
+}
+
+.canvas-project-search__submit,
+.canvas-project-batch {
+    background: transparent;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+}
 
 .canvasCard-yoo .canvasControls-rkg:hover { 
     background: var(--bg-block-primary-pressed);

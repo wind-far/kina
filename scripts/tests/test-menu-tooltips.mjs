@@ -16,7 +16,7 @@ const [canvas, canvasCss, workflow, zoomControls, legacyToolbar] = await Promise
 assert.match(canvas, /data-tooltip="选择 \/ 移动（V）"/)
 assert.match(canvas, /data-tooltip-position="right"/)
 assert.match(canvasCss, /@media \(hover: hover\) and \(pointer: fine\)/)
-assert.match(workflow, /data-tooltip="打开工作流库"/)
+assert.match(workflow, /data-tooltip="打开项目库"/)
 assert.match(workflow, /:data-tooltip="tool\.name"/)
 assert.match(workflow, /aria-label="撤销"/)
 assert.match(zoomControls, /data-tooltip="设置画布缩放"/)

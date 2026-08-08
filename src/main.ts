@@ -25,7 +25,7 @@ const systemSettingsStore = useSystemSettingsStore()
 let runtimeBootStarted = false
 
 const bootstrapSharedRuntime = () => {
-  if (runtimeBootStarted || router.currentRoute.value.path === '/canvas') {
+  if (runtimeBootStarted) {
     return
   }
 
@@ -38,6 +38,6 @@ const bootstrapSharedRuntime = () => {
   ])
 }
 
-// 本地参考画布保持完全离线；离开该路由后再恢复应用原有的共享初始化。
+// 画布与工作流入口共用系统、会话和公共配置初始化。
 void router.isReady().then(bootstrapSharedRuntime)
 router.afterEach(bootstrapSharedRuntime)

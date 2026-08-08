@@ -246,7 +246,7 @@ export const useWorkflowPersistence = () => {
       if (!options.workflowId && !currentWorkflowId.value) {
         const payload: WorkflowDefinitionCreatePayload = {
           code: options.code,
-          name: options.name || '未命名工作流',
+          name: options.name || '未命名项目',
           description: options.description || null,
           category: options.category || null,
           scene: options.scene || 'WORKFLOW_CANVAS',
@@ -293,7 +293,7 @@ export const useWorkflowPersistence = () => {
       if (!options.workflowId && !currentWorkflowId.value) {
         const detail = await createWorkflowDefinition({
           code: options.code,
-          name: options.name || '未命名工作流',
+          name: options.name || '未命名项目',
           description: options.description || null,
           category: options.category || null,
           scene: options.scene || 'WORKFLOW_CANVAS',

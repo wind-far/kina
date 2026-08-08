@@ -6,158 +6,180 @@
           <div class="container-c5d">
             <div class="header-2wr">
               <div class="filter-wxj">
-                <div
+                <button
                   v-for="option in canvasFilterOptions"
                   :key="option.value"
+                  type="button"
                   class="filter-qxo"
                   :class="{ [option.activeClass]: canvasFilter === option.value }"
                   @click="emit('set-canvas-filter', option.value)"
                 >
                   {{ option.label }}
-                </div>
+                </button>
               </div>
               <div class="select-ald">
-                <div class="operateArea-aqq">
-                  <div class="search-7ey">
-                    <div class="container-cpr mini-bsk search-krp">
-                      <div class="container-dbs">
-                        <div class="btn-v6i">
-                          <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="back-icon">
-                            <g>
-                              <path data-follow-fill="currentColor" d="M4.533 12.844a1.2 1.2 0 0 1 0-1.687l7.655-7.747a1.2 1.2 0 0 1 1.708 1.687l-6.822 6.904 6.822 6.903a1.2 1.2 0 1 1-1.708 1.686l-7.655-7.746Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor" />
-                            </g>
-                          </svg>
-                        </div>
-                      </div>
-                      <div class="container-7bd">
-                        <div class="wrapper-kw3 search-fzo button-kin input-gji disabled-bod mini-irl col-zom">
-                          <span class="input-ffs">
-                            <span class="wrapper-8e3 wrapper-vc5 wrapper-9ij">
-                              <span class="input-idr">
-                                <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
-                                  <g>
-                                    <path data-follow-fill="currentColor" d="M4.563 10.75a6.5 6.5 0 1 1 13 0 6.5 6.5 0 0 1-13 0Zm6.5-8.5a8.5 8.5 0 1 0 5.261 15.176l3.406 3.406a1 1 0 0 0 1.415-1.414l-3.407-3.406A8.5 8.5 0 0 0 11.062 2.25Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor" />
-                                  </g>
-                                </svg>
-                              </span>
-                              <input placeholder="搜索" class="input-z1m" value>
-                            </span>
-                            <span class="input-xd8">
-                              <button class="btn-4ac btn-primary-exr btn-j99 btn-a2l loading-9av search-wvd" type="button">
-                                <div class="container-29w disabled-mib">
-                                  <span class="search-as4">搜索</span>
-                                </div>
-                              </button>
-                            </span>
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="divider-hb7"></div>
-                  <div class="btn-g4h" @click="emit('enter-batch-mode')">批量操作</div>
-                </div>
+                <form class="operateArea-aqq" @submit.prevent="submitSearch">
+                  <label class="canvas-project-search" aria-label="搜索项目">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M4.563 10.75a6.5 6.5 0 1 1 13 0 6.5 6.5 0 0 1-13 0Zm6.5-8.5a8.5 8.5 0 1 0 5.261 15.176l3.406 3.406a1 1 0 0 0 1.415-1.414l-3.407-3.406A8.5 8.5 0 0 0 11.062 2.25Z" fill="currentColor" />
+                    </svg>
+                    <input v-model="keyword" type="search" placeholder="搜索项目" @search="submitSearch" />
+                  </label>
+                  <button type="submit" class="canvas-project-search__submit">搜索</button>
+                  <span class="divider-hb7" aria-hidden="true"></span>
+                  <button type="button" class="btn-g4h canvas-project-batch" @click="emit('enter-batch-mode')">批量操作</button>
+                </form>
               </div>
             </div>
           </div>
         </div>
-        <div class="canvasWrapper-ysg">
+
+        <div class="canvasWrapper-ysg" @scroll="handleScroll">
           <div class="container-c5d">
             <div class="canvasList-oos">
-              <div class="canvasCard-yoo">
-                <div class="emptyItem-jk6">
-                  <svg width="32" height="32" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
-                    <g>
-                      <path data-follow-fill="currentColor" d="M10.8 20a1.2 1.2 0 0 0 2.4 0v-6.8H20a1.2 1.2 0 1 0 0-2.4h-6.8V4a1.2 1.2 0 0 0-2.4 0v6.8H4a1.2 1.2 0 0 0 0 2.4h6.8V20Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor" />
-                    </g>
+              <button type="button" class="canvasCard-yoo canvasCard-yoo--create" @click="emit('create-project')">
+                <span class="emptyItem-jk6">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M10.8 20a1.2 1.2 0 0 0 2.4 0v-6.8H20a1.2 1.2 0 1 0 0-2.4h-6.8V4a1.2 1.2 0 0 0-2.4 0v6.8H4a1.2 1.2 0 0 0 0 2.4h6.8V20Z" fill="currentColor" />
                   </svg>
-                </div>
-                <span class="canvasTitle-j2c style-Z9bSC" id="style-Z9bSC">新建项目</span>
-                <div class="updateTime-dyo"></div>
-              </div>
-              <div class="canvasCard-yoo cavasNewCard-xsi">
+                </span>
+                <span class="canvasTitle-j2c">新建项目</span>
+              </button>
+
+              <article
+                v-for="project in projectCards"
+                :key="project.id"
+                class="canvasCard-yoo cavasNewCard-xsi"
+                role="button"
+                tabindex="0"
+                @click="emit('open-project', project.project)"
+                @keydown.enter.prevent="emit('open-project', project.project)"
+              >
                 <div class="image-d9m">
-                  <div class="image-grw"><img src="https://p3-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/42b6674b5ee448c7a0a0381f024d0886~tplv-tb4s082cfz-resize:360:360.webp?lk3s=ad9f132c&x-expires=1800684352&x-signature=hdKXYk6L1fBOeSNVVjzcwnCjGC4%3D"></div>
-                  <div class="fa-9r8 hideFavorite-znw">
-                    <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
-                      <g>
-                        <path data-follow-fill="currentColor" d="M9.893 7.177 12 3.787l2.107 3.39a3 3 0 0 0 1.829 1.329l3.874.956-2.572 3.052a3 3 0 0 0-.698 2.15l.287 3.98-3.697-1.503a3 3 0 0 0-2.26 0l-3.697 1.503.287-3.98a3 3 0 0 0-.698-2.15L4.19 9.462l3.874-.956a3 3 0 0 0 1.829-1.329Zm1.258-5.811a1 1 0 0 1 1.698 0l2.957 4.755a1 1 0 0 0 .61.443l5.435 1.342a1 1 0 0 1 .525 1.616l-3.609 4.28a1 1 0 0 0-.232.717l.403 5.585a1 1 0 0 1-1.374.998l-5.187-2.109a1 1 0 0 0-.754 0l-5.187 2.11a1 1 0 0 1-1.374-.999l.404-5.585a1 1 0 0 0-.233-.716l-3.61-4.281a1 1 0 0 1 .526-1.616l5.436-1.342a1 1 0 0 0 .61-.443l2.956-4.755Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor" />
-                      </g>
+                  <div v-if="project.image" class="image-grw">
+                    <img :src="project.image" :alt="project.title" />
+                  </div>
+                  <div v-else class="canvas-project-preview-empty" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                      <path d="M4 5.75A1.75 1.75 0 0 1 5.75 4h12.5A1.75 1.75 0 0 1 20 5.75v12.5A1.75 1.75 0 0 1 18.25 20H5.75A1.75 1.75 0 0 1 4 18.25V5.75Zm2.4 11.85h11.2l-3.18-3.18a1 1 0 0 0-1.42 0l-1.76 1.76-1.09-1.08a1 1 0 0 0-1.41 0L6.4 17.6ZM8.5 8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" fill="currentColor" />
                     </svg>
                   </div>
-                  <div class="tooltip-3ot"></div>
-                  <div class="canvasSize-zl2">
-                    <span>1920</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 12 12">
-                      <g>
-                        <path d="M9.24 9.823a.25.25 0 0 1-.353 0l-6.71-6.71a.25.25 0 0 1 0-.353l.583-.583a.25.25 0 0 1 .353 0l6.71 6.71a.25.25 0 0 1 0 .353z" />
-                        <path d="M2.76 9.823a.25.25 0 0 0 .353 0l6.71-6.71a.25.25 0 0 0 0-.353l-.583-.583a.25.25 0 0 0-.353 0l-6.71 6.71a.25.25 0 0 0 0 .353z" />
-                      </g>
-                      <defs>
-                        <clipPath>
-                          <path fill="#fff" d="M0 0h12v12H0z" />
-                        </clipPath>
-                        <filter width="11.793" height="11.793">
-                          <feFlood />
-                          <feColorMatrix />
-                          <feOffset />
-                          <feGaussianBlur />
-                          <feComposite />
-                          <feColorMatrix />
-                          <feBlend />
-                          <feBlend />
-                        </filter>
-                      </defs>
-                    </svg>
-                    <span>1080</span>
-                    <span id="style-QFwdW" class="style-QFwdW">px</span>
-                  </div>
-                  <div class="canvasShadow-akt"></div>
                 </div>
-                <span class="canvasTitle-j2c style-ZwMOO" id="style-ZwMOO">未命名</span>
-                <div class="updateTime-dyo">21小时前修改</div>
-                <div class="canvasControls-rkg style-7gdA4" id="style-7gdA4">
-                  <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="iconMore-cHtSH7" style="color: var(--text-secondary);">
-                    <g>
-                      <path data-follow-fill="currentColor" d="M7 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm7 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm5 2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor" />
-                    </g>
+                <span class="canvasTitle-j2c">{{ project.title }}</span>
+                <span class="updateTime-dyo">{{ project.updatedText }}</span>
+
+                <button
+                  type="button"
+                  class="canvasControls-rkg"
+                  aria-label="项目更多操作"
+                  @click.stop="toggleMenu(project.id)"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M7 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm7 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm5 2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" fill="currentColor" />
                   </svg>
+                </button>
+                <div v-if="openedProjectId === project.id" class="canvas-project-menu" role="menu" @click.stop>
+                  <button type="button" role="menuitem" @click="emitProjectAction('rename-project', project.project)">重命名</button>
+                  <button type="button" role="menuitem" class="canvas-project-menu__danger" @click="emitProjectAction('delete-project', project.project)">删除</button>
                 </div>
-              </div>
-              <div class="canvasCard-yoo cavasNewCard-xsi">
-                <div class="image-d9m">
-                  <div class="loading-rw9 style-n77HF" id="style-n77HF"></div>
-                </div>
-                <span class="canvasTitle-j2c style-bxOi2" id="style-bxOi2">未命名项目</span>
-                <div class="updateTime-dyo">21小时前修改</div>
-                <div class="canvasControls-rkg style-S5EMJ" id="style-S5EMJ">
-                  <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg" class="iconMore-cHtSH7" style="color: var(--text-secondary);">
-                    <g>
-                      <path data-follow-fill="currentColor" d="M7 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm7 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm5 2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" clip-rule="evenodd" fill-rule="evenodd" fill="currentColor" />
-                    </g>
-                  </svg>
-                </div>
-              </div>
+              </article>
             </div>
+
+            <div v-if="loading" class="canvas-project-status">正在加载项目…</div>
+            <div v-else-if="!projectCards.length" class="canvas-project-status">暂无项目，创建一个开始吧</div>
+            <button v-else-if="hasMore" type="button" class="canvas-project-load-more" :disabled="loadingMore" @click="emit('load-more')">
+              {{ loadingMore ? '正在加载…' : '加载更多' }}
+            </button>
           </div>
         </div>
-        <div class="load-more-detector-c4r"></div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { buildAssetUrl } from '@/api/http'
+import { extractWorkflowPreviewImages } from '@/views/agentic-assets-canvas/workflow-preview'
+import type { WorkflowDefinitionSummary } from '@/views/workflow/api/definitions'
 import type { CanvasFilterType, FilterOption } from '@/views/asset/types'
 
-defineProps<{
+const props = defineProps<{
   active: boolean
   canvasFilterOptions: FilterOption<CanvasFilterType>[]
   canvasFilter: CanvasFilterType
+  projects: WorkflowDefinitionSummary[]
+  loading: boolean
+  loadingMore: boolean
+  hasMore: boolean
 }>()
 
 const emit = defineEmits<{
   'set-canvas-filter': [filter: CanvasFilterType]
   'enter-batch-mode': []
+  'create-project': []
+  'open-project': [project: WorkflowDefinitionSummary]
+  'rename-project': [project: WorkflowDefinitionSummary]
+  'delete-project': [project: WorkflowDefinitionSummary]
+  search: [keyword: string]
+  'load-more': []
 }>()
+
+const keyword = ref('')
+const openedProjectId = ref('')
+
+const projectCards = computed(() => props.projects.map((project) => ({
+  id: project.id,
+  title: project.name || '未命名项目',
+  image: extractWorkflowPreviewImages(project)[0] ? buildAssetUrl(extractWorkflowPreviewImages(project)[0]) : '',
+  updatedText: formatUpdatedAt(project.updatedAt || project.createdAt),
+  project,
+})))
+
+const formatUpdatedAt = (value?: string | null) => {
+  const timestamp = value ? new Date(value).getTime() : 0
+  if (!timestamp || Number.isNaN(timestamp)) return '最近修改'
+  const delta = Math.max(0, Date.now() - timestamp)
+  const hours = Math.floor(delta / 3_600_000)
+  if (hours < 1) return '刚刚修改'
+  if (hours < 24) return `${hours}小时前修改`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}天前修改`
+  return `${new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' }).format(new Date(timestamp))}修改`
+}
+
+const submitSearch = () => {
+  openedProjectId.value = ''
+  emit('search', keyword.value)
+}
+
+const toggleMenu = (projectId: string) => {
+  openedProjectId.value = openedProjectId.value === projectId ? '' : projectId
+}
+
+const emitProjectAction = (event: 'rename-project' | 'delete-project', project: WorkflowDefinitionSummary) => {
+  openedProjectId.value = ''
+  if (event === 'rename-project') {
+    emit('rename-project', project)
+    return
+  }
+  emit('delete-project', project)
+}
+
+const handleScroll = (event: Event) => {
+  const target = event.currentTarget as HTMLElement
+  if (target.scrollHeight - target.scrollTop - target.clientHeight < 160) {
+    emit('load-more')
+  }
+}
+
+const closeMenuOnOutsidePointer = (event: PointerEvent) => {
+  const target = event.target
+  if (target instanceof Element && !target.closest('.cavasNewCard-xsi')) {
+    openedProjectId.value = ''
+  }
+}
+
+onMounted(() => document.addEventListener('pointerdown', closeMenuOnOutsidePointer))
+onBeforeUnmount(() => document.removeEventListener('pointerdown', closeMenuOnOutsidePointer))
 </script>

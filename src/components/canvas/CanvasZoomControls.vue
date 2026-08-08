@@ -230,7 +230,7 @@ onUnmounted(() => {
       </svg>
     </button>
 
-    <button type="button" class="canvas-zoom-controls__btn" aria-label="素材库" data-tooltip="打开工作流库" @click="emit('openAssetLibrary')">
+    <button type="button" class="canvas-zoom-controls__btn" aria-label="素材库" data-tooltip="打开项目库" @click="emit('openAssetLibrary')">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 7.5h6l2-2h9v13h-17v-11Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M3.5 9.5h17" stroke="currentColor" stroke-width="1.7"/></svg>
     </button>
 

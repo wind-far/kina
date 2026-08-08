@@ -220,7 +220,7 @@ interface WorkflowNodeOption {
 }
 
 const currentWorkflowTitle = computed(() => {
-  return currentWorkflowDetail.value?.definition?.name || workflowName.value || '未命名工作流'
+  return currentWorkflowDetail.value?.definition?.name || workflowName.value || '未命名项目'
 })
 
 const workflowUserName = computed(() => {
@@ -472,7 +472,7 @@ const tryLoadWorkflowByRoute = async (
     updateNodeInternals(nodes.value.map(node => node.id))
     fitView({ padding: 0.24 })
   } catch (error: any) {
-    ElMessage.error(error?.message || '打开工作流失败')
+    ElMessage.error(error?.message || '打开项目失败')
     await syncWorkflowRouteQuery(currentWorkflowId.value || undefined)
   } finally {
     workflowLoadingByRoute.value = false
@@ -801,18 +801,22 @@ const handleWorkflowPromptOutsidePointerDown = (event: PointerEvent) => {
   promptAnchorNodeId.value = ''
 }
 
-// 返回首页：保存草稿 → 跳转。globalKey:'blocking' 期间会弹遮罩"正在保存草稿…"，
-// 避免用户感觉点了没反应。useAsyncAction 自身防止重复点击。
-const goBackAction = useAsyncAction(async () => {
-  await flushAutosave()
-
+// 返回项目入口：保存草稿 → 跳转。直接打开或刷新项目时会丢失 returnTo，
+// 此时画布项目仍应回到资源管理的「无限画布」页，而不是首页。
+const resolveReturnTo = () => {
   const returnTo = String(route.query.returnTo || '').trim()
-  if (returnTo) {
-    await router.push(returnTo)
-    return
+  if (returnTo.startsWith('/') && !returnTo.startsWith('//')) {
+    return returnTo
   }
 
-  await router.push('/')
+  return route.path === '/canvas' ? '/asset?tab=canvas' : '/agentic-assets-workflow'
+}
+
+// globalKey:'blocking' 期间会弹遮罩"正在保存草稿…"，避免用户感觉点了没反应。
+// useAsyncAction 自身防止重复点击。
+const goBackAction = useAsyncAction(async () => {
+  await flushAutosave()
+  await router.push(resolveReturnTo())
 }, { globalKey: 'blocking', globalText: '正在保存草稿…' })
 
 const goBackLoading = goBackAction.loading
@@ -838,7 +842,7 @@ const loadWorkflowAction = useAsyncAction(async (workflow: WorkflowDefinitionSum
   await tryLoadWorkflowByRoute(workflow.id, { versionId })
   await syncWorkflowRouteQuery(workflow.id)
   showWorkflowLibraryPanel.value = false
-  ElMessage.success(`已打开工作流：${workflow.name}`)
+  ElMessage.success(`已打开项目：${workflow.name}`)
 }, { globalKey: 'blocking', globalText: '正在加载工作流…' })
 
 const handleLoadWorkflow = (workflow: WorkflowDefinitionSummary) => {
@@ -1047,7 +1051,7 @@ const performAutosave = async () => {
 
   const detail = await autosaveWorkflow({
     workflowId: currentWorkflowId.value || undefined,
-    name: workflowName.value || `未命名工作流 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`,
+    name: workflowName.value || `未命名项目 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`,
     code: workflowCode.value || undefined,
     description: workflowDescription.value || null,
     category: workflowCategory.value || null,
@@ -1573,7 +1577,8 @@ onMounted(() => {
   window.addEventListener('resize', updateWorkflowPromptDockMode)
   document.addEventListener('pointerdown', handleWorkflowPromptOutsidePointerDown, true)
 
-  const initialWorkflowId = String(route.query.workflowId || '').trim()
+  // /canvas 入口沿用旧项目列表的 projectId 参数，统一映射到工作流定义。
+  const initialWorkflowId = String(route.query.workflowId || route.query.projectId || '').trim()
   const initialVersionId = String(route.query.versionId || '').trim()
   if (initialWorkflowId) {
     void tryLoadWorkflowByRoute(initialWorkflowId, {
@@ -1599,8 +1604,8 @@ onUnmounted(() => {
   }
 })
 
-watch(() => route.query.workflowId, (workflowId) => {
-  const normalizedWorkflowId = String(workflowId || '').trim()
+watch(() => [route.query.workflowId, route.query.projectId], ([workflowId, projectId]) => {
+  const normalizedWorkflowId = String(workflowId || projectId || '').trim()
   const normalizedVersionId = String(route.query.versionId || '').trim()
 
   if (!normalizedWorkflowId) {
@@ -1762,7 +1767,7 @@ watch(currentCanvasSnapshot, () => {
               <span
                 v-else
                 class="wf-header-meta__title"
-                title="点击重命名工作流"
+                title="点击重命名项目"
                 @click="startRenameTitle"
               >
                 {{ currentWorkflowTitle }}
@@ -1881,7 +1886,7 @@ watch(currentCanvasSnapshot, () => {
               class="wf-btn wf-btn-icon"
               :class="{ active: showWorkflowLibraryPanel }"
               aria-label="工作区"
-              data-tooltip="打开工作流库"
+              data-tooltip="打开项目库"
               @click="showWorkflowLibraryPanel = !showWorkflowLibraryPanel"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -2024,8 +2029,8 @@ watch(currentCanvasSnapshot, () => {
             <div class="wf-template-panel-inner wf-persistence-panel">
               <div class="wf-persistence-panel__header">
                 <div>
-                  <div class="wf-persistence-panel__title">打开工作流</div>
-                  <div class="wf-persistence-panel__desc">查看保存过的工作流定义，并把版本快照恢复到当前画布。</div>
+                  <div class="wf-persistence-panel__title">打开项目</div>
+                  <div class="wf-persistence-panel__desc">查看保存过的项目，并把版本快照恢复到当前画布。</div>
                 </div>
                 <button class="wf-btn wf-btn-sm" @click="showWorkflowLibraryPanel = false">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>

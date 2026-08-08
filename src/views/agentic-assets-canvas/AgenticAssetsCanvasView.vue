@@ -181,7 +181,8 @@ const openProjectEditor = async (
       path: '/canvas',
       query: {
         returnTo: route.fullPath,
-        projectId: project.id,
+        workflowId: project.id,
+        ...(fallbackVersionId ? { versionId: fallbackVersionId } : {}),
       },
     })
     return

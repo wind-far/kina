@@ -6,7 +6,7 @@ const buildUntitledName = (label: string, now: Date) => (
 
 /** 工作流入口创建的首个可持久化空白版本。 */
 export const buildBlankWorkflowProjectPayload = (now = new Date()): WorkflowDefinitionCreatePayload => ({
-  name: buildUntitledName('工作流', now),
+  name: buildUntitledName('项目', now),
   description: null,
   category: '创作区',
   scene: 'WORKFLOW_CANVAS',
@@ -37,7 +37,7 @@ export const buildBlankWorkflowProjectPayload = (now = new Date()): WorkflowDefi
 
 /** 画布入口创建的首个可持久化空白版本。 */
 export const buildBlankCanvasProjectPayload = (now = new Date()): WorkflowDefinitionCreatePayload => ({
-  name: buildUntitledName('画布', now),
+  name: buildUntitledName('项目', now),
   description: null,
   category: '创作区',
   scene: 'INFINITE_CANVAS',

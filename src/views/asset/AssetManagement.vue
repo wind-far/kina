@@ -47,7 +47,17 @@
           :active="activeTab === 'canvas'"
           :canvas-filter-options="canvasFilterOptions"
           :canvas-filter="canvasFilter"
+          :projects="canvasProjects"
+          :loading="canvasProjectsLoading"
+          :loading-more="canvasProjectsLoadingMore"
+          :has-more="canvasProjectsHasMore"
           @set-canvas-filter="setCanvasFilter"
+          @create-project="handleCreateCanvasProject"
+          @open-project="handleOpenCanvasProject"
+          @rename-project="handleRenameCanvasProject"
+          @delete-project="handleDeleteCanvasProject"
+          @search="handleCanvasProjectSearch"
+          @load-more="loadMoreCanvasProjects"
           @enter-batch-mode="enterBatchMode"
       />
       <AssetEditorTab
@@ -98,7 +108,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import 'element-plus/es/components/message-box/style/css'
+import { useRoute, useRouter } from 'vue-router'
 import ImagePreview from '@/components/ImagePreview.vue'
 import PublishArtworkModal from '@/components/PublishArtworkModal.vue'
 import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
@@ -119,6 +131,14 @@ import {
   audioFilterOptions,
 } from '@/views/asset/constants'
 import { applyAssetAction } from '@/api/asset-items'
+import {
+  createWorkflowDefinition,
+  deleteWorkflowDefinition,
+  listWorkflowDefinitions,
+  updateWorkflowDefinition,
+  type WorkflowDefinitionSummary,
+} from '@/views/workflow/api/definitions'
+import { buildBlankCanvasProjectPayload } from '@/views/agentic-assets-canvas/new-agentic-project'
 import { AUTH_LOGIN_SUCCESS_EVENT } from '@/stores/auth'
 import type {
   AudioFilterType,
@@ -132,7 +152,13 @@ import type {
 } from '@/views/asset/types'
 
 // 标签页状态
-const activeTab = ref<TabType>('image')
+const router = useRouter()
+const route = useRoute()
+const normalizeAssetTab = (value: unknown): TabType => {
+  const tab = String(value || '').trim() as TabType
+  return tabs.some((item) => item.id === tab) ? tab : 'image'
+}
+const activeTab = ref<TabType>(normalizeAssetTab(route.query.tab))
 
 // 筛选状态
 const imageFilter = ref<ImageFilterType>('all')
@@ -156,6 +182,121 @@ const publishSubmitting = ref<boolean>(false)
 const publishTargetImage = ref<ImageItem | null>(null)
 
 const { imageGroups, allImages, loadImageAssets, resolvePreviewIndexByItemId } = useAssetImages()
+
+const canvasProjects = ref<WorkflowDefinitionSummary[]>([])
+const canvasProjectsLoading = ref(false)
+const canvasProjectsLoadingMore = ref(false)
+const canvasProjectsPage = ref(1)
+const canvasProjectsHasMore = ref(true)
+const canvasProjectKeyword = ref('')
+const canvasProjectsPageSize = 24
+
+const loadCanvasProjects = async (page = 1, keyword = canvasProjectKeyword.value) => {
+  if (page === 1) {
+    canvasProjectsLoading.value = true
+  } else {
+    canvasProjectsLoadingMore.value = true
+  }
+
+  try {
+    const response = await listWorkflowDefinitions({
+      scene: 'INFINITE_CANVAS',
+      keyword: keyword || undefined,
+      page,
+      pageSize: canvasProjectsPageSize,
+    })
+    canvasProjects.value = page === 1
+      ? response.items
+      : canvasProjects.value.concat(response.items)
+    canvasProjectsPage.value = response.page
+    canvasProjectsHasMore.value = response.hasMore
+  } catch (error) {
+    console.error('读取项目列表失败', error)
+    ElMessage.error('读取项目列表失败，请稍后重试')
+  } finally {
+    canvasProjectsLoading.value = false
+    canvasProjectsLoadingMore.value = false
+  }
+}
+
+const refreshCanvasProjects = async () => {
+  await loadCanvasProjects(1)
+}
+
+const loadMoreCanvasProjects = async () => {
+  if (canvasProjectsLoading.value || canvasProjectsLoadingMore.value || !canvasProjectsHasMore.value) {
+    return
+  }
+  await loadCanvasProjects(canvasProjectsPage.value + 1)
+}
+
+const openCanvasProject = async (project: WorkflowDefinitionSummary, fallbackVersionId = '') => {
+  const versionId = project.currentVersionId || project.latestVersion?.id || fallbackVersionId
+  await router.push({
+    path: '/canvas',
+    query: {
+      returnTo: '/asset?tab=canvas',
+      workflowId: project.id,
+      ...(versionId ? { versionId } : {}),
+    },
+  })
+}
+
+const handleCreateCanvasProject = async () => {
+  try {
+    const detail = await createWorkflowDefinition(buildBlankCanvasProjectPayload())
+    await openCanvasProject(detail.definition, detail.versions[0]?.id || '')
+  } catch (error) {
+    console.error('新建项目失败', error)
+  }
+}
+
+const handleOpenCanvasProject = (project: WorkflowDefinitionSummary) => {
+  void openCanvasProject(project)
+}
+
+const handleRenameCanvasProject = async (project: WorkflowDefinitionSummary) => {
+  try {
+    const { value } = await ElMessageBox.prompt('请输入新的项目名称', '重命名项目', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      inputValue: project.name || '',
+      inputPlaceholder: '请输入项目名称',
+      inputValidator: (inputValue) => String(inputValue || '').trim() ? true : '项目名称不能为空',
+    })
+    const name = String(value || '').trim()
+    if (!name || name === project.name) return
+
+    await updateWorkflowDefinition(project.id, { name })
+    await refreshCanvasProjects()
+  } catch (error) {
+    // Element Plus 会以 "cancel" / "close" 拒绝取消操作，不应提示保存失败。
+    if (error !== 'cancel' && error !== 'close') {
+      console.error('重命名项目失败', error)
+    }
+  }
+}
+
+const handleDeleteCanvasProject = async (project: WorkflowDefinitionSummary) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除项目“${project.name || '未命名项目'}”吗？该操作不可恢复。`,
+      '删除项目',
+      { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' },
+    )
+    await deleteWorkflowDefinition(project.id)
+    await refreshCanvasProjects()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      console.error('删除项目失败', error)
+    }
+  }
+}
+
+const handleCanvasProjectSearch = (keyword: string) => {
+  canvasProjectKeyword.value = keyword.trim()
+  void refreshCanvasProjects()
+}
 
 // 选中数量计算属性
 const selectedCount = computed(() => selectedItems.value.size)
@@ -220,9 +361,15 @@ let authLoginSuccessListener: (() => void) | null = null
 
 onMounted(async () => {
   await loadImageAssets()
+  if (activeTab.value === 'canvas') {
+    await refreshCanvasProjects()
+  }
 
   authLoginSuccessListener = () => {
     void loadImageAssets()
+    if (activeTab.value === 'canvas') {
+      void refreshCanvasProjects()
+    }
   }
   window.addEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
 })
@@ -237,6 +384,10 @@ onBeforeUnmount(() => {
 // 切换标签页
 const switchTab = (tab: TabType) => {
   activeTab.value = tab
+  void router.replace({ query: { ...route.query, tab } })
+  if (tab === 'canvas' && canvasProjects.value.length === 0 && !canvasProjectsLoading.value) {
+    void refreshCanvasProjects()
+  }
 }
 
 // 设置筛选条件
@@ -310,6 +461,13 @@ const handleEditInCapCut = async () => {
 // 监听标签页切换，退出批量操作模式
 watch(activeTab, () => {
   exitBatchMode()
+})
+
+watch(() => route.query.tab, (tab) => {
+  const nextTab = normalizeAssetTab(tab)
+  if (nextTab !== activeTab.value) {
+    activeTab.value = nextTab
+  }
 })
 
 // 图片预览事件处理

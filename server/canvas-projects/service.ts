@@ -8,6 +8,22 @@ import { createWorkflowDefinition, getWorkflowDefinitionDetail } from '../workfl
 
 export interface CanvasProjectAccessContext { currentUserId: string }
 
+type CanvasAssistantInsertOperation = {
+  type: 'insert_text_node' | 'insert_director_node'
+  clientKey: string
+  position: { x: number; y: number }
+  data: Record<string, unknown>
+}
+
+type CanvasAssistantConnectOperation = {
+  type: 'connect_nodes'
+  sourceClientKey: string
+  targetClientKey: string
+  edgeType: 'promptOrder'
+}
+
+export type CanvasAssistantOperation = CanvasAssistantInsertOperation | CanvasAssistantConnectOperation
+
 const readCurrentVersion = (detail: any) => detail?.definition?.currentVersion || detail?.definition?.latestVersion || detail?.versions?.[0] || null
 
 export const exportCanvasProject = async (projectId: string, context: CanvasProjectAccessContext) => {
@@ -61,6 +77,67 @@ const collectAssistantContext = (snapshot: CanvasSnapshotV3, selection: unknown)
   return { selected, context: snapshot.nodes.filter(node => included.has(node.id)) }
 }
 
+const isVideoPlanningPrompt = (prompt: string) => /视频|短片|镜头|分镜|广告片|宣传片|video|shot|storyboard/i.test(prompt)
+
+/**
+ * 助手只生产白名单化的结构化提案。它不带可执行脚本、不创建生成任务，
+ * 由客户端展示后显式确认，才会映射为本地画布的可撤销操作。
+ */
+export const buildCanvasAssistantProposal = (input: {
+  prompt: string
+  selectedNodes: CanvasSnapshotV3['nodes']
+  contextNodes: CanvasSnapshotV3['nodes']
+}): { summary: string; operations: CanvasAssistantOperation[] } => {
+  const anchorX = Math.max(120, ...input.selectedNodes.map(node => node.position.x + 420))
+  const anchorY = input.selectedNodes[0]?.position.y || 120
+  const selectedLabels = input.selectedNodes.map(node => String(node.data.label || node.type)).filter(Boolean)
+  const contextSummary = input.contextNodes.length > input.selectedNodes.length
+    ? `已纳入 ${input.contextNodes.length - input.selectedNodes.length} 个上游节点。`
+    : '未额外纳入上游节点。'
+  const textOperation: CanvasAssistantInsertOperation = {
+    type: 'insert_text_node',
+    clientKey: 'assistant-brief',
+    position: { x: anchorX, y: anchorY },
+    data: {
+      content: input.prompt,
+      label: '助手需求草稿',
+      source: 'canvas-assistant-preview',
+      contextSummary,
+    },
+  }
+  if (!isVideoPlanningPrompt(input.prompt)) {
+    return {
+      summary: `将新增 1 个需求文本节点。${contextSummary}`,
+      operations: [textOperation],
+    }
+  }
+  const directorOperation: CanvasAssistantInsertOperation = {
+    type: 'insert_director_node',
+    clientKey: 'assistant-director-plan',
+    position: { x: anchorX + 380, y: anchorY },
+    data: {
+      label: '助手镜头计划',
+      brief: input.prompt,
+      shotPlan: [
+        '1. 开场：建立主体、场景和核心情绪。',
+        '2. 推进：用动作或镜头变化表达核心卖点。',
+        '3. 收束：回到明确的视觉记忆点或行动引导。',
+      ].join('\n'),
+      mode: 'short-video',
+      source: 'canvas-assistant-preview',
+      selectedContext: selectedLabels,
+    },
+  }
+  return {
+    summary: `将新增需求文本和镜头计划 2 个节点，并建立提示词连接。${contextSummary}`,
+    operations: [
+      textOperation,
+      directorOperation,
+      { type: 'connect_nodes', sourceClientKey: textOperation.clientKey, targetClientKey: directorOperation.clientKey, edgeType: 'promptOrder' },
+    ],
+  }
+}
+
 /** 助手先返回结构化预览；客户端确认后才写入历史栈与版本快照。 */
 export const previewCanvasAssistantOperation = async (projectId: string, payload: { prompt?: string; selection?: unknown }, context: CanvasProjectAccessContext) => {
   const exported = await exportCanvasProject(projectId, context)
@@ -82,11 +159,7 @@ export const previewCanvasAssistantOperation = async (projectId: string, payload
     proposal: {
       id: `canvas-proposal-${Date.now()}`,
       requiresConfirmation: true,
-      operations: [{
-        type: 'insert_text_node',
-        position: { x: Math.max(120, ...selectedNodes.map(node => node.position.x + 420)), y: selectedNodes[0]?.position.y || 120 },
-        data: { content: prompt, label: '助手草稿', source: 'canvas-assistant-preview' },
-      }],
+      ...buildCanvasAssistantProposal({ prompt, selectedNodes, contextNodes }),
     },
   }
 }

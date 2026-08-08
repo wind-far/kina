@@ -17,6 +17,8 @@ export interface CanvasPluginActionContribution {
   title: string
   description: string
   icon?: string
+  /** 仅 generation 动作可声明：完成后由宿主写入的已登记插件节点 ID。 */
+  resultNodeId?: string
 }
 
 export interface CanvasPluginMigrationContribution {
@@ -49,13 +51,14 @@ const isJsonValue = (value: unknown, depth = 0): boolean => {
 
 const asRecord = (value: unknown) => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 
-const normalizeActions = (value: unknown) => Array.isArray(value) ? value.slice(0, 12).flatMap((item): CanvasPluginActionContribution[] => {
+const normalizeActions = (value: unknown, options: { allowResultNode?: boolean } = {}) => Array.isArray(value) ? value.slice(0, 12).flatMap((item): CanvasPluginActionContribution[] => {
   const input = asRecord(item)
   const id = safeId(input.id)
   const title = safeText(input.title, 50)
   if (!id || !title) return []
   const icon = safeText(input.icon, 300)
-  return [{ id, title, description: safeText(input.description, 160), ...(icon ? { icon } : {}) }]
+  const resultNodeId = options.allowResultNode ? safeId(input.resultNodeId) : ''
+  return [{ id, title, description: safeText(input.description, 160), ...(icon ? { icon } : {}), ...(resultNodeId ? { resultNodeId } : {}) }]
 }) : []
 
 /** 按能力白名单收敛远程插件声明，所有未知字段都不会进入主应用运行时。 */
@@ -76,7 +79,7 @@ export const normalizeCanvasPluginRuntimeContributions = (
   })) : []
   const toolbar = granted.has('toolbar') ? unique(normalizeActions(input.toolbar)) : []
   const inspectors = granted.has('inspector') ? unique(normalizeActions(input.inspectors)) : []
-  const generation = granted.has('generation') ? unique(normalizeActions(input.generation)) : []
+  const generation = granted.has('generation') ? unique(normalizeActions(input.generation, { allowResultNode: true })) : []
   const migrations = granted.has('migration') && Array.isArray(input.migrations) ? unique(input.migrations.slice(0, 20).flatMap((item): CanvasPluginMigrationContribution[] => {
     const migration = asRecord(item)
     const id = safeId(migration.id)
@@ -86,6 +89,49 @@ export const normalizeCanvasPluginRuntimeContributions = (
     return [{ id, fromVersion, toVersion }]
   })) : []
   return { nodes, toolbar, inspectors, migrations, generation }
+}
+
+export interface CanvasPluginGenerationNodeDataInput {
+  taskId: unknown
+  templateId: unknown
+  prompt: unknown
+  referenceImages?: unknown
+  model?: unknown
+  modelKey?: unknown
+  content?: unknown
+  outputs?: unknown
+}
+
+/**
+ * 生成的最终写入数据由宿主构造，插件只能收到精简事件，不能直接修改画布节点。
+ * taskId/templateId/prompt 也保留为 retry 元数据，供宿主日后以同一受限模板重试。
+ */
+export const buildCanvasPluginGenerationNodeData = (value: CanvasPluginGenerationNodeDataInput) => {
+  const referenceImages = Array.isArray(value.referenceImages)
+    ? value.referenceImages.map(item => String(item || '').trim()).filter(item => item.startsWith('/uploads/')).slice(0, 4)
+    : []
+  const outputs = Array.isArray(value.outputs) ? value.outputs.slice(0, 12).flatMap((item) => {
+    const output = asRecord(item)
+    const url = safeText(output.url, 2000)
+    const outputType = safeText(output.outputType, 50)
+    return url ? [{ url, outputType }] : []
+  }) : []
+  const prompt = safeText(value.prompt, 8000)
+  const templateId = safeId(value.templateId)
+  return {
+    generationTaskId: safeText(value.taskId, 120),
+    generationTemplateId: templateId,
+    generationStatus: 'completed' as const,
+    generationModel: safeText(value.model, 200),
+    generationModelKey: safeText(value.modelKey, 300),
+    generatedContent: safeText(value.content, 20000),
+    generatedOutputs: outputs,
+    generationRetry: {
+      templateId,
+      prompt,
+      referenceImages,
+    },
+  }
 }
 
 export const canvasPluginNodeType = (slug: string, nodeId: string) => `plugin:${safeId(slug)}/${safeId(nodeId)}`

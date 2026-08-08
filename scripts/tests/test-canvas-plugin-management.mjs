@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { createHash } from 'node:crypto'
 import { assertTrustedCanvasPluginPackageUrl, downloadAndVerifyCanvasPluginPackage, normalizeCanvasPluginManifest, publishTrustedCanvasPlugin, startCanvasPluginGeneration } from '../../server/canvas-plugins/service.ts'
-import { canvasPluginNodeType, normalizeCanvasPluginRuntimeContributions } from '../../src/shared/canvas-plugin-runtime.ts'
+import { buildCanvasPluginGenerationNodeData, canvasPluginNodeType, normalizeCanvasPluginRuntimeContributions } from '../../src/shared/canvas-plugin-runtime.ts'
 
 const managerSource = fs.readFileSync(new URL('../../src/views/workflow/components/CanvasPluginManager.vue', import.meta.url), 'utf8')
 assert.match(managerSource, /\/api\/canvas\/plugins\/\$\{encodeURIComponent\(plugin\.id\)\}\/install/)
@@ -33,7 +33,7 @@ assert.deepEqual(
     toolbar: [{ id: 'summarize', title: 'Summarize' }],
     inspectors: [{ id: 'inspect', title: 'Inspect' }],
     migrations: [{ id: 'v1-v2', fromVersion: 1, toVersion: 2 }],
-    generation: [{ id: 'generate', title: 'Generate' }],
+    generation: [{ id: 'generate', title: 'Generate', resultNodeId: 'note' }],
   },
   ['nodes', 'toolbar', 'inspector', 'migration', 'generation'],
   ),
@@ -42,10 +42,20 @@ assert.deepEqual(
     toolbar: [{ id: 'summarize', title: 'Summarize', description: '' }],
     inspectors: [{ id: 'inspect', title: 'Inspect', description: '' }],
     migrations: [{ id: 'v1-v2', fromVersion: 1, toVersion: 2 }],
-    generation: [{ id: 'generate', title: 'Generate', description: '' }],
+    generation: [{ id: 'generate', title: 'Generate', description: '', resultNodeId: 'note' }],
   },
 )
 assert.equal(canvasPluginNodeType('demo-plugin', 'note'), 'plugin:demo-plugin/note')
+assert.deepEqual(buildCanvasPluginGenerationNodeData({
+  taskId: 'task-1', templateId: 'rewrite', prompt: '  精简文案  ', model: 'Chat Model', modelKey: 'provider::chat',
+  referenceImages: ['/uploads/a.png', 'https://untrusted.example/image.png'], content: '完成结果',
+  outputs: [{ url: '/uploads/result.png', outputType: 'image' }, { url: '', outputType: 'image' }],
+}), {
+  generationTaskId: 'task-1', generationTemplateId: 'rewrite', generationStatus: 'completed',
+  generationModel: 'Chat Model', generationModelKey: 'provider::chat', generatedContent: '完成结果',
+  generatedOutputs: [{ url: '/uploads/result.png', outputType: 'image' }],
+  generationRetry: { templateId: 'rewrite', prompt: '精简文案', referenceImages: ['/uploads/a.png'] },
+})
 assert.deepEqual(normalizeCanvasPluginRuntimeContributions({ toolbar: [{ id: 'nope', title: 'Nope' }] }, []), {
   nodes: [], toolbar: [], inspectors: [], migrations: [], generation: [],
 })
@@ -150,6 +160,10 @@ assert.match(hostSource, /defineExpose\(\{ invoke \}\)/)
 assert.match(hostSource, /@load="notifyReady\(plugin\)"/)
 assert.match(hostSource, /canvas-plugin:request-generation/)
 assert.match(hostSource, /subscribeGenerationTaskEvents/)
+assert.match(hostSource, /emit\('generationResult'/)
+assert.match(workflowSource, /const handleCanvasPluginGenerationResult/)
+assert.match(workflowSource, /预览插件生成结果/)
+assert.match(workflowSource, /buildCanvasPluginGenerationNodeData/)
 assert.match(managerSource, /!plugin\.release\?\.isMirrored/)
 assert.match(workflowSource, /applyCanvasPluginProposal/)
 assert.match(workflowSource, /addPluginNode/)

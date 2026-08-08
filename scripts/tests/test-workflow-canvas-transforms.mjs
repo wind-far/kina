@@ -28,9 +28,11 @@ assert.match(clipboard, /isCanvasPluginNodeType\(sourceNode\.type\)/)
 assert.match(shortcuts, /旋转选中节点/)
 
 const resizer = await readSource('../../src/components/canvas/CanvasNodeResizer.vue')
+const configShell = await readSource('../../src/components/canvas/CanvasConfigNodeShell.vue')
 assert.match(resizer, /NodeResizer/)
 assert.match(resizer, /pauseHistory\(\)/)
 assert.match(resizer, /resumeHistory\(true\)/)
 for (const source of nodeSources) assert.match(source, /CanvasNodeResizer/)
+assert.match(configShell, /CanvasNodeResizer/)
 
 console.log('workflow canvas transforms regression passed')

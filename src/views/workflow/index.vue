@@ -97,6 +97,7 @@ import { buildCanvasAssistantSessionSource } from '@/shared/canvas-assistant-ses
 import { formatCanvasImportMigrationReport } from '@/shared/canvas-import-report'
 import { createWorkflowImageBatchChildren } from '@/shared/workflow-image-batch'
 import {
+  buildCanvasPluginGenerationNodeData,
   canvasPluginNodeType,
   isCanvasPluginNodeType,
   type CanvasPluginActionContribution,
@@ -327,6 +328,70 @@ const handleCanvasPluginProposal = async (proposal: { pluginId: string; operatio
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return
     ElMessage.warning(error?.message || '插件提交了不受支持的画布操作，已拒绝。')
+  }
+}
+
+/** 插件生成结束后仍停在宿主预览层；确认前不会改变节点、版本或撤销历史。 */
+const handleCanvasPluginGenerationResult = async (result: {
+  pluginId: string
+  templateId: string
+  resultNodeId: string
+  targetNodeId?: string
+  taskId: string
+  prompt: string
+  referenceImages: string[]
+  model: string
+  modelKey: string
+  content: string
+  outputs: Array<{ url: string; outputType: string }>
+}) => {
+  if (workspaceScene.value !== 'INFINITE_CANVAS') return
+  const entry = canvasPluginRegistrations.value[result.pluginId]
+  const nodeType = entry ? canvasPluginNodeType(entry.slug, result.resultNodeId) : ''
+  const declaration = entry?.contributions.nodes.find(node => canvasPluginNodeType(entry.slug, node.id) === nodeType)
+  if (!entry || !declaration) {
+    ElMessage.warning('插件生成结果对应的节点类型未登记，未写入画布。')
+    return
+  }
+  const targetNode = result.targetNodeId ? nodes.value.find(node => node.id === result.targetNodeId) : null
+  if (result.targetNodeId && (!targetNode
+    || String((targetNode.data as Record<string, unknown>).pluginId || '') !== result.pluginId
+    || String((targetNode.data as Record<string, unknown>).pluginNodeId || '') !== declaration.id)) {
+    ElMessage.warning('插件生成结果只能更新其自身指定类型的节点，未写入画布。')
+    return
+  }
+  const data = buildCanvasPluginGenerationNodeData(result)
+  const outputSummary = result.outputs.length ? `，含 ${result.outputs.length} 个输出素材` : ''
+  try {
+    await ElMessageBox.confirm(
+      `插件生成任务已完成${outputSummary}。确认后将${targetNode ? '更新目标节点' : '插入一个结果节点'}；任务、模型和重试参数会随节点保存。`,
+      '预览插件生成结果',
+      { confirmButtonText: targetNode ? '更新节点' : '插入节点', cancelButtonText: '取消', type: 'info' },
+    )
+    pauseHistory()
+    try {
+      if (targetNode) {
+        updateNode(targetNode.id, data as any)
+      } else {
+        const x = -viewport.value.x / viewport.value.zoom + (window.innerWidth / 2) / viewport.value.zoom
+        const y = -viewport.value.y / viewport.value.zoom + (window.innerHeight / 2) / viewport.value.zoom
+        addPluginNode(nodeType as `plugin:${string}`, { x, y }, {
+          ...declaration.defaultData,
+          ...data,
+          label: declaration.title,
+          pluginId: result.pluginId,
+          pluginNodeId: declaration.id,
+          pluginDescription: declaration.description,
+          pluginColor: declaration.color,
+          pluginVersion: 1,
+        } as WorkflowPluginNodeData)
+      }
+    } finally {
+      resumeHistory(true)
+    }
+    ElMessage.success('插件生成结果已写入画布，可使用撤销恢复。')
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error?.message || '插件生成结果暂时无法写入画布')
   }
 }
 
@@ -2701,6 +2766,7 @@ watch(currentCanvasSnapshot, () => {
         :snapshot="canvasPluginSnapshot"
         @proposal="handleCanvasPluginProposal"
         @registration="handleCanvasPluginRegistration"
+        @generation-result="handleCanvasPluginGenerationResult"
         @reset="resetCanvasPluginRegistrations"
       />
       <CanvasPluginManager

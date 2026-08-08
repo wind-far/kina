@@ -2,7 +2,7 @@ import { readJsonBody, sendJson } from '../ai-gateway/shared'
 import { requireCurrentSessionUser } from '../auth/session'
 import { isPrismaConfigured } from '../db/prisma'
 import { CANVAS_PROJECTS_BASE_PATH } from './constants'
-import { exportCanvasProject, importCanvasProject, previewCanvasAssistantOperation } from './service'
+import { exportCanvasProject, exportCanvasProjectSelection, importCanvasProject, previewCanvasAssistantOperation } from './service'
 import { handleCanvasPluginsRequest } from '../canvas-plugins/request-handler'
 import { handleCanvasPromptsRequest } from '../canvas-prompts/request-handler'
 
@@ -12,7 +12,7 @@ const sendCanvasError = (res: any, status: number, message: string) => {
   res.end(JSON.stringify({ message, error: { type: 'canvas_project_error', message } }))
 }
 
-const matchProjectAction = (requestPath: string, action: 'export' | 'assistant-preview') => {
+const matchProjectAction = (requestPath: string, action: 'export' | 'export-selection' | 'assistant-preview') => {
   const matched = requestPath.match(new RegExp(`^/api/canvas/projects/([^/]+)/${action}$`))
   return matched ? decodeURIComponent(matched[1]) : ''
 }
@@ -26,6 +26,7 @@ export const handleCanvasProjectsRequest = async (req: any, res: any) => {
     if (await handleCanvasPluginsRequest(req, res, requestPath)) return
     if (await handleCanvasPromptsRequest(req, res, requestPath)) return
     const exportProjectId = matchProjectAction(requestPath, 'export')
+    const selectionExportProjectId = matchProjectAction(requestPath, 'export-selection')
     const assistantProjectId = matchProjectAction(requestPath, 'assistant-preview')
     if (req.method === 'POST' && requestPath === `${CANVAS_PROJECTS_BASE_PATH}/projects/import`) {
       const data = await importCanvasProject(await readJsonBody(req), { currentUserId: currentUser.id })
@@ -34,6 +35,11 @@ export const handleCanvasProjectsRequest = async (req: any, res: any) => {
     }
     if (req.method === 'GET' && exportProjectId) {
       sendJson(res, 200, { data: await exportCanvasProject(exportProjectId, { currentUserId: currentUser.id }) })
+      return
+    }
+    if (req.method === 'POST' && selectionExportProjectId) {
+      const payload = await readJsonBody(req)
+      sendJson(res, 200, { data: await exportCanvasProjectSelection(selectionExportProjectId, payload?.selection, { currentUserId: currentUser.id }) })
       return
     }
     if (req.method === 'POST' && assistantProjectId) {

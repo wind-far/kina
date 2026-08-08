@@ -26,6 +26,7 @@ import type { WorkflowDefinitionSummary } from './api/definitions'
 import { rollbackWorkflowDefinitionVersion, updateWorkflowDefinition } from './api/definitions'
 import {
   exportCanvasProject as exportCanvasProjectFile,
+  exportCanvasProjectSelection as exportCanvasProjectSelectionFile,
   importCanvasProject as importCanvasProjectFile,
   previewCanvasAssistantOperation,
   type CanvasAssistantPreviewOperation,
@@ -949,6 +950,31 @@ const downloadCurrentCanvasProject = async () => {
     ElMessage.success('画布项目已导出')
   } catch (error: any) {
     ElMessage.error(error?.message || '导出画布失败')
+  }
+}
+
+const downloadSelectedCanvasNodes = async () => {
+  if (!currentWorkflowId.value || workspaceScene.value !== 'INFINITE_CANVAS') {
+    ElMessage.warning('请先保存无限画布项目后再导出。')
+    return
+  }
+  const selection = nodes.value.filter(node => node.selected).map(node => node.id)
+  if (!selection.length) {
+    ElMessage.warning('请先选择要导出的节点。')
+    return
+  }
+  try {
+    const payload = await exportCanvasProjectSelectionFile(currentWorkflowId.value, selection)
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${currentWorkflowTitle.value || 'infinite-canvas'}-selection.json`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${payload.canvas.nodes.length} 个选中节点`)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出选区失败')
   }
 }
 
@@ -2243,6 +2269,13 @@ watch(currentCanvasSnapshot, () => {
                   :disabled="!currentWorkflowId"
                   @click="downloadCurrentCanvasProject"
                 >导出</button>
+                <button
+                  v-if="workspaceScene === 'INFINITE_CANVAS'"
+                  class="wf-btn wf-btn-md"
+                  type="button"
+                  :disabled="!currentWorkflowId || !nodes.some(node => node.selected)"
+                  @click="downloadSelectedCanvasNodes"
+                >导出选区</button>
                 <button
                   class="wf-btn wf-btn-md wf-btn-primary"
                   :class="{ 'wf-btn-danger': workflowRunning }"

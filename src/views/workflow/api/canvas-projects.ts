@@ -22,6 +22,7 @@ export interface CanvasProjectExport {
 }
 
 export const exportCanvasProject = (projectId: string) => requestCanvasApi<CanvasProjectExport>(`/api/canvas/projects/${encodeURIComponent(projectId)}/export`)
+export const exportCanvasProjectSelection = (projectId: string, selection: string[]) => requestCanvasApi<CanvasProjectExport & { scope: 'selection' }>(`/api/canvas/projects/${encodeURIComponent(projectId)}/export-selection`, 'POST', { selection })
 export const importCanvasProject = (data: unknown, name?: string) => requestCanvasApi<{ detail: any; warnings: string[] }>('/api/canvas/projects/import', 'POST', { data, name })
 export interface CanvasAssistantPreviewOperation {
   type: 'insert_text_node' | 'insert_director_node' | 'connect_nodes'

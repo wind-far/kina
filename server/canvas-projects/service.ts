@@ -26,6 +26,35 @@ export type CanvasAssistantOperation = CanvasAssistantInsertOperation | CanvasAs
 
 const readCurrentVersion = (detail: any) => detail?.definition?.currentVersion || detail?.definition?.latestVersion || detail?.versions?.[0] || null
 
+/**
+ * 选区导出只保留被选节点及二者都在选区中的连线。资源地址作为节点数据的一部分
+ * 原样携带，导入端仍按现有资源可用性处理；不导出项目级助手会话。
+ */
+export const createCanvasSelectionSnapshot = (snapshot: CanvasSnapshotV3, selection: unknown): CanvasSnapshotV3 => {
+  const selectedIds = new Set(Array.isArray(selection)
+    ? selection.map(item => String(item || '').trim()).filter(Boolean)
+    : [])
+  if (!selectedIds.size) {
+    const error = new Error('请先选择至少一个画布节点') as Error & { status?: number }
+    error.status = 400
+    throw error
+  }
+  const nodes = snapshot.nodes.filter(node => selectedIds.has(node.id))
+  if (!nodes.length) {
+    const error = new Error('选中的节点已不存在，请刷新画布后重试') as Error & { status?: number }
+    error.status = 400
+    throw error
+  }
+  const exportedIds = new Set(nodes.map(node => node.id))
+  return {
+    ...snapshot,
+    nodes,
+    edges: snapshot.edges.filter(edge => exportedIds.has(edge.source) && exportedIds.has(edge.target)),
+    chatSessions: [],
+    activeChatId: null,
+  }
+}
+
 export const exportCanvasProject = async (projectId: string, context: CanvasProjectAccessContext) => {
   const detail = await getWorkflowDefinitionDetail(projectId, context)
   if (detail.definition.scene !== 'INFINITE_CANVAS') {
@@ -39,6 +68,20 @@ export const exportCanvasProject = async (projectId: string, context: CanvasProj
     exportedAt: new Date().toISOString(),
     project: { name: detail.definition.name, description: detail.definition.description, tags: detail.definition.tagsJson || [] },
     canvas: workflowVersionToCanvasSnapshot(readCurrentVersion(detail)),
+  }
+}
+
+export const exportCanvasProjectSelection = async (projectId: string, selection: unknown, context: CanvasProjectAccessContext) => {
+  const exported = await exportCanvasProject(projectId, context)
+  const canvas = createCanvasSelectionSnapshot(exported.canvas, selection)
+  return {
+    ...exported,
+    scope: 'selection' as const,
+    project: {
+      ...exported.project,
+      name: `${exported.project.name || '无限画布'}（选区）`,
+    },
+    canvas,
   }
 }
 

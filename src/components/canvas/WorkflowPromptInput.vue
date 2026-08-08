@@ -83,11 +83,15 @@ const emit = defineEmits<{
 
 const rootRef = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const mentionsRef = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const settingsTrackRef = ref<HTMLElement | null>(null)
 const openPanel = ref<OpenPanel>(null)
 const modelSearch = ref('')
 const selectedMentionIds = ref<string[]>([])
+const mentionTriggerRange = ref<{ start: number; end: number } | null>(null)
+const mentionQuery = ref('')
+const mentionIndent = ref(0)
 const canScrollLeft = ref(false)
 const canScrollRight = ref(false)
 
@@ -127,6 +131,11 @@ const filteredModels = computed(() => {
   const keyword = modelSearch.value.trim().toLowerCase()
   if (!keyword) return props.modelOptions
   return props.modelOptions.filter(option => `${option.provider || ''} ${option.label}`.toLowerCase().includes(keyword))
+})
+const filteredAvailableReferences = computed(() => {
+  const query = mentionQuery.value.trim().toLocaleLowerCase('zh-CN')
+  if (!query) return props.availableReferences
+  return props.availableReferences.filter(reference => reference.label.toLocaleLowerCase('zh-CN').includes(query))
 })
 
 const selectedMentionReferences = computed(() => selectedMentionIds.value
@@ -247,6 +256,19 @@ const selectReference = (reference: WorkflowPromptReference) => {
   if (!selectedMentionIds.value.includes(reference.id)) {
     selectedMentionIds.value = [...selectedMentionIds.value, reference.id]
   }
+  const trigger = mentionTriggerRange.value
+  if (trigger) {
+    const nextText = `${localText.value.slice(0, trigger.start)}${localText.value.slice(trigger.end)}`
+    localText.value = nextText
+    mentionTriggerRange.value = null
+    mentionQuery.value = ''
+    nextTick(() => {
+      const textarea = textareaRef.value
+      if (!textarea) return
+      textarea.focus()
+      textarea.setSelectionRange(trigger.start, trigger.start)
+    })
+  }
   closePanels()
   nextTick(() => textareaRef.value?.focus())
 }
@@ -276,9 +298,55 @@ const handleSend = () => {
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && mentionTriggerRange.value) {
+    mentionTriggerRange.value = null
+    mentionQuery.value = ''
+    closePanels()
+    return
+  }
+
+  if (event.key === 'Enter' && openPanel.value === 'reference' && mentionTriggerRange.value) {
+    const reference = filteredAvailableReferences.value.find(item => !isReferenceUnavailable(item))
+    if (reference) {
+      event.preventDefault()
+      selectReference(reference)
+      return
+    }
+  }
+
   if (event.key !== 'Enter' || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return
   event.preventDefault()
   handleSend()
+}
+
+const updateMentionTrigger = (event: Event) => {
+  const textarea = event.target as HTMLTextAreaElement
+  const value = textarea.value
+  const cursor = textarea.selectionStart ?? value.length
+  const beforeCursor = value.slice(0, cursor)
+  const match = /@([^\s@]*)$/u.exec(beforeCursor)
+
+  if (!match) {
+    if (mentionTriggerRange.value) {
+      mentionTriggerRange.value = null
+      mentionQuery.value = ''
+      if (openPanel.value === 'reference') closePanels()
+    }
+    return
+  }
+
+  mentionTriggerRange.value = {
+    start: cursor - match[0].length,
+    end: cursor,
+  }
+  mentionQuery.value = match[1] || ''
+  openPanel.value = 'reference'
+}
+
+const updateMentionIndent = () => {
+  mentionIndent.value = selectedMentionReferences.value.length
+    ? Math.min((mentionsRef.value?.offsetWidth || 0) + 8, 420)
+    : 0
 }
 
 const useSelectedInspiration = () => {
@@ -347,6 +415,10 @@ watch(() => props.generationMode, () => {
   nextTick(updateScrollState)
 })
 
+watch(selectedMentionReferences, () => {
+  nextTick(updateMentionIndent)
+}, { deep: true })
+
 watch(currentMaxCount, maxCount => {
   if (props.count > maxCount) emit('count-change', maxCount)
 })
@@ -355,13 +427,18 @@ onMounted(() => {
   document.addEventListener('pointerdown', handleDocumentPointerDown, true)
   document.addEventListener('keydown', handleDocumentKeydown)
   window.addEventListener('resize', updateScrollState)
-  nextTick(updateScrollState)
+  window.addEventListener('resize', updateMentionIndent)
+  nextTick(() => {
+    updateScrollState()
+    updateMentionIndent()
+  })
 })
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', handleDocumentPointerDown, true)
   document.removeEventListener('keydown', handleDocumentKeydown)
   window.removeEventListener('resize', updateScrollState)
+  window.removeEventListener('resize', updateMentionIndent)
 })
 </script>
 
@@ -393,7 +470,7 @@ onUnmounted(() => {
       </div>
 
       <div class="canvas-prompt-input__body">
-        <div v-if="selectedMentionReferences.length" class="canvas-prompt-input__mentions">
+        <div ref="mentionsRef" v-if="selectedMentionReferences.length" class="canvas-prompt-input__mentions">
           <span v-for="reference in selectedMentionReferences" :key="reference.id" class="canvas-prompt-input__mention">
             <img v-if="reference.url" :src="reference.url" alt="">
             <span v-else class="canvas-prompt-input__mention-fallback">@</span>
@@ -401,7 +478,16 @@ onUnmounted(() => {
             <button type="button" aria-label="移除引用" @click="removeMention(reference.id)">×</button>
           </span>
         </div>
-        <textarea ref="textareaRef" v-model="localText" class="canvas-prompt-input__textarea" :placeholder="selectedMentionIds.length ? '' : placeholder" rows="2" @keydown="handleKeydown" />
+        <textarea
+          ref="textareaRef"
+          v-model="localText"
+          class="canvas-prompt-input__textarea"
+          :style="{ '--workflow-mention-indent': `${mentionIndent}px` }"
+          :placeholder="selectedMentionIds.length ? '' : placeholder"
+          rows="2"
+          @input="updateMentionTrigger"
+          @keydown="handleKeydown"
+        />
       </div>
     </div>
 
@@ -514,8 +600,8 @@ onUnmounted(() => {
         <div class="workflow-prompt-popover__title">可能 <span>@</span> 的内容</div>
         <button type="button" class="workflow-prompt-reference-create" @click="requestCreateSubject"><span>＋</span><span>{{ createSubjectLabel }}</span></button>
         <div class="workflow-prompt-reference-list">
-          <button v-for="reference in availableReferences" :key="reference.id" type="button" :disabled="isReferenceUnavailable(reference)" @click="selectReference(reference)"><img v-if="reference.url" :src="reference.url" alt=""><span v-else>{{ reference.label.slice(0, 2) }}</span><strong>{{ reference.label }}</strong><em v-if="reference.isSubject">主体</em><small v-if="selectedMentionIds.includes(reference.id)">已引用</small><small v-else-if="isReferenceUnavailable(reference)">已达上限</small></button>
-          <div v-if="availableReferences.length === 0" class="workflow-prompt-reference-empty">画布中暂无可引用素材</div>
+          <button v-for="reference in filteredAvailableReferences" :key="reference.id" type="button" :disabled="isReferenceUnavailable(reference)" @click="selectReference(reference)"><img v-if="reference.url" :src="reference.url" alt=""><span v-else>{{ reference.label.slice(0, 2) }}</span><strong>{{ reference.label }}</strong><em v-if="reference.isSubject">主体</em><small v-if="selectedMentionIds.includes(reference.id)">已引用</small><small v-else-if="isReferenceUnavailable(reference)">已达上限</small></button>
+          <div v-if="filteredAvailableReferences.length === 0" class="workflow-prompt-reference-empty">{{ mentionQuery ? '没有匹配的可引用素材' : '画布中暂无可引用素材' }}</div>
         </div>
       </div>
     </Transition>
@@ -557,13 +643,13 @@ onUnmounted(() => {
 .canvas-prompt-input__add { position: absolute; top: 51.5px; left: 34.5px; z-index: 8; display: inline-flex; align-items: center; justify-content: center; width: 29px; height: 29px; padding: 0; border: 0; border-radius: 50%; background: #f1f2f3; color: #0f1419; box-shadow: 0 2px 6px rgba(15,20,25,.12); cursor: pointer; }
 .canvas-prompt-input__add .el-icon { font-size: 14px; }
 .canvas-prompt-input__add:disabled { color: rgba(15,20,25,.32); cursor: default; box-shadow: 0 2px 6px rgba(15,20,25,.06); }
-.canvas-prompt-input__body { display: flex; align-content: flex-start; align-items: flex-start; flex: 1 1 auto; flex-wrap: wrap; min-width: 0; height: 96px; min-height: 96px; padding-top: 2px; overflow-y: auto; }
-.canvas-prompt-input__mentions { display: inline-flex; flex-wrap: wrap; gap: 4px; margin: 0 5px 4px 0; }
+.canvas-prompt-input__body { position: relative; display: block; flex: 1 1 auto; min-width: 0; height: 96px; min-height: 96px; padding-top: 2px; overflow-y: auto; }
+.canvas-prompt-input__mentions { position: absolute; z-index: 1; top: 2px; left: 0; display: inline-flex; flex-wrap: wrap; gap: 4px; max-width: min(420px, calc(100% - 24px)); pointer-events: auto; }
 .canvas-prompt-input__mention { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 1px 6px 1px 2px; border-radius: 6px; background: rgba(61,176,196,.1); color: #0f1419; font-size: 13px; }
 .canvas-prompt-input__mention img, .canvas-prompt-input__mention-fallback { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; }
 .canvas-prompt-input__mention-fallback { display: inline-flex; align-items: center; justify-content: center; background: #dff5f8; color: #3db0c4; font-weight: 700; }
 .canvas-prompt-input__mention button { width: 14px; height: 14px; padding: 0; border: 0; background: transparent; color: #8899a6; cursor: pointer; line-height: 1; }
-.canvas-prompt-input__textarea { flex: 1 1 220px; min-width: 180px; height: 92px; min-height: 92px; padding: 0; resize: none; border: 0; outline: 0; background: transparent; color: #0f1419; font: 400 14px/24px inherit; }
+.canvas-prompt-input__textarea { display: block; box-sizing: border-box; width: 100%; min-width: 0; height: 92px; min-height: 92px; padding: 0; resize: none; border: 0; outline: 0; background: transparent; color: #0f1419; font: 400 14px/24px inherit; text-indent: var(--workflow-mention-indent, 0px); }
 .canvas-prompt-input__textarea::placeholder { color: rgba(83,100,113,.64); }
 .canvas-prompt-input__footer { display: flex; align-items: center; flex: 0 0 36px; height: 36px; min-height: 36px; gap: 4px; white-space: nowrap; }
 .canvas-prompt-input__settings { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; max-width: 455px; padding-left: 4px; overflow: hidden; }

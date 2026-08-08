@@ -74,6 +74,8 @@ const normalizeNode = (value: unknown, index: number, nodeIds: Set<string>, warn
   const type = String(input.type || input.kind || 'unknown').trim() || 'unknown'
   const positionInput = asRecord(input.position)
   const data = asRecord(input.data)
+  const rotation = Number(input.rotation ?? data.rotation)
+  const normalizedData = Number.isFinite(rotation) ? { ...data, rotation } : data
   const id = uniqueId(input.id, 'node', index, nodeIds)
 
   if (!['text', 'image', 'video', 'audio', 'imageConfig', 'videoConfig', 'llmConfig', 'director'].includes(type)) {
@@ -82,7 +84,12 @@ const normalizeNode = (value: unknown, index: number, nodeIds: Set<string>, warn
       id,
       type: 'unknown',
       position: { x: numberValue(positionInput.x), y: numberValue(positionInput.y) },
-      data: { label: String(data.label || input.label || type), originalType: type, originalNode: input },
+      data: {
+        ...normalizedData,
+        label: String(data.label || input.label || type),
+        originalType: type,
+        originalNode: input,
+      },
       zIndex: numberValue(input.zIndex, index),
     }
   }
@@ -91,7 +98,7 @@ const normalizeNode = (value: unknown, index: number, nodeIds: Set<string>, warn
     id,
     type,
     position: { x: numberValue(positionInput.x), y: numberValue(positionInput.y) },
-    data,
+    data: normalizedData,
     zIndex: Number.isFinite(Number(input.zIndex)) ? numberValue(input.zIndex) : undefined,
     selected: Boolean(input.selected),
   }
@@ -130,6 +137,9 @@ const adaptTargetInfiniteCanvasNode = (value: unknown): Record<string, unknown> 
       bytes: numberValue(metadata.bytes ?? primaryImage.bytes),
     } : undefined,
     originalMetadata: metadata,
+    rotation: Number.isFinite(Number(input.rotation ?? metadata.rotation))
+      ? Number(input.rotation ?? metadata.rotation)
+      : undefined,
   }
   if (['image', 'video', 'audio'].includes(type) && resourceContent) data.url = resourceContent
   if (type === 'imageConfig') {

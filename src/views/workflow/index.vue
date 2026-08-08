@@ -3,7 +3,7 @@
  * 工作流主页面
  * 基于 Vue Flow 的节点连线工作流画布
  */
-import { computed, ref, watch, onMounted, onUnmounted, nextTick, markRaw } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted, nextTick, markRaw, reactive } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { VueFlow, useVueFlow, SelectionMode, type Connection, type NodeMouseEvent } from '@vue-flow/core'
@@ -15,10 +15,13 @@ import {
   canvasViewport, updateViewport,
   undo, redo, canUndo, canRedo, manualSaveHistory, initSampleData, initHistory,
   pauseHistory, resumeHistory,
+  rotateNodes, resetNodeRotation,
   validateWorkflowConnection,
+  addPluginNode,
   type WorkflowAddEdgeParams,
   type WorkflowCanvasEdge,
   type WorkflowNodeType,
+  type WorkflowPluginNodeData,
 } from './composables/useWorkflowCanvas'
 import { WORKFLOW_TEMPLATES } from './config/workflows'
 import { useWorkflowPersistence } from './composables/useWorkflowPersistence'
@@ -56,6 +59,7 @@ import LlmConfigNode from './components/nodes/LlmConfigNode.vue'
 import DirectorNode from './components/nodes/DirectorNode.vue'
 import AudioNode from './components/nodes/AudioNode.vue'
 import UnknownNode from './components/nodes/UnknownNode.vue'
+import PluginNode from './components/nodes/PluginNode.vue'
 import CanvasPluginHost from './components/CanvasPluginHost.vue'
 import CanvasPluginManager from './components/CanvasPluginManager.vue'
 import CanvasPromptLibrary from './components/CanvasPromptLibrary.vue'
@@ -90,6 +94,14 @@ import {
 import { resolveWorkflowVideoReferenceRole } from '@/shared/workflow-video-prompt'
 import { buildCanvasAssistantSessionSource } from '@/shared/canvas-assistant-session'
 import { formatCanvasImportMigrationReport } from '@/shared/canvas-import-report'
+import { createWorkflowImageBatchChildren } from '@/shared/workflow-image-batch'
+import {
+  canvasPluginNodeType,
+  isCanvasPluginNodeType,
+  type CanvasPluginActionContribution,
+  type CanvasPluginNodeContribution,
+  type CanvasPluginRuntimeContributions,
+} from '@/shared/canvas-plugin-runtime'
 import { collectWorkflowAssistantContext } from '@/shared/workflow-assistant-context'
 import {
   collectWorkflowSubjectReferences,
@@ -126,7 +138,7 @@ const workspaceScene = computed(() => route.path === '/canvas' ? 'INFINITE_CANVA
 const { viewport, zoomIn, zoomOut, fitView, updateNodeInternals, screenToFlowCoordinate } = useVueFlow()
 
 // 注册自定义节点类型
-const nodeTypes = {
+const nodeTypes: Record<string, unknown> = reactive({
   text: markRaw(TextNode),
   imageConfig: markRaw(ImageConfigNode),
   image: markRaw(ImageNode),
@@ -136,7 +148,7 @@ const nodeTypes = {
   director: markRaw(DirectorNode),
   audio: markRaw(AudioNode),
   unknown: markRaw(UnknownNode),
-} as any
+})
 
 // 注册自定义边类型
 const edgeTypes = {
@@ -165,6 +177,8 @@ const showTemplatePanel = ref(false)
 const showPromptLibrary = ref(false)
 const showCanvasPluginManager = ref(false)
 const canvasPluginHostVersion = ref(0)
+const canvasPluginHost = ref<null | { invoke: (input: { pluginId: string; scope: 'toolbar' | 'inspector' | 'generation'; actionId: string; nodeId?: string }) => boolean }>(null)
+const canvasPluginRegistrations = ref<Record<string, { slug: string; contributions: CanvasPluginRuntimeContributions }>>({})
 const showWorkflowLibraryPanel = ref(false)
 const canvasSnapToGrid = ref(true)
 const canvasAlignmentGuides = ref(true)
@@ -254,20 +268,129 @@ const canvasPluginSnapshot = computed(() => ({
   scene: workspaceScene.value,
 }))
 
+const registeredPluginNodes = computed(() => Object.entries(canvasPluginRegistrations.value).flatMap(([pluginId, entry]) => entry.contributions.nodes.map(node => ({ pluginId, slug: entry.slug, node }))))
+const registeredPluginActions = computed(() => Object.entries(canvasPluginRegistrations.value).flatMap(([pluginId, entry]) => ([
+  ...entry.contributions.toolbar.map(action => ({ pluginId, slug: entry.slug, scope: 'toolbar' as const, action })),
+  ...entry.contributions.generation.map(action => ({ pluginId, slug: entry.slug, scope: 'generation' as const, action })),
+])))
+const selectedPluginNode = computed(() => nodes.value.find(node => node.selected && isCanvasPluginNodeType(node.type)) || null)
+const registeredPluginInspectorActions = computed(() => {
+  const node = selectedPluginNode.value
+  if (!node) return []
+  const pluginId = String((node.data as Record<string, unknown>).pluginId || '')
+  const entry = canvasPluginRegistrations.value[pluginId]
+  return entry ? entry.contributions.inspectors.map(action => ({ pluginId, slug: entry.slug, scope: 'inspector' as const, action, nodeId: node.id })) : []
+})
+
+const handleCanvasPluginRegistration = (registration: { pluginId: string; slug: string; contributions: CanvasPluginRuntimeContributions }) => {
+  canvasPluginRegistrations.value = {
+    ...canvasPluginRegistrations.value,
+    [registration.pluginId]: { slug: registration.slug, contributions: registration.contributions },
+  }
+  registration.contributions.nodes.forEach(node => {
+    nodeTypes[canvasPluginNodeType(registration.slug, node.id)] = markRaw(PluginNode)
+  })
+  void nextTick(() => updateNodeInternals(nodes.value.filter(node => isCanvasPluginNodeType(node.type)).map(node => node.id)))
+}
+
+const resetCanvasPluginRegistrations = () => {
+  Object.values(canvasPluginRegistrations.value).forEach(entry => {
+    entry.contributions.nodes.forEach(node => {
+      // 停用/卸载后仍用占位节点展示，确保项目数据可恢复、不会被静默删除。
+      nodeTypes[canvasPluginNodeType(entry.slug, node.id)] = markRaw(UnknownNode)
+    })
+  })
+  canvasPluginRegistrations.value = {}
+}
+
+const findRegisteredPluginNode = (pluginId: string, type: unknown) => {
+  const entry = canvasPluginRegistrations.value[pluginId]
+  const typeValue = String(type || '')
+  return entry?.contributions.nodes.find(node => canvasPluginNodeType(entry.slug, node.id) === typeValue) || null
+}
+
+const invokeCanvasPluginAction = (input: { pluginId: string; scope: 'toolbar' | 'inspector' | 'generation'; action: CanvasPluginActionContribution; nodeId?: string }) => {
+  if (!canvasPluginHost.value?.invoke({ pluginId: input.pluginId, scope: input.scope, actionId: input.action.id, nodeId: input.nodeId })) {
+    ElMessage.warning('插件动作尚未就绪，请稍后再试。')
+  }
+}
+
 const handleCanvasPluginProposal = async (proposal: { pluginId: string; operations: unknown[] }) => {
   if (workspaceScene.value !== 'INFINITE_CANVAS') {
     ElMessage.warning('当前不是无限画布项目，不能应用插件操作。')
     return
   }
   try {
-    await applyCanvasAssistantProposal({
-      summary: `插件“${proposal.pluginId}”请求修改画布。确认后会进入撤销历史并自动保存。`,
-      operations: proposal.operations,
-    })
+    await applyCanvasPluginProposal(proposal)
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return
     ElMessage.warning(error?.message || '插件提交了不受支持的画布操作，已拒绝。')
   }
+}
+
+/** 插件只能创建或更新自己已登记的节点；所有修改都复用历史栈和确认框。 */
+const applyCanvasPluginProposal = async (proposal: { pluginId: string; operations: unknown[] }) => {
+  const operations = Array.isArray(proposal.operations) ? proposal.operations : []
+  if (!operations.length || operations.length > 20) throw new Error('插件操作数量不合法')
+  const entry = canvasPluginRegistrations.value[proposal.pluginId]
+  if (!entry) throw new Error('插件尚未登记运行时能力')
+  const insertedIds = new Map<string, string>()
+  for (const operation of operations as Array<Record<string, unknown>>) {
+    const kind = String(operation.type || '')
+    if (kind === 'insert_plugin_node') {
+      if (!findRegisteredPluginNode(proposal.pluginId, operation.nodeType)) throw new Error('插件请求了未登记的节点类型')
+      continue
+    }
+    if (kind === 'update_plugin_node') {
+      const node = nodes.value.find(item => item.id === String(operation.nodeId || ''))
+      if (!node || String((node.data as Record<string, unknown>).pluginId || '') !== proposal.pluginId) throw new Error('插件不能修改其他节点')
+      continue
+    }
+    if (kind === 'connect_nodes') continue
+    throw new Error('插件提交了不受支持的操作')
+  }
+  await ElMessageBox.confirm(`插件“${proposal.pluginId}”请求修改画布。确认后会进入撤销历史并自动保存。`, '应用插件操作', {
+    confirmButtonText: '应用', cancelButtonText: '取消', type: 'info',
+  })
+  pauseHistory()
+  try {
+    for (const operation of operations as Array<Record<string, unknown>>) {
+      if (operation.type === 'insert_plugin_node') {
+        const declaration = findRegisteredPluginNode(proposal.pluginId, operation.nodeType) as CanvasPluginNodeContribution
+        const dataInput = operation.data && typeof operation.data === 'object' && !Array.isArray(operation.data) ? operation.data as Record<string, unknown> : {}
+        const id = addPluginNode(String(operation.nodeType) as `plugin:${string}`, {
+          x: Number((operation.position as any)?.x) || 120,
+          y: Number((operation.position as any)?.y) || 120,
+        }, {
+          ...declaration.defaultData,
+          ...dataInput,
+          label: String(dataInput.label || declaration.title),
+          pluginId: proposal.pluginId,
+          pluginNodeId: declaration.id,
+          pluginDescription: declaration.description,
+          pluginColor: declaration.color,
+          pluginVersion: 1,
+        } as WorkflowPluginNodeData)
+        if (operation.clientKey) insertedIds.set(String(operation.clientKey), id)
+      }
+      if (operation.type === 'update_plugin_node') {
+        const patch = operation.data && typeof operation.data === 'object' && !Array.isArray(operation.data) ? operation.data as Record<string, unknown> : {}
+        delete patch.pluginId
+        delete patch.pluginNodeId
+        delete patch.pluginColor
+        delete patch.pluginVersion
+        updateNode(String(operation.nodeId), patch as any)
+      }
+      if (operation.type === 'connect_nodes') {
+        const source = insertedIds.get(String(operation.sourceClientKey || ''))
+        const target = insertedIds.get(String(operation.targetClientKey || ''))
+        if (source && target) addEdge({ source, target, type: 'promptOrder', data: { promptOrder: 1 } })
+      }
+    }
+  } finally {
+    resumeHistory(true)
+  }
+  ElMessage.success('插件操作已应用到画布，可使用撤销恢复。')
 }
 
 const applyCanvasAssistantProposal = async (
@@ -434,6 +557,15 @@ const readRunNodeOutputUrl = (nodeRun: WorkflowRunDetail['nodeRuns'][number]) =>
   } catch {
     return ''
   }
+}
+
+const readRunNodeOutputImageUrls = (nodeRun: WorkflowRunDetail['nodeRuns'][number]) => {
+  if (!nodeRun.outputJson || typeof nodeRun.outputJson !== 'object') return []
+  const raw = (nodeRun.outputJson as Record<string, unknown>).images
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((value) => String(value || '').trim())
+    .filter((value, index, values) => Boolean(value) && values.indexOf(value) === index)
 }
 
 const startRenameTitle = () => {
@@ -695,7 +827,7 @@ const handleAddWorkflow = async (workflow: WorkflowTemplateDefinition) => {
 }
 
 // 节点类型菜单选项
-const nodeTypeOptions: WorkflowNodeOption[] = [
+const builtInNodeTypeOptions: WorkflowNodeOption[] = [
   { type: 'text', name: '文本节点', color: '#3b82f6', icon: 'M4 6h16M4 12h8m-8 6h16' },
   { type: 'imageConfig', name: '文生图配置', color: '#22c55e', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
   { type: 'videoConfig', name: '视频生成配置', color: '#f59e0b', icon: 'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z' },
@@ -705,6 +837,15 @@ const nodeTypeOptions: WorkflowNodeOption[] = [
   { type: 'director', name: '导演台', color: '#ec4899', icon: 'M4 6h16v12H4zM8 3l2 3m4-3 2 3M9 10h6m-6 4h4' },
   { type: 'audio', name: '音频节点', color: '#06b6d4', icon: 'M9 18V5l10-2v13M9 9l10-2M6 21a3 3 0 100-6 3 3 0 000 6zm10-2a3 3 0 100-6 3 3 0 000 6z' },
 ]
+const nodeTypeOptions = computed<WorkflowNodeOption[]>(() => [
+  ...builtInNodeTypeOptions,
+  ...registeredPluginNodes.value.map(({ slug, node }) => ({
+    type: canvasPluginNodeType(slug, node.id) as WorkflowNodeType,
+    name: node.title,
+    color: node.color,
+    icon: 'M12 3v18M3 12h18M5.5 5.5l13 13M18.5 5.5l-13 13',
+  })),
+])
 
 const handleOpenAssistant = () => {
   if (isAssistantCollapsed.value) toggleAssistantPanel()
@@ -765,7 +906,25 @@ const tools = [
 const addNewNode = (type: WorkflowNodeType) => {
   const cx = -viewport.value.x / viewport.value.zoom + (window.innerWidth / 2) / viewport.value.zoom
   const cy = -viewport.value.y / viewport.value.zoom + (window.innerHeight / 2) / viewport.value.zoom
-  const id = addNode(type, { x: cx - 140, y: cy - 100 })
+  let id = ''
+  if (isCanvasPluginNodeType(type)) {
+    const entry = registeredPluginNodes.value.find(item => canvasPluginNodeType(item.slug, item.node.id) === type)
+    if (!entry) {
+      ElMessage.warning('该插件节点未就绪。')
+      return
+    }
+    id = addPluginNode(type, { x: cx - 140, y: cy - 100 }, {
+      ...entry.node.defaultData,
+      label: entry.node.title,
+      pluginId: entry.pluginId,
+      pluginNodeId: entry.node.id,
+      pluginDescription: entry.node.description,
+      pluginColor: entry.node.color,
+      pluginVersion: 1,
+    })
+  } else {
+    id = addNode(type, { x: cx - 140, y: cy - 100 })
+  }
   const maxZ = Math.max(0, ...nodes.value.map(n => n.zIndex || 0))
   updateNode(id, { zIndex: maxZ + 1 })
   setTimeout(() => updateNodeInternals([id]), 50)
@@ -1130,7 +1289,8 @@ const applyServerRunOutputs = (run: WorkflowRunDetail) => {
     if (!configNode) return
     const taskRecordId = nodeRun.generationRecordId || readRunNodeOutput(nodeRun, 'taskRecordId')
     const outputContent = readRunNodeOutput(nodeRun, 'outputContent')
-    const outputUrl = readRunNodeOutputUrl(nodeRun)
+    const outputUrls = [readRunNodeOutputUrl(nodeRun), ...readRunNodeOutputImageUrls(nodeRun)]
+      .filter((value, index, values) => Boolean(value) && values.indexOf(value) === index)
 
     if (configNode.type === 'llmConfig') {
       updateNode(configNode.id, {
@@ -1142,7 +1302,31 @@ const applyServerRunOutputs = (run: WorkflowRunDetail) => {
       })
       return
     }
-    if (configNode.type !== 'imageConfig' || !outputUrl) return
+    if (configNode.type === 'videoConfig') {
+      const outputUrl = outputUrls[0]
+      if (!outputUrl) return
+      const existingOutput = edges.value
+        .filter(edge => edge.source === configNode.id)
+        .map(edge => nodes.value.find(node => node.id === edge.target))
+        .find(node => node?.type === 'video')
+      const outputNodeId = existingOutput?.id || addNode('video', {
+        x: (configNode.position?.x || 0) + 400,
+        y: configNode.position?.y || 0,
+      }, { url: outputUrl, duration: Number((configNode.data as Record<string, unknown>).duration || 0), label: '生成视频', loading: false })
+      if (!existingOutput) {
+        addEdge({ source: configNode.id, target: outputNodeId, sourceHandle: 'right', targetHandle: 'left' })
+      }
+      updateNode(outputNodeId, { url: outputUrl, label: '生成视频', loading: false, error: '' })
+      updateNode(configNode.id, {
+        loading: false,
+        error: '',
+        executed: true,
+        taskRecordId,
+        outputNodeId,
+      })
+      return
+    }
+    if (configNode.type !== 'imageConfig' || !outputUrls.length) return
 
     const existingOutput = edges.value
       .filter(edge => edge.source === configNode.id)
@@ -1151,11 +1335,21 @@ const applyServerRunOutputs = (run: WorkflowRunDetail) => {
     const outputNodeId = existingOutput?.id || addNode('image', {
       x: (configNode.position?.x || 0) + 400,
       y: configNode.position?.y || 0,
-    }, { url: outputUrl, label: '生成图片', loading: false })
+    }, { url: outputUrls[0], label: '生成图片', loading: false })
     if (!existingOutput) {
       addEdge({ source: configNode.id, target: outputNodeId, sourceHandle: 'right', targetHandle: 'left' })
     }
-    updateNode(outputNodeId, { url: outputUrl, label: '生成图片', loading: false, error: '' })
+    const batchChildren = createWorkflowImageBatchChildren(taskRecordId || nodeRun.id, outputUrls)
+    updateNode(outputNodeId, {
+      url: outputUrls[0],
+      label: outputUrls.length > 1 ? `生成图片（${outputUrls.length} 张）` : '生成图片',
+      loading: false,
+      error: '',
+      isBatchRoot: outputUrls.length > 1,
+      batchChildren,
+      primaryImageId: batchChildren[0]?.id,
+      batchExpanded: false,
+    })
     updateNode(configNode.id, {
       loading: false,
       error: '',
@@ -1387,6 +1581,21 @@ const { selectAll, selectedNodeIds } = useCanvasSelection()
 const { copySelected, pasteFromSlot, hasClipboard } = useCanvasClipboard()
 const { onDrop: onCanvasFileDrop, onDragOver: onCanvasFileDragOver } = useCanvasDrop()
 
+const ROTATION_STEP = 15
+const selectedRotationTargetIds = (fallbackNodeId?: string) => {
+  const selected = selectedNodeIds.value
+  // 从已选中的节点右键进入菜单时，旋转整个选区；否则仅操作右键目标。
+  return selected.size ? selected : new Set(fallbackNodeId ? [fallbackNodeId] : [])
+}
+const rotateSelectedNodes = (delta: number, fallbackNodeId?: string) => {
+  const changed = rotateNodes(selectedRotationTargetIds(fallbackNodeId), delta)
+  if (changed) updateWorkflowPromptDockPosition()
+}
+const resetSelectedNodeRotation = (fallbackNodeId?: string) => {
+  const changed = resetNodeRotation(selectedRotationTargetIds(fallbackNodeId))
+  if (changed) updateWorkflowPromptDockPosition()
+}
+
 // 画布助手上下文：选中节点优先，并沿入边收集上游节点（最多 12 个，避免提示词失控）。
 const assistantContextReferences = computed(() => {
   return collectWorkflowAssistantContext(nodes.value, edges.value, selectedNodeIds.value)
@@ -1493,6 +1702,10 @@ const openNodeContextMenu = (payload: NodeMouseEvent) => {
   const e = payload.event as unknown as MouseEvent
   contextMenuItems.value = [
     { id: 'duplicate', label: '复制', shortcut: 'Cmd+C', onClick: () => duplicateNode(payload.node.id) },
+    { id: 'rotate-left', label: '向左旋转 15°', shortcut: 'Alt+←', onClick: () => rotateSelectedNodes(-ROTATION_STEP, payload.node.id) },
+    { id: 'rotate-right', label: '向右旋转 15°', shortcut: 'Alt+→', onClick: () => rotateSelectedNodes(ROTATION_STEP, payload.node.id) },
+    { id: 'reset-rotation', label: '重置旋转', onClick: () => resetSelectedNodeRotation(payload.node.id) },
+    { id: 'divider-transform', label: '', type: 'divider' },
     { id: 'delete', label: '删除', shortcut: 'Del', danger: true, onClick: () => removeNode(payload.node.id) },
   ]
   contextMenuPosition.value = { x: e.clientX, y: e.clientY }
@@ -1515,6 +1728,8 @@ useShortcut('CmdOrCtrl+C', () => {
 useShortcut('CmdOrCtrl+V', () => {
   pasteFromSlot()
 })
+useShortcut('Alt+ArrowLeft', () => rotateSelectedNodes(-ROTATION_STEP))
+useShortcut('Alt+ArrowRight', () => rotateSelectedNodes(ROTATION_STEP))
 
 // 助手面板（复用 canana 视图的 RightPanel）
 const { isPanelCollapsed: isAssistantCollapsed, togglePanel: toggleAssistantPanel } = useChatSessions()
@@ -2198,6 +2413,34 @@ watch(currentCanvasSnapshot, () => {
               </svg>
             </button>
 
+            <button
+              v-for="item in registeredPluginActions"
+              :key="`${item.pluginId}:${item.scope}:${item.action.id}`"
+              class="wf-btn wf-btn-icon"
+              type="button"
+              :aria-label="item.action.title"
+              :data-tooltip="item.action.description || item.action.title"
+              @click="invokeCanvasPluginAction(item)"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path :d="item.action.icon || 'M12 3v18M3 12h18'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+
+            <button
+              v-for="item in registeredPluginInspectorActions"
+              :key="`${item.pluginId}:inspector:${item.action.id}:${item.nodeId}`"
+              class="wf-btn wf-btn-icon"
+              type="button"
+              :aria-label="item.action.title"
+              :data-tooltip="item.action.description || item.action.title"
+              @click="invokeCanvasPluginAction(item)"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path :d="item.action.icon || 'M4 4h16v16H4zM8 8h8M8 12h5'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+
             <div class="wf-divider"></div>
 
             <button class="wf-btn wf-btn-icon" :disabled="workflowRunning || !canUndo" aria-label="撤销" data-tooltip="撤销（Ctrl/Command + Z）" @click="undo()">
@@ -2451,9 +2694,12 @@ watch(currentCanvasSnapshot, () => {
 
       <CanvasPluginHost
         v-if="workspaceScene === 'INFINITE_CANVAS'"
+        ref="canvasPluginHost"
         :key="canvasPluginHostVersion"
         :snapshot="canvasPluginSnapshot"
         @proposal="handleCanvasPluginProposal"
+        @registration="handleCanvasPluginRegistration"
+        @reset="resetCanvasPluginRegistrations"
       />
       <CanvasPluginManager
         v-if="workspaceScene === 'INFINITE_CANVAS' && showCanvasPluginManager"
@@ -2469,4 +2715,10 @@ watch(currentCanvasSnapshot, () => {
 
 <style>
 @import './styles/workflow.css';
+
+/* Vue Flow 外层 transform 只负责坐标定位；节点内容读取持久化的 CSS 变量旋转。 */
+.workflow-canvas .vue-flow__node > * {
+  transform: rotate(var(--canvas-node-rotation, 0deg));
+  transform-origin: center;
+}
 </style>

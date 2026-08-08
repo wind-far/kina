@@ -9,6 +9,7 @@
       :title="`${plugin.name} 插件`"
       sandbox="allow-scripts"
       referrerpolicy="no-referrer"
+      @load="notifyReady(plugin)"
     />
   </div>
 </template>
@@ -16,20 +17,32 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { buildApiUrl } from '@/api/http'
+import {
+  EMPTY_CANVAS_PLUGIN_CONTRIBUTIONS,
+  normalizeCanvasPluginRuntimeContributions,
+  type CanvasPluginRuntimeContributions,
+} from '@/shared/canvas-plugin-runtime'
 
 interface PluginItem {
   id: string
+  slug: string
   name: string
-  release: null | { packageUrl: string; integritySha256: string; manifest: Record<string, unknown> }
+  release: null | { packageUrl: string; integritySha256: string; isMirrored: boolean; manifest: Record<string, unknown> }
   installation: null | { enabled: boolean }
 }
 
 const props = defineProps<{ snapshot: Record<string, unknown> }>()
-const emit = defineEmits<{ proposal: [value: { pluginId: string; operations: unknown[] }] }>()
+const emit = defineEmits<{
+  proposal: [value: { pluginId: string; operations: unknown[] }]
+  registration: [value: { pluginId: string; slug: string; contributions: CanvasPluginRuntimeContributions }]
+  reset: []
+}>()
 const plugins = ref<PluginItem[]>([])
 const frames = new Map<string, HTMLIFrameElement>()
+const registrations = new Map<string, CanvasPluginRuntimeContributions>()
 
-const enabledPlugins = computed(() => plugins.value.filter(plugin => plugin.installation?.enabled && plugin.release?.packageUrl))
+// 旧版直链发布不进入沙箱，必须由服务端完成下载、哈希校验和镜像后才允许执行。
+const enabledPlugins = computed(() => plugins.value.filter(plugin => plugin.installation?.enabled && plugin.release?.packageUrl && plugin.release.isMirrored))
 const setFrame = (pluginId: string, element: Element | { $el?: unknown } | null) => {
   if (element instanceof HTMLIFrameElement) frames.set(pluginId, element)
   else frames.delete(pluginId)
@@ -38,16 +51,24 @@ const setFrame = (pluginId: string, element: Element | { $el?: unknown } | null)
 const post = (pluginId: string, message: Record<string, unknown>) => {
   frames.get(pluginId)?.contentWindow?.postMessage(message, '*')
 }
+const notifyReady = (plugin: PluginItem) => post(plugin.id, { type: 'canvas-plugin:ready', protocol: 1 })
 
 const allowsCapability = (plugin: PluginItem, capability: string) => {
   const capabilities = plugin.release?.manifest?.capabilities
   return Array.isArray(capabilities) && capabilities.includes(capability)
 }
 
+const emitRegistration = (plugin: PluginItem, raw: unknown) => {
+  const capabilities = plugin.release?.manifest?.capabilities
+  const contributions = normalizeCanvasPluginRuntimeContributions(raw, Array.isArray(capabilities) ? capabilities.map(String) : [])
+  registrations.set(plugin.id, contributions)
+  emit('registration', { pluginId: plugin.id, slug: plugin.slug, contributions })
+}
+
 const handleMessage = (event: MessageEvent) => {
   const plugin = enabledPlugins.value.find(item => frames.get(item.id)?.contentWindow === event.source)
   if (!plugin || !event.data || typeof event.data !== 'object') return
-  const data = event.data as { type?: string; operations?: unknown[] }
+  const data = event.data as { type?: string; operations?: unknown[]; contributions?: unknown }
   if (data.type === 'canvas-plugin:request-snapshot') {
     if (!allowsCapability(plugin, 'canvas.read')) return
     post(plugin.id, { type: 'canvas-plugin:snapshot', snapshot: props.snapshot })
@@ -56,11 +77,28 @@ const handleMessage = (event: MessageEvent) => {
   if (data.type === 'canvas-plugin:propose-operation' && Array.isArray(data.operations)) {
     if (!allowsCapability(plugin, 'canvas.propose')) return
     emit('proposal', { pluginId: plugin.id, operations: data.operations.slice(0, 20) })
+    return
+  }
+  if (data.type === 'canvas-plugin:register') {
+    emitRegistration(plugin, data.contributions)
   }
 }
 
+/** 由主应用调用；会再次核对 action 是否已登记，iframe 无法伪造其他插件动作。 */
+const invoke = (input: { pluginId: string; scope: 'toolbar' | 'inspector' | 'generation'; actionId: string; nodeId?: string }) => {
+  const plugin = enabledPlugins.value.find(item => item.id === input.pluginId)
+  const registered = registrations.get(input.pluginId) || EMPTY_CANVAS_PLUGIN_CONTRIBUTIONS
+  const actions = input.scope === 'toolbar' ? registered.toolbar : input.scope === 'inspector' ? registered.inspectors : registered.generation
+  if (!plugin || !actions.some(action => action.id === input.actionId)) return false
+  post(input.pluginId, { type: 'canvas-plugin:invoke', ...input })
+  return true
+}
+
+defineExpose({ invoke })
+
 onMounted(async () => {
   window.addEventListener('message', handleMessage)
+  emit('reset')
   try {
     const response = await fetch(buildApiUrl('/api/canvas/plugins'), { credentials: 'include' })
     if (response.ok) {
@@ -72,7 +110,10 @@ onMounted(async () => {
   }
 })
 
-onBeforeUnmount(() => window.removeEventListener('message', handleMessage))
+onBeforeUnmount(() => {
+  window.removeEventListener('message', handleMessage)
+  registrations.clear()
+})
 </script>
 
 <style scoped>

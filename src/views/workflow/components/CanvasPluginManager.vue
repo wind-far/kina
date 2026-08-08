@@ -20,7 +20,7 @@
         <div class="canvas-plugin-manager__actions">
           <button
             type="button"
-            :disabled="busyPluginId === plugin.id || !plugin.release"
+            :disabled="busyPluginId === plugin.id || !plugin.release?.isMirrored"
             @click="toggle(plugin)"
           >{{ plugin.installation?.enabled ? '停用' : '启用' }}</button>
           <button
@@ -46,7 +46,7 @@ interface CanvasPluginItem {
   slug: string
   name: string
   description: string
-  release: null | { version: string }
+  release: null | { version: string; isMirrored: boolean }
   installation: null | { enabled: boolean }
 }
 

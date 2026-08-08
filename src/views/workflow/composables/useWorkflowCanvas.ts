@@ -24,11 +24,16 @@ import type { WorkflowCanvasPosition } from './workflow-orchestrator-types'
 import workflowReferenceSample from '@/assets/workflow-reference-sample.svg'
 import { resolveWorkflowNodeMenuTarget } from '@/shared/workflow-node-menu'
 
-export type WorkflowNodeType = 'text' | 'imageConfig' | 'videoConfig' | 'image' | 'video' | 'llmConfig' | 'director' | 'audio' | 'unknown'
+export type WorkflowBuiltinNodeType = 'text' | 'imageConfig' | 'videoConfig' | 'image' | 'video' | 'llmConfig' | 'director' | 'audio' | 'unknown'
+/** 受信插件在主应用中只能使用这个命名空间，避免覆盖内置节点。 */
+export type WorkflowPluginNodeType = `plugin:${string}`
+export type WorkflowNodeType = WorkflowBuiltinNodeType | WorkflowPluginNodeType
 export type WorkflowNodeAddMenuType = 'text' | 'image' | 'video' | 'director' | 'audio' | 'reference'
 
 export interface WorkflowNodeDataBase {
   label?: string
+  /** 节点绕中心旋转的角度（度）。画布层负责规范化到 -180 ~ 180。 */
+  rotation?: number
   createdAt?: number
   updatedAt?: number
   loading?: boolean
@@ -52,6 +57,8 @@ export interface WorkflowImageConfigNodeData extends WorkflowNodeDataBase {
   model?: string
   size?: string
   quality?: string
+  /** 单次生成图片数量；服务端和画布直连生成均限制在 1-4 张。 */
+  batchCount?: number
 }
 
 export interface WorkflowVideoConfigNodeData extends WorkflowNodeDataBase {
@@ -109,6 +116,15 @@ export interface WorkflowUnknownNodeData extends WorkflowNodeDataBase {
   originalNode?: Record<string, unknown>
 }
 
+export interface WorkflowPluginNodeData extends WorkflowNodeDataBase {
+  pluginId: string
+  pluginNodeId: string
+  pluginDescription?: string
+  pluginColor?: string
+  pluginVersion?: number
+  [key: string]: unknown
+}
+
 export interface WorkflowNodeDataMap {
   text: WorkflowTextNodeData
   imageConfig: WorkflowImageConfigNodeData
@@ -121,15 +137,20 @@ export interface WorkflowNodeDataMap {
   unknown: WorkflowUnknownNodeData
 }
 
-export type WorkflowNodeData = WorkflowNodeDataMap[WorkflowNodeType]
+export type WorkflowNodeDataFor<T extends WorkflowNodeType> = T extends keyof WorkflowNodeDataMap
+  ? WorkflowNodeDataMap[T]
+  : WorkflowPluginNodeData
+export type WorkflowNodeData = WorkflowNodeDataFor<WorkflowNodeType>
 
 export interface WorkflowCanvasNode<T extends WorkflowNodeType = WorkflowNodeType> {
   id: string
   type: T
   position: WorkflowCanvasPosition
-  data: WorkflowNodeDataMap[T]
+  data: WorkflowNodeDataFor<T>
   zIndex?: number
   selected?: boolean
+  /** 仅用于 Vue Flow 节点宿主的展示变量；业务数据仍以 data.rotation 为准。 */
+  style?: Record<string, string | number>
 }
 
 export type WorkflowEdgeType = 'promptOrder' | 'imageOrder' | 'imageRole' | 'mediaRole'
@@ -203,6 +224,30 @@ export interface WorkflowCanvasStateSnapshot {
 type WorkflowNodeUpdatePayload = Partial<WorkflowNodeData> & {
   position?: WorkflowCanvasPosition
   zIndex?: number
+}
+
+const normalizeNodeRotation = (value: unknown): number => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  const normalized = ((numeric % 360) + 360) % 360
+  return normalized > 180 ? normalized - 360 : normalized
+}
+
+const applyNodeRotationPresentation = <T extends WorkflowNodeType>(node: WorkflowCanvasNode<T>): WorkflowCanvasNode<T> => {
+  const rotation = normalizeNodeRotation(node.data.rotation)
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      rotation,
+    },
+    // Vue Flow 的外层 transform 用于定位，不能被 rotate 覆盖；以 CSS 变量
+    // 交给节点内容旋转，既保留拖拽定位，也让所有自定义节点共用同一表现。
+    style: {
+      ...node.style,
+      '--canvas-node-rotation': `${rotation}deg`,
+    },
+  }
 }
 
 export interface WorkflowEdgePatch {
@@ -328,7 +373,7 @@ watch(
 /**
  * 获取节点类型的默认数据
  */
-const getDefaultNodeData = <T extends WorkflowNodeType>(type: T): WorkflowNodeDataMap[T] => {
+const getDefaultNodeData = <T extends WorkflowBuiltinNodeType>(type: T): WorkflowNodeDataMap[T] => {
   switch (type) {
     case 'text':
       return { content: '', label: '文本输入' } as WorkflowNodeDataMap[T]
@@ -339,6 +384,7 @@ const getDefaultNodeData = <T extends WorkflowNodeType>(type: T): WorkflowNodeDa
         model: getDefaultImageModelKey(),
         size: model?.defaultParams?.size || '1x1',
         quality: model?.defaultParams?.quality || 'standard',
+        batchCount: 1,
         label: '文生图'
       } as WorkflowNodeDataMap[T]
     }
@@ -387,7 +433,7 @@ const getDefaultNodeData = <T extends WorkflowNodeType>(type: T): WorkflowNodeDa
 }
 
 // 添加节点
-export const addNode = <T extends WorkflowNodeType>(
+export const addNode = <T extends WorkflowBuiltinNodeType>(
   type: T,
   position: WorkflowCanvasPosition = { x: 100, y: 100 },
   data: Partial<WorkflowNodeDataMap[T]> = {},
@@ -405,8 +451,26 @@ export const addNode = <T extends WorkflowNodeType>(
       updatedAt: data.updatedAt || now,
     } as WorkflowNodeDataMap[T],
   }
-  nodes.value = [...nodes.value, nextNode]
+  nodes.value = [...nodes.value, applyNodeRotationPresentation(nextNode)]
   // 入栈由全局 watch 防抖触发，无需显式调用
+  return id
+}
+
+/** 插件节点由宿主创建，永远附带归属信息；插件脚本不能直接写入 nodes。 */
+export const addPluginNode = (
+  type: WorkflowPluginNodeType,
+  position: WorkflowCanvasPosition,
+  data: WorkflowPluginNodeData,
+) => {
+  const id = getNodeId()
+  const now = Date.now()
+  const nextNode: WorkflowCanvasNode = {
+    id,
+    type,
+    position,
+    data: { ...data, createdAt: data.createdAt || now, updatedAt: data.updatedAt || now },
+  }
+  nodes.value = [...nodes.value, applyNodeRotationPresentation(nextNode)]
   return id
 }
 
@@ -414,15 +478,17 @@ export const addNode = <T extends WorkflowNodeType>(
 export const updateNode = (id: string, patch: WorkflowNodeUpdatePayload) => {
   const { position, zIndex, ...dataPatch } = patch
   nodes.value = nodes.value.map(node =>
-    node.id === id ? {
-      ...node,
-      position: position || node.position,
-      zIndex: zIndex ?? node.zIndex,
-      data: {
-        ...node.data,
-        ...dataPatch,
-      },
-    } : node,
+    node.id === id
+      ? applyNodeRotationPresentation({
+          ...node,
+          position: position || node.position,
+          zIndex: zIndex ?? node.zIndex,
+          data: {
+            ...node.data,
+            ...dataPatch,
+          },
+        })
+      : node,
   )
   // 拖拽位置变更也通过 watch 入栈（拖拽中由调用方 pauseHistory，结束 resumeHistory）
 }
@@ -441,14 +507,56 @@ export const duplicateNode = (id: string) => {
   const newId = getNodeId()
   const maxZ = Math.max(0, ...nodes.value.map(n => n.zIndex || 0))
 
-  nodes.value = [...nodes.value, {
+  const nextNode: WorkflowCanvasNode = {
     id: newId,
     type: source.type,
     position: { x: source.position.x + 50, y: source.position.y + 50 },
     data: { ...source.data },
-    zIndex: maxZ + 1
-  }]
+    zIndex: maxZ + 1,
+  }
+  nodes.value = [...nodes.value, applyNodeRotationPresentation(nextNode)]
   return newId
+}
+
+/**
+ * 批量旋转当前选中的节点。旋转属于节点数据，自动进入版本快照和撤销历史。
+ * 返回实际变换的节点数，便于 UI 在空选区时保持静默。
+ */
+export const rotateNodes = (nodeIds: Iterable<string>, delta: number): number => {
+  const ids = new Set(nodeIds)
+  const step = Number(delta)
+  if (!ids.size || !Number.isFinite(step) || step === 0) return 0
+
+  let changed = 0
+  nodes.value = nodes.value.map((node) => {
+    if (!ids.has(node.id)) return node
+    changed += 1
+    return applyNodeRotationPresentation({
+      ...node,
+      data: {
+        ...node.data,
+        rotation: normalizeNodeRotation(normalizeNodeRotation(node.data.rotation) + step),
+      },
+    })
+  })
+  return changed
+}
+
+/** 将一组节点归正到 0°，用于右键菜单的“重置旋转”。 */
+export const resetNodeRotation = (nodeIds: Iterable<string>): number => {
+  const ids = new Set(nodeIds)
+  if (!ids.size) return 0
+
+  let changed = 0
+  nodes.value = nodes.value.map((node) => {
+    if (!ids.has(node.id) || normalizeNodeRotation(node.data.rotation) === 0) return node
+    changed += 1
+    return applyNodeRotationPresentation({
+      ...node,
+      data: { ...node.data, rotation: 0 },
+    })
+  })
+  return changed
 }
 
 const wouldCreateCycle = (source: string, target: string) => {
@@ -606,7 +714,7 @@ export const redo = (): boolean => {
 const restoreState = (state: WorkflowCanvasStateSnapshot) => {
   isRestoring = true
   const nextState = cloneCanvasState(state)
-  nodes.value = nextState.nodes
+  nodes.value = nextState.nodes.map(node => applyNodeRotationPresentation(node))
   edges.value = nextState.edges
   if (nextState.viewport) canvasViewport.value = { ...nextState.viewport }
   if (nextState.backgroundMode !== undefined) canvasBackgroundMode.value = nextState.backgroundMode
@@ -640,9 +748,9 @@ export const applyCanvasSnapshot = (
 ) => {
   const nextState = cloneCanvasState(state)
   isRestoring = true
-  nodes.value = nextState.nodes
+  nodes.value = nextState.nodes.map(node => applyNodeRotationPresentation(node))
   edges.value = nextState.edges
-  syncNodeIdCounter(nextState.nodes)
+  syncNodeIdCounter(nodes.value)
 
   if (viewportState) {
     canvasViewport.value = {

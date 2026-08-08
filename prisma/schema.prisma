@@ -673,7 +673,12 @@ model CanvasPluginRelease {
   id              String       @id @default(cuid()) @db.VarChar(36)
   pluginId        String       @map("plugin_id") @db.VarChar(36)
   version         String       @db.VarChar(50)
+  /// packageUrl 是经过校验后由 CanvasMind 托管的不可变镜像地址，而非上游直链。
   packageUrl      String       @map("package_url") @db.Text
+  sourcePackageUrl String?     @map("source_package_url") @db.Text
+  packageStoragePath String?   @map("package_storage_path") @db.Text
+  packageStorageType String    @default("local") @map("package_storage_type") @db.VarChar(20)
+  packageStorageCode String?   @map("package_storage_code") @db.VarChar(100)
   integritySha256 String       @map("integrity_sha256") @db.VarChar(128)
   manifestJson    Json         @map("manifest_json")
   isTrusted       Boolean      @default(false) @map("is_trusted")

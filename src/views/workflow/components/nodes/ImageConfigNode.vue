@@ -25,6 +25,11 @@ import { BANANA_SIZE_OPTIONS, SEEDREAM_SIZE_OPTIONS, getAllImageModels, loadPubl
 import { createGenerationTask, resolveGenerationTaskModel, subscribeGenerationTaskEvents } from '@/api/generation-tasks'
 import WfSelect from '@/components/common/WfSelect.vue'
 import { appendImageReferencesToRequestBody, collectOrderedImageReferences } from '@/shared/image-generation-request'
+import {
+  createWorkflowImageBatchChildren,
+  normalizeWorkflowImageBatchCount,
+  readWorkflowGenerationImageUrls,
+} from '@/shared/workflow-image-batch'
 
 const props = defineProps<{
   id: string
@@ -46,6 +51,7 @@ const taskStreamController = ref<AbortController | null>(null)
 const model = ref(props.data?.model || getDefaultImageModelKey())
 const size = ref(props.data?.size || '1x1')
 const quality = ref(props.data?.quality || 'standard')
+const batchCount = ref(normalizeWorkflowImageBatchCount(props.data?.batchCount))
 
 interface WorkflowImageModelLike {
   key?: string
@@ -89,6 +95,7 @@ const qualityOptions = computed(() => {
   if (!m?.qualities) return []
   return m.qualities.map((q) => ({ label: q.label, value: q.key }))
 })
+const batchCountOptions = [1, 2, 3, 4].map(value => ({ label: `${value} 张`, value }))
 
 // 连接的提示词数量
 const promptCount = computed(() => {
@@ -102,11 +109,12 @@ const refImageCount = computed(() => {
 
 // 监听外部数据变化
 watch(
-  [() => props.data?.model, () => props.data?.size, () => props.data?.quality],
-  ([m, s, q]) => {
+  [() => props.data?.model, () => props.data?.size, () => props.data?.quality, () => props.data?.batchCount],
+  ([m, s, q, count]) => {
     if (m !== undefined) model.value = m
     if (s !== undefined) size.value = s
     if (q !== undefined) quality.value = q
+    if (count !== undefined) batchCount.value = normalizeWorkflowImageBatchCount(count)
   },
 )
 
@@ -120,7 +128,12 @@ onUnmounted(() => {
 })
 
 const updateConfig = () => {
-  updateNode(props.id, { model: model.value, size: size.value, quality: quality.value })
+  updateNode(props.id, {
+    model: model.value,
+    size: size.value,
+    quality: quality.value,
+    batchCount: normalizeWorkflowImageBatchCount(batchCount.value),
+  })
 }
 
 // 收集连接的提示词和参考图
@@ -157,24 +170,6 @@ const cleanupTaskStream = () => {
   taskStreamController.value = null
 }
 
-const readRecordImageUrl = (record: {
-  images?: string[]
-  outputs?: Array<{ url?: string }>
-} | null | undefined) => {
-  if (Array.isArray(record?.images) && record.images.length) {
-    return String(record.images[0] || '').trim()
-  }
-
-  if (Array.isArray(record?.outputs)) {
-    const matched = record.outputs.find(item => typeof item?.url === 'string' && String(item.url || '').trim())
-    if (matched?.url) {
-      return String(matched.url).trim()
-    }
-  }
-
-  return ''
-}
-
 const bindTaskStream = (taskRecordId: string, outputNodeId: string, controller: AbortController) => {
   void subscribeGenerationTaskEvents(taskRecordId, {
     signal: controller.signal,
@@ -188,9 +183,19 @@ const bindTaskStream = (taskRecordId: string, outputNodeId: string, controller: 
       }
 
       if (event.type === 'snapshot' || event.type === 'completed') {
-        const url = readRecordImageUrl(event.record)
-        if (url) {
-          updateNode(outputNodeId, { url, label: '生成结果', loading: false, error: '' })
+        const urls = readWorkflowGenerationImageUrls(event.record)
+        if (urls.length) {
+          const children = createWorkflowImageBatchChildren(taskRecordId, urls)
+          updateNode(outputNodeId, {
+            url: urls[0],
+            label: urls.length > 1 ? `生成结果（${urls.length} 张）` : '生成结果',
+            loading: false,
+            error: '',
+            isBatchRoot: urls.length > 1,
+            batchChildren: children,
+            primaryImageId: children[0]?.id,
+            batchExpanded: false,
+          })
           updateNode(props.id, {
             loading: !event.done,
             error: '',
@@ -268,7 +273,7 @@ const handleGenerate = async () => {
     } = {
       model: modelKey,
       prompt: prompt || '',
-      n: 1,
+      n: normalizeWorkflowImageBatchCount(batchCount.value),
       providerId,
     }
     if (size.value && currentModel.value?.sizes?.length) requestBody.size = size.value
@@ -411,6 +416,11 @@ watch(
         <div v-if="sizeOptions.length">
           <label class="wf-node-label">尺寸</label>
           <WfSelect v-model="size" :options="sizeOptions" @change="updateConfig" />
+        </div>
+
+        <div>
+          <label class="wf-node-label">批量生成</label>
+          <WfSelect v-model="batchCount" :options="batchCountOptions" @change="updateConfig" />
         </div>
 
         <!-- 生成按钮 -->

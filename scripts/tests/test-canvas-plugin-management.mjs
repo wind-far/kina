@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { normalizeCanvasPluginManifest } from '../../server/canvas-plugins/service.ts'
+import { createHash } from 'node:crypto'
+import { assertTrustedCanvasPluginPackageUrl, downloadAndVerifyCanvasPluginPackage, normalizeCanvasPluginManifest, publishTrustedCanvasPlugin } from '../../server/canvas-plugins/service.ts'
+import { canvasPluginNodeType, normalizeCanvasPluginRuntimeContributions } from '../../src/shared/canvas-plugin-runtime.ts'
 
 const managerSource = fs.readFileSync(new URL('../../src/views/workflow/components/CanvasPluginManager.vue', import.meta.url), 'utf8')
 assert.match(managerSource, /\/api\/canvas\/plugins\/\$\{encodeURIComponent\(plugin\.id\)\}\/install/)
@@ -9,6 +11,10 @@ assert.match(managerSource, /插件在沙箱 iframe 中运行/)
 const requestHandlerSource = fs.readFileSync(new URL('../../server/canvas-plugins/request-handler.ts', import.meta.url), 'utf8')
 assert.match(requestHandlerSource, /canvas_plugin\.publish/)
 assert.match(requestHandlerSource, /recordAdminAuditLog/)
+assert.match(requestHandlerSource, /listCanvasPluginsForAdmin/)
+const adminPageSource = fs.readFileSync(new URL('../../src/views/admin/plugins/AdminCanvasPlugins.vue', import.meta.url), 'utf8')
+assert.match(adminPageSource, /发布受信插件/)
+assert.match(adminPageSource, /publishCanvasPlugin/)
 
 const workflowSource = fs.readFileSync(new URL('../../src/views/workflow/index.vue', import.meta.url), 'utf8')
 assert.match(workflowSource, /const handleCanvasPluginProposal[\s\S]*?applyCanvasAssistantProposal/)
@@ -21,8 +27,108 @@ assert.throws(
   /不受支持的能力/,
 )
 
+assert.deepEqual(
+  normalizeCanvasPluginRuntimeContributions({
+    nodes: [{ id: 'note', title: 'Plugin note', color: '#123456', defaultData: { value: 'safe' } }],
+    toolbar: [{ id: 'summarize', title: 'Summarize' }],
+    inspectors: [{ id: 'inspect', title: 'Inspect' }],
+    migrations: [{ id: 'v1-v2', fromVersion: 1, toVersion: 2 }],
+    generation: [{ id: 'generate', title: 'Generate' }],
+  },
+  ['nodes', 'toolbar', 'inspector', 'migration', 'generation'],
+  ),
+  {
+    nodes: [{ id: 'note', title: 'Plugin note', description: '', color: '#123456', defaultData: { value: 'safe' } }],
+    toolbar: [{ id: 'summarize', title: 'Summarize', description: '' }],
+    inspectors: [{ id: 'inspect', title: 'Inspect', description: '' }],
+    migrations: [{ id: 'v1-v2', fromVersion: 1, toVersion: 2 }],
+    generation: [{ id: 'generate', title: 'Generate', description: '' }],
+  },
+)
+assert.equal(canvasPluginNodeType('demo-plugin', 'note'), 'plugin:demo-plugin/note')
+assert.deepEqual(normalizeCanvasPluginRuntimeContributions({ toolbar: [{ id: 'nope', title: 'Nope' }] }, []), {
+  nodes: [], toolbar: [], inspectors: [], migrations: [], generation: [],
+})
+
+const packageBody = Buffer.from('<!doctype html><title>trusted plugin</title>')
+const packageHash = createHash('sha256').update(packageBody).digest('hex')
+const fakeResponse = {
+  ok: true,
+  status: 200,
+  headers: { get: name => name === 'content-type' ? 'text/html; charset=utf-8' : String(packageBody.byteLength) },
+  body: null,
+  arrayBuffer: async () => packageBody,
+}
+assert.equal(
+  await assertTrustedCanvasPluginPackageUrl('https://registry.example.com/demo.html', {
+    environment: { CANVAS_PLUGIN_REGISTRY_HOSTS: 'registry.example.com' },
+    resolveHostname: async () => [{ address: '8.8.8.8' }],
+  }),
+  'https://registry.example.com/demo.html',
+)
+assert.rejects(
+  () => assertTrustedCanvasPluginPackageUrl('https://localhost/demo.html', {
+    environment: { CANVAS_PLUGIN_REGISTRY_HOSTS: 'localhost' },
+    resolveHostname: async () => [{ address: '127.0.0.1' }],
+  }),
+  /受限网络地址/,
+)
+assert.deepEqual(await downloadAndVerifyCanvasPluginPackage('https://registry.example.com/demo.html', packageHash, async () => fakeResponse), packageBody)
+await assert.rejects(
+  () => downloadAndVerifyCanvasPluginPackage('https://registry.example.com/demo.html', '0'.repeat(64), async () => fakeResponse),
+  /SHA-256/,
+)
+
+const publishPayload = {
+  slug: 'demo-plugin', name: 'Demo Plugin', version: '1.0.0', packageUrl: 'https://registry.example.com/demo.html', integritySha256: packageHash,
+  manifest: { entry: '/plugin.html', capabilities: ['nodes', 'canvas.propose'] },
+}
+const deletedPackages = []
+let savedPackageInput
+const published = await publishTrustedCanvasPlugin(publishPayload, 'admin-1', {
+  environment: { CANVAS_PLUGIN_REGISTRY_HOSTS: 'registry.example.com' },
+  resolveHostname: async () => [{ address: '8.8.8.8' }],
+  fetchImpl: async () => fakeResponse,
+  savePackage: async (input) => { savedPackageInput = input; return { publicUrl: '/uploads/canvas-plugin/new.html', relativePath: 'canvas-plugin/new.html', storageType: 'local', storageCode: 'local' } },
+  deletePackage: async (input) => { deletedPackages.push(input) },
+  repository: {
+    upsertPlugin: async () => ({ id: 'plugin-1' }),
+    findRelease: async () => ({ packageStoragePath: 'canvas-plugin/old.html', packageStorageType: 'local', packageStorageCode: null }),
+    upsertRelease: async (input) => ({ id: 'release-1', ...input }),
+  },
+})
+assert.equal(savedPackageInput.category, 'canvas-plugin/demo-plugin/1.0.0')
+assert.equal(published.release.packageUrl, '/uploads/canvas-plugin/new.html')
+assert.deepEqual(deletedPackages, [{ relativePath: 'canvas-plugin/old.html', storageType: 'local', storageCode: undefined }])
+
+const failedDeletedPackages = []
+await assert.rejects(
+  () => publishTrustedCanvasPlugin(publishPayload, 'admin-1', {
+    environment: { CANVAS_PLUGIN_REGISTRY_HOSTS: 'registry.example.com' },
+    resolveHostname: async () => [{ address: '8.8.8.8' }],
+    fetchImpl: async () => fakeResponse,
+    savePackage: async () => ({ publicUrl: '/uploads/canvas-plugin/fail.html', relativePath: 'canvas-plugin/fail.html', storageType: 'local', storageCode: 'local' }),
+    deletePackage: async (input) => { failedDeletedPackages.push(input) },
+    repository: {
+      upsertPlugin: async () => ({ id: 'plugin-1' }),
+      findRelease: async () => null,
+      upsertRelease: async () => { throw new Error('database unavailable') },
+    },
+  }),
+  /database unavailable/,
+)
+assert.deepEqual(failedDeletedPackages, [{ relativePath: 'canvas-plugin/fail.html', storageType: 'local', storageCode: 'local' }])
+
 const hostSource = fs.readFileSync(new URL('../../src/views/workflow/components/CanvasPluginHost.vue', import.meta.url), 'utf8')
 assert.match(hostSource, /allowsCapability\(plugin, 'canvas\.read'\)/)
 assert.match(hostSource, /allowsCapability\(plugin, 'canvas\.propose'\)/)
+assert.match(hostSource, /plugin\.release\.isMirrored/)
+assert.match(hostSource, /canvas-plugin:register/)
+assert.match(hostSource, /defineExpose\(\{ invoke \}\)/)
+assert.match(hostSource, /@load="notifyReady\(plugin\)"/)
+assert.match(managerSource, /!plugin\.release\?\.isMirrored/)
+assert.match(workflowSource, /applyCanvasPluginProposal/)
+assert.match(workflowSource, /addPluginNode/)
+assert.match(workflowSource, /resetCanvasPluginRegistrations/)
 
 console.log('canvas plugin management regression passed')

@@ -29,6 +29,7 @@ const AdminRedis = () => import('../views/admin/redis/AdminRedis.vue')
 const AdminTheme = () => import('../views/admin/theme/AdminTheme.vue')
 const AdminUsers = () => import('../views/admin/users/AdminUsers.vue')
 const AdminAuditLogs = () => import('../views/admin/audit/AdminAuditLogs.vue')
+const AdminCanvasPlugins = () => import('../views/admin/plugins/AdminCanvasPlugins.vue')
 const AdminAccessDenied = () => import('../views/admin/AdminAccessDenied.vue')
 
 // 视频编辑器正式路由(替代 POC,数据持久化到后端 video_projects 表)
@@ -237,6 +238,12 @@ const routes: RouteRecordRaw[] = [
           requiresAuth: true,
           requiresAdmin: true,
         },
+      },
+      {
+        path: 'canvas-plugins',
+        name: 'AdminCanvasPlugins',
+        component: AdminCanvasPlugins,
+        meta: { requiresAuth: true, requiresAdmin: true },
       },
       {
         path: 'users',

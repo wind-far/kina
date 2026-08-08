@@ -79,6 +79,11 @@ export const adminNavGroups: AdminNavGroup[] = [
         description: '管理本地与对象存储方案',
       },
       {
+        label: '画布插件',
+        path: '/admin/canvas-plugins',
+        description: '发布、镜像与审计受信无限画布插件',
+      },
+      {
         label: '用户管理',
         path: '/admin/users',
         description: '查看用户列表并调整后台角色',

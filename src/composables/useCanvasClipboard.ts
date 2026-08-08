@@ -11,8 +11,11 @@ import { useVueFlow } from '@vue-flow/core'
 import {
   addNode,
   addEdge,
+  addPluginNode,
   type WorkflowCanvasNode,
   type WorkflowCanvasEdge,
+  type WorkflowPluginNodeData,
+  type WorkflowPluginNodeType,
   type WorkflowNodeType,
 } from '@/views/workflow/composables/useWorkflowCanvas'
 import { CANVAS_CLIPBOARD_VERSION, type CanvasClipboardPayload } from '@/types/canvas-interaction'
@@ -77,7 +80,13 @@ export function useCanvasClipboard() {
       const relX = sourceNode.position.x - payload.origin.x + PASTE_OFFSET.x
       const relY = sourceNode.position.y - payload.origin.y + PASTE_OFFSET.y
       const position = { x: centerWorld.x + relX, y: centerWorld.y + relY }
-      const newId = addNode(sourceNode.type as WorkflowNodeType, position, { ...sourceNode.data })
+      const newId = sourceNode.type.startsWith('plugin:')
+        ? addPluginNode(
+            sourceNode.type as WorkflowPluginNodeType,
+            position,
+            { ...sourceNode.data } as WorkflowPluginNodeData,
+          )
+        : addNode(sourceNode.type as WorkflowNodeType, position, { ...sourceNode.data })
       idMap.set(sourceNode.id, newId)
       addedNodeIds.push(newId)
     }
@@ -87,7 +96,7 @@ export function useCanvasClipboard() {
       const source = idMap.get(sourceEdge.source)
       const target = idMap.get(sourceEdge.target)
       if (!source || !target) continue
-      addEdge({
+      const edgeId = addEdge({
         source,
         target,
         sourceHandle: sourceEdge.sourceHandle,
@@ -95,7 +104,7 @@ export function useCanvasClipboard() {
         type: sourceEdge.type,
         data: sourceEdge.data,
       })
-      addedEdgeIds.push(`edge_${source}_${target}`)
+      if (edgeId) addedEdgeIds.push(edgeId)
     }
 
     return { addedNodeIds, addedEdgeIds }

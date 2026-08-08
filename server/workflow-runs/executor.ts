@@ -4,6 +4,8 @@ import { getGenerationTaskRecord, startGenerationTask, stopGenerationTask } from
 import type { GenerationTaskStartPayload } from '../generation-tasks/shared'
 import { getPublicModelCatalog } from '../provider-config/service'
 import { writeScopedLog } from '../shared/logging'
+import { normalizeWorkflowImageBatchCount } from '../../src/shared/workflow-image-batch'
+import type { SkillMediaReference } from '../../src/shared/skill-runtime'
 
 type JsonObject = Record<string, any>
 
@@ -97,6 +99,7 @@ const collectInputs = (
   const prompts: string[] = []
   const images: string[] = []
   const imageRoles: string[] = []
+  const mediaReferences: SkillMediaReference[] = []
 
   for (const edge of incoming) {
     const sourceId = String(edge.source || '')
@@ -118,13 +121,34 @@ const collectInputs = (
       const url = readOutputUrl(outputs.get(String(producer?.source || '')))
         || String(data.url || '').trim()
       if (url) {
+        const imageRole = String(edge.data?.imageRole || 'input_reference')
+        const mediaRole = String(edge.data?.mediaRole || (imageRole === 'first_frame_image'
+          ? 'first_frame'
+          : imageRole === 'last_frame_image' ? 'last_frame' : 'reference'))
         images.push(url)
-        imageRoles.push(String(edge.data?.imageRole || 'input_reference'))
+        imageRoles.push(imageRole)
+        mediaReferences.push({ mediaType: 'image', url, role: mediaRole as SkillMediaReference['role'], sourceNodeId: sourceId })
       }
+      continue
+    }
+    if (source.type === 'video' || source.type === 'audio') {
+      const producer = edges.find(candidate => String(candidate.target || '') === sourceId)
+      const url = readOutputUrl(outputs.get(String(producer?.source || '')))
+        || String(data.url || '').trim()
+      if (!url) continue
+      const mediaType = source.type === 'video' ? 'video' : 'audio'
+      const defaultRole = mediaType === 'video' ? 'video_reference' : 'audio_reference'
+      mediaReferences.push({
+        mediaType,
+        url,
+        role: String(edge.data?.mediaRole || defaultRole) as SkillMediaReference['role'],
+        sourceNodeId: sourceId,
+        ...(mediaType === 'audio' && Number(data.duration) > 0 ? { startSeconds: 0, endSeconds: Number(data.duration) } : {}),
+      })
     }
   }
 
-  return { prompt: prompts.join('\n\n'), images, imageRoles }
+  return { prompt: prompts.join('\n\n'), images, imageRoles, mediaReferences }
 }
 
 const waitForGenerationTask = async (
@@ -154,7 +178,7 @@ const waitForGenerationTask = async (
 
 const buildTaskPayload = async (
   node: JsonObject,
-  input: { prompt: string; images: string[]; imageRoles: string[] },
+  input: { prompt: string; images: string[]; imageRoles: string[]; mediaReferences: SkillMediaReference[] },
   executionAttemptId: string,
 ): Promise<GenerationTaskStartPayload> => {
   const data = readNodeData(node)
@@ -198,6 +222,7 @@ const buildTaskPayload = async (
       resolution: String(data.resolution || ''),
       duration: String(data.duration || ''),
       referenceImages: input.images,
+      mediaReferences: input.mediaReferences,
       requestBody: {
         providerId: model.providerId,
         model: model.modelKey,
@@ -218,7 +243,7 @@ const buildTaskPayload = async (
     providerId: model.providerId,
     model: model.modelKey,
     prompt,
-    n: 1,
+    n: normalizeWorkflowImageBatchCount(data.batchCount),
     __workflowExecutionId: executionAttemptId,
   }
   if (data.size) requestBody.size = String(data.size)
@@ -240,7 +265,7 @@ const buildTaskPayload = async (
 const executeNode = async (
   run: { id: string; userId: string },
   node: JsonObject,
-  input: { prompt: string; images: string[]; imageRoles: string[] },
+  input: { prompt: string; images: string[]; imageRoles: string[]; mediaReferences: SkillMediaReference[] },
   signal: AbortSignal,
 ) => {
   const payload = await buildTaskPayload(node, input, `${run.id}:${String(node.id)}:${Date.now()}`)

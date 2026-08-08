@@ -13,6 +13,7 @@ export interface AdminSkillSourcePackage {
   complianceJson: Record<string, unknown> | null
   isEnabled: boolean
   artifactCount: number
+  skillCount: number
   updatedAt: string
 }
 

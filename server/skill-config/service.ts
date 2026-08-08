@@ -1115,6 +1115,7 @@ export const listPublicEnabledSkills = async () => {
           isEnabled: true,
         },
         include: {
+          sourcePackage: { select: { packageKey: true } },
           dependencies: {
             include: {
               dependencySkill: true,

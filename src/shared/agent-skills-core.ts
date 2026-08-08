@@ -58,6 +58,7 @@ export interface PublicSkillWorkflowTemplate {
 export interface PublicAgentSkillCatalogItem {
   id: string
   providerId: string
+  sourcePackageKey: string
   skillKey: string
   label: string
   description: string

@@ -34,6 +34,18 @@ const MINIMAX_H3_ARTIFACT_PATHS = [
   'skills/papercraft-stop-motion-explainer/SKILL.cn.md',
 ] as const
 
+const MINIMAX_H3_SKILL_DEFINITIONS = [
+  { key: 'h3-prompt-writing', label: 'H3 提示词编写', description: '将多模态创作需求整理为 MiniMax H3 视频提示词结构', paths: ['skills/h3-prompt-writing/SKILL.md', 'skills/h3-prompt-writing/references/base-en.txt', 'skills/h3-prompt-writing/references/ref-en.txt'] },
+  { key: 'h3-3d-animation-short', label: 'H3 3D 动画短片', description: '从故事概念规划连续的风格化 3D 动画短片', paths: ['skills/3d-animation-short-generator/SKILL.md', 'skills/3d-animation-short-generator/SKILL.cn.md'] },
+  { key: 'h3-brand-promo-video', label: 'H3 品牌宣传片', description: '规划品牌、产品与项目的宣传短片', paths: ['skills/brand-promo-video-generator/SKILL.md', 'skills/brand-promo-video-generator/SKILL.cn.md'] },
+  { key: 'h3-co-op-game-intro', label: 'H3 双人游戏开场', description: '规划双人合作游戏菜单或开场动画', paths: ['skills/co-op-game-intro-generator/SKILL.md', 'skills/co-op-game-intro-generator/SKILL.cn.md'] },
+  { key: 'h3-handdrawn-live-video', label: 'H3 手绘实拍融合', description: '规划手绘动画与实拍空间融合的创意短片', paths: ['skills/handdrawn-live-video-generator/SKILL.md', 'skills/handdrawn-live-video-generator/SKILL.cn.md'] },
+  { key: 'h3-minimalist-product-ad', label: 'H3 极简产品广告', description: '规划电商与产品发布场景的极简广告短片', paths: ['skills/minimalist-product-ad-generator/SKILL.md', 'skills/minimalist-product-ad-generator/SKILL.cn.md'] },
+  { key: 'h3-music-video-subtitle', label: 'H3 音乐视频字幕', description: '规划节拍驱动的歌词排版与音乐视频镜头', paths: ['skills/mv-subtitle-skill-confirmed/SKILL.md', 'skills/mv-subtitle-skill-confirmed/SKILL.cn.md'] },
+  { key: 'h3-paper-collage-explainer', label: 'H3 拼贴讲解短片', description: '规划纸张拼贴风格的讲解与观点短片', paths: ['skills/paper-collage-explainer-generator/SKILL.md', 'skills/paper-collage-explainer-generator/SKILL.cn.md'] },
+  { key: 'h3-papercraft-stop-motion', label: 'H3 纸艺定格讲解', description: '规划纸艺、立体书和定格动画讲解短片', paths: ['skills/papercraft-stop-motion-explainer/SKILL.md', 'skills/papercraft-stop-motion-explainer/SKILL.cn.md'] },
+] as const
+
 const normalizeKey = (value: unknown, label: string, maxLength = 100) => {
   const normalized = String(value || '').trim()
   if (!normalized || normalized.length > maxLength) throw new Error(`${label}不能为空且长度不能超过 ${maxLength}`)
@@ -76,6 +88,41 @@ export const ensureBuiltInSkillSources = async () => {
   await ensureMiniMaxH3Source()
 }
 
+/**
+ * H3 Skill 文档可以提前入库，但在 H3 视频 Adapter 配置前必须保持停用，
+ * 以免工作台错误把视频 Skill 路由到图片任务。
+ */
+const ensureMiniMaxH3SkillDefinitions = async (sourcePackageId: string) => {
+  for (const [index, definition] of MINIMAX_H3_SKILL_DEFINITIONS.entries()) {
+    await prisma.aiSkill.upsert({
+      where: { skillKey: definition.key },
+      create: {
+        sourcePackageId,
+        skillKey: definition.key,
+        label: definition.label,
+        description: definition.description,
+        iconType: 'film',
+        category: 'minimax-h3',
+        uiMode: 'WORKSPACE',
+        executionMode: 'PLANNER_THEN_GENERATE',
+        workflowType: 'h3-video',
+        plannerModelCategory: 'CHAT',
+        expectedImageCount: 0,
+        isEnabled: false,
+        isBuiltIn: true,
+        sortOrder: 200 + index,
+        configJson: {
+          sourcePackageKey: 'minimax-h3',
+          sourceArtifactPaths: definition.paths,
+          requiresH3Provider: true,
+          capabilityTier: 'video-planning',
+        },
+      },
+      update: { sourcePackageId },
+    })
+  }
+}
+
 export const listSkillSourcePackages = async (currentUserId?: string) => {
   if (!isPrismaConfigured()) return []
   await ensureBuiltInSkillSources()
@@ -86,7 +133,7 @@ export const listSkillSourcePackages = async (currentUserId?: string) => {
       id: true, packageKey: true, name: true, repositoryUrl: true, licenseUrl: true,
       sourceRevision: true, integritySha256: true, termsVersion: true, complianceJson: true,
       isEnabled: true, updatedAt: true,
-      _count: { select: { artifacts: true } },
+      _count: { select: { artifacts: true, skills: true } },
       ...(currentUserId ? {
         acceptances: {
           where: { userId: currentUserId },
@@ -104,6 +151,7 @@ export const listSkillSourcePackages = async (currentUserId?: string) => {
     acceptedAt: item.acceptances?.[0]?.acceptedAt?.toISOString?.() || null,
     countryCode: item.acceptances?.[0]?.countryCode || null,
     artifactCount: item._count?.artifacts || 0,
+    skillCount: item._count?.skills || 0,
     updatedAt: item.updatedAt.toISOString(),
     acceptances: undefined,
   }))
@@ -174,6 +222,7 @@ export const syncMiniMaxH3SourceArtifacts = async () => {
       data: { sourceRevision: revision, integritySha256: packageIntegrity },
     })
   })
+  await ensureMiniMaxH3SkillDefinitions(source.id)
   return {
     packageKey: source.packageKey,
     sourceRevision: revision,

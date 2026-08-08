@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
@@ -11,6 +11,7 @@ import { getAgentModel } from '@/api/agent'
 import { CAPABILITY_FLAGS_REQUEST_FIELD, type ModelCapabilityFlags } from '@/shared/provider-capability'
 import { findCatalogModel, getModelByName, loadPublicModelCatalog, resolveModelLabel, type ImageModel } from '@/config/models'
 import { buildAgentChatMessages, getAgentSkillCatalogItem, isAgentWorkspaceSkill, loadPublicSkillCatalog } from '@/config/agentSkills'
+import { acceptSkillSourceTerms, listSkillSourceAvailability } from '@/api/skill-sources'
 import {
   createGenerationRecord as createGenerationRecordRequest,
   listGenerationRecords as listGenerationRecordsRequest,
@@ -67,6 +68,26 @@ const { publicSystemSettings, loadPublicSettings } = useSystemSettingsStore()
 const conversationHeroSettings = computed(() => publicSystemSettings.value.conversationSettings.entryDisplay.hero)
 
 const RESEARCH_REPORT_SKILL_KEY = 'research-report'
+
+const ensureSkillSourceAccepted = async (skillKey: string) => {
+  const sourcePackageKey = String(getAgentSkillCatalogItem(skillKey)?.sourcePackageKey || '').trim()
+  if (!sourcePackageKey) return true
+  const source = (await listSkillSourceAvailability()).find(item => item.packageKey === sourcePackageKey)
+  if (!source || source.accepted || source.complianceJson?.requiresAcceptance !== true) return true
+  const licenseHint = source.licenseUrl ? `\n许可证：${source.licenseUrl}` : ''
+  try {
+    await ElMessageBox.confirm(
+      `${source.name} 为外部 Skill。继续即表示你已阅读并同意 ${source.termsVersion || '适用使用条款'}，并承诺仅在允许的国家/地区使用。${licenseHint}`,
+      '确认外部 Skill 使用条款',
+      { confirmButtonText: '同意并继续', cancelButtonText: '取消', type: 'warning', dangerouslyUseHTMLString: false },
+    )
+    await acceptSkillSourceTerms(sourcePackageKey)
+    return true
+  } catch (error: any) {
+    if (error?.message && error !== 'cancel' && error !== 'close') ElMessage.error(error.message)
+    return false
+  }
+}
 
 const formatGenerationError = (message?: string | null, fallback = '任务执行失败') => {
   return normalizeGenerationErrorMessage(String(message || '').trim(), fallback)
@@ -2561,13 +2582,17 @@ const handleSend = async (message: string, type: CreationType, options?: { model
     return
   }
 
+  const normalizedSkill = String(options?.skill || 'general').trim() || 'general'
+  if (!(await ensureSkillSourceAccepted(normalizedSkill))) {
+    return
+  }
+
   const activeSession = await ensureCurrentGenerationSession()
   if (!activeSession) {
     return
   }
 
   const recordId = nextId++
-  const normalizedSkill = String(options?.skill || 'general').trim() || 'general'
   const isResearchReport = type === 'agent' && normalizedSkill === RESEARCH_REPORT_SKILL_KEY
   const recordType: GenerationRecordType = isResearchReport ? 'research' : type
   const modelCategory = recordType === 'image'

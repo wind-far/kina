@@ -71,7 +71,7 @@ onMounted(() => { void loadSources() })
           </span>
         </div>
         <dl>
-          <div><dt>冻结文档</dt><dd>{{ source.artifactCount }} 个</dd></div>
+          <div><dt>冻结文档 / Skill</dt><dd>{{ source.artifactCount }} / {{ source.skillCount }}</dd></div>
           <div><dt>来源版本</dt><dd>{{ source.sourceRevision ? shortHash(source.sourceRevision) : '尚未同步' }}</dd></div>
           <div><dt>内容哈希</dt><dd>{{ shortHash(source.integritySha256) }}</dd></div>
           <div><dt>最近更新</dt><dd>{{ formatDate(source.updatedAt) }}</dd></div>

@@ -13,6 +13,29 @@ const assertIntegrity = (value: unknown) => {
   return hash
 }
 
+const SUPPORTED_CANVAS_PLUGIN_CAPABILITIES = new Set([
+  'canvas.read', 'canvas.propose', 'nodes', 'inspector', 'toolbar',
+  'serialization', 'migration', 'generation',
+])
+
+/** 管理员注册表只接受明确且可审计的能力声明，未知能力不会进入运行时。 */
+export const normalizeCanvasPluginManifest = (value: unknown) => {
+  const manifest = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+  const entry = String(manifest.entry || '').trim().slice(0, 500)
+  if (!entry) throw new Error('插件 manifest 必须声明 entry')
+  const rawCapabilities = manifest.capabilities === undefined ? [] : manifest.capabilities
+  if (!Array.isArray(rawCapabilities) || rawCapabilities.length > SUPPORTED_CANVAS_PLUGIN_CAPABILITIES.size) {
+    throw new Error('插件 manifest capabilities 格式不合法')
+  }
+  const capabilities = [...new Set(rawCapabilities.map(item => String(item || '').trim()))]
+  if (capabilities.some(capability => !SUPPORTED_CANVAS_PLUGIN_CAPABILITIES.has(capability))) {
+    throw new Error('插件 manifest 包含不受支持的能力')
+  }
+  return { ...manifest, entry, capabilities }
+}
+
 export const listCanvasPluginsForUser = async (userId: string) => {
   const plugins = await (prisma as any).canvasPlugin.findMany({
     where: { isEnabled: true },
@@ -53,8 +76,7 @@ export const publishTrustedCanvasPlugin = async (payload: any, adminUserId: stri
   if (!slug || !name || !version) throw new Error('缺少插件 slug、名称或版本')
   const packageUrl = assertHttpsUrl(payload?.packageUrl)
   const integritySha256 = assertIntegrity(payload?.integritySha256)
-  const manifest = payload?.manifest && typeof payload.manifest === 'object' && !Array.isArray(payload.manifest) ? payload.manifest : {}
-  if (typeof manifest.entry !== 'string' || !String(manifest.entry).trim()) throw new Error('插件 manifest 必须声明 entry')
+  const manifest = normalizeCanvasPluginManifest(payload?.manifest)
   const plugin = await (prisma as any).canvasPlugin.upsert({
     where: { slug },
     create: { slug, name, description: String(payload?.description || '').trim().slice(0, 255) || null, manifestJson: manifest, isEnabled: true },

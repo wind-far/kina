@@ -255,21 +255,18 @@ const canvasPluginSnapshot = computed(() => ({
 }))
 
 const handleCanvasPluginProposal = async (proposal: { pluginId: string; operations: unknown[] }) => {
-  const operation = proposal.operations[0] as { type?: string; position?: { x?: number; y?: number }; data?: Record<string, unknown> } | undefined
-  if (!operation || operation.type !== 'insert_text_node') {
-    ElMessage.warning('插件提交了不受支持的画布操作，已拒绝。')
+  if (workspaceScene.value !== 'INFINITE_CANVAS') {
+    ElMessage.warning('当前不是无限画布项目，不能应用插件操作。')
     return
   }
   try {
-    await ElMessageBox.confirm('插件请求向画布插入一个文本节点，确认后会进入撤销历史和自动保存。', '确认插件操作', {
-      confirmButtonText: '插入', cancelButtonText: '取消', type: 'warning',
+    await applyCanvasAssistantProposal({
+      summary: `插件“${proposal.pluginId}”请求修改画布。确认后会进入撤销历史并自动保存。`,
+      operations: proposal.operations,
     })
-    addNode('text', { x: Number(operation.position?.x) || 120, y: Number(operation.position?.y) || 120 }, {
-      content: String(operation.data?.content || ''),
-      label: String(operation.data?.label || '插件文本'),
-    })
-  } catch {
-    // 用户取消插件操作。
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.warning(error?.message || '插件提交了不受支持的画布操作，已拒绝。')
   }
 }
 

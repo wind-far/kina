@@ -39,15 +39,22 @@ const post = (pluginId: string, message: Record<string, unknown>) => {
   frames.get(pluginId)?.contentWindow?.postMessage(message, '*')
 }
 
+const allowsCapability = (plugin: PluginItem, capability: string) => {
+  const capabilities = plugin.release?.manifest?.capabilities
+  return Array.isArray(capabilities) && capabilities.includes(capability)
+}
+
 const handleMessage = (event: MessageEvent) => {
   const plugin = enabledPlugins.value.find(item => frames.get(item.id)?.contentWindow === event.source)
   if (!plugin || !event.data || typeof event.data !== 'object') return
   const data = event.data as { type?: string; operations?: unknown[] }
   if (data.type === 'canvas-plugin:request-snapshot') {
+    if (!allowsCapability(plugin, 'canvas.read')) return
     post(plugin.id, { type: 'canvas-plugin:snapshot', snapshot: props.snapshot })
     return
   }
   if (data.type === 'canvas-plugin:propose-operation' && Array.isArray(data.operations)) {
+    if (!allowsCapability(plugin, 'canvas.propose')) return
     emit('proposal', { pluginId: plugin.id, operations: data.operations.slice(0, 20) })
   }
 }

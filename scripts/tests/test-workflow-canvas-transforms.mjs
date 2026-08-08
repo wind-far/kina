@@ -3,11 +3,14 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 const readSource = (path) => readFile(fileURLToPath(new URL(path, import.meta.url)), 'utf8')
-const [canvasState, workflowView, clipboard, shortcuts] = await Promise.all([
+const [canvasState, workflowView, clipboard, shortcuts, nodeSources] = await Promise.all([
   readSource('../../src/views/workflow/composables/useWorkflowCanvas.ts'),
   readSource('../../src/views/workflow/index.vue'),
   readSource('../../src/composables/useCanvasClipboard.ts'),
   readSource('../../src/components/canvas/CanvasZoomControls.vue'),
+  Promise.all([
+    'TextNode.vue', 'ImageNode.vue', 'VideoNode.vue', 'DirectorNode.vue', 'AudioNode.vue', 'UnknownNode.vue', 'PluginNode.vue',
+  ].map((name) => readSource(`../../src/views/workflow/components/nodes/${name}`))),
 ])
 
 assert.match(canvasState, /rotation\?: number/)
@@ -21,7 +24,13 @@ assert.match(workflowView, /useShortcut\('Alt\+ArrowRight'/)
 assert.match(workflowView, /向左旋转 15°/)
 assert.match(workflowView, /\.workflow-canvas \.vue-flow__node > \*/)
 assert.match(clipboard, /addPluginNode/)
-assert.match(clipboard, /sourceNode\.type\.startsWith\('plugin:'\)/)
+assert.match(clipboard, /isCanvasPluginNodeType\(sourceNode\.type\)/)
 assert.match(shortcuts, /旋转选中节点/)
+
+const resizer = await readSource('../../src/components/canvas/CanvasNodeResizer.vue')
+assert.match(resizer, /NodeResizer/)
+assert.match(resizer, /pauseHistory\(\)/)
+assert.match(resizer, /resumeHistory\(true\)/)
+for (const source of nodeSources) assert.match(source, /CanvasNodeResizer/)
 
 console.log('workflow canvas transforms regression passed')

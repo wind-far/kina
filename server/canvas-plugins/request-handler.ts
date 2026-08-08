@@ -1,6 +1,6 @@
 import { readJsonBody, sendJson } from '../ai-gateway/shared'
 import { requireAdminSessionUser, requireCurrentSessionUser } from '../auth/session'
-import { installCanvasPlugin, listCanvasPluginsForAdmin, listCanvasPluginsForUser, publishTrustedCanvasPlugin, uninstallCanvasPlugin } from './service'
+import { installCanvasPlugin, listCanvasPluginsForAdmin, listCanvasPluginsForUser, publishTrustedCanvasPlugin, startCanvasPluginGeneration, uninstallCanvasPlugin } from './service'
 import { recordAdminAuditLog } from '../shared/admin-audit'
 
 const sendPluginError = (res: any, status: number, message: string) => {
@@ -39,6 +39,13 @@ export const handleCanvasPluginsRequest = async (req: any, res: any, requestPath
       return true
     }
     const matched = requestPath.match(/^\/api\/canvas\/plugins\/([^/]+)\/install$/)
+    const generationMatched = requestPath.match(/^\/api\/canvas\/plugins\/([^/]+)\/generate$/)
+    if (generationMatched && req.method === 'POST') {
+      const user = await requireCurrentSessionUser(req, res)
+      if (!user) return true
+      sendJson(res, 200, { data: await startCanvasPluginGeneration(user.id, decodeURIComponent(generationMatched[1]), await readJsonBody(req)) })
+      return true
+    }
     if (matched && req.method === 'PUT') {
       const user = await requireCurrentSessionUser(req, res)
       if (!user) return true

@@ -30,6 +30,7 @@ import WorkflowPromptInput, {
   type WorkflowPromptSendOptions,
 } from '@/components/canvas/WorkflowPromptInput.vue'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
+import CanvasNodeResizer from '@/components/canvas/CanvasNodeResizer.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
   updateNode,
@@ -302,6 +303,7 @@ onMounted(async () => {
 
 <template>
   <div class="video-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
+    <CanvasNodeResizer :visible="isSelected" :min-width="380" :min-height="280" />
     <div class="video-node-title" :title="titleEdit.editing.value ? '' : '双击编辑名称'" @dblclick.stop="titleEdit.start">
       <el-icon class="video-node-title-icon"><VideoCamera /></el-icon>
       <input

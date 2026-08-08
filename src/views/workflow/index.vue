@@ -6,7 +6,7 @@
 import { computed, ref, watch, onMounted, onUnmounted, nextTick, markRaw, reactive } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { VueFlow, useVueFlow, SelectionMode, type Connection, type NodeMouseEvent } from '@vue-flow/core'
+import { VueFlow, useVueFlow, SelectionMode, type Connection, type NodeMouseEvent, type NodeTypesObject } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { useAsyncAction, useShortcut } from '@/composables'
 import { useLoadingStore } from '@/stores/loading'
@@ -20,6 +20,7 @@ import {
   addPluginNode,
   type WorkflowAddEdgeParams,
   type WorkflowCanvasEdge,
+  type WorkflowBuiltinNodeType,
   type WorkflowNodeType,
   type WorkflowPluginNodeData,
 } from './composables/useWorkflowCanvas'
@@ -138,7 +139,7 @@ const workspaceScene = computed(() => route.path === '/canvas' ? 'INFINITE_CANVA
 const { viewport, zoomIn, zoomOut, fitView, updateNodeInternals, screenToFlowCoordinate } = useVueFlow()
 
 // 注册自定义节点类型
-const nodeTypes: Record<string, unknown> = reactive({
+const nodeTypes = reactive({
   text: markRaw(TextNode),
   imageConfig: markRaw(ImageConfigNode),
   image: markRaw(ImageNode),
@@ -148,7 +149,7 @@ const nodeTypes: Record<string, unknown> = reactive({
   director: markRaw(DirectorNode),
   audio: markRaw(AudioNode),
   unknown: markRaw(UnknownNode),
-})
+} as Record<string, any>) as NodeTypesObject
 
 // 注册自定义边类型
 const edgeTypes = {
@@ -234,7 +235,7 @@ const renameTitleInput = ref('')
 
 interface WorkflowTemplateNode {
   id: string
-  type: WorkflowNodeType
+  type: WorkflowBuiltinNodeType
   position: WorkflowCanvasPosition
   data: Record<string, unknown>
   newId?: string
@@ -288,7 +289,8 @@ const handleCanvasPluginRegistration = (registration: { pluginId: string; slug: 
     [registration.pluginId]: { slug: registration.slug, contributions: registration.contributions },
   }
   registration.contributions.nodes.forEach(node => {
-    nodeTypes[canvasPluginNodeType(registration.slug, node.id)] = markRaw(PluginNode)
+    // Vue Flow 的 NodeComponent 声明要求完整 NodeProps；运行时会注入这些 props。
+    nodeTypes[canvasPluginNodeType(registration.slug, node.id)] = markRaw(PluginNode) as any
   })
   void nextTick(() => updateNodeInternals(nodes.value.filter(node => isCanvasPluginNodeType(node.type)).map(node => node.id)))
 }
@@ -297,7 +299,7 @@ const resetCanvasPluginRegistrations = () => {
   Object.values(canvasPluginRegistrations.value).forEach(entry => {
     entry.contributions.nodes.forEach(node => {
       // 停用/卸载后仍用占位节点展示，确保项目数据可恢复、不会被静默删除。
-      nodeTypes[canvasPluginNodeType(entry.slug, node.id)] = markRaw(UnknownNode)
+      nodeTypes[canvasPluginNodeType(entry.slug, node.id)] = markRaw(UnknownNode) as any
     })
   })
   canvasPluginRegistrations.value = {}
@@ -923,7 +925,7 @@ const addNewNode = (type: WorkflowNodeType) => {
       pluginVersion: 1,
     })
   } else {
-    id = addNode(type, { x: cx - 140, y: cy - 100 })
+    id = addNode(type as WorkflowBuiltinNodeType, { x: cx - 140, y: cy - 100 })
   }
   const maxZ = Math.max(0, ...nodes.value.map(n => n.zIndex || 0))
   updateNode(id, { zIndex: maxZ + 1 })
@@ -1045,7 +1047,7 @@ const quickLinkSourceLabel = computed(() => {
   if (!node) return ''
   const label = (node.data as { label?: string })?.label
   if (label) return label
-  const typeOption = nodeTypeOptions.find(opt => opt.type === node.type)
+  const typeOption = nodeTypeOptions.value.find(opt => opt.type === node.type)
   const idSuffix = sourceId.replace(/^node_/, '')
   return `${typeOption?.name || node.type} #${idSuffix}`
 })

@@ -1,5 +1,6 @@
 import { buildApiUrl } from './http'
 import { readApiData } from './response'
+import { subscribeGenerationTaskEvents } from './generation-tasks'
 
 export interface AdminCanvasPluginRelease {
   id: string
@@ -29,7 +30,7 @@ export interface PublishCanvasPluginPayload {
   version: string
   packageUrl: string
   integritySha256: string
-  manifest: { entry: string; capabilities: string[] }
+  manifest: { entry: string; capabilities: string[]; generationTemplates?: unknown }
 }
 
 const registryUrl = '/api/canvas/plugins/registry'
@@ -47,3 +48,16 @@ export const publishCanvasPlugin = async (payload: PublishCanvasPluginPayload) =
     showSuccessMessage: true, showErrorMessage: true,
   })
 }
+
+export const startCanvasPluginGenerationTask = async (pluginId: string, input: {
+  templateId: string
+  prompt: string
+  referenceImages?: string[]
+}) => {
+  const response = await fetch(buildApiUrl(`/api/canvas/plugins/${encodeURIComponent(pluginId)}/generate`), {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+  })
+  return await readApiData<{ id: string }>(response, { showErrorMessage: true })
+}
+
+export { subscribeGenerationTaskEvents }

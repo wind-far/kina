@@ -15,6 +15,7 @@
 import { onMounted, onUnmounted, ref, type Component } from 'vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
+import CanvasNodeResizer from '@/components/canvas/CanvasNodeResizer.vue'
 import type { WorkflowNodeAddMenuType } from '@/views/workflow/composables/useWorkflowCanvas'
 
 const props = withDefaults(
@@ -69,6 +70,11 @@ onUnmounted(() => document.removeEventListener('pointerdown', closeAddMenuOutsid
 
 <template>
   <div ref="rootRef" class="config-node-wrapper" :data-config-type="type">
+    <CanvasNodeResizer
+      :visible="selected"
+      :min-width="minWidth"
+      :min-height="minHeight"
+    />
     <!-- 节点外置标题 -->
     <div
       class="config-node-title"

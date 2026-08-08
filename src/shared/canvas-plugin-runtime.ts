@@ -89,4 +89,7 @@ export const normalizeCanvasPluginRuntimeContributions = (
 }
 
 export const canvasPluginNodeType = (slug: string, nodeId: string) => `plugin:${safeId(slug)}/${safeId(nodeId)}`
-export const isCanvasPluginNodeType = (value: unknown) => /^plugin:[a-z0-9][a-z0-9_-]{0,63}\/[a-z0-9][a-z0-9_-]{0,63}$/.test(String(value || ''))
+/** 既是运行时校验，也是宿主创建插件节点时的类型收窄。 */
+export const isCanvasPluginNodeType = (value: unknown): value is `plugin:${string}` => (
+  /^plugin:[a-z0-9][a-z0-9_-]{0,63}\/[a-z0-9][a-z0-9_-]{0,63}$/.test(String(value || ''))
+)

@@ -17,6 +17,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { buildApiUrl } from '@/api/http'
+import { startCanvasPluginGenerationTask, subscribeGenerationTaskEvents } from '@/api/canvas-plugins'
 import {
   EMPTY_CANVAS_PLUGIN_CONTRIBUTIONS,
   normalizeCanvasPluginRuntimeContributions,
@@ -68,7 +69,7 @@ const emitRegistration = (plugin: PluginItem, raw: unknown) => {
 const handleMessage = (event: MessageEvent) => {
   const plugin = enabledPlugins.value.find(item => frames.get(item.id)?.contentWindow === event.source)
   if (!plugin || !event.data || typeof event.data !== 'object') return
-  const data = event.data as { type?: string; operations?: unknown[]; contributions?: unknown }
+  const data = event.data as { type?: string; operations?: unknown[]; contributions?: unknown; templateId?: unknown; prompt?: unknown; referenceImages?: unknown }
   if (data.type === 'canvas-plugin:request-snapshot') {
     if (!allowsCapability(plugin, 'canvas.read')) return
     post(plugin.id, { type: 'canvas-plugin:snapshot', snapshot: props.snapshot })
@@ -81,6 +82,45 @@ const handleMessage = (event: MessageEvent) => {
   }
   if (data.type === 'canvas-plugin:register') {
     emitRegistration(plugin, data.contributions)
+    return
+  }
+  if (data.type === 'canvas-plugin:request-generation') {
+    if (!allowsCapability(plugin, 'generation')) return
+    void runGeneration(plugin, data)
+  }
+}
+
+const runGeneration = async (plugin: PluginItem, input: { templateId?: unknown; prompt?: unknown; referenceImages?: unknown }) => {
+  const templateId = String(input.templateId || '').trim()
+  const prompt = String(input.prompt || '').trim()
+  if (!templateId || !prompt) {
+    post(plugin.id, { type: 'canvas-plugin:generation-error', message: '生成请求缺少模板或提示词' })
+    return
+  }
+  try {
+    const task = await startCanvasPluginGenerationTask(plugin.id, {
+      templateId,
+      prompt,
+      referenceImages: Array.isArray(input.referenceImages) ? input.referenceImages.map(String).slice(0, 4) : [],
+    })
+    const taskId = String(task?.id || '').trim()
+    if (!taskId) throw new Error('生成任务创建失败')
+    post(plugin.id, { type: 'canvas-plugin:generation-started', taskId, templateId })
+    await subscribeGenerationTaskEvents(taskId, {
+      onEvent: (taskEvent) => {
+        const record = taskEvent.record
+        post(plugin.id, {
+          type: 'canvas-plugin:generation-event', taskId,
+          event: taskEvent.type,
+          done: Boolean(taskEvent.done),
+          message: String(taskEvent.message || ''),
+          content: typeof record?.content === 'string' ? record.content : '',
+          outputs: Array.isArray(record?.outputs) ? record.outputs.map(item => ({ url: String(item?.url || ''), outputType: String(item?.outputType || '') })).filter(item => item.url) : [],
+        })
+      },
+    })
+  } catch (error: any) {
+    post(plugin.id, { type: 'canvas-plugin:generation-error', message: String(error?.message || '插件生成任务失败') })
   }
 }
 

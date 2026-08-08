@@ -32,6 +32,7 @@
         <div class="admin-form__field admin-form__field--full"><label class="admin-form__label">源包 HTTPS 地址</label><input v-model.trim="form.packageUrl" class="admin-input" required type="url" placeholder="https://registry.example.com/plugins/shot-labeler.html" /></div>
         <div class="admin-form__field admin-form__field--full"><label class="admin-form__label">SHA-256</label><input v-model.trim="form.integritySha256" class="admin-input" required pattern="[a-fA-F0-9]{64}" placeholder="64 位十六进制哈希" /></div>
         <div class="admin-form__field admin-form__field--full"><label class="admin-form__label">能力</label><div class="admin-plugin-capability-list"><label v-for="capability in capabilities" :key="capability" class="admin-switch-row"><input v-model="form.capabilities" type="checkbox" :value="capability" /><span>{{ capability }}</span></label></div></div>
+        <div class="admin-form__field admin-form__field--full"><label class="admin-form__label">生成模板（可选 JSON）</label><textarea v-model.trim="form.generationTemplatesJson" class="admin-textarea" placeholder='[{"id":"rewrite","type":"agent","modelSelectionKey":"providerId::CHAT::model","systemPrompt":"..."}]'></textarea><div class="admin-form__hint">模板固定模型与参数；插件运行时只能引用模板 ID，不能传 provider、模型或请求脚本。</div></div>
         <div class="admin-form__field admin-form__field--full"><label class="admin-form__label">说明</label><textarea v-model.trim="form.description" class="admin-textarea" maxlength="255" placeholder="插件用途、审核说明"></textarea></div>
       </div>
       <div class="admin-form__footer"><button class="admin-button admin-button--secondary" type="button" :disabled="submitting" @click="closeDialog">取消</button><button class="admin-button admin-button--primary" type="submit" :disabled="submitting">{{ submitting ? '校验并镜像中...' : '发布受信版本' }}</button></div>
@@ -50,14 +51,14 @@ const loading = ref(false)
 const submitting = ref(false)
 const dialogVisible = ref(false)
 const capabilities = ['canvas.read', 'canvas.propose', 'nodes', 'inspector', 'toolbar', 'serialization', 'migration', 'generation']
-const emptyForm = () => ({ name: '', slug: '', description: '', version: '', packageUrl: '', integritySha256: '', entry: '/plugin.html', capabilities: [] as string[] })
+const emptyForm = () => ({ name: '', slug: '', description: '', version: '', packageUrl: '', integritySha256: '', entry: '/plugin.html', capabilities: [] as string[], generationTemplatesJson: '' })
 const form = reactive(emptyForm())
 const capabilitiesOf = (plugin: AdminCanvasPlugin) => Array.isArray(plugin.manifest?.capabilities) ? plugin.manifest.capabilities.map(String) : []
 const shortHash = (value: string) => value ? `${value.slice(0, 12)}…` : '无哈希'
 const load = async () => { loading.value = true; try { plugins.value = await listAdminCanvasPlugins() } catch (error: any) { ElMessage.error(error?.message || '读取插件注册表失败') } finally { loading.value = false } }
 const openCreate = () => { Object.assign(form, emptyForm()); dialogVisible.value = true }
 const closeDialog = () => { if (!submitting.value) dialogVisible.value = false }
-const submit = async () => { submitting.value = true; try { await publishCanvasPlugin({ slug: form.slug, name: form.name, description: form.description, version: form.version, packageUrl: form.packageUrl, integritySha256: form.integritySha256, manifest: { entry: form.entry, capabilities: [...form.capabilities] } }); ElMessage.success('插件已验证并镜像发布'); dialogVisible.value = false; await load() } catch (error: any) { ElMessage.error(error?.message || '插件发布失败') } finally { submitting.value = false } }
+const submit = async () => { submitting.value = true; try { const generationTemplates = form.generationTemplatesJson ? JSON.parse(form.generationTemplatesJson) : undefined; await publishCanvasPlugin({ slug: form.slug, name: form.name, description: form.description, version: form.version, packageUrl: form.packageUrl, integritySha256: form.integritySha256, manifest: { entry: form.entry, capabilities: [...form.capabilities], generationTemplates } }); ElMessage.success('插件已验证并镜像发布'); dialogVisible.value = false; await load() } catch (error: any) { ElMessage.error(error instanceof SyntaxError ? '生成模板 JSON 格式不正确' : error?.message || '插件发布失败') } finally { submitting.value = false } }
 onMounted(() => { void load() })
 </script>
 

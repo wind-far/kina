@@ -33,6 +33,7 @@ import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasNodeTopToolbar, { type NodeTopToolbarItem } from '@/components/canvas/CanvasNodeTopToolbar.vue'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
+import CanvasNodeResizer from '@/components/canvas/CanvasNodeResizer.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
   updateNode,
@@ -659,6 +660,11 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
 
 <template>
   <div class="image-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
+    <CanvasNodeResizer
+      :visible="isSelected"
+      :min-width="imageUrl ? 475 : 333"
+      :min-height="imageUrl ? 458 : 262"
+    />
     <!-- 节点外置标题 -->
     <div class="image-node-title" :title="titleEdit.editing.value ? '' : '双击编辑名称'" @dblclick.stop="titleEdit.start">
       <el-icon class="image-node-title-icon"><Picture /></el-icon>
@@ -832,6 +838,8 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
   position: relative;
   width: 100%;
   height: 100%;
+  min-width: 333px;
+  min-height: 262px;
 }
 
 .image-node-title {
@@ -924,10 +932,10 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
 
 .image-node-card {
   position: relative;
-  width: 333px;
-  height: 262px;
-  min-width: 333px;
-  min-height: 262px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   background: var(--canvas-node-bg);
   /*border: 1px solid var(--canvas-node-border);*/
   border-radius: 12px;
@@ -940,8 +948,10 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
 }
 /* 有图态：节点变宽，图片居中（参照 RunningHUB 生成结果布局 img_11） */
 .image-node-card:has(.image-node-display) {
-  width: 475px;
-  height: 458px;
+  width: 100%;
+  height: 100%;
+}
+.image-node-wrapper:has(.image-node-display) {
   min-width: 475px;
   min-height: 458px;
 }

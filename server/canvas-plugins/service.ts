@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto'
 import { lookup as lookupHostname } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import { deleteUploadedStorageFile, saveUploadedBuffer, type StoredUploadReference } from '../storage/service'
+import { getPublicModelCatalog } from '../provider-config/service'
+import { startGenerationTask } from '../generation-tasks/service'
 
 const normalizeSlug = (value: unknown) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-')
 const MAX_PLUGIN_PACKAGE_BYTES = 2 * 1024 * 1024
@@ -72,6 +74,42 @@ const SUPPORTED_CANVAS_PLUGIN_CAPABILITIES = new Set([
   'serialization', 'migration', 'generation',
 ])
 
+export interface CanvasPluginGenerationTemplate {
+  id: string
+  type: 'agent' | 'image' | 'video'
+  modelSelectionKey: string
+  promptPrefix: string
+  systemPrompt: string
+  size?: string
+  quality?: string
+  ratio?: string
+  resolution?: string
+  duration?: string
+}
+
+const normalizePluginGenerationTemplates = (value: unknown) => {
+  if (!Array.isArray(value)) return [] as CanvasPluginGenerationTemplate[]
+  const seen = new Set<string>()
+  return value.slice(0, 12).flatMap((item): CanvasPluginGenerationTemplate[] => {
+    const input = item && typeof item === 'object' && !Array.isArray(item) ? item as Record<string, unknown> : {}
+    const id = String(input.id || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 64)
+    const type = String(input.type || '').trim()
+    const modelSelectionKey = String(input.modelSelectionKey || '').trim().slice(0, 300)
+    if (!id || seen.has(id) || !['agent', 'image', 'video'].includes(type) || !modelSelectionKey) return []
+    seen.add(id)
+    const read = (key: string, max: number) => String(input[key] || '').trim().slice(0, max)
+    return [{
+      id, type: type as CanvasPluginGenerationTemplate['type'], modelSelectionKey,
+      promptPrefix: read('promptPrefix', 1000), systemPrompt: read('systemPrompt', 3000),
+      ...(read('size', 50) ? { size: read('size', 50) } : {}),
+      ...(read('quality', 50) ? { quality: read('quality', 50) } : {}),
+      ...(read('ratio', 50) ? { ratio: read('ratio', 50) } : {}),
+      ...(read('resolution', 50) ? { resolution: read('resolution', 50) } : {}),
+      ...(read('duration', 50) ? { duration: read('duration', 50) } : {}),
+    }]
+  })
+}
+
 /** 管理员注册表只接受明确且可审计的能力声明，未知能力不会进入运行时。 */
 export const normalizeCanvasPluginManifest = (value: unknown) => {
   const manifest = value && typeof value === 'object' && !Array.isArray(value)
@@ -87,7 +125,7 @@ export const normalizeCanvasPluginManifest = (value: unknown) => {
   if (capabilities.some(capability => !SUPPORTED_CANVAS_PLUGIN_CAPABILITIES.has(capability))) {
     throw new Error('插件 manifest 包含不受支持的能力')
   }
-  return { ...manifest, entry, capabilities }
+  return { ...manifest, entry, capabilities, generationTemplates: normalizePluginGenerationTemplates(manifest.generationTemplates) }
 }
 
 type PluginPackageResponse = {
@@ -153,6 +191,68 @@ export interface CanvasPluginPublishRepository {
   upsertPlugin(input: { slug: string; name: string; description: string | null; manifest: Record<string, unknown> }): Promise<{ id: string; [key: string]: unknown }>
   findRelease(input: { pluginId: string; version: string }): Promise<Record<string, unknown> | null>
   upsertRelease(input: Record<string, unknown>): Promise<Record<string, unknown>>
+}
+
+type InstalledCanvasPluginGeneration = { manifest: Record<string, unknown>; slug: string }
+export interface CanvasPluginGenerationDependencies {
+  findInstalledPlugin?: (userId: string, pluginId: string) => Promise<InstalledCanvasPluginGeneration | null>
+  getModelCatalog?: typeof getPublicModelCatalog
+  startTask?: typeof startGenerationTask
+}
+
+const findInstalledCanvasPluginForGeneration = async (userId: string, pluginId: string): Promise<InstalledCanvasPluginGeneration | null> => {
+  const install = await (prisma as any).canvasPluginInstall.findFirst({ where: { userId, pluginId, isEnabled: true } })
+  if (!install) return null
+  const [plugin, release] = await Promise.all([
+    (prisma as any).canvasPlugin.findFirst({ where: { id: pluginId, isEnabled: true } }),
+    (prisma as any).canvasPluginRelease.findFirst({ where: { id: install.releaseId, pluginId, isTrusted: true, packageStoragePath: { not: null } } }),
+  ])
+  if (!plugin || !release) return null
+  return { slug: String(plugin.slug || ''), manifest: plugin.manifestJson && typeof plugin.manifestJson === 'object' ? plugin.manifestJson : {} }
+}
+
+/** 把插件动作收敛到管理员登记的模型模板；请求方无法传入上游地址、模型或任意 requestBody。 */
+export const startCanvasPluginGeneration = async (
+  userId: string,
+  pluginId: string,
+  input: unknown,
+  dependencies: CanvasPluginGenerationDependencies = {},
+) => {
+  const plugin = await (dependencies.findInstalledPlugin || findInstalledCanvasPluginForGeneration)(userId, pluginId)
+  if (!plugin) throw new Error('插件未安装、已停用或当前版本未获信任')
+  const pluginCapabilities = Array.isArray(plugin.manifest.capabilities) ? plugin.manifest.capabilities.map(String) : []
+  if (!pluginCapabilities.includes('generation')) throw new Error('插件未获授生成能力')
+  const payload = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {}
+  const templateId = String(payload.templateId || '').trim()
+  const prompt = String(payload.prompt || '').trim().slice(0, 8000)
+  if (!templateId || !prompt) throw new Error('插件生成请求缺少模板或提示词')
+  const templates = normalizePluginGenerationTemplates(plugin.manifest.generationTemplates)
+  const template = templates.find(item => item.id === templateId)
+  if (!template) throw new Error('插件生成模板未登记或不可用')
+  const catalog = await (dependencies.getModelCatalog || getPublicModelCatalog)()
+  const category = template.type === 'agent' ? 'chat' : template.type
+  const model = catalog.models[category].find(item => item.selectionKey === template.modelSelectionKey)
+  if (!model) throw new Error('插件生成模板引用的后台模型不可用')
+  const referenceImages = template.type === 'image' && Array.isArray(payload.referenceImages)
+    ? payload.referenceImages.map(item => String(item || '').trim()).filter(item => item.startsWith('/uploads/')).slice(0, 4)
+    : []
+  const finalPrompt = `${template.promptPrefix}${template.promptPrefix ? '\n' : ''}${prompt}`.slice(0, 9000)
+  const common = { source: 'canvas-plugin', prompt: finalPrompt, model: model.modelKey, modelKey: model.modelKey, skill: 'general' }
+  const taskPayload = template.type === 'agent'
+    ? { ...common, type: 'agent', requestBody: { providerId: model.providerId, model: model.modelKey, messages: [
+      ...(template.systemPrompt ? [{ role: 'system', content: template.systemPrompt }] : []),
+      { role: 'user', content: finalPrompt },
+    ], stream: true } }
+    : template.type === 'image'
+      ? { ...common, type: 'image', requestMode: referenceImages.length ? 'image-edit' as const : 'image-generation' as const, referenceImages, requestBody: {
+        providerId: model.providerId, model: model.modelKey, prompt: finalPrompt, n: 1,
+        ...(template.size ? { size: template.size } : {}), ...(template.quality ? { quality: template.quality } : {}),
+        ...(referenceImages.length ? { image: referenceImages } : {}),
+      } }
+      : { ...common, type: 'video', requestMode: 'video-generation' as const, ratio: template.ratio, resolution: template.resolution, duration: template.duration, requestBody: {
+        providerId: model.providerId, model: model.modelKey,
+      } }
+  return await (dependencies.startTask || startGenerationTask)(taskPayload, userId)
 }
 
 const defaultCanvasPluginPublishRepository: CanvasPluginPublishRepository = {

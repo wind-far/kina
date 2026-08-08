@@ -17,6 +17,8 @@ export interface CanvasSnapshotNode {
   data: Record<string, unknown>
   zIndex?: number
   selected?: boolean
+  /** 节点尺寸等可安全恢复的展示样式。 */
+  style?: Record<string, string | number>
 }
 
 export interface CanvasSnapshotEdge {
@@ -58,6 +60,22 @@ const numberValue = (value: unknown, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+const positiveDimension = (value: unknown): number | null => {
+  const parsed = typeof value === 'string' ? Number.parseFloat(value) : Number(value)
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 1200 ? parsed : null
+}
+
+/** 只接受画布需要恢复的尺寸，避免把任意样式从导入文件带入页面。 */
+const normalizeNodeStyle = (value: unknown, fallbackWidth?: unknown, fallbackHeight?: unknown) => {
+  const input = asRecord(value)
+  const width = positiveDimension(input.width ?? fallbackWidth)
+  const height = positiveDimension(input.height ?? fallbackHeight)
+  const style: Record<string, string> = {}
+  if (width !== null) style.width = `${width}px`
+  if (height !== null) style.height = `${height}px`
+  return Object.keys(style).length ? style : undefined
+}
+
 const uniqueId = (value: unknown, prefix: string, index: number, seen: Set<string>) => {
   const base = String(value || '').trim() || `${prefix}_${index + 1}`
   let candidate = base
@@ -77,6 +95,7 @@ const normalizeNode = (value: unknown, index: number, nodeIds: Set<string>, warn
   const rotation = Number(input.rotation ?? data.rotation)
   const normalizedData = Number.isFinite(rotation) ? { ...data, rotation } : data
   const id = uniqueId(input.id, 'node', index, nodeIds)
+  const style = normalizeNodeStyle(input.style, input.width, input.height)
 
   if (!['text', 'image', 'video', 'audio', 'imageConfig', 'videoConfig', 'llmConfig', 'director'].includes(type)) {
     warnings.push(`节点 ${id} 的类型“${type}”当前不可执行，已作为兼容占位节点保留。`)
@@ -91,6 +110,7 @@ const normalizeNode = (value: unknown, index: number, nodeIds: Set<string>, warn
         originalNode: input,
       },
       zIndex: numberValue(input.zIndex, index),
+      style,
     }
   }
 
@@ -101,6 +121,7 @@ const normalizeNode = (value: unknown, index: number, nodeIds: Set<string>, warn
     data: normalizedData,
     zIndex: Number.isFinite(Number(input.zIndex)) ? numberValue(input.zIndex) : undefined,
     selected: Boolean(input.selected),
+    style,
   }
 }
 

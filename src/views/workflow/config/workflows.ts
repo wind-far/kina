@@ -5,13 +5,14 @@
 
 import type {
   WorkflowCanvasEdge,
-  WorkflowNodeType,
+  WorkflowBuiltinNodeType,
 } from '../composables/useWorkflowCanvas'
 import type { WorkflowCanvasPosition } from '../composables/workflow-orchestrator-types'
 
 interface WorkflowTemplateNode {
   id: string
-  type: WorkflowNodeType
+  /** 内置模板不能预置来自第三方运行时的插件节点。 */
+  type: WorkflowBuiltinNodeType
   position: WorkflowCanvasPosition
   data: Record<string, unknown>
 }

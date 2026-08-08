@@ -9,7 +9,7 @@ const imported = normalizeCanvasImport({
   project: { name: '目标项目导出' },
   canvas: {
     nodes: [
-      { id: 'prompt', type: 'text', position: { x: 20, y: 30 }, rotation: 15, data: { content: 'hello' } },
+      { id: 'prompt', type: 'text', position: { x: 20, y: 30 }, rotation: 15, style: { width: '420px', height: '240px', color: 'red' }, data: { content: 'hello' } },
       { id: 'remote', type: 'third-party-node', position: { x: 500, y: 30 }, data: { value: 1 } },
     ],
     edges: [
@@ -36,6 +36,7 @@ assert.equal(payload.definitionJson.schemaVersion, CANVAS_SNAPSHOT_SCHEMA_VERSIO
 assert.equal(payload.runtimeConfigJson.canvasSnapshotSchemaVersion, CANVAS_SNAPSHOT_SCHEMA_VERSION)
 assert.deepEqual(payload.nodesJson[0].position, { x: 20, y: 30 })
 assert.equal(payload.nodesJson[0].data.rotation, 15)
+assert.deepEqual(payload.nodesJson[0].style, { width: '420px', height: '240px' })
 
 // basketikun/infinite-canvas 当前导出的 projects.json（ZIP 内元数据）兼容 fixture。
 const targetExport = normalizeCanvasImport({
@@ -70,6 +71,7 @@ assert.equal(targetExport.snapshot.nodes[0].data.content, '夏季新品')
 assert.equal(targetExport.snapshot.nodes[2].data.url, 'data:image/png;base64,AA==')
 assert.equal(targetExport.snapshot.nodes[2].data.sourceResource.storageKey, 'image:hero')
 assert.equal(targetExport.snapshot.nodes[2].data.rotation, -30)
+assert.deepEqual(targetExport.snapshot.nodes[2].style, { width: '480px', height: '360px' })
 assert.equal(targetExport.snapshot.edges.length, 2)
 assert.deepEqual(targetExport.snapshot.viewport, { x: 11, y: -7, zoom: 1.25 })
 assert.equal(targetExport.snapshot.backgroundMode, 'lines')

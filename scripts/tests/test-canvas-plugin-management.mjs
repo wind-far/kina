@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { createHash } from 'node:crypto'
-import { assertTrustedCanvasPluginPackageUrl, downloadAndVerifyCanvasPluginPackage, normalizeCanvasPluginManifest, publishTrustedCanvasPlugin } from '../../server/canvas-plugins/service.ts'
+import { assertTrustedCanvasPluginPackageUrl, downloadAndVerifyCanvasPluginPackage, normalizeCanvasPluginManifest, publishTrustedCanvasPlugin, startCanvasPluginGeneration } from '../../server/canvas-plugins/service.ts'
 import { canvasPluginNodeType, normalizeCanvasPluginRuntimeContributions } from '../../src/shared/canvas-plugin-runtime.ts'
 
 const managerSource = fs.readFileSync(new URL('../../src/views/workflow/components/CanvasPluginManager.vue', import.meta.url), 'utf8')
@@ -20,7 +20,7 @@ const workflowSource = fs.readFileSync(new URL('../../src/views/workflow/index.v
 assert.match(workflowSource, /const handleCanvasPluginProposal[\s\S]*?applyCanvasAssistantProposal/)
 
 assert.deepEqual(normalizeCanvasPluginManifest({ entry: '/plugin.html', capabilities: ['canvas.read', 'canvas.propose', 'canvas.read'] }), {
-  entry: '/plugin.html', capabilities: ['canvas.read', 'canvas.propose'],
+  entry: '/plugin.html', capabilities: ['canvas.read', 'canvas.propose'], generationTemplates: [],
 })
 assert.throws(
   () => normalizeCanvasPluginManifest({ entry: '/plugin.html', capabilities: ['network.anywhere'] }),
@@ -119,6 +119,28 @@ await assert.rejects(
 )
 assert.deepEqual(failedDeletedPackages, [{ relativePath: 'canvas-plugin/fail.html', storageType: 'local', storageCode: 'local' }])
 
+const generationRequests = []
+const pluginGeneration = await startCanvasPluginGeneration('user-1', 'plugin-1', {
+  templateId: 'rewrite', prompt: '把这段文案改得更简洁', providerId: 'attacker', modelKey: 'attacker-model', requestBody: { url: 'https://attacker.example' },
+}, {
+  findInstalledPlugin: async () => ({
+    slug: 'demo-plugin', manifest: { capabilities: ['generation'], generationTemplates: [{ id: 'rewrite', type: 'agent', modelSelectionKey: 'provider-1::CHAT::chat-model', systemPrompt: '保持简洁', promptPrefix: '任务：' }] },
+  }),
+  getModelCatalog: async () => ({ models: { chat: [{ selectionKey: 'provider-1::CHAT::chat-model', providerId: 'provider-1', modelKey: 'chat-model' }], image: [], video: [] } }),
+  startTask: async (payload, userId) => { generationRequests.push({ payload, userId }); return { id: 'task-1' } },
+})
+assert.equal(pluginGeneration.id, 'task-1')
+assert.equal(generationRequests[0].userId, 'user-1')
+assert.equal(generationRequests[0].payload.requestBody.providerId, 'provider-1')
+assert.equal(generationRequests[0].payload.modelKey, 'chat-model')
+assert.doesNotMatch(JSON.stringify(generationRequests[0].payload), /attacker/)
+await assert.rejects(
+  () => startCanvasPluginGeneration('user-1', 'plugin-1', { templateId: 'not-registered', prompt: 'x' }, {
+    findInstalledPlugin: async () => ({ slug: 'demo-plugin', manifest: { capabilities: ['generation'], generationTemplates: [] } }),
+  }),
+  /模板未登记/,
+)
+
 const hostSource = fs.readFileSync(new URL('../../src/views/workflow/components/CanvasPluginHost.vue', import.meta.url), 'utf8')
 assert.match(hostSource, /allowsCapability\(plugin, 'canvas\.read'\)/)
 assert.match(hostSource, /allowsCapability\(plugin, 'canvas\.propose'\)/)
@@ -126,6 +148,8 @@ assert.match(hostSource, /plugin\.release\.isMirrored/)
 assert.match(hostSource, /canvas-plugin:register/)
 assert.match(hostSource, /defineExpose\(\{ invoke \}\)/)
 assert.match(hostSource, /@load="notifyReady\(plugin\)"/)
+assert.match(hostSource, /canvas-plugin:request-generation/)
+assert.match(hostSource, /subscribeGenerationTaskEvents/)
 assert.match(managerSource, /!plugin\.release\?\.isMirrored/)
 assert.match(workflowSource, /applyCanvasPluginProposal/)
 assert.match(workflowSource, /addPluginNode/)

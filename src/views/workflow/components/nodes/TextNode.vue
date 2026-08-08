@@ -31,6 +31,7 @@ import CanvasNodeTopToolbar, { type NodeTopToolbarItem } from '@/components/canv
 import ContentGenerator from '@/components/generate/ContentGenerator.vue'
 import type { CreationType } from '@/components/generate/selectors'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
+import CanvasNodeResizer from '@/components/canvas/CanvasNodeResizer.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
   updateNode,
@@ -376,6 +377,7 @@ watch(content, async () => {
 
 <template>
   <div class="text-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
+    <CanvasNodeResizer :visible="isSelected" :min-width="300" :min-height="200" />
     <!-- 节点外置标题：浮在节点上方左侧 -->
     <div class="text-node-title" :title="titleEdit.editing.value ? '' : '双击编辑名称'" @dblclick.stop="titleEdit.start">
       <el-icon class="text-node-title-icon"><Document /></el-icon>

@@ -449,7 +449,7 @@ export const addNode = <T extends WorkflowBuiltinNodeType>(
       ...data,
       createdAt: data.createdAt || now,
       updatedAt: data.updatedAt || now,
-    } as WorkflowNodeDataMap[T],
+    } as WorkflowNodeDataFor<T>,
   }
   nodes.value = [...nodes.value, applyNodeRotationPresentation(nextNode)]
   // 入栈由全局 watch 防抖触发，无需显式调用

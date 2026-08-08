@@ -4,6 +4,7 @@ import { CopyDocument, Delete, Download, Headset, Upload } from '@element-plus/i
 import { ElMessage } from 'element-plus'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
+import CanvasNodeResizer from '@/components/canvas/CanvasNodeResizer.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import { uploadStorageFile } from '@/api/storage'
 import { validateWorkflowAudioFile, WORKFLOW_AUDIO_ACCEPT } from '@/shared/workflow-audio-file'
@@ -80,6 +81,7 @@ const hoverActions = computed<NodeToolbarAction[]>(() => [
 
 <template>
   <div class="audio-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
+    <CanvasNodeResizer :visible="isSelected" :min-width="300" :min-height="210" />
     <div class="audio-node-title" title="双击编辑名称" @dblclick.stop="titleEdit.start">
       <el-icon><Headset /></el-icon>
       <input
@@ -117,10 +119,10 @@ const hoverActions = computed<NodeToolbarAction[]>(() => [
 </template>
 
 <style scoped>
-.audio-node-wrapper { position: relative; width: 340px; }
+.audio-node-wrapper { position: relative; width: 100%; height: 100%; min-width: 300px; min-height: 210px; }
 .audio-node-title { position: absolute; bottom: calc(100% + 8px); left: 2px; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 15px; }
 .audio-node-title-input { width: 180px; border: 1px solid var(--brand-main-default); border-radius: 5px; padding: 2px 6px; background: var(--canvas-node-bg); color: var(--text-primary); }
-.audio-node-card { box-sizing: border-box; width: 340px; min-height: 230px; padding: 16px; border: 1px solid var(--canvas-node-border); border-radius: 16px; background: var(--canvas-node-bg); display: flex; flex-direction: column; gap: 12px; }
+.audio-node-card { box-sizing: border-box; width: 100%; height: 100%; min-height: 0; padding: 16px; border: 1px solid var(--canvas-node-border); border-radius: 16px; background: var(--canvas-node-bg); display: flex; flex-direction: column; gap: 12px; }
 .audio-node-card.is-selected { border-color: var(--brand-main-default); box-shadow: 0 0 0 2px rgba(2, 219, 163, .16); }
 .audio-node-status { padding: 7px 9px; border-radius: 8px; background: rgba(59, 130, 246, .1); color: #7db2ff; font-size: 12px; }
 .audio-node-upload { min-height: 72px; border: 1px dashed var(--stroke-secondary); border-radius: 10px; background: rgba(255, 255, 255, .03); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }

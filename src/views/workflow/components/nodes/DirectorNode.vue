@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { CopyDocument, Delete, Film } from '@element-plus/icons-vue'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
+import CanvasNodeResizer from '@/components/canvas/CanvasNodeResizer.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
   duplicateNode,
@@ -42,6 +43,7 @@ const hoverActions = computed<NodeToolbarAction[]>(() => [
 
 <template>
   <div class="director-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
+    <CanvasNodeResizer :visible="isSelected" :min-width="300" :min-height="260" />
     <div class="director-node-title" title="双击编辑名称" @dblclick.stop="titleEdit.start">
       <el-icon><Film /></el-icon>
       <input
@@ -82,10 +84,10 @@ const hoverActions = computed<NodeToolbarAction[]>(() => [
 </template>
 
 <style scoped>
-.director-node-wrapper { position: relative; width: 360px; }
+.director-node-wrapper { position: relative; width: 100%; height: 100%; min-width: 300px; min-height: 260px; }
 .director-node-title { position: absolute; bottom: calc(100% + 8px); left: 2px; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 15px; }
 .director-node-title-input { width: 180px; border: 1px solid var(--brand-main-default); border-radius: 5px; padding: 2px 6px; background: var(--canvas-node-bg); color: var(--text-primary); }
-.director-node-card { box-sizing: border-box; width: 360px; min-height: 310px; padding: 16px; border: 1px solid var(--canvas-node-border); border-radius: 16px; background: var(--canvas-node-bg); display: flex; flex-direction: column; gap: 12px; }
+.director-node-card { box-sizing: border-box; width: 100%; height: 100%; min-height: 0; padding: 16px; border: 1px solid var(--canvas-node-border); border-radius: 16px; background: var(--canvas-node-bg); display: flex; flex-direction: column; gap: 12px; }
 .director-node-card.is-selected { border-color: var(--brand-main-default); box-shadow: 0 0 0 2px rgba(2, 219, 163, .16); }
 .director-node-status { padding: 7px 9px; border-radius: 8px; background: rgba(245, 158, 11, .1); color: #f6b94d; font-size: 12px; }
 .director-node-card label { display: flex; flex-direction: column; gap: 6px; color: var(--text-tertiary); font-size: 12px; }

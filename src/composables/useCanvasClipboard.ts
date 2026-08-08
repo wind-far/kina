@@ -16,8 +16,9 @@ import {
   type WorkflowCanvasEdge,
   type WorkflowPluginNodeData,
   type WorkflowPluginNodeType,
-  type WorkflowNodeType,
+  type WorkflowBuiltinNodeType,
 } from '@/views/workflow/composables/useWorkflowCanvas'
+import { isCanvasPluginNodeType } from '@/shared/canvas-plugin-runtime'
 import { CANVAS_CLIPBOARD_VERSION, type CanvasClipboardPayload } from '@/types/canvas-interaction'
 
 const PASTE_OFFSET = { x: 40, y: 40 }
@@ -80,13 +81,13 @@ export function useCanvasClipboard() {
       const relX = sourceNode.position.x - payload.origin.x + PASTE_OFFSET.x
       const relY = sourceNode.position.y - payload.origin.y + PASTE_OFFSET.y
       const position = { x: centerWorld.x + relX, y: centerWorld.y + relY }
-      const newId = sourceNode.type.startsWith('plugin:')
+      const newId = isCanvasPluginNodeType(sourceNode.type)
         ? addPluginNode(
             sourceNode.type as WorkflowPluginNodeType,
             position,
             { ...sourceNode.data } as WorkflowPluginNodeData,
           )
-        : addNode(sourceNode.type as WorkflowNodeType, position, { ...sourceNode.data })
+        : addNode(sourceNode.type as WorkflowBuiltinNodeType, position, { ...sourceNode.data })
       idMap.set(sourceNode.id, newId)
       addedNodeIds.push(newId)
     }

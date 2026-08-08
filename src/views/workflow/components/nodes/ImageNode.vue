@@ -821,7 +821,12 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
 
       <!-- 空态：尝试菜单 -->
       <div v-if="showEmpty" class="image-node-empty">
-        <div class="image-node-empty-title">尝试：</div>
+        <!-- 上传入口必须始终处于首屏：空节点被缩小时，不能把唯一可操作入口裁掉。 -->
+        <button class="image-node-upload-pill nodrag nopan" @click.stop="triggerUpload">
+          <el-icon><UploadIcon /></el-icon>
+          <span>上传图片</span>
+        </button>
+        <div class="image-node-empty-title">或使用图片工具：</div>
         <div class="image-node-empty-menu">
           <button
             v-for="item in emptyMenuItems"
@@ -836,10 +841,6 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
             <span>{{ item.label }}</span>
           </button>
         </div>
-        <button class="image-node-upload-pill nodrag nopan" @click.stop="triggerUpload">
-          <el-icon><UploadIcon /></el-icon>
-          <span>上传图片</span>
-        </button>
       </div>
 
       <!-- ready-state：有上游连线但本节点没有图 -->
@@ -1163,14 +1164,18 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
   display: flex;
   flex-direction: column;
   flex: 1 1 0;
-  justify-content: center;
-  padding: 20px;
+  /* 节点可被缩到 140px；清除 flex 的内容最小高度并允许菜单自行滚动，
+     避免内容被 card 的 overflow:hidden 整体裁掉。 */
+  min-height: 0;
+  justify-content: flex-start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
 }
 .image-node-empty-title {
   color: var(--text-tertiary);
   font-size: 13px;
-  margin-bottom: 16px;
-  margin-left: 10px;
+  margin: 8px 6px;
 }
 .image-node-empty-menu {
   display: flex;
@@ -1207,9 +1212,9 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
   color: var(--text-primary);
 }
 .image-node-upload-pill {
-  margin-top: auto;
-  margin-left: 10px;
-  margin-right: 10px;
+  flex: 0 0 auto;
+  min-height: 36px;
+  margin: 0 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

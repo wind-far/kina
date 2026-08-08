@@ -14,6 +14,17 @@ assert.doesNotMatch(source, /:min-width="imageUrl \? 475 : 333"/)
 assert.match(source, /\.image-node-wrapper \{[\s\S]*?position: relative;[\s\S]*?width: 100%;[\s\S]*?height: 100%;[\s\S]*?min-width: 180px;[\s\S]*?min-height: 140px;/)
 assert.match(source, /border: 1px solid color-mix\(in srgb, var\(--text-tertiary\) 52%, transparent\);/)
 
+// 空态节点被缩小时，上传入口仍必须留在可视区域，菜单转为节点内部滚动。
+assert.match(source, /上传入口必须始终处于首屏/)
+assert.match(source, /<span>上传图片<\/span>[\s\S]*?<div class="image-node-empty-title">或使用图片工具：<\/div>/)
+assert.match(source, /\.image-node-empty \{[\s\S]*?min-height: 0;[\s\S]*?overflow-y: auto;/)
+assert.match(source, /\.image-node-upload-pill \{[\s\S]*?min-height: 36px;/)
+
+// 恢复最初的图片展示规则：节点尺寸不由图片加载事件自动覆盖，图片保持填满节点。
+assert.doesNotMatch(source, /const syncImageAspectRatio =/)
+assert.match(source, /@load="refreshNodeInternals"/)
+assert.match(source, /\.image-node-image \{[\s\S]*?object-fit: cover;/)
+
 // 图片 URL 加载失败时必须回退至可见、可上传的紧凑错误状态，不能留下白色巨框。
 assert.match(source, /const handleImageLoadError = \(\) =>/)
 assert.match(source, /const error = '图片加载失败'/)

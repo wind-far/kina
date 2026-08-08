@@ -1206,7 +1206,8 @@ const addNewNode = (type: WorkflowNodeType) => {
   showNodeMenu.value = false
 }
 
-// 快速连线（Dify 同款）：按住 Shift 点击节点 A，再按住 Shift 点击节点 B，自动连线。
+// 快速连线：按住 Alt 点击节点 A，再按住 Alt 点击节点 B，自动连线。
+// Shift 保留给 Vue Flow 的多选，避免两种交互争夺同一个修饰键。
 const quickLinkSourceId = ref<string | null>(null)
 
 // 把"按节点类型推断 edge type"的逻辑抽出来，拖拽连线（onConnect）与快速连线共用。
@@ -1275,8 +1276,8 @@ const handleNodeClick = (payload: { event: MouseEvent | TouchEvent; node: { id: 
     promptAnchorNodeId.value = shouldOpenPrompt ? targetNodeId : ''
   })
 
-  // 只在按住 Shift 时介入；其他点击一律交回 vue-flow 默认行为。
-  if (!(originalEvent && 'shiftKey' in originalEvent && originalEvent.shiftKey)) {
+  // 只在按住 Alt 时介入；Shift 由 Vue Flow 用于多选。
+  if (!(originalEvent && 'altKey' in originalEvent && originalEvent.altKey)) {
     return
   }
 
@@ -1306,7 +1307,7 @@ const handleNodeClick = (payload: { event: MouseEvent | TouchEvent; node: { id: 
   originalEvent.stopPropagation?.()
 }
 
-// 给挂起源节点动态打 .wf-quick-link-source class，提示"A 已选中，下一次 Shift+点击的节点为目标"。
+// 给挂起源节点动态打 .wf-quick-link-source class，提示"A 已选中，下一次 Alt+点击的节点为目标"。
 // 这是整个快速连线流程仅保留的视觉反馈，跟挂起状态同生同灭。
 const resolveNodeClass = (node: { id: string }) => {
   return node.id === quickLinkSourceId.value ? 'wf-quick-link-source' : undefined
@@ -2456,7 +2457,7 @@ watch(currentCanvasSnapshot, () => {
             :snap-grid="[20, 20]"
             :delete-key-code="['Delete', 'Backspace']"
             :selection-key-code="true"
-            :multi-selection-key-code="'Shift'"
+            :multi-selection-key-code="['Shift', 'Control', 'Meta']"
             :selection-mode="SelectionMode.Partial"
             :pan-on-drag="panOnDragValue"
             :nodes-draggable="!isSpacePressed && !workflowRunning"
@@ -2640,12 +2641,12 @@ watch(currentCanvasSnapshot, () => {
           </div>
         </header>
 
-        <!-- 快速连线状态横幅：Shift+点击挂起源节点后顶部提示 -->
+        <!-- 快速连线状态横幅：Alt+点击挂起源节点后顶部提示 -->
         <Transition name="wf-quick-link-banner">
           <div v-if="quickLinkSourceId" class="wf-quick-link-banner" role="status" aria-live="polite">
             <span class="wf-quick-link-banner__dot" aria-hidden="true"></span>
             <span class="wf-quick-link-banner__text">
-              正在连线：<strong>{{ quickLinkSourceLabel }}</strong> → 按住 Shift 点击目标节点完成
+              正在连线：<strong>{{ quickLinkSourceLabel }}</strong> → 按住 Alt 点击目标节点完成
             </span>
             <span class="wf-quick-link-banner__hint">Esc 取消</span>
             <button

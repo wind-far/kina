@@ -36,6 +36,7 @@ import { handleCanvasProjectsRequest } from './canvas-projects/request-handler'
 import { isWorkflowRunsPath } from './workflow-runs/constants'
 import { handleWorkflowRunsRequest } from './workflow-runs/request-handler'
 import { recoverServerWorkflowRuns } from './workflow-runs/executor'
+import { recoverInterruptedGenerationTasks } from './generation-tasks/recovery'
 import { isGenerationRecordsPath } from './generation-records/constants'
 import { handleGenerationRecordsRequest } from './generation-records/request-handler'
 import { isGenerationSessionsPath } from './generation-sessions/constants'
@@ -665,4 +666,7 @@ server.listen(serverPort, '0.0.0.0', () => {
   void recoverServerWorkflowRuns()
     .then(result => writeScopedLog('info', '工作流执行器', '启动恢复完成', result))
     .catch(error => writeScopedLog('error', '工作流执行器', '启动恢复失败', error))
+  void recoverInterruptedGenerationTasks()
+    .then(result => writeScopedLog('info', '生成任务恢复器', '启动恢复完成', result))
+    .catch(error => writeScopedLog('error', '生成任务恢复器', '启动恢复失败', error))
 })

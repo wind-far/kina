@@ -23,6 +23,8 @@ import {
 import { VIDEO_RATIO_LIST, getAllVideoModels, getDefaultVideoModelKey, getModelByName, loadPublicModelCatalog } from '@/config/models'
 import { createGenerationTask, resolveGenerationTaskModel, subscribeGenerationTaskEvents } from '@/api/generation-tasks'
 import type { SkillMediaReference } from '@/shared/skill-runtime'
+import { buildWorkflowGenerationMetadata } from '@/shared/workflow-generation-metadata'
+import { confirmCanvasGenerationResult, notifyCanvasGenerationResultConfirmed } from '@/shared/canvas-generation-confirmation'
 import WfSelect from '@/components/common/WfSelect.vue'
 
 const props = defineProps<{
@@ -41,6 +43,7 @@ const showActions = ref(false)
 const isGenerating = ref(false)
 const progress = ref(0)
 const generationController = ref<AbortController | null>(null)
+const awaitingConfirmationTaskId = ref('')
 
 interface WorkflowVideoModelLike {
   ratios?: string[]
@@ -87,6 +90,7 @@ watch(
 
 onMounted(() => {
   void loadPublicModelCatalog()
+  resumePendingTask()
 })
 
 onUnmounted(() => {
@@ -124,6 +128,76 @@ const collectInputs = () => {
   return { prompt, mediaReferences }
 }
 
+const buildCurrentGenerationMeta = () => buildWorkflowGenerationMetadata({
+  kind: 'video',
+  prompt: String(props.data?.prompt || ''),
+  model: model.value,
+  ratio: ratio.value,
+  resolution: resolution.value,
+  duration: Number(duration.value),
+  sourceConfigNodeId: props.id,
+})
+
+const bindTaskStream = (taskId: string, outputNodeId: string, generationMeta: ReturnType<typeof buildWorkflowGenerationMetadata>, controller: AbortController) => {
+  void subscribeGenerationTaskEvents(taskId, {
+    signal: controller.signal,
+    onEvent: (event) => {
+      if (event.type === 'progress') return
+      if (event.type === 'snapshot' || event.type === 'completed') {
+        const output = Array.isArray(event.record?.outputs) ? event.record.outputs.find(item => item.outputType === 'video' && item.url) : null
+        if (output?.url && event.done && awaitingConfirmationTaskId.value !== taskId) {
+          awaitingConfirmationTaskId.value = taskId
+          updateNode(props.id, { loading: true, error: '', outputNodeId, generationStatus: 'awaiting_confirmation' })
+          void confirmCanvasGenerationResult({ kind: 'video', outputCount: 1 }).then((confirmed) => {
+            if (confirmed) {
+              updateNode(outputNodeId, { url: output.url, label: '生成视频', loading: false, error: '', generationMeta, taskRecordId: taskId })
+              updateNode(props.id, { loading: false, error: '', executed: true, outputNodeId, generationStatus: 'completed' })
+              notifyCanvasGenerationResultConfirmed({ kind: 'video', taskId, outputCount: 1 })
+            } else {
+              updateNode(outputNodeId, { label: '结果未写入', loading: false, error: '用户暂未确认写入画布' })
+              updateNode(props.id, { loading: false, executed: false, generationStatus: 'discarded' })
+            }
+            awaitingConfirmationTaskId.value = ''
+            isGenerating.value = false
+          })
+        }
+      }
+      if (event.type === 'failed' || event.type === 'stopped') {
+        const message = String(event.message || event.record?.error || (event.type === 'stopped' ? '任务已停止' : '视频生成失败'))
+        updateNode(outputNodeId, { label: event.type === 'stopped' ? '已停止' : '生成失败', loading: false, error: message })
+        updateNode(props.id, { loading: false, error: message, generationStatus: event.type === 'stopped' ? 'stopped' : 'failed' })
+      }
+      if (event.done) {
+        if (awaitingConfirmationTaskId.value !== taskId) isGenerating.value = false
+        if (generationController.value === controller) generationController.value = null
+      }
+    },
+  }).catch((error: unknown) => {
+    if (controller.signal.aborted) return
+    const message = error instanceof Error ? error.message : '订阅视频任务失败'
+    updateNode(outputNodeId, { label: '生成失败', loading: false, error: message })
+    updateNode(props.id, { loading: false, error: message, generationStatus: 'failed' })
+    isGenerating.value = false
+    if (generationController.value === controller) generationController.value = null
+  })
+}
+
+/** 恢复已有服务端任务的事件流，不重新提交视频请求。 */
+const resumePendingTask = () => {
+  const taskId = String(props.data?.taskRecordId || '').trim()
+  if (!taskId || !props.data?.loading || isGenerating.value) return
+  const outputNodeId = String(props.data?.outputNodeId || '') || edges.value
+    .filter(edge => edge.source === props.id)
+    .map(edge => nodes.value.find(node => node.id === edge.target))
+    .find(node => node?.type === 'video')?.id
+  if (!outputNodeId) return
+  isGenerating.value = true
+  generationController.value?.abort()
+  const controller = new AbortController()
+  generationController.value = controller
+  bindTaskStream(taskId, outputNodeId, props.data?.generationMeta || buildCurrentGenerationMeta(), controller)
+}
+
 const handleGenerate = async () => {
   const { prompt, mediaReferences } = collectInputs()
   if (!prompt && !mediaReferences.length) return
@@ -138,14 +212,27 @@ const handleGenerate = async () => {
     error: '',
     executed: false,
     outputNodeId: undefined,
+    generationStatus: 'running',
   })
   let outputNodeId: string | null = null
+  let subscriptionStarted = false
 
   try {
     const { providerId, modelKey } = resolveGenerationTaskModel({
       modelKey: model.value,
       category: 'VIDEO',
       missingProviderMessage: '未匹配到后台视频厂商配置',
+    })
+    const generationMeta = buildWorkflowGenerationMetadata({
+      kind: 'video',
+      prompt,
+      model: model.value,
+      modelKey,
+      ratio: ratio.value,
+      resolution: resolution.value,
+      duration: Number(duration.value),
+      references: mediaReferences,
+      sourceConfigNodeId: props.id,
     })
 
     // 模板可能已经预置结果节点；优先复用，避免重复运行不断新增输出节点。
@@ -158,7 +245,7 @@ const handleGenerate = async () => {
       x: (node?.position?.x || 0) + 400,
       y: node?.position?.y || 0,
     }, { url: '', label: '视频生成中...', loading: true })
-    updateNode(outputNodeId, { url: '', label: '视频生成中...', loading: true, error: '' })
+    updateNode(outputNodeId, { url: '', label: '视频生成中...', loading: true, error: '', generationMeta })
     if (!existingOutput) {
       addEdge({ source: props.id, target: outputNodeId, sourceHandle: 'right', targetHandle: 'left' })
     }
@@ -181,40 +268,22 @@ const handleGenerate = async () => {
     }, { signal: controller.signal })
     const taskId = String(task?.id || '').trim()
     if (!taskId) throw new Error('任务创建失败')
-    updateNode(props.id, { taskRecordId: taskId })
-    void subscribeGenerationTaskEvents(taskId, {
-      signal: controller.signal,
-      onEvent: (event) => {
-        if (event.type === 'progress') return
-        if (event.type === 'snapshot' || event.type === 'completed') {
-          const output = Array.isArray(event.record?.outputs) ? event.record.outputs.find(item => item.outputType === 'video' && item.url) : null
-          if (output?.url) {
-            updateNode(createdOutputNodeId, { url: output.url, label: '生成视频', loading: false, error: '' })
-            updateNode(props.id, { loading: !event.done, error: '', executed: Boolean(event.done), outputNodeId: createdOutputNodeId })
-          }
-        }
-        if (event.type === 'failed' || event.type === 'stopped') {
-          const message = String(event.message || event.record?.error || (event.type === 'stopped' ? '任务已停止' : '视频生成失败'))
-          updateNode(createdOutputNodeId, { label: event.type === 'stopped' ? '已停止' : '生成失败', loading: false, error: message })
-          updateNode(props.id, { loading: false, error: message })
-        }
-        if (event.done) {
-          isGenerating.value = false
-          generationController.value = null
-        }
-      },
-    })
+    updateNode(props.id, { taskRecordId: taskId, generationMeta, generationStatus: 'running' })
+    subscriptionStarted = true
+    bindTaskStream(taskId, createdOutputNodeId, generationMeta, controller)
   } catch (err: unknown) {
     console.error('视频生成失败:', err)
     const msg = err instanceof DOMException && err.name === 'AbortError'
       ? '工作流执行已取消'
       : err instanceof Error ? err.message : '视频生成失败'
     if (outputNodeId) updateNode(outputNodeId, { label: '生成失败', loading: false, error: msg })
-    updateNode(props.id, { loading: false, error: msg })
+    updateNode(props.id, { loading: false, error: msg, generationStatus: 'failed' })
   } finally {
-    isGenerating.value = false
-    if (generationController.value === controller) generationController.value = null
-    updateNode(props.id, { loading: false })
+    if (!subscriptionStarted) {
+      isGenerating.value = false
+      if (generationController.value === controller) generationController.value = null
+      updateNode(props.id, { loading: false })
+    }
   }
 }
 

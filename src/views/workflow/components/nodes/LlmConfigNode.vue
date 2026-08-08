@@ -21,6 +21,9 @@ import {
 } from '../../composables/useWorkflowCanvas'
 import { getAllChatModels, getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
 import { createGenerationTask, resolveGenerationTaskModel, subscribeGenerationTaskEvents } from '@/api/generation-tasks'
+import CanvasGenerationInfo from '@/components/canvas/CanvasGenerationInfo.vue'
+import { buildWorkflowGenerationMetadata, type WorkflowGenerationMetadata } from '@/shared/workflow-generation-metadata'
+import { confirmCanvasGenerationResult, notifyCanvasGenerationResultConfirmed } from '@/shared/canvas-generation-confirmation'
 import WfSelect from '@/components/common/WfSelect.vue'
 
 const props = defineProps<{
@@ -42,6 +45,7 @@ const systemPrompt = ref(props.data?.systemPrompt || '')
 const model = ref(props.data?.model || getDefaultChatModelKey())
 const outputContent = ref(props.data?.outputContent || '')
 const outputFormat = ref(props.data?.outputFormat || 'text')
+const awaitingConfirmationTaskId = ref('')
 
 const outputFormatOptions = [
   { label: '纯文本', value: 'text' },
@@ -68,6 +72,7 @@ watch(
 
 onMounted(() => {
   void loadPublicModelCatalog()
+  resumePendingTask()
 })
 
 onUnmounted(() => {
@@ -112,9 +117,80 @@ const cleanupTaskStream = () => {
   taskStreamController.value = null
 }
 
-const handleGenerate = async () => {
-  const input = getInput()
-  if (!input && !systemPrompt.value) return
+const buildCurrentGenerationMeta = () => buildWorkflowGenerationMetadata({
+  kind: 'text',
+  prompt: getInput() || '请根据系统提示词生成内容',
+  systemPrompt: systemPrompt.value,
+  outputFormat: outputFormat.value,
+  model: model.value,
+  sourceConfigNodeId: props.id,
+})
+
+const bindTaskStream = (taskRecordId: string, controller: AbortController, generationMeta: WorkflowGenerationMetadata) => {
+  void subscribeGenerationTaskEvents(taskRecordId, {
+    signal: controller.signal,
+    onEvent: (event) => {
+      if (event.type === 'content_delta') {
+        const nextContent = typeof event.content === 'string'
+          ? event.content
+          : `${outputContent.value}${String(event.delta || '')}`
+        outputContent.value = nextContent
+        return
+      }
+      if (event.type === 'snapshot' || event.type === 'completed') {
+        const nextContent = typeof event.record?.content === 'string' ? event.record.content : outputContent.value
+        outputContent.value = nextContent
+        if (event.done && awaitingConfirmationTaskId.value !== taskRecordId) {
+          awaitingConfirmationTaskId.value = taskRecordId
+          updateNode(props.id, { loading: true, error: '', generationStatus: 'awaiting_confirmation' })
+          void confirmCanvasGenerationResult({ kind: 'text', content: nextContent }).then((confirmed) => {
+            if (confirmed) {
+              updateNode(props.id, { loading: false, error: '', executed: true, outputContent: nextContent, generationMeta, generationStatus: 'completed' })
+              notifyCanvasGenerationResultConfirmed({ kind: 'text', taskId: taskRecordId })
+            } else {
+              outputContent.value = String(props.data?.outputContent || '')
+              updateNode(props.id, { loading: false, executed: false, generationStatus: 'discarded' })
+            }
+            awaitingConfirmationTaskId.value = ''
+            isGenerating.value = false
+          })
+        }
+      }
+      if (event.type === 'failed' || event.type === 'stopped') {
+        const message = String(event.message || event.record?.error || (event.type === 'stopped' ? '任务已停止' : 'LLM 生成失败')).trim() || 'LLM 生成失败'
+        updateNode(props.id, { loading: false, error: message, generationMeta, generationStatus: event.type === 'stopped' ? 'stopped' : 'failed' })
+      }
+      if (event.done) {
+        if (awaitingConfirmationTaskId.value !== taskRecordId) isGenerating.value = false
+        cleanupTaskStream()
+      }
+    },
+  }).catch((error: unknown) => {
+    if (controller.signal.aborted) return
+    const message = error instanceof Error ? error.message : 'LLM 任务订阅失败'
+    updateNode(props.id, { loading: false, error: message, generationMeta, generationStatus: 'failed' })
+    isGenerating.value = false
+    cleanupTaskStream()
+  })
+}
+
+/** 仅恢复已保存的服务端任务状态，刷新不会再次发送文本生成请求。 */
+const resumePendingTask = () => {
+  const taskRecordId = String(props.data?.taskRecordId || '').trim()
+  if (!taskRecordId || !props.data?.loading || isGenerating.value) return
+  isGenerating.value = true
+  cleanupTaskStream()
+  const controller = new AbortController()
+  taskStreamController.value = controller
+  bindTaskStream(taskRecordId, controller, props.data?.generationMeta || buildCurrentGenerationMeta())
+}
+
+const handleGenerate = async (retryMetadata?: WorkflowGenerationMetadata) => {
+  const input = retryMetadata?.prompt || getInput()
+  const selectedSystemPrompt = retryMetadata?.systemPrompt ?? systemPrompt.value
+  const selectedModel = retryMetadata?.modelKey || retryMetadata?.model || model.value
+  const selectedOutputFormat = retryMetadata?.outputFormat || outputFormat.value
+  if (!input && !selectedSystemPrompt) return
 
   isGenerating.value = true
   outputContent.value = ''
@@ -124,16 +200,25 @@ const handleGenerate = async () => {
 
   try {
     const messages: Array<{ role: 'system' | 'user'; content: string }> = []
-    let sysContent = systemPrompt.value || ''
-    if (outputFormat.value === 'json') sysContent += '\n\n请以合法的 JSON 格式输出结果，不要包含其他内容。'
-    else if (outputFormat.value === 'markdown') sysContent += '\n\n请以 Markdown 格式输出结果。'
+    let sysContent = selectedSystemPrompt || ''
+    if (selectedOutputFormat === 'json') sysContent += '\n\n请以合法的 JSON 格式输出结果，不要包含其他内容。'
+    else if (selectedOutputFormat === 'markdown') sysContent += '\n\n请以 Markdown 格式输出结果。'
     if (sysContent) messages.push({ role: 'system', content: sysContent })
     messages.push({ role: 'user', content: input || '请根据系统提示词生成内容' })
 
     const { providerId, modelKey } = resolveGenerationTaskModel({
-      modelKey: model.value,
+      modelKey: selectedModel,
       category: 'CHAT',
       missingModelMessage: '缺少对话模型标识',
+    })
+    const generationMeta = buildWorkflowGenerationMetadata({
+      kind: 'text',
+      prompt: input || '请根据系统提示词生成内容',
+      systemPrompt: selectedSystemPrompt,
+      outputFormat: selectedOutputFormat,
+      model: selectedModel,
+      modelKey,
+      sourceConfigNodeId: props.id,
     })
 
     updateNode(props.id, {
@@ -142,13 +227,15 @@ const handleGenerate = async () => {
       executed: false,
       outputContent: '',
       taskRecordId: '',
+      generationMeta,
+      generationStatus: 'running',
     })
 
     const saved = await createGenerationTask({
       source: 'workflow',
       type: 'agent',
       prompt: input || '请根据系统提示词生成内容',
-      model: model.value,
+      model: selectedModel,
       modelKey,
       skill: 'general',
       requestBody: {
@@ -168,70 +255,11 @@ const handleGenerate = async () => {
       loading: true,
       error: '',
       taskRecordId,
+      generationMeta,
+      generationStatus: 'running',
     })
 
-    void subscribeGenerationTaskEvents(taskRecordId, {
-      signal: controller.signal,
-      onEvent: (event) => {
-        if (event.type === 'content_delta') {
-          const nextContent = typeof event.content === 'string'
-            ? event.content
-            : `${outputContent.value}${String(event.delta || '')}`
-          outputContent.value = nextContent
-          updateNode(props.id, {
-            loading: true,
-            error: '',
-            outputContent: nextContent,
-          })
-          return
-        }
-
-        if (event.type === 'snapshot' || event.type === 'completed') {
-          const nextContent = typeof event.record?.content === 'string'
-            ? event.record.content
-            : outputContent.value
-          outputContent.value = nextContent
-          updateNode(props.id, {
-            loading: !event.done,
-            error: '',
-            executed: Boolean(event.done),
-            outputContent: nextContent,
-          })
-        }
-
-        if (event.type === 'failed') {
-          const message = String(event.message || event.record?.error || 'LLM 生成失败').trim() || 'LLM 生成失败'
-          updateNode(props.id, {
-            loading: false,
-            error: message,
-          })
-        }
-
-        if (event.type === 'stopped') {
-          updateNode(props.id, {
-            loading: false,
-            error: '任务已停止',
-          })
-        }
-
-        if (event.done) {
-          isGenerating.value = false
-          cleanupTaskStream()
-        }
-      },
-    }).catch((err: unknown) => {
-      if (controller.signal.aborted) {
-        return
-      }
-
-      const message = err instanceof Error ? err.message : 'LLM 任务订阅失败'
-      updateNode(props.id, {
-        loading: false,
-        error: message,
-      })
-      isGenerating.value = false
-      cleanupTaskStream()
-    })
+    bindTaskStream(taskRecordId, controller, generationMeta)
   } catch (err) {
     console.error('LLM 生成失败:', err)
     const message = err instanceof DOMException && err.name === 'AbortError'
@@ -240,10 +268,17 @@ const handleGenerate = async () => {
     updateNode(props.id, {
       loading: false,
       error: message,
+      generationStatus: 'failed',
     })
     isGenerating.value = false
     cleanupTaskStream()
   }
+}
+
+const retryFromGenerationMetadata = () => {
+  const metadata = props.data?.generationMeta
+  if (!metadata || metadata.kind !== 'text' || isGenerating.value) return
+  void handleGenerate(metadata)
 }
 
 const handleCopy = async () => {
@@ -317,7 +352,7 @@ watch(
           <WfSelect v-model="outputFormat" :options="outputFormatOptions" @change="updateConfig" />
         </div>
 
-        <button class="wf-node-generate-btn purple" :disabled="isGenerating" @click="handleGenerate">
+        <button class="wf-node-generate-btn purple" :disabled="isGenerating" @click="handleGenerate()">
           <span v-if="isGenerating" class="wf-spinner"></span>
           <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           {{ isGenerating ? '生成中...' : '执行生成' }}
@@ -332,6 +367,11 @@ watch(
             </button>
           </div>
           <div @wheel.stop @mousedown.stop style="background: var(--bg-block-secondary-default); border: 0.5px solid var(--stroke-tertiary); border-radius: 8px; padding: 8px; font-size: 11px; color: var(--text-primary); max-height: 150px; overflow-y: auto; white-space: pre-wrap; cursor: text; user-select: text;">{{ outputContent }}</div>
+          <CanvasGenerationInfo
+            v-if="data?.generationMeta"
+            :metadata="data.generationMeta"
+            @retry="retryFromGenerationMetadata"
+          />
         </div>
       </div>
 

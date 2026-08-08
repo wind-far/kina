@@ -12,6 +12,15 @@ import {
   selectTargetCanvasArchiveProject,
   type TargetCanvasArchivePayload,
 } from './target-archive'
+import {
+  buildCanvasAssistantProposalInstruction,
+  normalizeCanvasAssistantProposal,
+  parseCanvasAssistantProposal,
+  type CanvasAssistantProposal,
+} from '../../src/shared/canvas-assistant-proposal'
+import { getPublicModelCatalog } from '../provider-config/service'
+import { getGenerationTaskRecord, startGenerationTask } from '../generation-tasks/service'
+import { recordAdminAuditLog } from '../shared/admin-audit'
 
 export interface CanvasProjectAccessContext { currentUserId: string }
 
@@ -101,7 +110,7 @@ export const importCanvasProject = async (payload: { name?: string; data?: unkno
     ? source.project
     : targetExportProject && typeof targetExportProject === 'object' ? targetExportProject : {}
   const { snapshot, warnings } = normalizeCanvasImport(source)
-  const name = String(payload?.name || project?.name || '导入的无限画布').trim().slice(0, 100) || '导入的无限画布'
+  const name = String(payload?.name || project?.name || project?.title || '导入的无限画布').trim().slice(0, 100) || '导入的无限画布'
   const detail = await createWorkflowDefinition({
     name,
     description: typeof project?.description === 'string' ? project.description.slice(0, 255) : null,
@@ -237,6 +246,91 @@ const collectAssistantContext = (snapshot: CanvasSnapshotV3, selection: unknown)
 
 const isVideoPlanningPrompt = (prompt: string) => /视频|短片|镜头|分镜|广告片|宣传片|video|shot|storyboard/i.test(prompt)
 
+const wait = (milliseconds: number) => new Promise(resolve => setTimeout(resolve, milliseconds))
+
+/** 仅向模型提供当前选区和其上游依赖的摘要，不暴露整张画布或账户数据。 */
+export const buildCanvasAssistantModelMessages = (input: {
+  prompt: string
+  selectedNodes: CanvasSnapshotV3['nodes']
+  contextNodes: CanvasSnapshotV3['nodes']
+}) => {
+  const describeNode = (node: CanvasSnapshotV3['nodes'][number]) => ({
+    id: node.id,
+    type: node.type,
+    label: String(node.data?.label || '').slice(0, 160),
+    content: String(node.data?.content || node.data?.outputContent || node.data?.brief || '').slice(0, 2000),
+    url: String(node.data?.url || '').slice(0, 2000),
+  })
+  const context = {
+    selectedNodes: input.selectedNodes.map(describeNode),
+    upstreamContextNodes: input.contextNodes
+      .filter(node => !input.selectedNodes.some(selected => selected.id === node.id))
+      .map(describeNode),
+  }
+  return [
+    { role: 'system' as const, content: buildCanvasAssistantProposalInstruction() },
+    { role: 'user' as const, content: `用户指令：${input.prompt}\n\n允许读取的画布上下文：\n${JSON.stringify(context)}` },
+  ]
+}
+
+const waitForCanvasAssistantTask = async (recordId: string, userId: string) => {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const record = await getGenerationTaskRecord(recordId, userId)
+    if (record.done) return record
+    await wait(500)
+  }
+  throw new Error('画布助手模型响应超时，请稍后重试')
+}
+
+/**
+ * 画布助手始终经由已受管的服务端对话模型 API 执行；模型结果必须通过 proposal 解析器，
+ * 不合法的 JSON、脚本和未知操作都会在写入画布前被拒绝。
+ */
+export const startCanvasAssistantModelTask = async (input: {
+  prompt: string
+  selectedNodes: CanvasSnapshotV3['nodes']
+  contextNodes: CanvasSnapshotV3['nodes']
+  currentUserId: string
+}) => {
+  const catalog = await getPublicModelCatalog()
+  const chatModel = catalog.models.chat.find(item => item.selectionKey === catalog.defaults.chat)
+    || catalog.models.chat[0]
+  if (!chatModel) throw new Error('未配置可用的对话模型，请先在后台配置模型 API')
+  const messages = buildCanvasAssistantModelMessages(input)
+  const task = await startGenerationTask({
+    source: 'canvas-assistant',
+    type: 'agent',
+    prompt: input.prompt,
+    model: chatModel.label,
+    modelKey: chatModel.modelKey,
+    skill: 'general',
+    requestBody: {
+      providerId: chatModel.providerId,
+      model: chatModel.modelKey,
+      messages,
+      stream: true,
+    },
+  }, input.currentUserId)
+  const taskRecordId = String(task.id || '').trim()
+  if (!taskRecordId) throw new Error('画布助手任务创建失败')
+  return { taskRecordId, model: chatModel.label, modelKey: chatModel.modelKey }
+}
+
+export const createCanvasAssistantModelProposal = async (input: {
+  prompt: string
+  selectedNodes: CanvasSnapshotV3['nodes']
+  contextNodes: CanvasSnapshotV3['nodes']
+  currentUserId: string
+}): Promise<{ taskRecordId: string; displayContent: string; proposal: CanvasAssistantProposal }> => {
+  const { taskRecordId } = await startCanvasAssistantModelTask(input)
+  const completed = await waitForCanvasAssistantTask(taskRecordId, input.currentUserId)
+  if (completed.stopped) throw new Error('画布助手任务已停止')
+  if (completed.error) throw new Error(String(completed.error))
+  const parsed = parseCanvasAssistantProposal(completed.content)
+  if (!parsed.proposal) throw new Error('助手模型未返回有效的结构化画布提案，请修改指令后重试')
+  return { taskRecordId, displayContent: parsed.displayContent, proposal: parsed.proposal }
+}
+
 /**
  * 助手只生产白名单化的结构化提案。它不带可执行脚本、不创建生成任务，
  * 由客户端展示后显式确认，才会映射为本地画布的可撤销操作。
@@ -296,6 +390,95 @@ export const buildCanvasAssistantProposal = (input: {
   }
 }
 
+/** 创建任务后立即返回，前端复用 generation-tasks SSE 接收增量文本和最终提案。 */
+export const startCanvasAssistantPreviewTask = async (
+  projectId: string,
+  payload: { prompt?: string; selection?: unknown },
+  context: CanvasProjectAccessContext,
+) => {
+  const exported = await exportCanvasProject(projectId, context)
+  const { selected: selectedNodes, context: contextNodes } = collectAssistantContext(exported.canvas, payload.selection)
+  const prompt = String(payload?.prompt || '').trim()
+  if (!prompt) {
+    const error = new Error('请输入助手指令') as Error & { status?: number }
+    error.status = 400
+    throw error
+  }
+  const started = await startCanvasAssistantModelTask({
+    prompt,
+    selectedNodes,
+    contextNodes,
+    currentUserId: context.currentUserId,
+  })
+  return {
+    projectId,
+    taskRecordId: started.taskRecordId,
+    model: started.model,
+    modelKey: started.modelKey,
+    context: {
+      selectedNodeIds: selectedNodes.map(node => node.id),
+      selectedNodeCount: selectedNodes.length,
+      contextNodeIds: contextNodes.map(node => node.id),
+      upstreamContextIncluded: contextNodes.length > selectedNodes.length,
+    },
+  }
+}
+
+/** 仅审计已通过同一白名单解析器校验的用户确认，不接受任意画布操作。 */
+export const recordCanvasAssistantApplication = async (
+  projectId: string,
+  payload: {
+    taskRecordId?: unknown
+    proposalId?: unknown
+    presetId?: unknown
+    versionId?: unknown
+    appliedNodeIds?: unknown
+    proposal?: unknown
+  },
+  context: CanvasProjectAccessContext,
+  req?: any,
+) => {
+  const detail = await getWorkflowDefinitionDetail(projectId, context)
+  if (detail.definition.scene !== 'INFINITE_CANVAS') {
+    const error = new Error('该项目不是无限画布项目') as Error & { status?: number }
+    error.status = 400
+    throw error
+  }
+  const taskRecordId = String(payload?.taskRecordId || '').trim()
+  const proposal = normalizeCanvasAssistantProposal(payload?.proposal)
+  if (!taskRecordId || !proposal) {
+    const error = new Error('助手确认审计参数不完整或提案不合法') as Error & { status?: number }
+    error.status = 400
+    throw error
+  }
+  const task = await getGenerationTaskRecord(taskRecordId, context.currentUserId)
+  if (task.source !== 'canvas-assistant') {
+    const error = new Error('只能审计当前账户的画布助手任务') as Error & { status?: number }
+    error.status = 400
+    throw error
+  }
+  const appliedNodeIds = Array.isArray(payload?.appliedNodeIds)
+    ? payload.appliedNodeIds.map(value => String(value || '').trim()).filter(Boolean).slice(0, 20)
+    : []
+  await recordAdminAuditLog({
+    req,
+    operatorUserId: context.currentUserId,
+    action: 'canvas_assistant.apply',
+    targetType: 'canvas_project',
+    targetId: projectId,
+    afterJson: {
+      taskRecordId,
+      proposalId: String(payload?.proposalId || '').trim().slice(0, 120),
+      presetId: String(payload?.presetId || '').trim().slice(0, 80),
+      versionId: String(payload?.versionId || '').trim().slice(0, 120),
+      appliedNodeIds,
+      operationTypes: proposal.operations.map(operation => operation.type),
+      summary: proposal.summary,
+    },
+  })
+  return { recorded: true, taskRecordId, projectId }
+}
+
 /** 助手先返回结构化预览；客户端确认后才写入历史栈与版本快照。 */
 export const previewCanvasAssistantOperation = async (projectId: string, payload: { prompt?: string; selection?: unknown }, context: CanvasProjectAccessContext) => {
   const exported = await exportCanvasProject(projectId, context)
@@ -306,6 +489,12 @@ export const previewCanvasAssistantOperation = async (projectId: string, payload
     error.status = 400
     throw error
   }
+  const modelResult = await createCanvasAssistantModelProposal({
+    prompt,
+    selectedNodes,
+    contextNodes,
+    currentUserId: context.currentUserId,
+  })
   return {
     projectId,
     context: {
@@ -317,7 +506,9 @@ export const previewCanvasAssistantOperation = async (projectId: string, payload
     proposal: {
       id: `canvas-proposal-${Date.now()}`,
       requiresConfirmation: true,
-      ...buildCanvasAssistantProposal({ prompt, selectedNodes, contextNodes }),
+      taskRecordId: modelResult.taskRecordId,
+      displayContent: modelResult.displayContent,
+      ...modelResult.proposal,
     },
   }
 }

@@ -30,6 +30,7 @@ import {
   ZoomIn,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import CanvasGenerationInfo from '@/components/canvas/CanvasGenerationInfo.vue'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasNodeTopToolbar, { type NodeTopToolbarItem } from '@/components/canvas/CanvasNodeTopToolbar.vue'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
@@ -43,6 +44,7 @@ import {
   addEdge,
   nodes,
   edges,
+  manualSaveHistory,
   type WorkflowImageNodeData,
 } from '../../composables/useWorkflowCanvas'
 import { uploadStorageFile } from '@/api/storage'
@@ -53,6 +55,7 @@ import {
   commitWorkflowGridNodesAtomically,
   requireCompleteWorkflowGridUpload,
 } from '@/shared/workflow-grid-transaction'
+import { buildWorkflowGenerationMetadata } from '@/shared/workflow-generation-metadata'
 
 const props = defineProps<{
   id: string
@@ -103,6 +106,24 @@ const refreshNodeInternals = () => {
   })
 }
 
+// 远端地址失效、跨域拦截或上传文件已被删除时，浏览器只会触发 img 的 error
+// 事件。若不处理，节点仍按“有图”状态撑开，留下无法辨认的大块空白区域。
+const handleImageLoadError = () => {
+  if (!imageUrl.value || errorMsg.value) return
+
+  const error = '图片加载失败'
+  imageUrl.value = ''
+  errorMsg.value = error
+  updateNode(props.id, {
+    url: '',
+    loading: false,
+    error,
+    // 失效图片不应继续保留此前拖出的巨大图片画布。
+    style: { width: 300, height: 200 },
+  })
+  refreshNodeInternals()
+}
+
 watch([showImage, showReady, () => props.data?.url], refreshNodeInternals)
 onMounted(refreshNodeInternals)
 
@@ -117,7 +138,8 @@ const handleFileChange = async (event: Event) => {
     const uploaded = await uploadStorageFile(file, 'asset')
     if (uploaded) {
       imageUrl.value = uploaded.publicUrl
-      updateNode(props.id, { url: uploaded.publicUrl, loading: false })
+      errorMsg.value = ''
+      updateNode(props.id, { url: uploaded.publicUrl, loading: false, error: '' })
       // 上传成功后：如果还没有下游节点，自动创建一个 ready-state 的下游 image 节点
       autoCreateDownstreamImageNode()
     } else {
@@ -233,6 +255,42 @@ const batchChildCount = computed(() => props.data?.batchChildren?.length ?? 0)
 const toggleBatchExpanded = () => {
   if (!isBatchGroupVisible.value) return
   updateNode(props.id, { batchExpanded: !props.data?.batchExpanded })
+}
+const selectBatchChild = (child: { id: string; url: string }) => {
+  if (props.data?.primaryImageId === child.id && imageUrl.value === child.url) return
+  updateNode(props.id, { primaryImageId: child.id, url: child.url })
+  // 批量组内切换主图是一次完整的画布编辑，立即形成单独的撤销点。
+  manualSaveHistory()
+}
+
+/** 将批量结果拆为独立图片节点；当前主图保留在原节点，避免破坏已有下游连线。 */
+const splitBatchChildren = () => {
+  const children = props.data?.batchChildren || []
+  const primaryId = props.data?.primaryImageId
+  const primaryUrl = imageUrl.value
+  const extras = children.filter(child => child.id !== primaryId && child.url !== primaryUrl)
+  if (!extras.length) {
+    ElMessage.info('批量结果没有可拆分的其他图片')
+    return
+  }
+  const source = nodes.value.find(node => node.id === props.id)
+  const baseX = source?.position?.x || 0
+  const baseY = source?.position?.y || 0
+  extras.forEach((child, index) => {
+    const column = index % 3
+    const row = Math.floor(index / 3)
+    addNode('image', {
+      x: baseX + 340 + column * 300,
+      y: baseY + row * 250,
+    }, {
+      url: child.url,
+      label: `批量结果 ${index + 2}`,
+      generationMeta: props.data?.generationMeta,
+      taskRecordId: props.data?.taskRecordId,
+    })
+  })
+  manualSaveHistory()
+  ElMessage.success(`已拆分 ${extras.length} 张批量结果`)
 }
 
 // 「尝试」菜单：图生图 / 图生视频 / 图片换背景 / 首帧图生视频
@@ -412,6 +470,9 @@ const hoverActions = computed<NodeToolbarAction[]>(() => {
   if (imageUrl.value) {
     list.push({ id: 'download', label: '下载', icon: Download, onClick: handleDownload })
   }
+  if (isBatchGroupVisible.value) {
+    list.push({ id: 'split-batch', label: '拆分批量结果', icon: CopyDocument, onClick: splitBatchChildren })
+  }
   list.push({ id: 'delete', label: '删除', icon: Delete, danger: true, onClick: handleDelete })
   return list
 })
@@ -426,6 +487,7 @@ const emptyMenuItems = [
 // 选中态下方浮层：用 ContentGenerator（与 /generate 同款），锁定 image 类型
 onMounted(() => {
   void loadPublicModelCatalog()
+  resumePendingTask()
 })
 // 上游图片素材 → 作为图生图参考图（直接拿 url 数组）
 // 注意：上游图生图模型（如 gpt-image-2）只接受栅格格式，SVG/PDF/HEIC 等会让 PIL 在
@@ -549,6 +611,39 @@ const topToolbarItems = computed<NodeTopToolbarItem[]>(() => [
 // ContentGenerator 发送：用上游图作为参考 + 用户 prompt 调图生图，结果回填到当前节点
 const isGenerating = ref(false)
 const taskStreamController = ref<AbortController | null>(null)
+/** 直接在图片结果节点发起的任务同样可在刷新后续接，不重新消耗生成额度。 */
+const resumePendingTask = () => {
+  const taskId = String(props.data?.taskRecordId || '').trim()
+  const generationMeta = props.data?.generationMeta
+  if (!taskId || !props.data?.loading || !generationMeta || isGenerating.value) return
+  isGenerating.value = true
+  taskStreamController.value?.abort()
+  const controller = new AbortController()
+  taskStreamController.value = controller
+  void subscribeGenerationTaskEvents(taskId, {
+    signal: controller.signal,
+    onEvent: (event) => {
+      if (event.type === 'snapshot' || event.type === 'completed') {
+        const urls = Array.isArray(event.record?.images) ? event.record.images.filter(Boolean) : []
+        if (urls.length) {
+          updateNode(props.id, { url: urls[0], loading: false, error: '', executed: true, taskRecordId: taskId, generationMeta })
+        }
+      }
+      if (event.type === 'failed' || event.type === 'stopped') {
+        updateNode(props.id, { loading: false, error: String(event.message || event.record?.error || (event.type === 'stopped' ? '任务已停止' : '图片生成失败')), generationMeta })
+      }
+      if (event.done) {
+        isGenerating.value = false
+        if (taskStreamController.value === controller) taskStreamController.value = null
+      }
+    },
+  }).catch((error: unknown) => {
+    if (controller.signal.aborted) return
+    updateNode(props.id, { loading: false, error: error instanceof Error ? error.message : '订阅图片任务失败', generationMeta })
+    isGenerating.value = false
+    if (taskStreamController.value === controller) taskStreamController.value = null
+  })
+}
 const handlePromptSend = async (
   message: string,
   _type: string,
@@ -586,6 +681,15 @@ const handlePromptSend = async (
     if (options?.ratio) requestBody.size = options.ratio
     if (options?.resolution) requestBody.quality = options.resolution
     const hasRef = refImages.length > 0
+    const generationMeta = buildWorkflowGenerationMetadata({
+      kind: 'image',
+      prompt: normalizedPrompt,
+      modelKey,
+      ratio: options?.ratio,
+      resolution: options?.resolution,
+      count: options?.count,
+      references: refImages.map(url => ({ url, mediaType: 'image', role: 'reference' })),
+    })
     const finalBody = hasRef ? appendImageReferencesToRequestBody(requestBody, refImages) : requestBody
 
     const saved = await createGenerationTask({
@@ -610,7 +714,7 @@ const handlePromptSend = async (
         if (event.type === 'snapshot' || event.type === 'completed') {
           const urls = Array.isArray(event.record?.images) ? event.record.images.filter(Boolean) : []
           if (urls.length) {
-            updateNode(props.id, { url: urls[0], loading: false, error: '', executed: true, taskRecordId: taskId })
+            updateNode(props.id, { url: urls[0], loading: false, error: '', executed: true, taskRecordId: taskId, generationMeta })
             isGenerating.value = false
           }
         }
@@ -630,6 +734,32 @@ const handlePromptSend = async (
     updateNode(props.id, { loading: false, error: msg })
     isGenerating.value = false
   }
+}
+
+const retryFromGenerationMetadata = () => {
+  const metadata = props.data?.generationMeta
+  if (!metadata || metadata.kind !== 'image' || isGenerating.value) return
+  void handlePromptSend(metadata.prompt, 'image', {
+    modelKey: metadata.modelKey || metadata.model,
+    ratio: metadata.size || metadata.ratio,
+    resolution: metadata.quality || metadata.resolution,
+    count: metadata.count,
+    referenceImages: metadata.references.filter(reference => reference.mediaType === 'image').map(reference => reference.url),
+  })
+}
+
+/** 批量结果以指定子图作为下一次图生图参考，复用该组已保存的参数。 */
+const retryFromBatchChild = (child: { id: string; url: string }) => {
+  const metadata = props.data?.generationMeta
+  if (!metadata || metadata.kind !== 'image' || isGenerating.value) return
+  selectBatchChild(child)
+  void handlePromptSend(metadata.prompt, 'image', {
+    modelKey: metadata.modelKey || metadata.model,
+    ratio: metadata.size || metadata.ratio,
+    resolution: metadata.quality || metadata.resolution,
+    count: 1,
+    referenceImages: [child.url],
+  })
 }
 
 type WorkflowImagePromptDetail = {
@@ -662,8 +792,8 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
   <div class="image-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
     <CanvasNodeResizer
       :visible="isSelected"
-      :min-width="imageUrl ? 475 : 333"
-      :min-height="imageUrl ? 458 : 262"
+      :min-width="180"
+      :min-height="140"
     />
     <!-- 节点外置标题 -->
     <div class="image-node-title" :title="titleEdit.editing.value ? '' : '双击编辑名称'" @dblclick.stop="titleEdit.start">
@@ -747,7 +877,13 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
           <div class="image-node-batch-frame image-node-batch-frame--2" aria-hidden="true" />
           <div class="image-node-batch-frame image-node-batch-frame--1" aria-hidden="true" />
         </template>
-        <img :src="imageUrl" alt="生成图片" class="image-node-image" @load="refreshNodeInternals" />
+        <img
+          :src="imageUrl"
+          alt="生成图片"
+          class="image-node-image"
+          @load="refreshNodeInternals"
+          @error="handleImageLoadError"
+        />
         <button
           class="image-node-replace-btn nodrag nopan"
           title="替换图片"
@@ -772,9 +908,17 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
             <button
               class="image-node-batch-set-primary"
               title="设为主图"
-              @click.stop="updateNode(id, { primaryImageId: child.id, url: child.url })"
+              @click.stop="selectBatchChild(child)"
             >
               ★
+            </button>
+            <button
+              v-if="data?.generationMeta"
+              class="image-node-batch-retry"
+              title="以此图作为参考重试"
+              @click.stop="retryFromBatchChild(child)"
+            >
+              重试
             </button>
           </div>
         </div>
@@ -796,6 +940,12 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
 
     <!-- 选中态顶部悬浮工具栏（仅有图时显示） -->
     <CanvasNodeTopToolbar :visible="isSelected && showImage" :items="topToolbarItems" />
+
+    <CanvasGenerationInfo
+      v-if="isSelected && showImage && data?.generationMeta"
+      :metadata="data.generationMeta"
+      @retry="retryFromGenerationMetadata"
+    />
 
     <el-dialog
       v-model="cropDialogVisible"
@@ -835,11 +985,14 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
 
 <style scoped>
 .image-node-wrapper {
+  /* 保持在正常文档流中，供 Vue Flow 首次测量自定义节点尺寸。 */
   position: relative;
   width: 100%;
   height: 100%;
-  min-width: 333px;
-  min-height: 262px;
+  /* 未设置固定宽高的新节点也必须提供可测量的初始尺寸。 */
+  min-width: 180px;
+  min-height: 140px;
+  box-sizing: border-box;
 }
 
 .image-node-title {
@@ -937,7 +1090,8 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
   min-width: 0;
   min-height: 0;
   background: var(--canvas-node-bg);
-  /*border: 1px solid var(--canvas-node-border);*/
+  /* 即使未选中也保留可见轮廓，避免浅色画布中丢失节点边界。 */
+  border: 1px solid color-mix(in srgb, var(--text-tertiary) 52%, transparent);
   border-radius: 12px;
   padding: 0;
   display: flex;
@@ -952,8 +1106,8 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
   height: 100%;
 }
 .image-node-wrapper:has(.image-node-display) {
-  min-width: 475px;
-  min-height: 458px;
+  min-width: 180px;
+  min-height: 140px;
 }
 .image-node-card.is-selected {
   border-color: var(--canvas-selection-border);
@@ -1226,6 +1380,19 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
   background: var(--brand-main-default);
   color: #fff;
   border-color: var(--brand-main-default);
+}
+.image-node-batch-retry {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  padding: 2px 5px;
+  border: 0.5px solid var(--stroke-secondary);
+  border-radius: 5px;
+  background: rgba(15, 25, 28, .84);
+  color: #72e3ca;
+  font-size: 10px;
+  line-height: 1.15;
+  cursor: pointer;
 }
 
 /* 替换按钮（有图态右上角） */

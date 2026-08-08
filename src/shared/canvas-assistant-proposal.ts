@@ -54,7 +54,9 @@ export const normalizeCanvasAssistantProposal = (value: unknown): CanvasAssistan
   for (const rawOperation of input.operations) {
     if (!rawOperation || typeof rawOperation !== 'object') return null
     const operation = rawOperation as Record<string, unknown>
-    const type = safeText(operation.type, 64)
+    // 某些 OpenAI 兼容模型会把操作字段输出成 `op`，或把文本直接放在
+    // `text`。只在值仍属于固定白名单时做协议归一化，绝不接受任意操作。
+    const type = safeText(operation.type ?? operation.op, 64)
     if (type === 'insert_text_node') {
       const clientKey = safeText(operation.clientKey, 64)
       if (!CLIENT_KEY_PATTERN.test(clientKey) || insertedClientKeys.has(clientKey)) return null
@@ -63,7 +65,10 @@ export const normalizeCanvasAssistantProposal = (value: unknown): CanvasAssistan
         type,
         clientKey,
         position: safePosition(operation.position),
-        data: { label: safeText(data.label, 160), content: safeText(data.content, 6000) },
+        data: {
+          label: safeText(data.label ?? operation.label, 160),
+          content: safeText(data.content ?? operation.content ?? operation.text, 6000),
+        },
       })
       insertedClientKeys.add(clientKey)
       continue
@@ -114,10 +119,11 @@ export const normalizeCanvasAssistantProposal = (value: unknown): CanvasAssistan
 export const buildCanvasAssistantProposalInstruction = () => [
   '当前是受限画布助手。基于用户请求和随附的选区上下文，可提出对无限画布的修改。',
   '不要声称已经修改画布；只能给出建议和一个结构化提案。',
-  '若适合修改画布，请在回复末尾输出且只输出一个标签：<canvas-proposal>{"summary":"...","operations":[...]}</canvas-proposal>。',
-  'operations 仅允许 insert_text_node、insert_director_node、connect_nodes；最多 20 项。',
+  '每次回复必须且只能输出一个标签：<canvas-proposal>{"summary":"...","operations":[...]}</canvas-proposal>；标签外不得输出自然语言、Markdown 或代码块。',
+  'operations 仅允许 insert_text_node、insert_director_node、connect_nodes；最多 20 项。每项必须使用字段 "type"，不要使用 "op"。',
+  'insert_text_node 必须写为 {"type":"insert_text_node","clientKey":"...","data":{"label":"...","content":"..."}}；不要在顶层使用 text 字段。',
   '新增节点必须提供唯一 clientKey（字母开头，最多64字符）；连接只能引用前面已新增的 clientKey。',
-  '不得输出脚本、HTML、外部链接、权限请求或任何其他操作类型。若不应修改画布，不要输出标签。',
+  '不得输出脚本、HTML、外部链接、权限请求或任何其他操作类型。即使信息不足，也只输出包含一个安全说明文本节点的提案。',
 ].join('\n')
 
 export const parseCanvasAssistantProposal = (content: unknown): ParsedCanvasAssistantProposal => {

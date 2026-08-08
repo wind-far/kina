@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getPublicModelCatalog, resolveGatewayProviderUpstream } from '../provider-config/service'
 import { getUploadsDir } from '../storage/service'
+import { normalizeReferenceImageToPng } from './reference-image'
 import { buildAgentChatMessages } from '../../src/shared/agent-skills-core'
 import { normalizeGenerationErrorMessage } from '../../src/shared/generation-error'
 import {
@@ -97,6 +98,7 @@ type RequestImageEditInput = {
 
 const resolveServerReferenceImageBlob = async (imageValue: string) => {
   const normalizedValue = String(imageValue || '').trim()
+  let sourceBlob: Blob
   if (normalizedValue.startsWith(UPLOADS_PUBLIC_PATH_PREFIX)) {
     const uploadsDir = getUploadsDir()
     const relativePath = decodeURIComponent(normalizedValue.slice(UPLOADS_PUBLIC_PATH_PREFIX.length))
@@ -117,15 +119,17 @@ const resolveServerReferenceImageBlob = async (imageValue: string) => {
             : normalizedValue.toLowerCase().includes('.jpg') || normalizedValue.toLowerCase().includes('.jpeg')
               ? 'image/jpeg'
               : 'image/png'
-    return new Blob([fileBuffer], { type: mimeType })
+    sourceBlob = new Blob([fileBuffer], { type: mimeType })
+  } else {
+    const response = await fetch(normalizedValue)
+    if (!response.ok) {
+      throw new Error(`参考图读取失败 (${response.status})`)
+    }
+
+    sourceBlob = await response.blob()
   }
 
-  const response = await fetch(normalizedValue)
-  if (!response.ok) {
-    throw new Error(`参考图读取失败 (${response.status})`)
-  }
-
-  return response.blob()
+  return await normalizeReferenceImageToPng(sourceBlob)
 }
 
 export interface AgentWorkspaceModelPlanResult {

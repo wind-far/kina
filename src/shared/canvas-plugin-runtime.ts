@@ -134,6 +134,27 @@ export const buildCanvasPluginGenerationNodeData = (value: CanvasPluginGeneratio
   }
 }
 
+/** 用户确认重试后先写入任务身份与受限输入，刷新页面时宿主据此恢复 SSE 订阅。 */
+export const buildCanvasPluginGenerationPendingNodeData = (value: Pick<CanvasPluginGenerationNodeDataInput, 'taskId' | 'templateId' | 'prompt' | 'referenceImages'>) => {
+  const completed = buildCanvasPluginGenerationNodeData(value)
+  return {
+    generationTaskId: completed.generationTaskId,
+    generationTemplateId: completed.generationTemplateId,
+    generationStatus: 'running' as const,
+    generationRetry: completed.generationRetry,
+  }
+}
+
+/** 任务的失败/停止状态由宿主写回，保留已有 generationRetry 供用户主动重试。 */
+export const buildCanvasPluginGenerationTerminalNodeData = (value: { taskId: unknown; status: unknown; error?: unknown }) => {
+  const status = value.status === 'stopped' ? 'stopped' : 'failed'
+  return {
+    generationTaskId: safeText(value.taskId, 120),
+    generationStatus: status,
+    generationError: safeText(value.error, 1000),
+  }
+}
+
 export const canvasPluginNodeType = (slug: string, nodeId: string) => `plugin:${safeId(slug)}/${safeId(nodeId)}`
 /** 既是运行时校验，也是宿主创建插件节点时的类型收窄。 */
 export const isCanvasPluginNodeType = (value: unknown): value is `plugin:${string}` => (

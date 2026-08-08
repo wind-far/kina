@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { createHash } from 'node:crypto'
 import { assertTrustedCanvasPluginPackageUrl, downloadAndVerifyCanvasPluginPackage, normalizeCanvasPluginManifest, publishTrustedCanvasPlugin, startCanvasPluginGeneration } from '../../server/canvas-plugins/service.ts'
-import { buildCanvasPluginGenerationNodeData, canvasPluginNodeType, normalizeCanvasPluginRuntimeContributions } from '../../src/shared/canvas-plugin-runtime.ts'
+import { buildCanvasPluginGenerationNodeData, buildCanvasPluginGenerationPendingNodeData, buildCanvasPluginGenerationTerminalNodeData, canvasPluginNodeType, normalizeCanvasPluginRuntimeContributions } from '../../src/shared/canvas-plugin-runtime.ts'
 
 const managerSource = fs.readFileSync(new URL('../../src/views/workflow/components/CanvasPluginManager.vue', import.meta.url), 'utf8')
 assert.match(managerSource, /\/api\/canvas\/plugins\/\$\{encodeURIComponent\(plugin\.id\)\}\/install/)
@@ -55,6 +55,18 @@ assert.deepEqual(buildCanvasPluginGenerationNodeData({
   generationModel: 'Chat Model', generationModelKey: 'provider::chat', generatedContent: '完成结果',
   generatedOutputs: [{ url: '/uploads/result.png', outputType: 'image' }],
   generationRetry: { templateId: 'rewrite', prompt: '精简文案', referenceImages: ['/uploads/a.png'] },
+})
+assert.deepEqual(buildCanvasPluginGenerationPendingNodeData({
+  taskId: 'task-2', templateId: 'rewrite', prompt: '再次精简', referenceImages: ['/uploads/a.png'],
+}), {
+  generationTaskId: 'task-2', generationTemplateId: 'rewrite', generationStatus: 'running',
+  generationRetry: { templateId: 'rewrite', prompt: '再次精简', referenceImages: ['/uploads/a.png'] },
+})
+assert.deepEqual(buildCanvasPluginGenerationTerminalNodeData({ taskId: 'task-2', status: 'stopped', error: '用户停止' }), {
+  generationTaskId: 'task-2', generationStatus: 'stopped', generationError: '用户停止',
+})
+assert.deepEqual(buildCanvasPluginGenerationTerminalNodeData({ taskId: 'task-3', status: 'anything-else', error: '失败' }), {
+  generationTaskId: 'task-3', generationStatus: 'failed', generationError: '失败',
 })
 assert.deepEqual(normalizeCanvasPluginRuntimeContributions({ toolbar: [{ id: 'nope', title: 'Nope' }] }, []), {
   nodes: [], toolbar: [], inspectors: [], migrations: [], generation: [],
@@ -156,17 +168,27 @@ assert.match(hostSource, /allowsCapability\(plugin, 'canvas\.read'\)/)
 assert.match(hostSource, /allowsCapability\(plugin, 'canvas\.propose'\)/)
 assert.match(hostSource, /plugin\.release\.isMirrored/)
 assert.match(hostSource, /canvas-plugin:register/)
-assert.match(hostSource, /defineExpose\(\{ invoke \}\)/)
+assert.match(hostSource, /defineExpose\(\{ invoke, retryGeneration \}\)/)
 assert.match(hostSource, /@load="notifyReady\(plugin\)"/)
 assert.match(hostSource, /canvas-plugin:request-generation/)
 assert.match(hostSource, /subscribeGenerationTaskEvents/)
 assert.match(hostSource, /emit\('generationResult'/)
+assert.match(hostSource, /const retryGeneration/)
+assert.match(hostSource, /const recoverPluginGenerationTasks/)
+assert.match(hostSource, /data\.generationStatus !== 'running'/)
+assert.match(hostSource, /emit\('generationTerminal'/)
 assert.match(workflowSource, /const handleCanvasPluginGenerationResult/)
 assert.match(workflowSource, /预览插件生成结果/)
 assert.match(workflowSource, /buildCanvasPluginGenerationNodeData/)
+assert.match(workflowSource, /const retrySelectedPluginGeneration/)
+assert.match(workflowSource, /const handleCanvasPluginGenerationStarted/)
+assert.match(workflowSource, /const handleCanvasPluginGenerationTerminal/)
+assert.match(workflowSource, /按节点保存的受限模板重新生成/)
 assert.match(managerSource, /!plugin\.release\?\.isMirrored/)
 assert.match(workflowSource, /applyCanvasPluginProposal/)
 assert.match(workflowSource, /addPluginNode/)
 assert.match(workflowSource, /resetCanvasPluginRegistrations/)
+assert.match(workflowSource, /const refreshCanvasPluginNodeTypes/)
+assert.match(workflowSource, /filter\(node => isCanvasPluginNodeType\(node\.type\)\)/)
 
 console.log('canvas plugin management regression passed')

@@ -133,7 +133,7 @@ export interface ImageNodeBatchExtension {
 // ============================================================
 
 /** 拖入文件落点 → 创建哪种节点 */
-export type DroppedFileKind = 'image' | 'video' | 'unsupported'
+export type DroppedFileKind = 'image' | 'video' | 'audio' | 'unsupported'
 
 export interface DroppedFileDescriptor {
   file: File

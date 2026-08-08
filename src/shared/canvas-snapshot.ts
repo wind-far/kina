@@ -137,13 +137,15 @@ const adaptTargetInfiniteCanvasNode = (value: unknown): Record<string, unknown> 
   const primaryImageId = String(metadata.primaryImageId || '')
   const primaryImage = images.find(image => String(image.id || '') === primaryImageId) || images[0] || {}
   const sourceType = String(input.type || 'unknown').trim() || 'unknown'
-  const generationMode = String(metadata.generationMode || '').trim()
+  const generationMode = String(metadata.generationMode || '').trim().toLowerCase()
   const type = sourceType === 'config'
-    ? generationMode === 'video' ? 'videoConfig' : generationMode === 'text' ? 'llmConfig' : 'imageConfig'
+    ? generationMode.includes('video') ? 'videoConfig' : generationMode.includes('text') ? 'llmConfig' : 'imageConfig'
     : sourceType
   const content = String(metadata.content || metadata.composerContent || metadata.prompt || '')
   const resourceKey = String(metadata.storageKey || primaryImage.storageKey || '')
-  const resourceContent = String(primaryImage.assetUrl || metadata.assetUrl || primaryImage.content || metadata.content || '')
+  const resourceContent = String(
+    primaryImage.assetUrl || primaryImage.url || metadata.assetUrl || metadata.url || primaryImage.content || metadata.content || '',
+  )
   const data: Record<string, unknown> = {
     label: String(input.title || sourceType || '导入节点'),
     content,
@@ -164,13 +166,13 @@ const adaptTargetInfiniteCanvasNode = (value: unknown): Record<string, unknown> 
   }
   if (['image', 'video', 'audio'].includes(type) && resourceContent) data.url = resourceContent
   if (type === 'imageConfig') {
-    data.size = String(metadata.size || '')
+    data.size = String(metadata.size || metadata.aspectRatio || '')
     data.quality = String(metadata.quality || '')
-    data.count = numberValue(metadata.count, 1)
+    data.batchCount = numberValue(metadata.count ?? metadata.imageCount, 1)
   }
   if (type === 'videoConfig') {
-    data.seconds = String(metadata.seconds || '')
-    data.quality = String(metadata.vquality || metadata.quality || '')
+    data.duration = numberValue(metadata.duration ?? metadata.seconds, 5)
+    data.resolution = String(metadata.resolution || metadata.vquality || metadata.quality || '')
   }
   return {
     id: input.id,
@@ -213,6 +215,15 @@ export const normalizeCanvasImport = (value: unknown): CanvasImportResult => {
     .map(node => targetExport ? adaptTargetInfiniteCanvasNode(node) : node)
     .map((node, index) => normalizeNode(node, index, nodeIds, warnings))
     .filter((node): node is CanvasSnapshotNode => Boolean(node))
+  if (targetExport) {
+    const manifestKeys = new Set(targetAssets.map((asset) => String(asRecord(asset).storageKey || '').trim()).filter(Boolean))
+    nodes.forEach((node) => {
+      const resourceKey = String(asRecord(node.data.sourceResource).storageKey || '').trim()
+      if (resourceKey && !manifestKeys.has(resourceKey)) {
+        warnings.push(`节点 ${node.id} 引用的资源 ${resourceKey} 未包含在导出资源清单中，已保留引用等待手动补齐。`)
+      }
+    })
+  }
   const rawEdges = Array.isArray(source.edges)
     ? source.edges
     : Array.isArray(source.connections)
@@ -220,9 +231,12 @@ export const normalizeCanvasImport = (value: unknown): CanvasImportResult => {
           const inputConnection = asRecord(connection)
           return {
             id: inputConnection.id,
-            source: inputConnection.fromNodeId,
-            target: inputConnection.toNodeId,
-            type: 'promptOrder',
+            source: inputConnection.fromNodeId || inputConnection.source,
+            target: inputConnection.toNodeId || inputConnection.target,
+            sourceHandle: inputConnection.sourceHandle,
+            targetHandle: inputConnection.targetHandle,
+            type: typeof inputConnection.type === 'string' ? inputConnection.type : 'promptOrder',
+            data: asRecord(inputConnection.data),
           }
         })
       : []

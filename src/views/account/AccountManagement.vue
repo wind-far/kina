@@ -455,7 +455,8 @@ const mapAssetToFeedItem = (item: PersistedAssetItem): AccountFeedItem => {
     aiGeneratedText: '内容由 AI 生成',
     promptTipLabel: '图片提示词',
     badgeText: item.reviewStatus !== 'approved' ? '审核中' : '',
-    assetType: item.assetType,
+    // 账户瀑布流当前只渲染图片/视频；音频仍可在画布素材库中使用。
+    assetType: item.assetType === 'video' ? 'video' : 'image',
     publishStatus: item.publishStatus || 'draft',
     visibility: item.visibility || 'private',
     reviewStatus: item.reviewStatus || 'pending',

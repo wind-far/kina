@@ -12,6 +12,10 @@ export interface AssetListQuery {
   pageSize: number
   publishState: AssetPublishState
   ownerKeyword: string
+  keyword: string
+  tag: string
+  source: '' | 'GENERATED' | 'UPLOADED' | 'IMPORTED' | 'EDITOR_UPLOAD'
+  generationRecordId: string
   ids: string[]
   includeEditorUploads: boolean
 }
@@ -54,6 +58,13 @@ export const readAssetListQuery = (requestUrl: string) => {
   const rawPageSize = Number(url.searchParams.get('pageSize') || 0)
   const rawPublishState = String(url.searchParams.get('publishState') || '').trim().toLowerCase()
   const ownerKeyword = String(url.searchParams.get('ownerKeyword') || '').trim()
+  const keyword = String(url.searchParams.get('keyword') || '').trim().slice(0, 120)
+  const tag = String(url.searchParams.get('tag') || '').trim().slice(0, 80)
+  const rawSource = String(url.searchParams.get('source') || '').trim().toUpperCase()
+  const source = ['GENERATED', 'UPLOADED', 'IMPORTED', 'EDITOR_UPLOAD'].includes(rawSource)
+    ? rawSource as AssetListQuery['source']
+    : ''
+  const generationRecordId = String(url.searchParams.get('generationRecordId') || '').trim().slice(0, 36)
   const rawIds = String(url.searchParams.get('ids') || '').trim()
   const ids = rawIds
     ? rawIds.split(',').map((id) => id.trim()).filter(Boolean).slice(0, 200)
@@ -79,6 +90,10 @@ export const readAssetListQuery = (requestUrl: string) => {
     pageSize,
     publishState,
     ownerKeyword,
+    keyword,
+    tag,
+    source,
+    generationRecordId,
     ids,
     includeEditorUploads,
   } satisfies AssetListQuery

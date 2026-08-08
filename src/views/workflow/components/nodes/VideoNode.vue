@@ -23,6 +23,7 @@ import {
   Upload as UploadIcon,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import CanvasGenerationInfo from '@/components/canvas/CanvasGenerationInfo.vue'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import WorkflowPromptInput, {
   type WorkflowPromptModelOption,
@@ -295,6 +296,41 @@ const handlePromptSend = (text: string, options: WorkflowPromptSendOptions) => {
   }, 160)
 }
 
+/** 结果节点只保存可重试参数；重试时重新搭建受控配置节点，不复用任何浏览器密钥。 */
+const retryFromGenerationMetadata = () => {
+  const metadata = props.data?.generationMeta
+  const currentNode = nodes.value.find(node => node.id === props.id)
+  if (!metadata || metadata.kind !== 'video' || !currentNode) return
+  const configPosition = { x: currentNode.position.x - 400, y: currentNode.position.y }
+  const promptNodeId = addNode('text', { x: configPosition.x, y: configPosition.y + 300 }, {
+    content: metadata.prompt || '根据保存的生成参数重新生成视频', label: '重试视频提示词',
+  })
+  const configNodeId = addNode('videoConfig', configPosition, {
+    model: metadata.modelKey || metadata.model,
+    ratio: metadata.ratio,
+    resolution: metadata.resolution,
+    duration: metadata.duration || 5,
+    label: '重试视频生成', autoExecute: false,
+  })
+  addEdge({ source: promptNodeId, target: configNodeId, sourceHandle: 'right', targetHandle: 'left', type: 'promptOrder', data: { promptOrder: 1 } })
+  metadata.references.forEach((reference, index) => {
+    const existing = nodes.value.find(node => node.type === reference.mediaType && String((node.data as { url?: unknown }).url || '') === reference.url)
+    const sourceId = existing?.id || addNode(reference.mediaType, {
+      x: currentNode.position.x - 800,
+      y: currentNode.position.y + index * 170,
+    }, reference.mediaType === 'audio'
+      ? { url: reference.url, fileName: '重试参考音频' }
+      : reference.mediaType === 'video' ? { url: reference.url, duration: 0, label: '重试参考视频' }
+        : { url: reference.url, label: '重试参考图' })
+    addEdge({ source: sourceId, target: configNodeId, sourceHandle: 'right', targetHandle: 'left', type: 'mediaRole', data: { mediaRole: reference.role || 'reference' } })
+  })
+  addEdge({ source: configNodeId, target: props.id, sourceHandle: 'right', targetHandle: 'left' })
+  window.setTimeout(() => {
+    updateNodeInternals([configNodeId, props.id])
+    updateNode(configNodeId, { autoExecute: true })
+  }, 160)
+}
+
 onMounted(async () => {
   await loadPublicModelCatalog()
   promptModel.value = getDefaultVideoModelKey() || promptModelOptions.value[0]?.key || ''
@@ -389,6 +425,12 @@ onMounted(async () => {
     <CanvasNodeAddHandle side="right" :visible="isSelected" />
 
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
+
+    <CanvasGenerationInfo
+      v-if="isSelected && showVideo && data?.generationMeta"
+      :metadata="data.generationMeta"
+      @retry="retryFromGenerationMetadata"
+    />
 
     <div v-if="isSelected" class="video-node-prompt-panel nodrag nopan" @mousedown.stop>
       <WorkflowPromptInput

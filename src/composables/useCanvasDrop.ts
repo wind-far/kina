@@ -10,7 +10,7 @@
  */
 import { useVueFlow } from '@vue-flow/core'
 import { ElMessage } from 'element-plus'
-import { uploadStorageFile } from '@/api/storage'
+import { uploadAssetItem } from '@/api/asset-items'
 import { addNode } from '@/views/workflow/composables/useWorkflowCanvas'
 import type { DroppedFileDescriptor, DroppedFileKind } from '@/types/canvas-interaction'
 
@@ -19,6 +19,7 @@ const MULTI_FILE_X_STEP = 40
 function classifyFile(file: File): DroppedFileKind {
   if (file.type.startsWith('image/')) return 'image'
   if (file.type.startsWith('video/')) return 'video'
+  if (file.type.startsWith('audio/')) return 'audio'
   return 'unsupported'
 }
 
@@ -51,16 +52,15 @@ export function useCanvasDrop() {
       dropped.push({ file, kind, position })
 
       try {
-        const uploaded = await uploadStorageFile(file, 'asset')
+        const uploaded = await uploadAssetItem(file, kind, { title: file.name, sourceLabel: 'canvas-drop' })
         if (!uploaded) {
           ElMessage.error(`${file.name} 上传失败`)
           continue
         }
-        if (kind === 'image') {
-          addNode('image', position, { url: uploaded.publicUrl, label: file.name })
-        } else {
-          addNode('video', position, { url: uploaded.publicUrl, duration: 0, label: file.name })
-        }
+        const assetData = { sourceAssetId: uploaded.id, source: uploaded.source, tags: (uploaded.sourceMeta?.tags as string[] | undefined) || [] }
+        if (kind === 'image') addNode('image', position, { url: uploaded.fileUrl, label: file.name, ...assetData })
+        else if (kind === 'video') addNode('video', position, { url: uploaded.fileUrl, duration: uploaded.durationSeconds || 0, label: file.name, ...assetData })
+        else addNode('audio', position, { url: uploaded.fileUrl, fileName: file.name, duration: uploaded.durationSeconds || 0, label: file.name, ...assetData })
       } catch (err) {
         ElMessage.error(`${file.name} 上传失败`)
         // eslint-disable-next-line no-console

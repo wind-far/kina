@@ -471,6 +471,10 @@ export const updateAdminProvider = async (id: string, payload: AdminProviderPayl
   const normalizedPayload = normalizeProviderPayload(payload, { isCreate: false })
   await assertProviderCodeDuplicated(normalizedPayload.code, providerId)
 
+  // 后台编辑模型/端点时通常不会重新填写密钥；空值必须表示“保持原密钥”，
+  // 不能把已有的加密凭据覆盖为空字符串。
+  const nextApiKey = normalizedPayload.apiKey
+
   const updatedProvider = await prisma.aiProvider.update({
     where: { id: providerId },
     data: {
@@ -479,8 +483,12 @@ export const updateAdminProvider = async (id: string, payload: AdminProviderPayl
       description: normalizedPayload.description || null,
       iconUrl: normalizedPayload.iconUrl || null,
       baseUrl: normalizedPayload.baseUrl,
-      apiKeyEncrypted: encryptProviderApiKey(normalizedPayload.apiKey),
-      apiKeyHint: maskApiKey(normalizedPayload.apiKey),
+      ...(nextApiKey
+        ? {
+            apiKeyEncrypted: encryptProviderApiKey(nextApiKey),
+            apiKeyHint: maskApiKey(nextApiKey),
+          }
+        : {}),
       chatEndpoint: normalizedPayload.chatEndpoint,
       imageEndpoint: normalizedPayload.imageEndpoint,
       imageEditEndpoint: normalizedPayload.imageEditEndpoint,

@@ -30,6 +30,8 @@ import {
   normalizeWorkflowImageBatchCount,
   readWorkflowGenerationImageUrls,
 } from '@/shared/workflow-image-batch'
+import { buildWorkflowGenerationMetadata, type WorkflowGenerationMetadata } from '@/shared/workflow-generation-metadata'
+import { confirmCanvasGenerationResult, notifyCanvasGenerationResultConfirmed } from '@/shared/canvas-generation-confirmation'
 
 const props = defineProps<{
   id: string
@@ -46,6 +48,7 @@ const handleAddNode = ({ side, type }: { side: 'left' | 'right'; type: WorkflowN
 const showActions = ref(false)
 const isGenerating = ref(false)
 const taskStreamController = ref<AbortController | null>(null)
+const awaitingConfirmationTaskId = ref('')
 
 // 本地状态
 const model = ref(props.data?.model || getDefaultImageModelKey())
@@ -120,6 +123,7 @@ watch(
 
 onMounted(() => {
   void loadPublicModelCatalog()
+  resumePendingTask()
 })
 
 onUnmounted(() => {
@@ -170,7 +174,17 @@ const cleanupTaskStream = () => {
   taskStreamController.value = null
 }
 
-const bindTaskStream = (taskRecordId: string, outputNodeId: string, controller: AbortController) => {
+const buildCurrentGenerationMeta = () => buildWorkflowGenerationMetadata({
+  kind: 'image',
+  prompt: String(props.data?.prompt || ''),
+  model: model.value,
+  size: size.value,
+  quality: quality.value,
+  count: normalizeWorkflowImageBatchCount(batchCount.value),
+  sourceConfigNodeId: props.id,
+})
+
+const bindTaskStream = (taskRecordId: string, outputNodeId: string, controller: AbortController, generationMeta: WorkflowGenerationMetadata) => {
   void subscribeGenerationTaskEvents(taskRecordId, {
     signal: controller.signal,
     onEvent: (event) => {
@@ -184,27 +198,43 @@ const bindTaskStream = (taskRecordId: string, outputNodeId: string, controller: 
 
       if (event.type === 'snapshot' || event.type === 'completed') {
         const urls = readWorkflowGenerationImageUrls(event.record)
-        if (urls.length) {
-          const children = createWorkflowImageBatchChildren(taskRecordId, urls)
-          updateNode(outputNodeId, {
-            url: urls[0],
-            label: urls.length > 1 ? `生成结果（${urls.length} 张）` : '生成结果',
-            loading: false,
-            error: '',
-            isBatchRoot: urls.length > 1,
-            batchChildren: children,
-            primaryImageId: children[0]?.id,
-            batchExpanded: false,
-          })
-          updateNode(props.id, {
-            loading: !event.done,
-            error: '',
-            executed: Boolean(event.done),
-            outputNodeId,
-          })
+        if (urls.length && event.done) {
+          if (awaitingConfirmationTaskId.value !== taskRecordId) {
+            awaitingConfirmationTaskId.value = taskRecordId
+            const children = createWorkflowImageBatchChildren(taskRecordId, urls)
+            updateNode(props.id, {
+              loading: true,
+              error: '',
+              outputNodeId,
+              generationStatus: 'awaiting_confirmation',
+            })
+            void confirmCanvasGenerationResult({ kind: 'image', outputCount: urls.length }).then((confirmed) => {
+              if (confirmed) {
+                updateNode(outputNodeId, {
+                  url: urls[0],
+                  label: urls.length > 1 ? `生成结果（${urls.length} 张）` : '生成结果',
+                  loading: false,
+                  error: '',
+                  isBatchRoot: urls.length > 1,
+                  batchChildren: children,
+                  primaryImageId: children[0]?.id,
+                  batchExpanded: false,
+                  generationMeta,
+                  taskRecordId,
+                })
+                updateNode(props.id, { loading: false, error: '', executed: true, outputNodeId, generationStatus: 'completed' })
+                notifyCanvasGenerationResultConfirmed({ kind: 'image', taskId: taskRecordId, outputCount: urls.length })
+              } else {
+                updateNode(outputNodeId, { label: '结果未写入', loading: false, error: '用户暂未确认写入画布' })
+                updateNode(props.id, { loading: false, executed: false, generationStatus: 'discarded' })
+              }
+              awaitingConfirmationTaskId.value = ''
+              isGenerating.value = false
+            })
+          }
         } else if (event.done) {
           updateNode(outputNodeId, { label: '生成失败', loading: false, error: '任务完成但未返回图片' })
-          updateNode(props.id, { loading: false, error: '任务完成但未返回图片', executed: false })
+          updateNode(props.id, { loading: false, error: '任务完成但未返回图片', executed: false, generationStatus: 'failed' })
         }
       }
 
@@ -214,6 +244,7 @@ const bindTaskStream = (taskRecordId: string, outputNodeId: string, controller: 
         updateNode(props.id, {
           loading: false,
           error: message,
+          generationStatus: 'failed',
         })
       }
 
@@ -222,11 +253,12 @@ const bindTaskStream = (taskRecordId: string, outputNodeId: string, controller: 
         updateNode(props.id, {
           loading: false,
           error: '任务已停止',
+          generationStatus: 'stopped',
         })
       }
 
       if (event.done) {
-        isGenerating.value = false
+        if (awaitingConfirmationTaskId.value !== taskRecordId) isGenerating.value = false
         cleanupTaskStream()
       }
     },
@@ -240,10 +272,27 @@ const bindTaskStream = (taskRecordId: string, outputNodeId: string, controller: 
     updateNode(props.id, {
       loading: false,
       error: message,
+      generationStatus: 'failed',
     })
     isGenerating.value = false
     cleanupTaskStream()
   })
+}
+
+/** 刷新或切换版本后，只恢复已有任务的 SSE 订阅，绝不创建新任务。 */
+const resumePendingTask = () => {
+  const taskRecordId = String(props.data?.taskRecordId || '').trim()
+  if (!taskRecordId || !props.data?.loading || isGenerating.value) return
+  const outputNodeId = String(props.data?.outputNodeId || '') || edges.value
+    .filter(edge => edge.source === props.id)
+    .map(edge => nodes.value.find(node => node.id === edge.target))
+    .find(node => node?.type === 'image')?.id
+  if (!outputNodeId) return
+  isGenerating.value = true
+  cleanupTaskStream()
+  const controller = new AbortController()
+  taskStreamController.value = controller
+  bindTaskStream(taskRecordId, outputNodeId, controller, props.data?.generationMeta || buildCurrentGenerationMeta())
 }
 
 // 生成图片
@@ -279,6 +328,17 @@ const handleGenerate = async () => {
     if (size.value && currentModel.value?.sizes?.length) requestBody.size = size.value
     if (quality.value) requestBody.quality = quality.value
     const hasReferenceImages = refImages.length > 0
+    const generationMeta = buildWorkflowGenerationMetadata({
+      kind: 'image',
+      prompt,
+      model: model.value,
+      modelKey,
+      size: size.value,
+      quality: quality.value,
+      count: normalizeWorkflowImageBatchCount(batchCount.value),
+      references: refImages.map(url => ({ url, mediaType: 'image', role: 'reference' })),
+      sourceConfigNodeId: props.id,
+    })
     const normalizedRequestBody = hasReferenceImages
       ? appendImageReferencesToRequestBody(requestBody, refImages)
       : requestBody
@@ -293,7 +353,7 @@ const handleGenerate = async () => {
       x: (node?.position?.x || 0) + 400,
       y: node?.position?.y || 0,
     }, { url: '', label: '生成中...', loading: true })
-    updateNode(outputNodeId, { url: '', label: '生成中...', loading: true, error: '' })
+    updateNode(outputNodeId, { url: '', label: '生成中...', loading: true, error: '', generationMeta })
     if (!existingOutput) {
       addEdge({ source: props.id, target: outputNodeId, sourceHandle: 'right', targetHandle: 'left' })
     }
@@ -306,6 +366,8 @@ const handleGenerate = async () => {
       executed: false,
       outputNodeId: undefined,
       taskRecordId: '',
+      generationMeta,
+      generationStatus: 'running',
     })
 
     const saved = await createGenerationTask({
@@ -328,8 +390,9 @@ const handleGenerate = async () => {
       taskRecordId,
       loading: true,
       error: '',
+      generationStatus: 'running',
     })
-    bindTaskStream(taskRecordId, createdOutputNodeId, controller)
+    bindTaskStream(taskRecordId, createdOutputNodeId, controller, generationMeta)
   } catch (err: unknown) {
     console.error('图片生成失败:', err)
     const msg = err instanceof DOMException && err.name === 'AbortError'

@@ -1,0 +1,60 @@
+{
+  "app": "infinite-canvas",
+  "version": 3,
+  "exportedAt": "2026-08-08T00:00:00.000Z",
+  "projects": [
+    {
+      "project": {
+        "id": "browser-import-fixture",
+        "title": "验收用目标画布导入",
+        "nodes": [
+          {
+            "id": "fixture-text",
+            "type": "text",
+            "title": "验收提示词",
+            "position": { "x": 80, "y": 120 },
+            "metadata": { "content": "一只橙色的猫，柔和棚拍光" }
+          },
+          {
+            "id": "fixture-config",
+            "type": "config",
+            "title": "批量图片设置",
+            "position": { "x": 460, "y": 120 },
+            "metadata": { "generationMode": "image-generation", "model": "gpt-image-2", "aspectRatio": "16:9", "quality": "high", "count": 3 }
+          },
+          {
+            "id": "fixture-video",
+            "type": "config",
+            "title": "视频设置",
+            "position": { "x": 460, "y": 390 },
+            "metadata": { "generationMode": "video-generation", "model": "seedance", "seconds": 8, "vquality": "1080p" }
+          },
+          {
+            "id": "fixture-plugin",
+            "type": "fixture:unknown-plugin",
+            "title": "未知插件节点",
+            "position": { "x": 840, "y": 120 },
+            "metadata": { "value": "保留原始数据" }
+          },
+          {
+            "id": "fixture-missing-image",
+            "type": "image",
+            "title": "缺失资源图片",
+            "position": { "x": 840, "y": 390 },
+            "metadata": { "storageKey": "image:not-in-archive", "mimeType": "image/png" }
+          }
+        ],
+        "connections": [
+          { "id": "fixture-prompt-image", "fromNodeId": "fixture-text", "toNodeId": "fixture-config", "type": "promptOrder" },
+          { "id": "fixture-prompt-video", "fromNodeId": "fixture-text", "toNodeId": "fixture-video", "type": "promptOrder" }
+        ],
+        "viewport": { "x": 32, "y": -24, "k": 1.1 },
+        "backgroundMode": "lines",
+        "showImageInfo": true,
+        "chatSessions": [{ "id": "fixture-chat", "messages": [] }],
+        "activeChatId": "fixture-chat"
+      },
+      "files": []
+    }
+  ]
+}

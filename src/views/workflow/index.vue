@@ -33,10 +33,12 @@ import {
   exportCanvasProjectSelection as exportCanvasProjectSelectionFile,
   importCanvasProject as importCanvasProjectFile,
   importCanvasProjectArchive as importCanvasProjectArchiveFile,
-  previewCanvasAssistantOperation,
+  recordCanvasAssistantApplication,
+  startCanvasAssistantTask,
   type CanvasAssistantPreviewOperation,
 } from './api/canvas-projects'
-import type { CanvasAssistantProposal } from '@/shared/canvas-assistant-proposal'
+import { parseCanvasAssistantProposal, type CanvasAssistantProposal } from '@/shared/canvas-assistant-proposal'
+import { subscribeGenerationTaskEvents } from '@/api/generation-tasks'
 import type { WorkflowCanvasPosition } from './composables/workflow-orchestrator-types'
 import {
   getWorkflowExecutionPlan,
@@ -64,6 +66,7 @@ import PluginNode from './components/nodes/PluginNode.vue'
 import CanvasPluginHost from './components/CanvasPluginHost.vue'
 import CanvasPluginManager from './components/CanvasPluginManager.vue'
 import CanvasPromptLibrary from './components/CanvasPromptLibrary.vue'
+import CanvasAssetLibrary from './components/CanvasAssetLibrary.vue'
 import AgentFab from './components/AgentFab.vue'
 
 // 边组件
@@ -96,8 +99,17 @@ import { resolveWorkflowVideoReferenceRole } from '@/shared/workflow-video-promp
 import { buildCanvasAssistantSessionSource } from '@/shared/canvas-assistant-session'
 import { formatCanvasImportMigrationReport } from '@/shared/canvas-import-report'
 import { createWorkflowImageBatchChildren } from '@/shared/workflow-image-batch'
+import { isWorkflowGenerationMetadata, buildWorkflowGenerationMetadata } from '@/shared/workflow-generation-metadata'
+import {
+  CANVAS_GENERATION_CONFIRMED_EVENT,
+  confirmCanvasGenerationResult,
+  notifyCanvasGenerationResultConfirmed,
+  type CanvasGenerationConfirmedDetail,
+} from '@/shared/canvas-generation-confirmation'
 import {
   buildCanvasPluginGenerationNodeData,
+  buildCanvasPluginGenerationPendingNodeData,
+  buildCanvasPluginGenerationTerminalNodeData,
   canvasPluginNodeType,
   isCanvasPluginNodeType,
   type CanvasPluginActionContribution,
@@ -116,6 +128,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useCanvasSelection } from '@/composables/useCanvasSelection'
 import { useCanvasClipboard } from '@/composables/useCanvasClipboard'
 import { useCanvasDrop } from '@/composables/useCanvasDrop'
+import type { PersistedAssetItem } from '@/api/asset-items'
 import {
   canvasBackgroundMode,
   removeNode,
@@ -169,6 +182,7 @@ const {
   fetchWorkflowDetail,
   loadWorkflowDetail,
   applyWorkflowVersionToCanvas,
+  saveWorkflow,
   autosaveWorkflow,
   resetCurrentWorkflowState,
 } = useWorkflowPersistence()
@@ -177,11 +191,20 @@ const {
 const showNodeMenu = ref(false)
 const showTemplatePanel = ref(false)
 const showPromptLibrary = ref(false)
+const showCanvasAssetLibrary = ref(false)
 const showCanvasPluginManager = ref(false)
+const canvasAssistantStreaming = ref(false)
+const canvasAssistantStreamContent = ref('')
+const canvasAssistantStreamTaskId = ref('')
+const canvasAssistantStreamController = ref<AbortController | null>(null)
 const canvasPluginHostVersion = ref(0)
-const canvasPluginHost = ref<null | { invoke: (input: { pluginId: string; scope: 'toolbar' | 'inspector' | 'generation'; actionId: string; nodeId?: string }) => boolean }>(null)
+const canvasPluginHost = ref<null | {
+  invoke: (input: { pluginId: string; scope: 'toolbar' | 'inspector' | 'generation'; actionId: string; nodeId?: string }) => boolean
+  retryGeneration: (input: { pluginId: string; nodeId: string; templateId: string; prompt: string; referenceImages?: string[] }) => boolean
+}>(null)
 const canvasPluginRegistrations = ref<Record<string, { slug: string; contributions: CanvasPluginRuntimeContributions }>>({})
 const showWorkflowLibraryPanel = ref(false)
+const canvasImportFileInput = ref<HTMLInputElement | null>(null)
 const canvasSnapToGrid = ref(true)
 const canvasAlignmentGuides = ref(true)
 const workflowName = ref('')
@@ -283,6 +306,22 @@ const registeredPluginInspectorActions = computed(() => {
   const entry = canvasPluginRegistrations.value[pluginId]
   return entry ? entry.contributions.inspectors.map(action => ({ pluginId, slug: entry.slug, scope: 'inspector' as const, action, nodeId: node.id })) : []
 })
+const selectedPluginGenerationRetry = computed(() => {
+  const node = selectedPluginNode.value
+  if (!node) return null
+  const data = node.data as Record<string, unknown>
+  const pluginId = String(data.pluginId || '')
+  const templateId = String(data.generationTemplateId || '')
+  const retry = data.generationRetry && typeof data.generationRetry === 'object' && !Array.isArray(data.generationRetry)
+    ? data.generationRetry as Record<string, unknown>
+    : null
+  const prompt = String(retry?.prompt || '').trim()
+  const entry = canvasPluginRegistrations.value[pluginId]
+  const action = entry?.contributions.generation.find(item => item.id === templateId && item.resultNodeId === String(data.pluginNodeId || ''))
+  if (!entry || !action || !prompt) return null
+  const referenceImages = Array.isArray(retry?.referenceImages) ? retry.referenceImages.map(String).filter(url => url.startsWith('/uploads/')).slice(0, 4) : []
+  return { pluginId, nodeId: node.id, templateId, prompt, referenceImages, action }
+})
 
 const handleCanvasPluginRegistration = (registration: { pluginId: string; slug: string; contributions: CanvasPluginRuntimeContributions }) => {
   canvasPluginRegistrations.value = {
@@ -306,6 +345,33 @@ const resetCanvasPluginRegistrations = () => {
   canvasPluginRegistrations.value = {}
 }
 
+/**
+ * 版本快照可能在插件尚未安装时先于 iframe 宿主加载。此时仍需把插件命名空间
+ * 节点渲染成安全的占位节点；插件完成登记后会由 handleCanvasPluginRegistration
+ * 原位替换为 PluginNode，节点原始类型和数据始终不改写。
+ */
+const refreshCanvasPluginNodeTypes = () => {
+  const registeredTypes = new Set(Object.values(canvasPluginRegistrations.value).flatMap(entry => (
+    entry.contributions.nodes.map(node => canvasPluginNodeType(entry.slug, node.id))
+  )))
+  nodes.value
+    .filter(node => isCanvasPluginNodeType(node.type))
+    .forEach(node => {
+      nodeTypes[node.type] = markRaw(registeredTypes.has(node.type)
+        ? PluginNode
+        : UnknownNode) as any
+    })
+}
+
+watch(
+  [
+    () => nodes.value.map(node => node.type).filter(isCanvasPluginNodeType).join('|'),
+    canvasPluginRegistrations,
+  ],
+  refreshCanvasPluginNodeTypes,
+  { immediate: true },
+)
+
 const findRegisteredPluginNode = (pluginId: string, type: unknown) => {
   const entry = canvasPluginRegistrations.value[pluginId]
   const typeValue = String(type || '')
@@ -315,6 +381,23 @@ const findRegisteredPluginNode = (pluginId: string, type: unknown) => {
 const invokeCanvasPluginAction = (input: { pluginId: string; scope: 'toolbar' | 'inspector' | 'generation'; action: CanvasPluginActionContribution; nodeId?: string }) => {
   if (!canvasPluginHost.value?.invoke({ pluginId: input.pluginId, scope: input.scope, actionId: input.action.id, nodeId: input.nodeId })) {
     ElMessage.warning('插件动作尚未就绪，请稍后再试。')
+  }
+}
+
+const retrySelectedPluginGeneration = async () => {
+  const retry = selectedPluginGenerationRetry.value
+  if (!retry) return
+  try {
+    await ElMessageBox.confirm('将按此节点保存的受限模板、提示词和参考素材重新生成。新结果仍需确认后才会覆盖节点。', '重试插件生成', {
+      confirmButtonText: '重新生成', cancelButtonText: '取消', type: 'info',
+    })
+    if (!canvasPluginHost.value?.retryGeneration(retry)) {
+      ElMessage.warning('插件生成能力尚未就绪，请稍后再试。')
+      return
+    }
+    ElMessage.success('已按保存的受限模板重新发起生成。')
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error?.message || '插件生成重试暂时不可用')
   }
 }
 
@@ -329,6 +412,20 @@ const handleCanvasPluginProposal = async (proposal: { pluginId: string; operatio
     if (error === 'cancel' || error === 'close') return
     ElMessage.warning(error?.message || '插件提交了不受支持的画布操作，已拒绝。')
   }
+}
+
+/** 用户已经确认重试后，才将新任务身份写入所属节点；刷新可据此重新订阅 SSE。 */
+const handleCanvasPluginGenerationStarted = (result: { pluginId: string; resultNodeId: string; targetNodeId: string; taskId: string; templateId: string; prompt: string; referenceImages: string[] }) => {
+  const node = nodes.value.find(item => item.id === result.targetNodeId)
+  if (!node || String((node.data as Record<string, unknown>).pluginId || '') !== result.pluginId || String((node.data as Record<string, unknown>).pluginNodeId || '') !== result.resultNodeId) return
+  updateNode(node.id, buildCanvasPluginGenerationPendingNodeData(result) as any)
+}
+
+const handleCanvasPluginGenerationTerminal = (result: { pluginId: string; resultNodeId: string; targetNodeId: string; taskId: string; status: 'failed' | 'stopped'; error: string }) => {
+  const node = nodes.value.find(item => item.id === result.targetNodeId)
+  if (!node || String((node.data as Record<string, unknown>).pluginId || '') !== result.pluginId || String((node.data as Record<string, unknown>).pluginNodeId || '') !== result.resultNodeId) return
+  updateNode(node.id, buildCanvasPluginGenerationTerminalNodeData(result) as any)
+  ElMessage.warning(result.status === 'stopped' ? '插件生成已停止，可按保存的模板重试。' : '插件生成失败，可检查错误后重试。')
 }
 
 /** 插件生成结束后仍停在宿主预览层；确认前不会改变节点、版本或撤销历史。 */
@@ -460,9 +557,16 @@ const applyCanvasPluginProposal = async (proposal: { pluginId: string; operation
   ElMessage.success('插件操作已应用到画布，可使用撤销恢复。')
 }
 
+type CanvasAssistantApplyAudit = {
+  taskRecordId: string
+  proposalId: string
+  presetId?: string
+}
+
 const applyCanvasAssistantProposal = async (
   proposal: { summary?: string; operations?: unknown[] },
   fallbackPrompt = '',
+  audit?: CanvasAssistantApplyAudit,
 ) => {
   const operations = Array.isArray(proposal?.operations) ? proposal.operations : []
   if (!operations.length) throw new Error('助手提案未返回可应用的操作')
@@ -474,6 +578,7 @@ const applyCanvasAssistantProposal = async (
     confirmButtonText: '插入', cancelButtonText: '取消', type: 'info',
   })
   const insertedNodeIds = new Map<string, string>()
+  const appliedNodeIds: string[] = []
   // 一次确认对应一个历史快照：撤销时不会遗留孤立节点或连接。
   pauseHistory()
   try {
@@ -482,6 +587,7 @@ const applyCanvasAssistantProposal = async (
         const nodeId = addNode('text', { x: Number(operation.position?.x) || 120, y: Number(operation.position?.y) || 120 }, {
           content: String(operation.data?.content || fallbackPrompt), label: String(operation.data?.label || '助手草稿'),
         })
+        appliedNodeIds.push(nodeId)
         if (operation.clientKey) insertedNodeIds.set(operation.clientKey, nodeId)
       }
       if (operation.type === 'insert_director_node') {
@@ -491,6 +597,7 @@ const applyCanvasAssistantProposal = async (
           shotPlan: String(operation.data?.shotPlan || ''),
           mode: operation.data?.mode === 'commercial' || operation.data?.mode === 'storyboard' ? operation.data.mode : 'short-video',
         })
+        appliedNodeIds.push(nodeId)
         if (operation.clientKey) insertedNodeIds.set(operation.clientKey, nodeId)
       }
       if (operation.type === 'connect_nodes') {
@@ -501,6 +608,19 @@ const applyCanvasAssistantProposal = async (
     }
   } finally {
     resumeHistory(true)
+  }
+  // 先确认项目草稿版本已写入，再提交用户确认审计；审计不会携带模型密钥或原始上下文。
+  await flushAutosave()
+  if (autosaveState.value === 'error') throw new Error(autosaveErrorMessage.value || '助手提案已应用，但版本保存失败')
+  if (audit && currentWorkflowId.value) {
+    await recordCanvasAssistantApplication(currentWorkflowId.value, {
+      taskRecordId: audit.taskRecordId,
+      proposalId: audit.proposalId,
+      presetId: audit.presetId,
+      versionId: String(currentWorkflowDetail.value?.definition?.currentVersionId || ''),
+      appliedNodeIds,
+      proposal,
+    })
   }
   ElMessage.success('助手提案已应用到画布，可使用撤销恢复。')
 }
@@ -518,32 +638,115 @@ const handleCloudCanvasProposal = async (proposal: CanvasAssistantProposal) => {
   }
 }
 
-const runCanvasAssistantPreview = async () => {
+const CANVAS_ASSISTANT_PRESETS = [
+  { id: 'explain-connections', title: '解释连线', shortLabel: '解', prompt: '解释当前选区节点及其上游依赖之间的连线关系、信息流和缺失环节，并生成一个简洁的说明文本节点。' },
+  { id: 'organize-selection', title: '整理选区', shortLabel: '整', prompt: '整理当前选区：归纳其主题、重复内容和推荐顺序，并生成一个结构化的整理说明文本节点。' },
+  { id: 'storyboard', title: '生成分镜', shortLabel: '镜', prompt: '基于当前选区和上游依赖，生成一个可执行的短视频分镜计划，包含镜头顺序、主体、动作和画面重点。' },
+  { id: 'batch-rewrite', title: '批量改写', shortLabel: '改', prompt: '批量改写当前选区中的文本：保留原意，提升清晰度和可执行性；为每个有文本内容的节点生成对应的改写文本节点。' },
+] as const
+
+const resetCanvasAssistantStream = () => {
+  canvasAssistantStreaming.value = false
+  canvasAssistantStreamTaskId.value = ''
+  canvasAssistantStreamController.value = null
+}
+
+const runCanvasAssistantTask = async (input: { prompt: string; presetId?: string }) => {
   if (workspaceScene.value !== 'INFINITE_CANVAS' || !currentWorkflowId.value) {
     ElMessage.warning('请先保存无限画布项目后再使用画布助手。')
     return
   }
+  const prompt = String(input.prompt || '').trim()
+  if (!prompt) return
+  if (canvasAssistantStreaming.value) {
+    ElMessage.warning('画布助手正在生成预览，请稍候。')
+    return
+  }
+  const selection = nodes.value.filter(node => node.selected).map(node => node.id)
+  if (input.presetId && !selection.length) {
+    ElMessage.warning('请先选择至少一个节点，再使用画布助手预设。')
+    return
+  }
   try {
-    const { value } = await ElMessageBox.prompt('描述要添加到画布的内容。助手只会先生成预览，确认后才写入画布。', '画布助手', {
-      confirmButtonText: '生成预览', cancelButtonText: '取消', inputPlaceholder: '例如：为选中的素材补一段镜头描述',
+    const started = await startCanvasAssistantTask(currentWorkflowId.value, prompt, selection)
+    const taskId = String(started.taskRecordId || '').trim()
+    if (!taskId) throw new Error('画布助手任务创建失败')
+    const controller = new AbortController()
+    canvasAssistantStreaming.value = true
+    canvasAssistantStreamContent.value = ''
+    canvasAssistantStreamTaskId.value = taskId
+    canvasAssistantStreamController.value = controller
+    let finalContent = ''
+    let streamError = ''
+    await subscribeGenerationTaskEvents(taskId, {
+      signal: controller.signal,
+      onEvent: (event) => {
+        if (event.type === 'content_delta') {
+          const delta = String(event.delta || '')
+          if (delta) canvasAssistantStreamContent.value += delta
+          return
+        }
+        if (event.type === 'snapshot' || event.type === 'completed') {
+          const content = String(event.record?.content || '')
+          if (content.length >= canvasAssistantStreamContent.value.length) canvasAssistantStreamContent.value = content
+          if (event.type === 'completed') finalContent = content
+          return
+        }
+        if (event.type === 'failed') streamError = String(event.message || event.record?.error || '画布助手生成失败')
+        if (event.type === 'stopped') streamError = '画布助手任务已停止'
+      },
     })
-    const prompt = String(value || '').trim()
-    if (!prompt) return
-    const selection = nodes.value.filter(node => node.selected).map(node => node.id)
-    const result = await previewCanvasAssistantOperation(currentWorkflowId.value, prompt, selection)
-    await applyCanvasAssistantProposal(result?.proposal || {}, prompt)
+    if (streamError) throw new Error(streamError)
+    const parsed = parseCanvasAssistantProposal(finalContent || canvasAssistantStreamContent.value)
+    if (!parsed.proposal) throw new Error('助手未返回有效的结构化提案，未对画布进行任何修改。')
+    await applyCanvasAssistantProposal(parsed.proposal, prompt, {
+      taskRecordId: taskId,
+      proposalId: `canvas-proposal-${taskId}`,
+      presetId: input.presetId,
+    })
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return
     ElMessage.error(error?.message || '画布助手暂时不可用')
+  } finally {
+    resetCanvasAssistantStream()
   }
 }
 
-const insertLibraryPrompt = (prompt: { title: string; content: string }) => {
+const runCanvasAssistantPreview = async () => {
+  try {
+    const { value } = await ElMessageBox.prompt('描述要添加到画布的内容。助手会实时生成结构化提案；确认后才写入画布。', '画布助手', {
+      confirmButtonText: '生成预览', cancelButtonText: '取消', inputPlaceholder: '例如：为选中的素材补一段镜头描述',
+    })
+    await runCanvasAssistantTask({ prompt: String(value || '') })
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error?.message || '画布助手暂时不可用')
+  }
+}
+
+const runCanvasAssistantPreset = (preset: typeof CANVAS_ASSISTANT_PRESETS[number]) => {
+  void runCanvasAssistantTask({ prompt: preset.prompt, presetId: preset.id })
+}
+
+const insertLibraryPrompt = (prompt: { title: string; content: string; targetNodeType?: 'text' | 'imageConfig' | 'videoConfig'; tags?: string[]; sourceId?: string | null }) => {
   const x = -viewport.value.x / viewport.value.zoom + (window.innerWidth / 2) / viewport.value.zoom
   const y = -viewport.value.y / viewport.value.zoom + (window.innerHeight / 2) / viewport.value.zoom
-  addNode('text', { x, y }, { label: prompt.title, content: prompt.content })
+  const trace = { promptSourceId: prompt.sourceId || '', tags: Array.isArray(prompt.tags) ? prompt.tags : [] }
+  if (prompt.targetNodeType === 'imageConfig') addNode('imageConfig', { x, y }, { label: prompt.title, prompt: prompt.content, ...trace })
+  else if (prompt.targetNodeType === 'videoConfig') addNode('videoConfig', { x, y }, { label: prompt.title, prompt: prompt.content, ...trace })
+  else addNode('text', { x, y }, { label: prompt.title, content: prompt.content, ...trace })
   showPromptLibrary.value = false
-  ElMessage.success('提示词已插入画布')
+  ElMessage.success(prompt.targetNodeType === 'imageConfig' ? '生图配置已插入画布' : prompt.targetNodeType === 'videoConfig' ? '视频配置已插入画布' : '提示词已插入画布')
+}
+
+/** 服务端素材只以 URL/审计标识写入画布，浏览器不保存模型密钥或上传凭据。 */
+const insertLibraryAsset = (asset: PersistedAssetItem) => {
+  const position = screenToFlowCoordinate({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+  const data = { label: asset.title || '素材库资源', sourceAssetId: asset.id, source: asset.source, tags: Array.isArray(asset.sourceMeta?.tags) ? asset.sourceMeta.tags.map(String).slice(0, 20) : [] }
+  if (asset.assetType === 'image') addNode('image', position, { ...data, url: asset.fileUrl })
+  else if (asset.assetType === 'video') addNode('video', position, { ...data, url: asset.fileUrl, duration: asset.durationSeconds || 0 })
+  else addNode('audio', position, { ...data, url: asset.fileUrl, duration: asset.durationSeconds || 0, fileName: asset.title || '' })
+  showCanvasAssetLibrary.value = false
+  ElMessage.success('素材已插入画布')
 }
 
 const workflowUserName = computed(() => {
@@ -612,6 +815,11 @@ const workflowNodeRunStatusLabel = (status: WorkflowRunDetail['nodeRuns'][number
 const readRunNodeOutput = (nodeRun: WorkflowRunDetail['nodeRuns'][number], key: string) => {
   if (!nodeRun.outputJson || typeof nodeRun.outputJson !== 'object') return ''
   return String((nodeRun.outputJson as Record<string, unknown>)[key] || '').trim()
+}
+
+const readRunNodeOutputValue = (nodeRun: WorkflowRunDetail['nodeRuns'][number], key: string): unknown => {
+  if (!nodeRun.outputJson || typeof nodeRun.outputJson !== 'object') return undefined
+  return (nodeRun.outputJson as Record<string, unknown>)[key]
 }
 
 const readRunNodeOutputUrl = (nodeRun: WorkflowRunDetail['nodeRuns'][number]) => {
@@ -1230,38 +1438,38 @@ const downloadSelectedCanvasNodes = async () => {
 }
 
 const importCanvasProjectFromFile = () => {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = 'application/json,.json,application/zip,.zip'
-  input.onchange = () => {
-    const file = input.files?.[0]
-    if (!file) return
-    void (async () => {
-      try {
-        const isZip = /\.zip$/i.test(file.name) || file.type === 'application/zip' || file.type === 'application/x-zip-compressed'
-        const result = isZip
-          ? await importCanvasProjectArchiveFile(file, file.name.replace(/\.zip$/i, ''))
-          : await importCanvasProjectFile(JSON.parse(await file.text()), file.name.replace(/\.json$/i, ''))
-        const workflowId = String(result.detail?.definition?.id || '').trim()
-        if (!workflowId) throw new Error('导入结果缺少项目标识')
-        const importedCount = Math.max(1, Number(result.importedCount) || 1)
-        ElMessage.success(importedCount > 1 ? `已导入 ${importedCount} 个无限画布项目` : '无限画布已导入')
-        await tryLoadWorkflowByRoute(workflowId)
-        await syncWorkflowRouteQuery(workflowId)
-        await handleRefreshWorkflowList()
-        const migrationReport = formatCanvasImportMigrationReport(result.warnings)
-        if (migrationReport) {
-          await ElMessageBox.alert(migrationReport, '导入迁移报告', {
-            confirmButtonText: '已了解',
-            type: 'warning',
-          })
-        }
-      } catch (error: any) {
-        ElMessage.error(error?.message || '导入画布失败，请检查 JSON 或 ZIP 文件。')
-      }
-    })()
+  canvasImportFileInput.value?.click()
+}
+
+/** 静态隐藏 input 让键盘和自动化都能可靠触发导入；每次完成后清空，以便重复选择同一文件。 */
+const handleCanvasImportFileChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    const isZip = /\.zip$/i.test(file.name) || file.type === 'application/zip' || file.type === 'application/x-zip-compressed'
+    const result = isZip
+      ? await importCanvasProjectArchiveFile(file, file.name.replace(/\.zip$/i, ''))
+      : await importCanvasProjectFile(JSON.parse(await file.text()), file.name.replace(/\.json$/i, ''))
+    const workflowId = String(result.detail?.definition?.id || '').trim()
+    if (!workflowId) throw new Error('导入结果缺少项目标识')
+    const importedCount = Math.max(1, Number(result.importedCount) || 1)
+    ElMessage.success(importedCount > 1 ? `已导入 ${importedCount} 个无限画布项目` : '无限画布已导入')
+    await tryLoadWorkflowByRoute(workflowId)
+    await syncWorkflowRouteQuery(workflowId)
+    await handleRefreshWorkflowList()
+    const migrationReport = formatCanvasImportMigrationReport(result.warnings)
+    if (migrationReport) {
+      await ElMessageBox.alert(migrationReport, '导入迁移报告', {
+        confirmButtonText: '已了解',
+        type: 'warning',
+      })
+    }
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导入画布失败，请检查 JSON 或 ZIP 文件。')
+  } finally {
+    input.value = ''
   }
-  input.click()
 }
 
 const {
@@ -1349,29 +1557,62 @@ const clearWorkflowRunPolling = () => {
   workflowRunPollTimer.value = null
 }
 
-const applyServerRunOutputs = (run: WorkflowRunDetail) => {
-  run.nodeRuns.forEach(nodeRun => {
-    if (nodeRun.status !== 'COMPLETED') return
+const canvasRunOutputConfirmationKeys = new Set<string>()
+
+const applyServerRunOutputs = async (run: WorkflowRunDetail) => {
+  for (const nodeRun of run.nodeRuns) {
+    if (nodeRun.status !== 'COMPLETED') continue
     const configNode = nodes.value.find(node => node.id === nodeRun.nodeId)
-    if (!configNode) return
+    if (!configNode) continue
     const taskRecordId = nodeRun.generationRecordId || readRunNodeOutput(nodeRun, 'taskRecordId')
     const outputContent = readRunNodeOutput(nodeRun, 'outputContent')
     const outputUrls = [readRunNodeOutputUrl(nodeRun), ...readRunNodeOutputImageUrls(nodeRun)]
       .filter((value, index, values) => Boolean(value) && values.indexOf(value) === index)
+    const storedGenerationMeta = readRunNodeOutputValue(nodeRun, 'generationMeta')
+    const generationMeta = isWorkflowGenerationMetadata(storedGenerationMeta)
+      ? storedGenerationMeta
+      : buildWorkflowGenerationMetadata({
+        kind: configNode.type === 'videoConfig' ? 'video' : configNode.type === 'llmConfig' ? 'text' : 'image',
+        prompt: String((configNode.data as Record<string, unknown>).prompt || ''),
+        model: String((configNode.data as Record<string, unknown>).model || ''),
+        systemPrompt: String((configNode.data as Record<string, unknown>).systemPrompt || ''),
+        outputFormat: String((configNode.data as Record<string, unknown>).outputFormat || ''),
+        size: String((configNode.data as Record<string, unknown>).size || ''),
+        quality: String((configNode.data as Record<string, unknown>).quality || ''),
+        ratio: String((configNode.data as Record<string, unknown>).ratio || ''),
+        resolution: String((configNode.data as Record<string, unknown>).resolution || ''),
+        duration: Number((configNode.data as Record<string, unknown>).duration || 0),
+        sourceConfigNodeId: configNode.id,
+      })
+
+    const confirmRunOutput = async (kind: 'image' | 'video' | 'text', options: { outputCount?: number; content?: string } = {}) => {
+      if (workspaceScene.value !== 'INFINITE_CANVAS') return true
+      const key = `${run.id}:${nodeRun.id}`
+      if (canvasRunOutputConfirmationKeys.has(key)) return false
+      canvasRunOutputConfirmationKeys.add(key)
+      const confirmed = await confirmCanvasGenerationResult({ kind, ...options })
+      if (!confirmed) updateNode(configNode.id, { loading: false, executed: false, generationStatus: 'discarded' })
+      return confirmed
+    }
 
     if (configNode.type === 'llmConfig') {
+      if (!await confirmRunOutput('text', { content: outputContent })) continue
       updateNode(configNode.id, {
         loading: false,
         error: '',
         executed: true,
         taskRecordId,
         outputContent,
+        generationMeta,
+        generationStatus: 'completed',
       })
-      return
+      notifyCanvasGenerationResultConfirmed({ kind: 'text', taskId: taskRecordId || nodeRun.id })
+      continue
     }
     if (configNode.type === 'videoConfig') {
       const outputUrl = outputUrls[0]
-      if (!outputUrl) return
+      if (!outputUrl) continue
+      if (!await confirmRunOutput('video', { outputCount: 1 })) continue
       const existingOutput = edges.value
         .filter(edge => edge.source === configNode.id)
         .map(edge => nodes.value.find(node => node.id === edge.target))
@@ -1383,17 +1624,20 @@ const applyServerRunOutputs = (run: WorkflowRunDetail) => {
       if (!existingOutput) {
         addEdge({ source: configNode.id, target: outputNodeId, sourceHandle: 'right', targetHandle: 'left' })
       }
-      updateNode(outputNodeId, { url: outputUrl, label: '生成视频', loading: false, error: '' })
+      updateNode(outputNodeId, { url: outputUrl, label: '生成视频', loading: false, error: '', taskRecordId, generationMeta })
       updateNode(configNode.id, {
         loading: false,
         error: '',
         executed: true,
         taskRecordId,
         outputNodeId,
+        generationStatus: 'completed',
       })
-      return
+      notifyCanvasGenerationResultConfirmed({ kind: 'video', taskId: taskRecordId || nodeRun.id, outputCount: 1 })
+      continue
     }
-    if (configNode.type !== 'imageConfig' || !outputUrls.length) return
+    if (configNode.type !== 'imageConfig' || !outputUrls.length) continue
+    if (!await confirmRunOutput('image', { outputCount: outputUrls.length })) continue
 
     const existingOutput = edges.value
       .filter(edge => edge.source === configNode.id)
@@ -1416,6 +1660,8 @@ const applyServerRunOutputs = (run: WorkflowRunDetail) => {
       batchChildren,
       primaryImageId: batchChildren[0]?.id,
       batchExpanded: false,
+      taskRecordId,
+      generationMeta,
     })
     updateNode(configNode.id, {
       loading: false,
@@ -1423,14 +1669,17 @@ const applyServerRunOutputs = (run: WorkflowRunDetail) => {
       executed: true,
       taskRecordId,
       outputNodeId,
+      generationMeta,
+      generationStatus: 'completed',
     })
-  })
+    notifyCanvasGenerationResultConfirmed({ kind: 'image', taskId: taskRecordId || nodeRun.id, outputCount: outputUrls.length })
+  }
 }
 
 const syncWorkflowRunState = (run: WorkflowRunDetail, notifyTerminal = false) => {
   const wasRunning = workflowRunning.value
   latestWorkflowRun.value = run
-  applyServerRunOutputs(run)
+  void applyServerRunOutputs(run)
   const active = run.status === 'PENDING' || run.status === 'RUNNING'
   workflowRunning.value = active
   activeWorkflowRunId.value = active ? run.id : ''
@@ -1575,6 +1824,39 @@ const flushAutosave = async () => {
   })()
 
   await autosaveInFlight.value
+}
+
+const generationCheckpointTaskIds = new Set<string>()
+const createCanvasGenerationCheckpoint = async (detail: CanvasGenerationConfirmedDetail) => {
+  if (workspaceScene.value !== 'INFINITE_CANVAS' || !currentWorkflowId.value) return
+  const taskId = String(detail.taskId || '').trim()
+  if (!taskId || generationCheckpointTaskIds.has(taskId)) return
+  generationCheckpointTaskIds.add(taskId)
+  const label = detail.kind === 'image' ? '图片' : detail.kind === 'video' ? '视频' : '文本'
+  try {
+    // 先合并可能尚未落盘的节点更新，再基于确认后的结果创建独立版本。
+    await flushAutosave()
+    const saved = await saveWorkflow({
+      workflowId: currentWorkflowId.value,
+      scene: 'INFINITE_CANVAS',
+      versionName: `确认${label}生成结果`,
+      changeSummary: `确认写入服务端生成任务 ${taskId} 的${label}结果`,
+    })
+    currentWorkflowDetail.value = saved
+    selectedWorkflowVersionId.value = saved.definition.currentVersionId || ''
+    initialCanvasBaselineSnapshot.value = currentCanvasSnapshot.value
+    await syncWorkflowRouteQuery(saved.definition.id)
+    ElMessage.success(`${label}生成结果已确认并保存为新版本`)
+  } catch (error: any) {
+    generationCheckpointTaskIds.delete(taskId)
+    ElMessage.error(error?.message || '生成结果已写入画布，但创建版本检查点失败')
+  }
+}
+
+const handleCanvasGenerationConfirmed = (event: Event) => {
+  const detail = (event as CustomEvent<CanvasGenerationConfirmedDetail>).detail
+  if (!detail || !['image', 'video', 'text'].includes(detail.kind)) return
+  void createCanvasGenerationCheckpoint(detail)
 }
 
 // 键盘快捷键（统一走 useShortcut 注册，自动管理生命周期 + 输入框焦点屏蔽）
@@ -2070,6 +2352,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleSpaceDown)
   window.addEventListener('keyup', handleSpaceUp)
   window.addEventListener('resize', updateWorkflowPromptDockMode)
+  window.addEventListener(CANVAS_GENERATION_CONFIRMED_EVENT, handleCanvasGenerationConfirmed)
   document.addEventListener('pointerdown', handleWorkflowPromptOutsidePointerDown, true)
 
   // /canvas 入口沿用旧项目列表的 projectId 参数，统一映射到工作流定义。
@@ -2087,9 +2370,12 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  canvasAssistantStreamController.value?.abort()
+  resetCanvasAssistantStream()
   window.removeEventListener('keydown', handleSpaceDown)
   window.removeEventListener('keyup', handleSpaceUp)
   window.removeEventListener('resize', updateWorkflowPromptDockMode)
+  window.removeEventListener(CANVAS_GENERATION_CONFIRMED_EVENT, handleCanvasGenerationConfirmed)
   document.removeEventListener('pointerdown', handleWorkflowPromptOutsidePointerDown, true)
   cancelAnimationFrame(promptDockPositionFrame)
   clearAutosaveTimer()
@@ -2208,7 +2494,7 @@ watch(currentCanvasSnapshot, () => {
             @toggle-mini-map="toggleMiniMap"
             @toggle-snap-to-grid="canvasSnapToGrid = !canvasSnapToGrid"
             @toggle-alignment-guides="canvasAlignmentGuides = !canvasAlignmentGuides"
-            @open-asset-library="showWorkflowLibraryPanel = true"
+            @open-asset-library="showCanvasAssetLibrary = true"
             @clear="clearCanvasWithConfirm"
           />
           <WorkflowPromptInput
@@ -2438,6 +2724,18 @@ watch(currentCanvasSnapshot, () => {
               </svg>
             </button>
 
+            <template v-if="workspaceScene === 'INFINITE_CANVAS'">
+              <button
+                v-for="preset in CANVAS_ASSISTANT_PRESETS"
+                :key="preset.id"
+                class="wf-btn wf-btn-icon wf-canvas-assistant-preset"
+                type="button"
+                :aria-label="preset.title"
+                :data-tooltip="`${preset.title}（基于当前选区）`"
+                @click="runCanvasAssistantPreset(preset)"
+              >{{ preset.shortLabel }}</button>
+            </template>
+
             <button
               class="wf-btn wf-btn-icon"
               :class="{ active: showTemplatePanel }"
@@ -2508,6 +2806,19 @@ watch(currentCanvasSnapshot, () => {
               </svg>
             </button>
 
+            <button
+              v-if="selectedPluginGenerationRetry"
+              class="wf-btn wf-btn-icon"
+              type="button"
+              aria-label="重试插件生成"
+              data-tooltip="按节点保存的受限模板重新生成"
+              @click="retrySelectedPluginGeneration"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M20 11a8 8 0 10-2.34 5.66M20 4v7h-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+
             <div class="wf-divider"></div>
 
             <button class="wf-btn wf-btn-icon" :disabled="workflowRunning || !canUndo" aria-label="撤销" data-tooltip="撤销（Ctrl/Command + Z）" @click="undo()">
@@ -2573,6 +2884,18 @@ watch(currentCanvasSnapshot, () => {
         </Transition>
 
         <Transition name="wf-panel">
+          <div v-if="showCanvasAssetLibrary" class="wf-template-panel" @click.self="showCanvasAssetLibrary = false">
+            <div class="wf-template-panel-inner">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                <span style="font-size: 14px; font-weight: 500; color: var(--text-primary);">素材库</span>
+                <button class="wf-btn wf-btn-sm" type="button" @click="showCanvasAssetLibrary = false">关闭</button>
+              </div>
+              <CanvasAssetLibrary @insert="insertLibraryAsset" />
+            </div>
+          </div>
+        </Transition>
+
+        <Transition name="wf-panel">
           <div v-if="showTemplatePanel" class="wf-template-panel" @click.self="showTemplatePanel = false">
             <div class="wf-template-panel-inner">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
@@ -2611,6 +2934,13 @@ watch(currentCanvasSnapshot, () => {
 
               <div class="wf-persistence-toolbar">
                 <input v-model="workflowListKeyword" class="wf-persistence-input" placeholder="按名称、编码、分类搜索" @keyup.enter="handleRefreshWorkflowList" />
+                <input
+                  ref="canvasImportFileInput"
+                  type="file"
+                  accept="application/json,.json,application/zip,.zip"
+                  style="display: none"
+                  @change="handleCanvasImportFileChange"
+                />
                 <button
                   v-if="workspaceScene === 'INFINITE_CANVAS'"
                   class="wf-btn wf-btn-md"
@@ -2759,6 +3089,14 @@ watch(currentCanvasSnapshot, () => {
         />
       </aside>
 
+      <section v-if="canvasAssistantStreaming" class="wf-canvas-assistant-stream" role="status" aria-live="polite">
+        <div class="wf-canvas-assistant-stream__header">
+          <strong>画布助手正在生成结构化提案</strong>
+          <button type="button" class="wf-btn wf-btn-sm" @click="canvasAssistantStreamController?.abort()">停止</button>
+        </div>
+        <p>{{ canvasAssistantStreamContent || '正在连接服务端模型…' }}</p>
+      </section>
+
       <CanvasPluginHost
         v-if="workspaceScene === 'INFINITE_CANVAS'"
         ref="canvasPluginHost"
@@ -2766,6 +3104,8 @@ watch(currentCanvasSnapshot, () => {
         :snapshot="canvasPluginSnapshot"
         @proposal="handleCanvasPluginProposal"
         @registration="handleCanvasPluginRegistration"
+        @generation-started="handleCanvasPluginGenerationStarted"
+        @generation-terminal="handleCanvasPluginGenerationTerminal"
         @generation-result="handleCanvasPluginGenerationResult"
         @reset="resetCanvasPluginRegistrations"
       />
@@ -2788,5 +3128,41 @@ watch(currentCanvasSnapshot, () => {
 .workflow-canvas .vue-flow__node > * {
   transform: rotate(var(--canvas-node-rotation, 0deg));
   transform-origin: center;
+}
+
+.wf-canvas-assistant-preset {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.wf-canvas-assistant-stream {
+  position: fixed;
+  right: 28px;
+  bottom: 24px;
+  z-index: 30;
+  width: min(420px, calc(100vw - 56px));
+  padding: 12px 14px;
+  border: 1px solid rgba(112, 93, 255, .25);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 12px 36px rgba(24, 32, 62, .16);
+}
+
+.wf-canvas-assistant-stream__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.wf-canvas-assistant-stream p {
+  max-height: 130px;
+  margin: 8px 0 0;
+  overflow: auto;
+  color: #5b6476;
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
 }
 </style>

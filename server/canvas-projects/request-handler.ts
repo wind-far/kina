@@ -2,7 +2,7 @@ import { readJsonBody, sendJson } from '../ai-gateway/shared'
 import { requireCurrentSessionUser } from '../auth/session'
 import { isPrismaConfigured } from '../db/prisma'
 import { CANVAS_PROJECTS_BASE_PATH } from './constants'
-import { exportCanvasProject, exportCanvasProjectSelection, importCanvasProject, importCanvasProjectArchive, previewCanvasAssistantOperation } from './service'
+import { exportCanvasProject, exportCanvasProjectSelection, importCanvasProject, importCanvasProjectArchive, previewCanvasAssistantOperation, recordCanvasAssistantApplication, startCanvasAssistantPreviewTask } from './service'
 import { handleCanvasPluginsRequest } from '../canvas-plugins/request-handler'
 import { handleCanvasPromptsRequest } from '../canvas-prompts/request-handler'
 
@@ -12,7 +12,7 @@ const sendCanvasError = (res: any, status: number, message: string) => {
   res.end(JSON.stringify({ message, error: { type: 'canvas_project_error', message } }))
 }
 
-const matchProjectAction = (requestPath: string, action: 'export' | 'export-selection' | 'assistant-preview') => {
+const matchProjectAction = (requestPath: string, action: 'export' | 'export-selection' | 'assistant-preview' | 'assistant-tasks' | 'assistant-applications') => {
   const matched = requestPath.match(new RegExp(`^/api/canvas/projects/([^/]+)/${action}$`))
   return matched ? decodeURIComponent(matched[1]) : ''
 }
@@ -52,6 +52,8 @@ export const handleCanvasProjectsRequest = async (req: any, res: any) => {
     const exportProjectId = matchProjectAction(requestPath, 'export')
     const selectionExportProjectId = matchProjectAction(requestPath, 'export-selection')
     const assistantProjectId = matchProjectAction(requestPath, 'assistant-preview')
+    const assistantTaskProjectId = matchProjectAction(requestPath, 'assistant-tasks')
+    const assistantApplicationProjectId = matchProjectAction(requestPath, 'assistant-applications')
     if (req.method === 'POST' && requestPath === `${CANVAS_PROJECTS_BASE_PATH}/projects/import-archive`) {
       const contentType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase()
       if (!['application/zip', 'application/x-zip-compressed', 'application/octet-stream'].includes(contentType)) {
@@ -78,6 +80,14 @@ export const handleCanvasProjectsRequest = async (req: any, res: any) => {
     }
     if (req.method === 'POST' && assistantProjectId) {
       sendJson(res, 200, { data: await previewCanvasAssistantOperation(assistantProjectId, await readJsonBody(req), { currentUserId: currentUser.id }) })
+      return
+    }
+    if (req.method === 'POST' && assistantTaskProjectId) {
+      sendJson(res, 200, { data: await startCanvasAssistantPreviewTask(assistantTaskProjectId, await readJsonBody(req), { currentUserId: currentUser.id }) })
+      return
+    }
+    if (req.method === 'POST' && assistantApplicationProjectId) {
+      sendJson(res, 200, { data: await recordCanvasAssistantApplication(assistantApplicationProjectId, await readJsonBody(req), { currentUserId: currentUser.id }, req) })
       return
     }
     sendCanvasError(res, 405, 'Method Not Allowed')

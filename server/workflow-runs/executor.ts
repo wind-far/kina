@@ -6,6 +6,7 @@ import { getPublicModelCatalog } from '../provider-config/service'
 import { writeScopedLog } from '../shared/logging'
 import { normalizeWorkflowImageBatchCount } from '../../src/shared/workflow-image-batch'
 import type { SkillMediaReference } from '../../src/shared/skill-runtime'
+import { buildWorkflowGenerationMetadata } from '../../src/shared/workflow-generation-metadata'
 
 type JsonObject = Record<string, any>
 
@@ -14,6 +15,7 @@ type RuntimeOutput = {
   url?: string
   images?: string[]
   generationRecordId?: string
+  generationMeta?: ReturnType<typeof buildWorkflowGenerationMetadata>
 }
 
 const activeRuns = new Map<string, AbortController>()
@@ -285,6 +287,22 @@ const executeNode = async (
     content: String(completed.content || '').trim(),
     url: String(videoUrl || images[0] || ''),
     images,
+    generationMeta: buildWorkflowGenerationMetadata({
+      kind: node.type === 'videoConfig' ? 'video' : node.type === 'llmConfig' ? 'text' : 'image',
+      prompt: payload.prompt,
+      model: payload.model,
+      modelKey: payload.modelKey,
+      systemPrompt: node.type === 'llmConfig' ? String(readNodeData(node).systemPrompt || '') : undefined,
+      outputFormat: node.type === 'llmConfig' ? String(readNodeData(node).outputFormat || '') : undefined,
+      size: node.type === 'imageConfig' ? String(readNodeData(node).size || '') : undefined,
+      quality: node.type === 'imageConfig' ? String(readNodeData(node).quality || '') : undefined,
+      ratio: payload.ratio,
+      resolution: payload.resolution,
+      duration: Number(payload.duration || 0),
+      count: node.type === 'imageConfig' ? normalizeWorkflowImageBatchCount(readNodeData(node).batchCount) : undefined,
+      references: payload.mediaReferences || input.mediaReferences,
+      sourceConfigNodeId: String(node.id || ''),
+    }),
   } satisfies RuntimeOutput
 }
 
@@ -365,6 +383,7 @@ const executeWorkflowRun = async (runId: string, controller: AbortController) =>
               outputContent: output.content || null,
               outputUrl: output.url || null,
               images: output.images || [],
+              generationMeta: output.generationMeta || null,
             } as Prisma.InputJsonValue,
             errorMessage: null,
             finishedAt: now,

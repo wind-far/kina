@@ -1,6 +1,6 @@
 import { buildApiUrl } from './http'
 import { readApiData } from './response'
-import { subscribeGenerationTaskEvents } from './generation-tasks'
+import { getGenerationTask, subscribeGenerationTaskEvents } from './generation-tasks'
 
 export interface AdminCanvasPluginRelease {
   id: string
@@ -60,4 +60,4 @@ export const startCanvasPluginGenerationTask = async (pluginId: string, input: {
   return await readApiData<{ id: string }>(response, { showErrorMessage: true })
 }
 
-export { subscribeGenerationTaskEvents }
+export { getGenerationTask, subscribeGenerationTaskEvents }

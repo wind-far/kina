@@ -34,6 +34,10 @@ const buildAssetItemsQueryHash = (query: AssetListQuery) => {
       take: Number(query.take || 0),
       publishState: String(query.publishState || '').trim(),
       ownerKeyword: String(query.ownerKeyword || '').trim(),
+      keyword: String(query.keyword || '').trim(),
+      tag: String(query.tag || '').trim(),
+      source: String(query.source || '').trim(),
+      generationRecordId: String(query.generationRecordId || '').trim(),
       includeEditorUploads: query.includeEditorUploads ? 1 : 0,
     }))
     .digest('hex')
@@ -114,6 +118,30 @@ const buildOwnerWhereInput = (ownerKeyword: string) => {
   } satisfies Prisma.AssetItemWhereInput
 }
 
+/** 画布素材库统一支持名称/提示词、标签、来源和生成记录筛选。 */
+const appendAssetLibraryFilters = (base: Prisma.AssetItemWhereInput, query: AssetListQuery, extraAnd: Prisma.AssetItemWhereInput[] = []) => {
+  const keyword = String(query.keyword || '').trim()
+  const tag = String(query.tag || '').trim()
+  const filters: Prisma.AssetItemWhereInput[] = [...extraAnd]
+  if (keyword) {
+    filters.push({ OR: [
+      { title: { contains: keyword } },
+      { description: { contains: keyword } },
+      { promptText: { contains: keyword } },
+      { modelLabel: { contains: keyword } },
+    ] })
+  }
+  if (tag) {
+    filters.push({ sourceMetaJson: { path: '$.tags', array_contains: tag } as any })
+  }
+  if (query.generationRecordId) filters.push({ generationRecordId: query.generationRecordId })
+  return {
+    ...base,
+    ...(query.source ? { source: query.source as any } : {}),
+    ...(filters.length ? { AND: filters } : {}),
+  } satisfies Prisma.AssetItemWhereInput
+}
+
 // 统一构建后台资源发布状态过滤条件。
 const buildPublishStateWhereInput = (publishState: AssetListQuery['publishState']) => {
   if (publishState === 'published') {
@@ -175,7 +203,9 @@ const buildAssetListResult = (items: ReturnType<typeof serializeAssetItem>[], pa
 // 数据库存储值转前端资源类型。
 const toAssetType = (assetType: string) => String(assetType || '').toLowerCase() === 'video'
   ? 'video'
-  : 'image'
+  : String(assetType || '').toLowerCase() === 'audio'
+    ? 'audio'
+    : 'image'
 
 // 统一把数据库资源映射为前端可直接消费的结构。
 const serializeAssetItem = (record: any) => {
@@ -222,14 +252,14 @@ export const listPublicAssetItems = async (query: AssetListQuery) => {
     key: buildPublicAssetItemsCacheKey(query),
     ttlSeconds: 45,
     factory: async () => {
-      const where: Prisma.AssetItemWhereInput = {
+      const where = appendAssetLibraryFilters({
         assetType: toPrismaAssetType(query.assetType),
         isDeleted: false,
         visibility: 'PUBLIC',
         publishStatus: 'PUBLISHED',
         reviewStatus: 'APPROVED',
         source: { not: 'EDITOR_UPLOAD' as const },
-      }
+      }, query)
       const totalCount = await prisma.assetItem.count({ where })
       const pagination = resolvePagination(query, totalCount)
       const records = await prisma.assetItem.findMany({
@@ -296,7 +326,7 @@ export const listMineAssetItems = async (query: AssetListQuery, currentUserId: s
     ttlSeconds: 30,
     factory: async () => {
       const publishStateWhere = buildPublishStateWhereInput(query.publishState)
-      const where: Prisma.AssetItemWhereInput = {
+      const where = appendAssetLibraryFilters({
         userId: currentUserId,
         assetType: toPrismaAssetType(query.assetType),
         isDeleted: false,
@@ -304,7 +334,7 @@ export const listMineAssetItems = async (query: AssetListQuery, currentUserId: s
         // 编辑器内"我的资产" tab 通过 includeEditorUploads=true 显示全部。
         ...(query.includeEditorUploads ? {} : { source: { not: 'EDITOR_UPLOAD' as const } }),
         ...publishStateWhere,
-      }
+      }, query)
       const totalCount = await prisma.assetItem.count({ where })
       const pagination = resolvePagination(query, totalCount)
 
@@ -343,14 +373,13 @@ export const listAllAssetItems = async (query: AssetListQuery) => {
     factory: async () => {
       const publishStateWhere = buildPublishStateWhereInput(query.publishState)
       const ownerWhere = buildOwnerWhereInput(query.ownerKeyword)
-      const where: Prisma.AssetItemWhereInput = {
+      const where = appendAssetLibraryFilters({
         assetType: toPrismaAssetType(query.assetType),
         isDeleted: false,
         // admin 全量管理界面默认不显示编辑器工作素材, includeEditorUploads=true 才显示
         ...(query.includeEditorUploads ? {} : { source: { not: 'EDITOR_UPLOAD' as const } }),
         ...publishStateWhere,
-        ...ownerWhere,
-      }
+      }, query, ownerWhere ? [ownerWhere] : [])
       const totalCount = await prisma.assetItem.count({ where })
       const pagination = resolvePagination(query, totalCount)
 

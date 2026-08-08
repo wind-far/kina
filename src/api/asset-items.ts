@@ -2,7 +2,7 @@ import { buildApiUrl } from './http'
 import { readApiData, type ApiMessageOptions } from './response'
 
 export type AssetScope = 'feed' | 'mine' | 'all'
-export type AssetKind = 'image' | 'video'
+export type AssetKind = 'image' | 'video' | 'audio'
 export type AssetPublishState = 'all' | 'published' | 'pending' | 'draft'
 export type AssetActionType = 'delete' | 'publish' | 'unpublish' | 'favorite' | 'view' | 'download'
 
@@ -55,7 +55,7 @@ export interface AssetListResult {
   summary: AssetListSummary
 }
 
-interface ListAssetItemsOptions {
+export interface ListAssetItemsOptions {
   scope?: AssetScope
   assetType?: AssetKind
   take?: number
@@ -63,6 +63,10 @@ interface ListAssetItemsOptions {
   pageSize?: number
   publishState?: AssetPublishState
   ownerKeyword?: string
+  keyword?: string
+  tag?: string
+  source?: 'generated' | 'uploaded' | 'imported' | 'editor_upload'
+  generationRecordId?: string
   includeEditorUploads?: boolean
 }
 
@@ -108,6 +112,10 @@ const buildAssetListQuery = (options: ListAssetItemsOptions = {}) => {
   if (options.ownerKeyword) {
     query.set('ownerKeyword', options.ownerKeyword)
   }
+  if (options.keyword) query.set('keyword', options.keyword)
+  if (options.tag) query.set('tag', options.tag)
+  if (options.source) query.set('source', options.source)
+  if (options.generationRecordId) query.set('generationRecordId', options.generationRecordId)
   if (options.includeEditorUploads) {
     query.set('includeEditorUploads', 'true')
   }
@@ -120,6 +128,8 @@ export interface UploadAssetItemMetadata {
   durationSeconds?: number
   thumbnailUrl?: string
   title?: string
+  tags?: string[]
+  sourceLabel?: string
 }
 
 const encodeUploadMetadata = (metadata: UploadAssetItemMetadata) => {

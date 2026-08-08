@@ -13,6 +13,7 @@ import { spawn } from 'node:child_process'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '../..')
+const tsxBin = path.join(rootDir, 'node_modules', '.bin', process.platform === 'win32' ? 'tsx.cmd' : 'tsx')
 
 /** 需外部服务 / Cookie，不纳入批量运行 */
 const SKIP_FILES = new Set([
@@ -21,7 +22,8 @@ const SKIP_FILES = new Set([
 ])
 
 const runScript = (filePath) => new Promise((resolve, reject) => {
-  const child = spawn('npx', ['tsx', filePath], {
+  // 使用工作区已安装的 tsx，避免 npx 在受限网络环境中触发注册表校验。
+  const child = spawn(tsxBin, [filePath], {
     cwd: rootDir,
     stdio: 'inherit',
     env: {

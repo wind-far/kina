@@ -714,12 +714,22 @@ model CanvasPromptSource {
   userId     String?        @map("user_id") @db.VarChar(36)
   name       String         @db.VarChar(100)
   sourceUrl  String?        @map("source_url") @db.Text
+  sourceKind String         @default("JSON") @map("source_kind") @db.VarChar(32)
+  category   String?        @db.VarChar(100)
+  permissionScope String    @default("PRIVATE") @map("permission_scope") @db.VarChar(32)
+  allowedRolesJson Json?    @map("allowed_roles_json")
+  currentVersionNo Int      @default(0) @map("current_version_no")
+  lastSyncStatus String     @default("NEVER") @map("last_sync_status") @db.VarChar(32)
+  lastSyncError String?     @map("last_sync_error") @db.LongText
+  lastSyncedAt DateTime?    @map("last_synced_at")
   isEnabled  Boolean        @default(true) @map("is_enabled")
   configJson Json?          @map("config_json")
   createdAt  DateTime       @default(now()) @map("created_at")
   updatedAt  DateTime       @updatedAt @map("updated_at")
   user       AppUser?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   prompts    CanvasPrompt[]
+  versions   CanvasPromptSourceVersion[]
+  syncRuns   CanvasPromptSyncRun[]
 
   @@index([userId, isEnabled, updatedAt], map: "idx_canvas_prompt_sources_user_enabled")
   @@map("canvas_prompt_sources")
@@ -733,6 +743,10 @@ model CanvasPrompt {
   externalKey String?             @map("external_key") @db.VarChar(191)
   title       String              @db.VarChar(191)
   content     String              @db.LongText
+  summary     String?             @db.VarChar(500)
+  kind        String              @default("TEXT") @db.VarChar(32)
+  targetNodeType String?          @map("target_node_type") @db.VarChar(32)
+  sourceDataJson Json?            @map("source_data_json")
   tagsJson    Json?               @map("tags_json")
   isEnabled   Boolean             @default(true) @map("is_enabled")
   createdAt   DateTime            @default(now()) @map("created_at")
@@ -744,6 +758,45 @@ model CanvasPrompt {
   @@index([userId, isEnabled, updatedAt], map: "idx_canvas_prompts_user_enabled")
   @@index([sourceId, isEnabled], map: "idx_canvas_prompts_source_enabled")
   @@map("canvas_prompts")
+}
+
+/// 每次受管提示词源内容变更都保存一个不可变快照，支持审计与回滚。
+model CanvasPromptSourceVersion {
+  id          String             @id @default(cuid()) @db.VarChar(36)
+  sourceId    String             @map("source_id") @db.VarChar(36)
+  versionNo   Int                @map("version_no")
+  contentHash String             @map("content_hash") @db.VarChar(64)
+  promptCount Int                @default(0) @map("prompt_count")
+  snapshotJson Json              @map("snapshot_json")
+  changeType  String             @default("SYNC") @map("change_type") @db.VarChar(32)
+  changeNote  String?            @map("change_note") @db.VarChar(255)
+  createdById String?            @map("created_by_id") @db.VarChar(36)
+  createdAt   DateTime           @default(now()) @map("created_at")
+  source      CanvasPromptSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, versionNo], map: "uk_canvas_prompt_source_versions_source_version")
+  @@index([sourceId, createdAt], map: "idx_canvas_prompt_source_versions_source_created")
+  @@map("canvas_prompt_source_versions")
+}
+
+/// 记录每次同步或回滚的终态；失败不会覆盖当前已可用版本。
+model CanvasPromptSyncRun {
+  id          String             @id @default(cuid()) @db.VarChar(36)
+  sourceId    String             @map("source_id") @db.VarChar(36)
+  triggerUserId String?          @map("trigger_user_id") @db.VarChar(36)
+  action      String             @db.VarChar(32)
+  status      String             @db.VarChar(32)
+  sourceVersionNo Int?           @map("source_version_no")
+  targetVersionNo Int?           @map("target_version_no")
+  importedCount Int              @default(0) @map("imported_count")
+  errorMessage String?           @map("error_message") @db.LongText
+  detailJson  Json?              @map("detail_json")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  finishedAt  DateTime?          @map("finished_at")
+  source      CanvasPromptSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId, createdAt], map: "idx_canvas_prompt_sync_runs_source_created")
+  @@map("canvas_prompt_sync_runs")
 }
 
 /// 统一生成记录表。

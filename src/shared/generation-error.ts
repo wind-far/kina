@@ -145,6 +145,10 @@ const buildBurstRateLimitMessage = () => {
   return '当前请求提交过快，已触发上游限流保护。请稍后重试，或降低短时间内的连续提交频率。'
 }
 
+const buildInvalidReferenceImageMessage = () => {
+  return '参考图数据无效或当前模型无法读取。请重新上传 PNG、JPG 或 WEBP 格式的图片后再试。'
+}
+
 // 统一格式化生成链路中的异常，避免把原始 JSON、密文解密异常直接暴露给前端。
 export const normalizeGenerationErrorMessage = (input: unknown, fallback = '任务执行失败') => {
   const rawMessage = typeof input === 'string'
@@ -175,6 +179,15 @@ export const normalizeGenerationErrorMessage = (input: unknown, fallback = '任�
 
   if (detail.code === 'content_policy_violation' || /content_policy_violation/i.test(rawMessage)) {
     return buildContentPolicyViolationMessage()
+  }
+
+  if (
+    detail.code === 'invalid_image'
+    || detail.type === 'invalid_request_error' && /invalid input image data/i.test(detail.message)
+    || /invalid[_ ]image/i.test(rawMessage)
+    || /invalid input image data/i.test(rawMessage)
+  ) {
+    return buildInvalidReferenceImageMessage()
   }
 
   if (

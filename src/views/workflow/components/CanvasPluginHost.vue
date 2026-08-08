@@ -49,12 +49,16 @@ const emit = defineEmits<{
     content: string
     outputs: Array<{ url: string; outputType: string }>
   }]
+  generationStarted: [value: { pluginId: string; resultNodeId: string; targetNodeId: string; taskId: string; templateId: string; prompt: string; referenceImages: string[] }]
+  generationTerminal: [value: { pluginId: string; resultNodeId: string; targetNodeId: string; taskId: string; status: 'failed' | 'stopped'; error: string }]
   reset: []
 }>()
 const plugins = ref<PluginItem[]>([])
 const frames = new Map<string, HTMLIFrameElement>()
 const registrations = new Map<string, CanvasPluginRuntimeContributions>()
 const forwardedGenerationResults = new Set<string>()
+const forwardedGenerationTerminals = new Set<string>()
+const activeGenerationTasks = new Set<string>()
 
 // 旧版直链发布不进入沙箱，必须由服务端完成下载、哈希校验和镜像后才允许执行。
 const enabledPlugins = computed(() => plugins.value.filter(plugin => plugin.installation?.enabled && plugin.release?.packageUrl && plugin.release.isMirrored))
@@ -78,6 +82,7 @@ const emitRegistration = (plugin: PluginItem, raw: unknown) => {
   const contributions = normalizeCanvasPluginRuntimeContributions(raw, Array.isArray(capabilities) ? capabilities.map(String) : [])
   registrations.set(plugin.id, contributions)
   emit('registration', { pluginId: plugin.id, slug: plugin.slug, contributions })
+  recoverPluginGenerationTasks(plugin, contributions)
 }
 
 const handleMessage = (event: MessageEvent) => {
@@ -104,6 +109,98 @@ const handleMessage = (event: MessageEvent) => {
   }
 }
 
+interface GenerationContext {
+  taskId: string
+  templateId: string
+  prompt: string
+  referenceImages: string[]
+  resultNodeId?: string
+  targetNodeId?: string
+}
+
+const streamGenerationTask = async (plugin: PluginItem, context: GenerationContext) => {
+  if (activeGenerationTasks.has(context.taskId)) return
+  activeGenerationTasks.add(context.taskId)
+  try {
+    await subscribeGenerationTaskEvents(context.taskId, {
+      onEvent: (taskEvent) => {
+        const record = taskEvent.record
+        const outputs = Array.isArray(record?.outputs) ? record.outputs.map(item => ({ url: String(item?.url || ''), outputType: String(item?.outputType || '') })).filter(item => item.url) : []
+        post(plugin.id, {
+          type: 'canvas-plugin:generation-event', taskId: context.taskId,
+          event: taskEvent.type,
+          done: Boolean(taskEvent.done),
+          message: String(taskEvent.message || ''),
+          content: typeof record?.content === 'string' ? record.content : '',
+          outputs,
+        })
+        // 重连后的 snapshot 也可能已经是终态；同一 taskId 只允许弹出一次确认预览。
+        const completed = taskEvent.type === 'completed' || (taskEvent.type === 'snapshot' && record?.done && !record?.error && !record?.stopped)
+        if (completed && context.resultNodeId && !forwardedGenerationResults.has(context.taskId)) {
+          forwardedGenerationResults.add(context.taskId)
+          emit('generationResult', {
+            pluginId: plugin.id,
+            templateId: context.templateId,
+            resultNodeId: context.resultNodeId,
+            ...(context.targetNodeId ? { targetNodeId: context.targetNodeId } : {}),
+            taskId: context.taskId,
+            prompt: context.prompt,
+            referenceImages: context.referenceImages,
+            model: String(record?.model || ''),
+            modelKey: String(record?.modelKey || ''),
+            content: typeof record?.content === 'string' ? record.content : '',
+            outputs,
+          })
+        }
+        const status = taskEvent.type === 'stopped' || record?.stopped ? 'stopped' : 'failed'
+        const terminal = taskEvent.type === 'failed' || taskEvent.type === 'stopped' || (taskEvent.type === 'snapshot' && record?.done && (Boolean(record?.error) || Boolean(record?.stopped)))
+        if (terminal && context.resultNodeId && context.targetNodeId && !forwardedGenerationTerminals.has(context.taskId)) {
+          forwardedGenerationTerminals.add(context.taskId)
+          emit('generationTerminal', {
+            pluginId: plugin.id,
+            resultNodeId: context.resultNodeId,
+            targetNodeId: context.targetNodeId,
+            taskId: context.taskId,
+            status,
+            error: String(taskEvent.message || record?.error || (status === 'stopped' ? '生成已停止' : '插件生成失败')),
+          })
+        }
+      },
+    })
+  } catch (error: any) {
+    post(plugin.id, { type: 'canvas-plugin:generation-error', message: String(error?.message || '插件生成任务订阅失败') })
+    if (context.resultNodeId && context.targetNodeId && !forwardedGenerationTerminals.has(context.taskId)) {
+      forwardedGenerationTerminals.add(context.taskId)
+      emit('generationTerminal', {
+        pluginId: plugin.id,
+        resultNodeId: context.resultNodeId,
+        targetNodeId: context.targetNodeId,
+        taskId: context.taskId,
+        status: 'failed',
+        error: String(error?.message || '插件生成任务订阅失败'),
+      })
+    }
+  } finally {
+    activeGenerationTasks.delete(context.taskId)
+  }
+}
+
+const recoverPluginGenerationTasks = (plugin: PluginItem, contributions: CanvasPluginRuntimeContributions) => {
+  const nodes = Array.isArray(props.snapshot.nodes) ? props.snapshot.nodes : []
+  nodes.forEach((value) => {
+    const node = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+    const data = node.data && typeof node.data === 'object' ? node.data as Record<string, unknown> : {}
+    const retry = data.generationRetry && typeof data.generationRetry === 'object' ? data.generationRetry as Record<string, unknown> : {}
+    const taskId = String(data.generationTaskId || '').trim()
+    const templateId = String(data.generationTemplateId || '').trim()
+    const prompt = String(retry.prompt || '').trim()
+    const action = contributions.generation.find(item => item.id === templateId && item.resultNodeId === String(data.pluginNodeId || ''))
+    if (String(data.pluginId || '') !== plugin.id || data.generationStatus !== 'running' || !taskId || !prompt || !action) return
+    const referenceImages = Array.isArray(retry.referenceImages) ? retry.referenceImages.map(String).filter(url => url.startsWith('/uploads/')).slice(0, 4) : []
+    void streamGenerationTask(plugin, { taskId, templateId, prompt, referenceImages, resultNodeId: action.resultNodeId, targetNodeId: String(node.id || '') })
+  })
+}
+
 const runGeneration = async (plugin: PluginItem, input: { templateId?: unknown; prompt?: unknown; referenceImages?: unknown; targetNodeId?: unknown }) => {
   const templateId = String(input.templateId || '').trim()
   const prompt = String(input.prompt || '').trim()
@@ -127,37 +224,8 @@ const runGeneration = async (plugin: PluginItem, input: { templateId?: unknown; 
     const taskId = String(task?.id || '').trim()
     if (!taskId) throw new Error('生成任务创建失败')
     post(plugin.id, { type: 'canvas-plugin:generation-started', taskId, templateId })
-    await subscribeGenerationTaskEvents(taskId, {
-      onEvent: (taskEvent) => {
-        const record = taskEvent.record
-        const outputs = Array.isArray(record?.outputs) ? record.outputs.map(item => ({ url: String(item?.url || ''), outputType: String(item?.outputType || '') })).filter(item => item.url) : []
-        post(plugin.id, {
-          type: 'canvas-plugin:generation-event', taskId,
-          event: taskEvent.type,
-          done: Boolean(taskEvent.done),
-          message: String(taskEvent.message || ''),
-          content: typeof record?.content === 'string' ? record.content : '',
-          outputs,
-        })
-        // 只有宿主生成的终态结果才可进入确认预览；iframe 无法借 postMessage 伪造该事件。
-        if (taskEvent.type === 'completed' && action.resultNodeId && !forwardedGenerationResults.has(taskId)) {
-          forwardedGenerationResults.add(taskId)
-          emit('generationResult', {
-            pluginId: plugin.id,
-            templateId,
-            resultNodeId: action.resultNodeId,
-            ...(targetNodeId ? { targetNodeId } : {}),
-            taskId,
-            prompt,
-            referenceImages,
-            model: String(record?.model || ''),
-            modelKey: String(record?.modelKey || ''),
-            content: typeof record?.content === 'string' ? record.content : '',
-            outputs,
-          })
-        }
-      },
-    })
+    if (targetNodeId && action.resultNodeId) emit('generationStarted', { pluginId: plugin.id, resultNodeId: action.resultNodeId, targetNodeId, taskId, templateId, prompt, referenceImages })
+    void streamGenerationTask(plugin, { taskId, templateId, prompt, referenceImages, resultNodeId: action.resultNodeId, ...(targetNodeId ? { targetNodeId } : {}) })
   } catch (error: any) {
     post(plugin.id, { type: 'canvas-plugin:generation-error', message: String(error?.message || '插件生成任务失败') })
   }
@@ -173,7 +241,15 @@ const invoke = (input: { pluginId: string; scope: 'toolbar' | 'inspector' | 'gen
   return true
 }
 
-defineExpose({ invoke })
+/** 重试不回传给 iframe：宿主只用节点中已保存的受限模板与输入重新创建任务。 */
+const retryGeneration = (input: { pluginId: string; nodeId: string; templateId: string; prompt: string; referenceImages?: string[] }) => {
+  const plugin = enabledPlugins.value.find(item => item.id === input.pluginId)
+  if (!plugin || !allowsCapability(plugin, 'generation')) return false
+  void runGeneration(plugin, input)
+  return true
+}
+
+defineExpose({ invoke, retryGeneration })
 
 onMounted(async () => {
   window.addEventListener('message', handleMessage)
@@ -193,6 +269,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('message', handleMessage)
   registrations.clear()
   forwardedGenerationResults.clear()
+  forwardedGenerationTerminals.clear()
+  activeGenerationTasks.clear()
 })
 </script>
 

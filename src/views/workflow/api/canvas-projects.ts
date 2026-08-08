@@ -64,3 +64,27 @@ export interface CanvasAssistantPreview {
 }
 
 export const previewCanvasAssistantOperation = (projectId: string, prompt: string, selection: string[]) => requestCanvasApi<CanvasAssistantPreview>(`/api/canvas/projects/${encodeURIComponent(projectId)}/assistant-preview`, 'POST', { prompt, selection })
+
+export interface CanvasAssistantTaskStart {
+  projectId: string
+  taskRecordId: string
+  model: string
+  modelKey: string
+  context: {
+    selectedNodeIds: string[]
+    selectedNodeCount: number
+    contextNodeIds: string[]
+    upstreamContextIncluded: boolean
+  }
+}
+
+export const startCanvasAssistantTask = (projectId: string, prompt: string, selection: string[]) => requestCanvasApi<CanvasAssistantTaskStart>(`/api/canvas/projects/${encodeURIComponent(projectId)}/assistant-tasks`, 'POST', { prompt, selection })
+
+export const recordCanvasAssistantApplication = (projectId: string, payload: {
+  taskRecordId: string
+  proposalId: string
+  presetId?: string
+  versionId?: string
+  appliedNodeIds: string[]
+  proposal: unknown
+}) => requestCanvasApi<{ recorded: boolean }>(`/api/canvas/projects/${encodeURIComponent(projectId)}/assistant-applications`, 'POST', payload)

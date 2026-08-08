@@ -23,6 +23,7 @@ import { getDefaultChatModelKey, getDefaultImageModelKey, getDefaultVideoModelKe
 import type { WorkflowCanvasPosition } from './workflow-orchestrator-types'
 import workflowReferenceSample from '@/assets/workflow-reference-sample.svg'
 import { resolveWorkflowNodeMenuTarget } from '@/shared/workflow-node-menu'
+import type { WorkflowGenerationMetadata } from '@/shared/workflow-generation-metadata'
 
 export type WorkflowBuiltinNodeType = 'text' | 'imageConfig' | 'videoConfig' | 'image' | 'video' | 'llmConfig' | 'director' | 'audio' | 'unknown'
 /** 受信插件在主应用中只能使用这个命名空间，避免覆盖内置节点。 */
@@ -39,10 +40,19 @@ export interface WorkflowNodeDataBase {
   loading?: boolean
   error?: string
   taskRecordId?: string
+  /** 生成任务的结果写入状态；awaiting_confirmation 时结果仍只保留在服务端任务中。 */
+  generationStatus?: 'running' | 'awaiting_confirmation' | 'completed' | 'discarded' | 'failed' | 'stopped'
   autoExecute?: boolean
   executed?: boolean
   outputNodeId?: string
   executionCancelToken?: number
+  /** 生成结果的可审计参数；只含可展示和可重试字段，不含密钥。 */
+  generationMeta?: WorkflowGenerationMetadata
+  /** 从服务端素材库插入时保留资源可追溯信息。 */
+  sourceAssetId?: string
+  promptSourceId?: string
+  source?: string
+  tags?: string[]
 }
 
 export interface WorkflowTextNodeData extends WorkflowNodeDataBase {
@@ -224,6 +234,8 @@ export interface WorkflowCanvasStateSnapshot {
 type WorkflowNodeUpdatePayload = Partial<WorkflowNodeData> & {
   position?: WorkflowCanvasPosition
   zIndex?: number
+  /** 用于在节点状态切换时同步修正 Vue Flow 的可视尺寸。 */
+  style?: Record<string, string | number>
 }
 
 const normalizeNodeRotation = (value: unknown): number => {
@@ -476,13 +488,14 @@ export const addPluginNode = (
 
 // 更新节点数据
 export const updateNode = (id: string, patch: WorkflowNodeUpdatePayload) => {
-  const { position, zIndex, ...dataPatch } = patch
+  const { position, zIndex, style, ...dataPatch } = patch
   nodes.value = nodes.value.map(node =>
     node.id === id
       ? applyNodeRotationPresentation({
           ...node,
           position: position || node.position,
           zIndex: zIndex ?? node.zIndex,
+          style: style ? { ...node.style, ...style } : node.style,
           data: {
             ...node.data,
             ...dataPatch,

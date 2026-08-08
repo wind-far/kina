@@ -1,32 +1,13 @@
 <template>
   <div class="record-list-container">
-    <div class="record-list record-virtual-list" :style="`--content-generator-height:${contentGeneratorHeight}px`">
-      <div
-        class="virtual-list-container"
-        style="--virtual-list-rotate:rotate(180deg);--virtual-list-direction:rtl;--virtual-list-justify-content:flex-end"
-      >
+    <div class="record-list record-virtual-list">
+      <div class="virtual-list-container">
         <div class="scroll-container-j7wUS8" style="height:100%">
           <div ref="scrollContainerRef" class="virtual-list" style="height:100%">
-            <div :style="`height:${spacerHeight}`"></div>
             <div
               :id="scrollListId"
               class="scroll-list"
-              style="transform:translate3d(0px,0px,0px)"
             >
-              <div class="scroll-slot"></div>
-              <div class="top-placeholder-fTCjHC">
-                <div class="top-placeholder-aEry7y">
-                  <div class="clean-agent-context-wrapper">
-                    <span
-                      class="clean-agent-context-text"
-                      @click="emit('create-session')"
-                    >
-                      {{ createSessionText }}
-                    </span>
-                  </div>
-                  <div class="empty-placeholder"></div>
-                </div>
-              </div>
               <slot />
             </div>
           </div>
@@ -160,19 +141,13 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 withDefaults(defineProps<{
-  contentGeneratorHeight?: number
-  spacerHeight?: string
   scrollListId?: string
-  createSessionText?: string
   searchValue?: string
   timeFilterLabel?: string
   typeFilterLabel?: string
   actionFilterLabel?: string
 }>(), {
-  contentGeneratorHeight: 174,
-  spacerHeight: '1056.88px',
   scrollListId: 'scroll-list-generate-session',
-  createSessionText: '创建新会话',
   searchValue: '',
   timeFilterLabel: '时间',
   typeFilterLabel: '生成类型',
@@ -193,44 +168,16 @@ const handleSearchInput = (event: Event) => {
   emit('update:searchValue', String((event.target as HTMLInputElement | null)?.value || ''))
 }
 
-// 列表外层使用 transform: rotate(180deg) 实现「最新消息贴底」的对话布局，
-// 浏览器原生滚动不感知 transform，默认方向因此与视觉相反。
-// 这里统一接管 wheel / touchmove，按视觉方向反向写入 scrollTop，让滚轮、触摸手势与画面方向一致。
 const scrollContainerRef = ref<HTMLElement | null>(null)
 let lastScrollTop = 0
-let touchLastY = 0
-
-const handleWheel = (event: WheelEvent) => {
-  const target = scrollContainerRef.value
-  if (!target) return
-  event.stopImmediatePropagation()
-  event.preventDefault()
-  target.scrollTop -= event.deltaY
-}
-
-const handleTouchStart = (event: TouchEvent) => {
-  touchLastY = event.touches[0]?.clientY ?? 0
-}
-
-const handleTouchMove = (event: TouchEvent) => {
-  const target = scrollContainerRef.value
-  if (!target) return
-  const currentY = event.touches[0]?.clientY ?? touchLastY
-  const deltaY = touchLastY - currentY
-  touchLastY = currentY
-  event.stopImmediatePropagation()
-  event.preventDefault()
-  target.scrollTop -= deltaY
-}
 
 const handleScroll = () => {
   const target = scrollContainerRef.value
   if (!target) return
   const currentScrollTop = target.scrollTop
-  // 容器旋转 180°：DOM 顶部即视觉底部，scrollTop 接近 0 表示已贴近最新消息一侧。
-  const isAtBottom = currentScrollTop <= 10
-  // scrollTop 增大表示视口在 DOM 上向下移，对应视觉上向上回看旧消息。
-  const isScrollingUp = currentScrollTop > lastScrollTop
+  const maxScrollTop = Math.max(0, target.scrollHeight - target.clientHeight)
+  const isAtBottom = currentScrollTop >= maxScrollTop - 10
+  const isScrollingUp = currentScrollTop < lastScrollTop
   lastScrollTop = currentScrollTop
   emit('scroll-state', { scrollTop: currentScrollTop, isAtBottom, isScrollingUp })
 }
@@ -252,7 +199,7 @@ const scrollToElementById = (elementId: string) => {
   const viewportCenter = containerRect.top + container.clientHeight / 2
   const delta = targetCenter - viewportCenter
   const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight)
-  const nextTop = Math.max(0, Math.min(maxScrollTop, container.scrollTop - delta))
+  const nextTop = Math.max(0, Math.min(maxScrollTop, container.scrollTop + delta))
 
   container.scrollTo({
     top: nextTop,
@@ -269,18 +216,12 @@ defineExpose({
 onMounted(() => {
   const target = scrollContainerRef.value
   if (!target) return
-  target.addEventListener('wheel', handleWheel, { passive: false, capture: true })
-  target.addEventListener('touchstart', handleTouchStart, { passive: true })
-  target.addEventListener('touchmove', handleTouchMove, { passive: false, capture: true })
   target.addEventListener('scroll', handleScroll, { passive: true })
 })
 
 onBeforeUnmount(() => {
   const target = scrollContainerRef.value
   if (!target) return
-  target.removeEventListener('wheel', handleWheel, true)
-  target.removeEventListener('touchstart', handleTouchStart)
-  target.removeEventListener('touchmove', handleTouchMove, true)
   target.removeEventListener('scroll', handleScroll)
 })
 </script>

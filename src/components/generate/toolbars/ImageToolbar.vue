@@ -25,10 +25,19 @@ const props = withDefaults(defineProps<Props>(), {
   iconOnly: false
 })
 
-// 模型版本配置（内置 + 自定义）
-const modelVersions = computed(() =>
-  getAllImageModels().map((m: any) => ({ value: m.key, label: m.label }))
-)
+// 模型版本配置（内置 + 自定义）。
+// 后台可能为不同供应商配置同一可见模型名；在此处无法区分时只保留排序靠前的配置，
+// 避免下拉菜单出现两个完全相同的选项。
+const modelVersions = computed(() => {
+  const seenLabels = new Set<string>()
+  return getAllImageModels().flatMap((model) => {
+    const label = String(model.label || model.modelKey || model.key).trim()
+    const normalizedLabel = label.toLocaleLowerCase('zh-CN')
+    if (!label || seenLabels.has(normalizedLabel)) return []
+    seenLabels.add(normalizedLabel)
+    return [{ value: model.key, label }]
+  })
+})
 
 // 尺寸配置
 const sizeOptions = [

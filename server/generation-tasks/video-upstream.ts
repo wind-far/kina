@@ -14,6 +14,7 @@ type JsonObject = Record<string, unknown>
 
 export interface VideoGenerationUpstreamInput {
   signal: AbortSignal
+  userId?: string
   providerId: string
   modelKey: string
   prompt: string
@@ -331,6 +332,7 @@ export const requestVideoGeneration = async (
     providerId: input.providerId,
     endpointType: 'video',
     modelKey: input.modelKey,
+    userId: input.userId,
   })
   if (isMiniMaxH3Upstream(upstream)) {
     return requestMiniMaxH3Generation(input, upstream)

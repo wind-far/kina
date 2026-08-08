@@ -1995,6 +1995,12 @@ body[lv-theme='dark'] .workflow-canvas .vue-flow__background pattern circle,
   width: 44px;
   height: 44px;
   background: #9aa1a9;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* 只有按钮实际可发送时才使用黑色主操作态。 */
+.workflow-canvas-wrap .workflow-prompt-dock .canvas-prompt-input__send:not(:disabled) {
+  background: #0f1419;
   color: #ffffff;
 }
 
@@ -2321,6 +2327,11 @@ body[lv-theme='dark'] .workflow-canvas .vue-flow__background pattern circle,
     height: 34px;
     background: rgba(15, 20, 25, 0.28);
     color: rgba(255, 255, 255, 0.72);
+  }
+
+  .workflow-canvas-wrap .workflow-prompt-dock.canvas-prompt-input--workflow .canvas-prompt-input__send:not(:disabled) {
+    background: #0f1419;
+    color: #ffffff;
   }
 }
 

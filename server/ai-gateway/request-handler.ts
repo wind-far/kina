@@ -88,6 +88,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
         providerId: headerProviderId,
         endpointType: headerEndpointType,
         modelKey: headerModelKey || undefined,
+        userId: currentUser.id,
       })
       debugUpstreamUrl = joinUpstreamUrl(upstream.baseUrl, upstream.endpoint)
       debugUpstreamMethod = headerMethod
@@ -204,6 +205,7 @@ export const handleAiGatewayRequest = async (req: any, res: any) => {
       providerId: normalized.providerId,
       endpointType: normalized.endpointType,
       modelKey: normalized.modelKey || undefined,
+      userId: currentUser.id,
     })
 
     debugUpstreamUrl = joinUpstreamUrl(upstream.baseUrl, upstream.endpoint)

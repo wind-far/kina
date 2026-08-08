@@ -1140,10 +1140,6 @@
     width: 100%
 }
 
-.record-list .top-placeholder-aEry7y .empty-placeholder {
-    height: 310px
-}
-
 @keyframes animation-UFlpP1 {
     0% {
         opacity: 0
@@ -1179,39 +1175,29 @@
 }
 
 .virtual-list-container .scroll-container-j7wUS8 .virtual-list {
-    direction: var(--virtual-list-direction);
+    direction: ltr;
     overflow-x: hidden;
     overflow-y: auto;
     position: relative;
     scrollbar-width: auto;
-    transform: var(--virtual-list-rotate);
+    transform: none;
     width: 100%
-}
-
-.virtual-list-container .scroll-container-j7wUS8 .virtual-list .scroll-slot {
-    overflow: hidden;
-    transform: var(--virtual-list-rotate)
-}
-
-.virtual-list-container .scroll-container-j7wUS8 .virtual-list .top-placeholder-fTCjHC {
-    transform: var(--virtual-list-rotate)
 }
 
 .virtual-list-container .scroll-container-j7wUS8 .virtual-list .scroll-list {
     direction: ltr;
     display: flex;
     flex-direction: column;
-    justify-content: var(--virtual-list-justify-content);
-    left: 0;
+    justify-content: flex-start;
+    box-sizing: border-box;
     min-height: 100%;
-    position: absolute;
-    right: 0;
-    top: 0;
+    padding: 84px 0 24px;
+    position: relative;
     width: 100%
 }
 
 .virtual-list-container .scroll-container-j7wUS8 .virtual-list .item-Xh64V7 {
-    transform: var(--virtual-list-rotate)
+    transform: none
 }
 
 .virtual-list-container .scroll-container-j7wUS8 .virtual-list::-webkit-scrollbar {

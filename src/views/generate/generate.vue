@@ -1628,6 +1628,19 @@ const formatGroupLabel = (date: Date): string => {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
 }
 
+// 服务端新旧记录同时兼容：新接口会返回 images，部分历史记录或 SSE 终态仅携带 outputs。
+// 统一在界面边界提取图片，避免结果已落盘但卡片仍误显示为“生成中”。
+const getPersistedImageUrls = (record: PersistedGenerationRecord): string[] => {
+  const imageUrls = Array.isArray(record.images) ? record.images : []
+  const outputUrls = Array.isArray(record.outputs)
+      ? record.outputs
+          .filter(output => String(output?.outputType || '').toLowerCase() === 'image')
+          .map(output => String(output?.url || '').trim())
+      : []
+
+  return Array.from(new Set([...imageUrls, ...outputUrls].map(url => String(url || '').trim()).filter(Boolean)))
+}
+
 // 将后端返回的持久化记录还原成页面使用结构。
 const createRecordFromPersisted = (record: PersistedGenerationRecord): GeneratingRecord => {
   const isImageRecord = record.type === 'image'
@@ -1663,7 +1676,7 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
         ? (record.content || (!record.done ? '[[queued]]任务已创建，等待服务端执行' : ''))
         : record.content,
     thinkingContent: record.thinkingContent || '',
-    images: record.images,
+    images: getPersistedImageUrls(record),
     done: record.done,
     stopped: Boolean(record.stopped),
     progressStage: isImageRecord || isResearchRecord
@@ -1753,7 +1766,7 @@ const syncRecordWithPersisted = (record: GeneratingRecord, saved: PersistedGener
   record.progressPercent = saved.done
       ? 100
       : Math.max(record.progressPercent || 0, mapTaskStageToProgressPercent(record.progressStage))
-  record.images = Array.isArray(saved.images) ? [...saved.images] : []
+  record.images = getPersistedImageUrls(saved)
   if (Array.isArray(saved.referenceImages) && saved.referenceImages.length) {
     record.referenceImages = [...saved.referenceImages]
   } else if (!Array.isArray(record.referenceImages)) {
@@ -2480,20 +2493,27 @@ const loadPersistedGeneratingRecords = async () => {
     const records = await listGenerationRecordsRequest()
     if (!records.length) return
 
-    const existingDbIds = new Set(
+    const existingByDbId = new Map(
         generatingRecords.value
-            .map(item => item.dbId)
-            .filter((id): id is string => Boolean(id)),
+            .filter((item): item is GeneratingRecord & { dbId: string } => Boolean(item.dbId))
+            .map(item => [item.dbId, item]),
     )
 
     const nextRecords = records
         .filter(record => (record.source || 'generate') === 'generate')
-        .filter(record => !existingDbIds.has(record.id))
-        .map(createRecordFromPersisted)
+        .flatMap((record) => {
+          const existingRecord = existingByDbId.get(record.id)
+          if (existingRecord) {
+            // 首屏恢复、断线重连和轮询刷新都以服务端终态为准，不能让旧的内存态覆盖完成结果。
+            syncRecordWithPersisted(existingRecord, record)
+            return []
+          }
+          return [createRecordFromPersisted(record)]
+        })
 
-    if (!nextRecords.length) return
-
-    generatingRecords.value = [...generatingRecords.value, ...nextRecords]
+    if (nextRecords.length) {
+      generatingRecords.value = [...generatingRecords.value, ...nextRecords]
+    }
     nextRecords.forEach(connectGenerationTaskStream)
   } catch {
     // 数据库未配置或接口失败时，继续使用前端内存态。

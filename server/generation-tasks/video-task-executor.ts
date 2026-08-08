@@ -77,6 +77,7 @@ export const executeVideoTask = async (
 
   const result = await context.requestVideoGeneration({
     signal: task.abortController.signal,
+    userId: task.userId,
     providerId,
     modelKey,
     prompt: String(payload.prompt || payload.requestBody?.prompt || '').trim(),

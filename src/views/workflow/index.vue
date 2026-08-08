@@ -150,7 +150,7 @@ const route = useRoute()
 const authStore = useAuthStore()
 // /canvas 是账号级无限画布，/workflow 保持原有工作流语义和历史链接兼容。
 const workspaceScene = computed(() => route.path === '/canvas' ? 'INFINITE_CANVAS' : 'WORKFLOW_CANVAS')
-const { viewport, zoomIn, zoomOut, fitView, updateNodeInternals, screenToFlowCoordinate } = useVueFlow()
+const { viewport, zoomIn, zoomOut, fitView, updateNodeInternals, screenToFlowCoordinate, setState } = useVueFlow()
 
 // 注册自定义节点类型
 const nodeTypes = reactive({
@@ -1141,6 +1141,9 @@ const handleWorkflowImageToolPreset = (event: Event) => {
 }
 
 onMounted(() => {
+  // Vue Flow 1.48 的组件 prop 只接受 boolean/null，但 store 支持完整 KeyFilter。
+  // 用 store 配置 Ctrl / Cmd 框选，避免 selectionKeyCode=true 把普通左键拖动也变成框选。
+  setState({ selectionKeyCode: ['Control', 'Meta'] })
   window.addEventListener('canvasmind:open-workflow-assistant', handleOpenWorkflowAssistant)
   window.addEventListener('canvasmind:workflow-image-tool-preset', handleWorkflowImageToolPreset)
 })
@@ -1860,6 +1863,11 @@ const handleCanvasGenerationConfirmed = (event: Event) => {
   void createCanvasGenerationCheckpoint(detail)
 }
 
+// 选择 / 剪贴板 / 拖入：选中态必须在快捷键注册前可用，Esc 才能同步清理。
+const { selectAll, deselectAll, selectedNodeIds } = useCanvasSelection()
+const { copySelected, pasteFromSlot, hasClipboard } = useCanvasClipboard()
+const { onDrop: onCanvasFileDrop, onDragOver: onCanvasFileDragOver } = useCanvasDrop()
+
 // 键盘快捷键（统一走 useShortcut 注册，自动管理生命周期 + 输入框焦点屏蔽）
 useShortcut(
   'Escape',
@@ -1867,6 +1875,10 @@ useShortcut(
     if (quickLinkSourceId.value) {
       quickLinkSourceId.value = null
     }
+    deselectAll()
+    contextMenuVisible.value = false
+    showNodeMenu.value = false
+    promptAnchorNodeId.value = ''
   },
   // Esc 不阻止默认，让 el-dialog / el-popover 等浮层也能关闭
   { preventDefault: false },
@@ -1877,9 +1889,10 @@ useShortcut('CmdOrCtrl+N', () => {
   void handleCreateWorkflow()
 })
 
-// 空格临时平移：按住 Space 时禁用节点拖拽，左键也加入 panOnDrag
+// 默认使用左键拖动画布；按住 Space 时禁用节点拖拽，保证从节点上开始也能平移。
+// Ctrl / Cmd + 左键拖动则交给 selectionKeyCode 做框选，和目标画布的交互约定一致。
 const isSpacePressed = ref(false)
-const panOnDragValue = computed<number[]>(() => (isSpacePressed.value ? [0, 1, 2] : [1, 2]))
+const panOnDragValue = [0, 1, 2]
 
 const isEditableSpaceTarget = (el: EventTarget | null): boolean => {
   if (!(el instanceof HTMLElement)) return false
@@ -1925,11 +1938,6 @@ const onNodeDragStop = () => {
   resumeHistory()
   updateWorkflowPromptDockPosition()
 }
-
-// === 选择 / 剪贴板 / 拖入 / 右键菜单 ===
-const { selectAll, selectedNodeIds } = useCanvasSelection()
-const { copySelected, pasteFromSlot, hasClipboard } = useCanvasClipboard()
-const { onDrop: onCanvasFileDrop, onDragOver: onCanvasFileDragOver } = useCanvasDrop()
 
 const ROTATION_STEP = 15
 const selectedRotationTargetIds = (fallbackNodeId?: string) => {
@@ -2456,7 +2464,6 @@ watch(currentCanvasSnapshot, () => {
             :snap-to-grid="canvasSnapToGrid"
             :snap-grid="[20, 20]"
             :delete-key-code="['Delete', 'Backspace']"
-            :selection-key-code="true"
             :multi-selection-key-code="['Shift', 'Control', 'Meta']"
             :selection-mode="SelectionMode.Partial"
             :pan-on-drag="panOnDragValue"

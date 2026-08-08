@@ -45,6 +45,9 @@ import { isGenerationTasksPath } from './generation-tasks/constants'
 import { handleGenerationTasksRequest } from './generation-tasks/request-handler'
 import { PROVIDER_CONFIG_MATCH_PATHS } from './provider-config/constants'
 import { handleProviderConfigRequest } from './provider-config/request-handler'
+import { bootstrapEnvironmentProviders } from './provider-config/env-bootstrap'
+import { isUserProviderConfigPath } from './user-provider-config/constants'
+import { handleUserProviderConfigRequest } from './user-provider-config/request-handler'
 import { isStorageConfigsPath } from './storage-config/constants'
 import { handleStorageConfigRequest } from './storage-config/request-handler'
 import { isStorageUploadPath } from './storage/constants'
@@ -399,6 +402,14 @@ const REQUEST_ROUTE_STRATEGIES: RequestRouteStrategy[] = [
     },
   },
   {
+    key: 'user-provider-config',
+    match: isUserProviderConfigPath,
+    handle: async (req, res) => {
+      await handleUserProviderConfigRequest(req, res)
+      return true
+    },
+  },
+  {
     key: 'skill-config',
     match: isSkillConfigPath,
     handle: async (req, res) => {
@@ -663,6 +674,9 @@ server.listen(serverPort, '0.0.0.0', () => {
   writeScopedLog('info', '服务端', `上传目录: ${uploadsDir}`)
   writeScopedLog('info', '服务端', `CORS 来源: ${allowedOrigins.join(', ')}`)
   writeScopedLog('info', '服务端', `Redis: ${resolveRedisStartupSummary()}`)
+  void bootstrapEnvironmentProviders()
+    .then(result => writeScopedLog('info', '环境厂商配置', '启动同步完成', result))
+    .catch(error => writeScopedLog('error', '环境厂商配置', '启动同步失败', error))
   void recoverServerWorkflowRuns()
     .then(result => writeScopedLog('info', '工作流执行器', '启动恢复完成', result))
     .catch(error => writeScopedLog('error', '工作流执行器', '启动恢复失败', error))

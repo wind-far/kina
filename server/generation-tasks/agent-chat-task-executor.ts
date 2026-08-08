@@ -33,6 +33,7 @@ export interface AgentChatTaskExecutorContext {
     providerId?: string
     endpointType?: 'chat' | 'image' | 'image-edit' | 'video'
     modelKey?: string
+    userId?: string
   }) => Promise<{
     baseUrl: string
     endpoint: string
@@ -105,6 +106,7 @@ export const executeAgentChatTaskFlow = async (
     providerId,
     endpointType: 'chat',
     modelKey,
+    userId: task.userId,
   })
   context.emitTaskProgressEvent(task.recordId, {
     stage: 'resolved_provider',

@@ -78,9 +78,11 @@
                   </div>
                 </div>
               </div>
-            </div>
+              </div>
 
-            <div class="scroll-container-AhepyD">
+              <UserVideoProviderConfig />
+
+              <div class="scroll-container-AhepyD">
               <div>
                 <div class="right-container-VcENyg">
                   <div class="scroll-container-AhepyD scroll-container-B4jFKc">
@@ -265,6 +267,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
 import HomeDetailModalFrom from '@/components/home/components/HomeDetailModalFrom.vue'
+import UserVideoProviderConfig from '@/components/account/UserVideoProviderConfig.vue'
 import { applyAssetAction, listAssetItems, type PersistedAssetItem } from '@/api/asset-items'
 import { buildAssetUrl } from '@/api/http'
 import {

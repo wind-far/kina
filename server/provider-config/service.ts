@@ -1,6 +1,7 @@
 import { prisma } from '../db/prisma'
 import { decryptProviderApiKey, encryptProviderApiKey, maskApiKey } from './crypto'
 import { getOrSetJsonCache, invalidateRedisCaches, redisKeys } from '../redis'
+import { resolveUserProviderConnection } from '../user-provider-config/service'
 import {
   type AiEndpointType,
   isAiEndpointType,
@@ -642,6 +643,7 @@ export const resolveGatewayProviderUpstream = async (input: {
   providerId?: string
   endpointType?: AiEndpointType
   modelKey?: string
+  userId?: string
 }) => {
   const providerId = String(input.providerId || '').trim()
   const endpointType = String(input.endpointType || '').trim().toLowerCase()
@@ -684,12 +686,18 @@ export const resolveGatewayProviderUpstream = async (input: {
     modelCapabilityJson = model.capabilityJson ?? null
   }
 
-  const endpoint = provider[resolveProviderEndpointField(endpointType)]
+  const userConnection = await resolveUserProviderConnection({
+    userId: String(input.userId || '').trim() || undefined,
+    providerId,
+    category: resolveEndpointModelCategory(endpointType),
+    endpointType,
+  })
+  const endpoint = userConnection?.endpoint || provider[resolveProviderEndpointField(endpointType)]
 
   return {
     code: provider.code,
-    baseUrl: provider.baseUrl,
-    apiKey: decryptProviderApiKey(provider.apiKeyEncrypted),
+    baseUrl: userConnection?.baseUrl || provider.baseUrl,
+    apiKey: userConnection?.apiKey || decryptProviderApiKey(provider.apiKeyEncrypted),
     endpoint,
     modelCapabilityJson,
     extraJson: provider.extraJson && typeof provider.extraJson === 'object' && !Array.isArray(provider.extraJson)

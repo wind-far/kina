@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import { deflateRawSync } from 'node:zlib'
 import {
   applyTargetCanvasAssetUrls,
   extractTargetCanvasArchiveEntries,
   parseTargetCanvasArchive,
+  selectTargetCanvasArchiveProject,
 } from '../../server/canvas-projects/target-archive.ts'
 import { normalizeCanvasImport } from '../../src/shared/canvas-snapshot.ts'
 
@@ -62,21 +64,39 @@ const projectExport = {
       connections: [], viewport: { x: 3, y: 4, k: 1 }, backgroundMode: 'dots',
     },
     files: [{ storageKey: 'image:hero', path: 'projects/target-project/files/image_hero.png', mimeType: 'image/png', bytes: 4 }],
+  }, {
+    project: {
+      id: 'target-project-2',
+      title: '第二个项目',
+      nodes: [{
+        id: 'clip', type: 'video', title: '短片', position: { x: 30, y: 40 }, width: 640, height: 360,
+        metadata: { storageKey: 'video:clip', mimeType: 'video/mp4' },
+      }],
+      connections: [], viewport: { x: 0, y: 0, k: 1 }, backgroundMode: 'lines',
+    },
+    files: [{ storageKey: 'video:clip', path: 'projects/target-project-2/files/video_clip.mp4', mimeType: 'video/mp4', bytes: 4 }],
   }],
 }
 
 const archive = buildZip([
   { name: 'projects.json', content: JSON.stringify(projectExport), deflate: true },
   { name: 'projects/target-project/files/image_hero.png', content: Buffer.from([137, 80, 78, 71]) },
+  { name: 'projects/target-project-2/files/video_clip.mp4', content: Buffer.from([0, 0, 0, 0]) },
 ])
 const entries = extractTargetCanvasArchiveEntries(archive)
 assert.equal(entries.get('projects.json')?.toString().includes('ZIP 导入项目'), true)
 assert.deepEqual(entries.get('projects/target-project/files/image_hero.png'), Buffer.from([137, 80, 78, 71]))
 
 const parsed = parseTargetCanvasArchive(archive)
-assert.equal(parsed.assets.length, 1)
+assert.deepEqual(parsed.projectIndexes, [0, 1])
+assert.equal(parsed.assets.length, 2)
 assert.equal(parsed.assets[0].storageKey, 'image:hero')
-const rewritten = applyTargetCanvasAssetUrls(parsed.data, new Map([['image:hero', '/uploads/canvas-import/hero.png']]))
+assert.equal(parsed.assets[1].projectIndex, 1)
+const firstProject = selectTargetCanvasArchiveProject(parsed, 0)
+const secondProject = selectTargetCanvasArchiveProject(parsed, 1)
+assert.equal(firstProject.assets.length, 1)
+assert.equal(secondProject.assets[0].storageKey, 'video:clip')
+const rewritten = applyTargetCanvasAssetUrls(firstProject.data, new Map([['image:hero', '/uploads/canvas-import/hero.png']]))
 const snapshot = normalizeCanvasImport(rewritten).snapshot
 assert.equal(snapshot.nodes[0].data.url, '/uploads/canvas-import/hero.png')
 
@@ -84,5 +104,9 @@ assert.throws(
   () => extractTargetCanvasArchiveEntries(buildZip([{ name: '../projects.json', content: '{}' }])),
   /不安全的文件路径/,
 )
+
+const archiveServiceSource = fs.readFileSync(new URL('../../server/canvas-projects/service.ts', import.meta.url), 'utf8')
+assert.match(archiveServiceSource, /for \(const projectIndex of parsed\.projectIndexes\)/)
+assert.match(archiveServiceSource, /importedCount: details\.length/)
 
 console.log('canvas target archive regression passed')

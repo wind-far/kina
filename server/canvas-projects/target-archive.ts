@@ -1,4 +1,3 @@
-import path from 'node:path'
 import { inflateRawSync } from 'node:zlib'
 
 const END_OF_CENTRAL_DIRECTORY = 0x06054b50
@@ -10,6 +9,7 @@ const MAX_ENTRY_BYTES = 20 * 1024 * 1024
 const MAX_TOTAL_UNCOMPRESSED_BYTES = 80 * 1024 * 1024
 
 export interface TargetCanvasArchiveAsset {
+  projectIndex: number
   storageKey: string
   path: string
   mimeType: string
@@ -20,6 +20,7 @@ export interface TargetCanvasArchiveAsset {
 export interface TargetCanvasArchivePayload {
   data: Record<string, unknown>
   assets: TargetCanvasArchiveAsset[]
+  projectIndexes: number[]
   warnings: string[]
 }
 
@@ -120,29 +121,46 @@ export const parseTargetCanvasArchive = (archive: Buffer): TargetCanvasArchivePa
   if (data.app !== 'infinite-canvas' || !Array.isArray(data.projects)) {
     throw archiveError('该归档不是受支持的目标无限画布导出。')
   }
-  const firstProject = asRecord(asRecord(data.projects[0]).project)
-  if (!Object.keys(firstProject).length) throw archiveError('目标项目导出中未找到项目。')
-
   const warnings: string[] = []
-  const files = Array.isArray(asRecord(data.projects[0]).files) ? asRecord(data.projects[0]).files : []
   const assets: TargetCanvasArchiveAsset[] = []
-  for (const file of files) {
-    const metadata = asRecord(file)
-    const storageKey = String(metadata.storageKey || '').trim()
-    const entryPath = String(metadata.path || '').trim()
-    const mimeType = String(metadata.mimeType || 'application/octet-stream').trim()
-    if (!storageKey || !isSafeArchivePath(entryPath)) {
-      warnings.push('已跳过缺少资源键或包含不安全路径的资源。')
+  const projectIndexes: number[] = []
+  for (const [projectIndex, rawProjectItem] of data.projects.entries()) {
+    const projectItem = asRecord(rawProjectItem)
+    if (!Object.keys(asRecord(projectItem.project)).length) {
+      warnings.push(`第 ${projectIndex + 1} 个项目缺少项目数据，已跳过。`)
       continue
     }
-    const buffer = entries.get(entryPath)
-    if (!buffer) {
-      warnings.push(`资源 ${storageKey} 未包含在归档中，已保留其引用。`)
-      continue
+    projectIndexes.push(projectIndex)
+    const files = Array.isArray(projectItem.files) ? projectItem.files : []
+    for (const file of files) {
+      const metadata = asRecord(file)
+      const storageKey = String(metadata.storageKey || '').trim()
+      const entryPath = String(metadata.path || '').trim()
+      const mimeType = String(metadata.mimeType || 'application/octet-stream').trim()
+      if (!storageKey || !isSafeArchivePath(entryPath)) {
+        warnings.push(`第 ${projectIndex + 1} 个项目包含缺少资源键或不安全路径的资源，已跳过。`)
+        continue
+      }
+      const buffer = entries.get(entryPath)
+      if (!buffer) {
+        warnings.push(`第 ${projectIndex + 1} 个项目的资源 ${storageKey} 未包含在归档中，已保留其引用。`)
+        continue
+      }
+      assets.push({ projectIndex, storageKey, path: entryPath, mimeType, bytes: buffer.byteLength, buffer })
     }
-    assets.push({ storageKey, path: entryPath, mimeType, bytes: buffer.byteLength, buffer })
   }
-  return { data, assets, warnings }
+  if (!projectIndexes.length) throw archiveError('目标项目导出中未找到可导入的项目。')
+  return { data, assets, projectIndexes, warnings }
+}
+
+export const selectTargetCanvasArchiveProject = (parsed: TargetCanvasArchivePayload, projectIndex: number) => {
+  const projects = Array.isArray(parsed.data.projects) ? parsed.data.projects : []
+  const project = projects[projectIndex]
+  if (!project) throw archiveError(`目标项目第 ${projectIndex + 1} 项不存在。`)
+  return {
+    data: { ...parsed.data, projects: [project] },
+    assets: parsed.assets.filter(asset => asset.projectIndex === projectIndex),
+  }
 }
 
 export const applyTargetCanvasAssetUrls = (data: Record<string, unknown>, urls: Map<string, string>) => {

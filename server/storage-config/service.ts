@@ -506,3 +506,25 @@ export const uploadBufferToActiveObjectStorage = async (input: {
     relativePath: input.key,
   }
 }
+
+/** 仅删除当前启用配置下由本服务刚写入的对象；配置切换时宁可保留对象也不冒险删除。 */
+export const deleteObjectFromActiveObjectStorage = async (input: { key: string; storageCode?: string }) => {
+  const activeConfig = await getActiveObjectStorageConfig()
+  if (!activeConfig) return false
+  if (input.storageCode && input.storageCode !== activeConfig.code) {
+    throw new Error('对象存储配置已变更，已跳过资源回收。')
+  }
+  const key = String(input.key || '').replace(/^\/+/, '')
+  if (!key || key.includes('..')) throw new Error('对象存储回收路径不合法。')
+  const s3Client = new S3Client({
+    region: activeConfig.region || 'auto',
+    endpoint: activeConfig.endpoint,
+    forcePathStyle: shouldForcePathStyleForS3Endpoint(activeConfig.endpoint),
+    credentials: {
+      accessKeyId: activeConfig.accessKey,
+      secretAccessKey: activeConfig.secretKey,
+    },
+  })
+  await s3Client.send(new DeleteObjectCommand({ Bucket: activeConfig.bucket, Key: key }))
+  return true
+}

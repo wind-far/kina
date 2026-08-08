@@ -6,7 +6,7 @@ import {
 } from '../../src/shared/canvas-snapshot'
 import { createWorkflowDefinition, getWorkflowDefinitionDetail } from '../workflow-definitions/service'
 import { saveUploadedBuffer } from '../storage/service'
-import { applyTargetCanvasAssetUrls, parseTargetCanvasArchive } from './target-archive'
+import { applyTargetCanvasAssetUrls, parseTargetCanvasArchive, selectTargetCanvasArchiveProject } from './target-archive'
 
 export interface CanvasProjectAccessContext { currentUserId: string }
 
@@ -121,29 +121,44 @@ const isSupportedCanvasArchiveAsset = (mimeType: string) => [
 export const importCanvasProjectArchive = async (archive: Buffer, name: string | undefined, context: CanvasProjectAccessContext) => {
   const parsed = parseTargetCanvasArchive(archive)
   const warnings = [...parsed.warnings]
-  const assetUrls = new Map<string, string>()
-  for (const asset of parsed.assets) {
-    if (!isSupportedCanvasArchiveAsset(asset.mimeType)) {
-      warnings.push(`资源 ${asset.storageKey} 的 MIME 类型 ${asset.mimeType || '未知'} 不受支持，已保留引用。`)
-      continue
+  const details: any[] = []
+  for (const projectIndex of parsed.projectIndexes) {
+    const project = selectTargetCanvasArchiveProject(parsed, projectIndex)
+    const assetUrls = new Map<string, string>()
+    for (const asset of project.assets) {
+      if (!isSupportedCanvasArchiveAsset(asset.mimeType)) {
+        warnings.push(`第 ${projectIndex + 1} 个项目的资源 ${asset.storageKey} MIME 类型 ${asset.mimeType || '未知'} 不受支持，已保留引用。`)
+        continue
+      }
+      try {
+        const saved = await saveUploadedBuffer({
+          buffer: asset.buffer,
+          filename: asset.path.split('/').pop() || 'canvas-asset',
+          mimeType: asset.mimeType,
+          category: `canvas-import/${context.currentUserId}`,
+        })
+        assetUrls.set(asset.storageKey, saved.publicUrl)
+      } catch {
+        warnings.push(`第 ${projectIndex + 1} 个项目的资源 ${asset.storageKey} 上传失败，已保留原始引用。`)
+      }
     }
     try {
-      const saved = await saveUploadedBuffer({
-        buffer: asset.buffer,
-        filename: asset.path.split('/').pop() || 'canvas-asset',
-        mimeType: asset.mimeType,
-        category: `canvas-import/${context.currentUserId}`,
-      })
-      assetUrls.set(asset.storageKey, saved.publicUrl)
-    } catch {
-      warnings.push(`资源 ${asset.storageKey} 上传失败，已保留原始引用。`)
+      const result = await importCanvasProject({
+        name: parsed.projectIndexes.length === 1 ? name : undefined,
+        data: applyTargetCanvasAssetUrls(project.data, assetUrls),
+      }, context)
+      details.push(result.detail)
+      warnings.push(...result.warnings.map(warning => `第 ${projectIndex + 1} 个项目：${warning}`))
+    } catch (error: any) {
+      warnings.push(`第 ${projectIndex + 1} 个项目导入失败：${error?.message || '未知错误'}`)
     }
   }
-  const result = await importCanvasProject({
-    name,
-    data: applyTargetCanvasAssetUrls(parsed.data, assetUrls),
-  }, context)
-  return { ...result, warnings: [...result.warnings, ...warnings] }
+  if (!details.length) {
+    const error = new Error('归档中的项目均未能导入。') as Error & { status?: number }
+    error.status = 400
+    throw error
+  }
+  return { detail: details[0], details, importedCount: details.length, warnings }
 }
 
 const collectAssistantContext = (snapshot: CanvasSnapshotV3, selection: unknown) => {

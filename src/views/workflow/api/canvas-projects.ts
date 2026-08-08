@@ -21,9 +21,16 @@ export interface CanvasProjectExport {
   canvas: CanvasSnapshotV3
 }
 
+export interface CanvasProjectImportResult {
+  detail: any
+  details?: any[]
+  importedCount?: number
+  warnings: string[]
+}
+
 export const exportCanvasProject = (projectId: string) => requestCanvasApi<CanvasProjectExport>(`/api/canvas/projects/${encodeURIComponent(projectId)}/export`)
 export const exportCanvasProjectSelection = (projectId: string, selection: string[]) => requestCanvasApi<CanvasProjectExport & { scope: 'selection' }>(`/api/canvas/projects/${encodeURIComponent(projectId)}/export-selection`, 'POST', { selection })
-export const importCanvasProject = (data: unknown, name?: string) => requestCanvasApi<{ detail: any; warnings: string[] }>('/api/canvas/projects/import', 'POST', { data, name })
+export const importCanvasProject = (data: unknown, name?: string) => requestCanvasApi<CanvasProjectImportResult>('/api/canvas/projects/import', 'POST', { data, name })
 export const importCanvasProjectArchive = async (file: File, name?: string) => {
   const response = await fetch(buildApiUrl('/api/canvas/projects/import-archive'), {
     method: 'POST',
@@ -35,7 +42,7 @@ export const importCanvasProjectArchive = async (file: File, name?: string) => {
     body: file,
   })
   handleUnauthorizedResponse(response.status, 'canvas-projects')
-  return await readApiData<{ detail: any; warnings: string[] }>(response)
+  return await readApiData<CanvasProjectImportResult>(response)
 }
 export interface CanvasAssistantPreviewOperation {
   type: 'insert_text_node' | 'insert_director_node' | 'connect_nodes'

@@ -196,4 +196,5 @@ export const NODE_SIZE_DEFAULTS: Record<WorkflowNodeType, NodeSizeConstraint> = 
   llmConfig: { minWidth: 320, minHeight: 220 },
   director: { minWidth: 360, minHeight: 310 },
   audio: { minWidth: 340, minHeight: 230 },
+  unknown: { minWidth: 220, minHeight: 120 },
 }

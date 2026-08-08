@@ -24,6 +24,11 @@ import { WORKFLOW_TEMPLATES } from './config/workflows'
 import { useWorkflowPersistence } from './composables/useWorkflowPersistence'
 import type { WorkflowDefinitionSummary } from './api/definitions'
 import { rollbackWorkflowDefinitionVersion, updateWorkflowDefinition } from './api/definitions'
+import {
+  exportCanvasProject as exportCanvasProjectFile,
+  importCanvasProject as importCanvasProjectFile,
+  previewCanvasAssistantOperation,
+} from './api/canvas-projects'
 import type { WorkflowCanvasPosition } from './composables/workflow-orchestrator-types'
 import {
   getWorkflowExecutionPlan,
@@ -46,6 +51,9 @@ import VideoNode from './components/nodes/VideoNode.vue'
 import LlmConfigNode from './components/nodes/LlmConfigNode.vue'
 import DirectorNode from './components/nodes/DirectorNode.vue'
 import AudioNode from './components/nodes/AudioNode.vue'
+import UnknownNode from './components/nodes/UnknownNode.vue'
+import CanvasPluginHost from './components/CanvasPluginHost.vue'
+import CanvasPromptLibrary from './components/CanvasPromptLibrary.vue'
 import AgentFab from './components/AgentFab.vue'
 
 // 边组件
@@ -106,6 +114,8 @@ import {
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+// /canvas 是账号级无限画布，/workflow 保持原有工作流语义和历史链接兼容。
+const workspaceScene = computed(() => route.path === '/canvas' ? 'INFINITE_CANVAS' : 'WORKFLOW_CANVAS')
 const { viewport, zoomIn, zoomOut, fitView, updateNodeInternals, screenToFlowCoordinate } = useVueFlow()
 
 // 注册自定义节点类型
@@ -118,6 +128,7 @@ const nodeTypes = {
   llmConfig: markRaw(LlmConfigNode),
   director: markRaw(DirectorNode),
   audio: markRaw(AudioNode),
+  unknown: markRaw(UnknownNode),
 } as any
 
 // 注册自定义边类型
@@ -144,6 +155,7 @@ const {
 // UI 状态
 const showNodeMenu = ref(false)
 const showTemplatePanel = ref(false)
+const showPromptLibrary = ref(false)
 const showWorkflowLibraryPanel = ref(false)
 const canvasSnapToGrid = ref(true)
 const canvasAlignmentGuides = ref(true)
@@ -222,6 +234,66 @@ interface WorkflowNodeOption {
 const currentWorkflowTitle = computed(() => {
   return currentWorkflowDetail.value?.definition?.name || workflowName.value || '未命名项目'
 })
+const canvasPluginSnapshot = computed(() => ({
+  nodes: nodes.value,
+  edges: edges.value,
+  viewport: canvasViewport.value,
+  scene: workspaceScene.value,
+}))
+
+const handleCanvasPluginProposal = async (proposal: { pluginId: string; operations: unknown[] }) => {
+  const operation = proposal.operations[0] as { type?: string; position?: { x?: number; y?: number }; data?: Record<string, unknown> } | undefined
+  if (!operation || operation.type !== 'insert_text_node') {
+    ElMessage.warning('插件提交了不受支持的画布操作，已拒绝。')
+    return
+  }
+  try {
+    await ElMessageBox.confirm('插件请求向画布插入一个文本节点，确认后会进入撤销历史和自动保存。', '确认插件操作', {
+      confirmButtonText: '插入', cancelButtonText: '取消', type: 'warning',
+    })
+    addNode('text', { x: Number(operation.position?.x) || 120, y: Number(operation.position?.y) || 120 }, {
+      content: String(operation.data?.content || ''),
+      label: String(operation.data?.label || '插件文本'),
+    })
+  } catch {
+    // 用户取消插件操作。
+  }
+}
+
+const runCanvasAssistantPreview = async () => {
+  if (workspaceScene.value !== 'INFINITE_CANVAS' || !currentWorkflowId.value) {
+    ElMessage.warning('请先保存无限画布项目后再使用画布助手。')
+    return
+  }
+  try {
+    const { value } = await ElMessageBox.prompt('描述要添加到画布的内容。助手只会先生成预览，确认后才写入画布。', '画布助手', {
+      confirmButtonText: '生成预览', cancelButtonText: '取消', inputPlaceholder: '例如：为选中的素材补一段镜头描述',
+    })
+    const prompt = String(value || '').trim()
+    if (!prompt) return
+    const selection = nodes.value.filter(node => node.selected).map(node => node.id)
+    const result = await previewCanvasAssistantOperation(currentWorkflowId.value, prompt, selection)
+    const operation = result?.proposal?.operations?.[0]
+    if (operation?.type !== 'insert_text_node') throw new Error('助手预览返回了不支持的操作')
+    await ElMessageBox.confirm('确认将助手预览插入画布？该操作可撤销，并会自动保存。', '应用助手预览', {
+      confirmButtonText: '插入', cancelButtonText: '取消', type: 'info',
+    })
+    addNode('text', { x: Number(operation.position?.x) || 120, y: Number(operation.position?.y) || 120 }, {
+      content: String(operation.data?.content || prompt), label: String(operation.data?.label || '助手草稿'),
+    })
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(error?.message || '画布助手暂时不可用')
+  }
+}
+
+const insertLibraryPrompt = (prompt: { title: string; content: string }) => {
+  const x = -viewport.value.x / viewport.value.zoom + (window.innerWidth / 2) / viewport.value.zoom
+  const y = -viewport.value.y / viewport.value.zoom + (window.innerHeight / 2) / viewport.value.zoom
+  addNode('text', { x, y }, { label: prompt.title, content: prompt.content })
+  showPromptLibrary.value = false
+  ElMessage.success('提示词已插入画布')
+}
 
 const workflowUserName = computed(() => {
   const user = authStore.currentUser.value
@@ -825,12 +897,58 @@ const goBack = () => {
   void goBackAction.run()
 }
 
+const downloadCurrentCanvasProject = async () => {
+  if (!currentWorkflowId.value || workspaceScene.value !== 'INFINITE_CANVAS') {
+    ElMessage.warning('请先保存无限画布项目后再导出。')
+    return
+  }
+  try {
+    const payload = await exportCanvasProjectFile(currentWorkflowId.value)
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${currentWorkflowTitle.value || 'infinite-canvas'}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('画布项目已导出')
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出画布失败')
+  }
+}
+
+const importCanvasProjectFromFile = () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'application/json,.json'
+  input.onchange = () => {
+    const file = input.files?.[0]
+    if (!file) return
+    void (async () => {
+      try {
+        const data = JSON.parse(await file.text())
+        const result = await importCanvasProjectFile(data, file.name.replace(/\.json$/i, ''))
+        const workflowId = String(result.detail?.definition?.id || '').trim()
+        if (!workflowId) throw new Error('导入结果缺少项目标识')
+        if (result.warnings.length) ElMessage.warning(`已导入，${result.warnings.length} 项需要在画布中确认。`)
+        else ElMessage.success('无限画布已导入')
+        await tryLoadWorkflowByRoute(workflowId)
+        await syncWorkflowRouteQuery(workflowId)
+        await handleRefreshWorkflowList()
+      } catch (error: any) {
+        ElMessage.error(error?.message || '导入画布失败，请检查 JSON 文件。')
+      }
+    })()
+  }
+  input.click()
+}
+
 const {
   run: handleRefreshWorkflowList,
   loading: workflowListLoading,
 } = useAsyncAction(async () => {
   await reloadWorkflowList({
-    scene: 'WORKFLOW_CANVAS',
+    scene: workspaceScene.value,
     keyword: workflowListKeyword.value || undefined,
   })
 })
@@ -879,7 +997,7 @@ const rollbackWorkflowVersionAction = useAsyncAction(async (workflow: WorkflowDe
   selectedWorkflowVersionId.value = rollbackVersion.id
   applyWorkflowVersionToCanvas(detail, rollbackVersion.id)
   syncWorkflowFormFromDetail()
-  await reloadWorkflowList({ scene: 'WORKFLOW_CANVAS', keyword: workflowListKeyword.value || undefined })
+  await reloadWorkflowList({ scene: workspaceScene.value, keyword: workflowListKeyword.value || undefined })
   await syncWorkflowRouteQuery(workflow.id)
   showWorkflowLibraryPanel.value = false
   await nextTick()
@@ -1055,7 +1173,7 @@ const performAutosave = async () => {
     code: workflowCode.value || undefined,
     description: workflowDescription.value || null,
     category: workflowCategory.value || null,
-    scene: 'WORKFLOW_CANVAS',
+    scene: workspaceScene.value,
   })
 
   currentWorkflowDetail.value = detail
@@ -1894,6 +2012,18 @@ watch(currentCanvasSnapshot, () => {
                 <path d="M9 5v14M4 10h16" stroke="currentColor" stroke-width="2"/>
               </svg>
             </button>
+
+            <button
+              v-if="workspaceScene === 'INFINITE_CANVAS'"
+              class="wf-btn wf-btn-icon"
+              :class="{ active: showPromptLibrary }"
+              type="button"
+              aria-label="提示词库"
+              data-tooltip="提示词库"
+              @click="showPromptLibrary = !showPromptLibrary"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 4h10a4 4 0 0 1 4 4v12l-4-2-4 2-4-2-4 2V8a4 4 0 0 1 4-4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 9h7M8 13h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
             <button
               class="wf-btn wf-btn-icon"
               :class="{ active: showNodeMenu }"
@@ -1903,6 +2033,20 @@ watch(currentCanvasSnapshot, () => {
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M12 5v14m-7-7h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+
+            <button
+              v-if="workspaceScene === 'INFINITE_CANVAS'"
+              class="wf-btn wf-btn-icon"
+              type="button"
+              aria-label="画布助手"
+              data-tooltip="画布助手（先预览，后确认）"
+              @click="runCanvasAssistantPreview"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                <path d="M19 16.5 19.8 19l2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
               </svg>
             </button>
 
@@ -2001,6 +2145,18 @@ watch(currentCanvasSnapshot, () => {
         </div>
 
         <Transition name="wf-panel">
+          <div v-if="showPromptLibrary" class="wf-template-panel" @click.self="showPromptLibrary = false">
+            <div class="wf-template-panel-inner">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                <span style="font-size: 14px; font-weight: 500; color: var(--text-primary);">提示词库</span>
+                <button class="wf-btn wf-btn-sm" type="button" @click="showPromptLibrary = false">关闭</button>
+              </div>
+              <CanvasPromptLibrary @insert="insertLibraryPrompt" />
+            </div>
+          </div>
+        </Transition>
+
+        <Transition name="wf-panel">
           <div v-if="showTemplatePanel" class="wf-template-panel" @click.self="showTemplatePanel = false">
             <div class="wf-template-panel-inner">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
@@ -2039,6 +2195,19 @@ watch(currentCanvasSnapshot, () => {
 
               <div class="wf-persistence-toolbar">
                 <input v-model="workflowListKeyword" class="wf-persistence-input" placeholder="按名称、编码、分类搜索" @keyup.enter="handleRefreshWorkflowList" />
+                <button
+                  v-if="workspaceScene === 'INFINITE_CANVAS'"
+                  class="wf-btn wf-btn-md"
+                  type="button"
+                  @click="importCanvasProjectFromFile"
+                >导入</button>
+                <button
+                  v-if="workspaceScene === 'INFINITE_CANVAS'"
+                  class="wf-btn wf-btn-md"
+                  type="button"
+                  :disabled="!currentWorkflowId"
+                  @click="downloadCurrentCanvasProject"
+                >导出</button>
                 <button
                   class="wf-btn wf-btn-md wf-btn-primary"
                   :class="{ 'wf-btn-danger': workflowRunning }"
@@ -2162,6 +2331,12 @@ watch(currentCanvasSnapshot, () => {
           @add-image-to-canvas="handleAssistantAddImage"
         />
       </aside>
+
+      <CanvasPluginHost
+        v-if="workspaceScene === 'INFINITE_CANVAS'"
+        :snapshot="canvasPluginSnapshot"
+        @proposal="handleCanvasPluginProposal"
+      />
 
       <!-- 折叠态下的展开把手 -->
       <AgentFab v-if="isAssistantCollapsed" @open="toggleAssistantPanel" />

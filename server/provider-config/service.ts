@@ -78,6 +78,64 @@ export interface AdminProviderPayload {
   sortOrder?: number
 }
 
+export type ProviderRequestTemplates = Partial<Record<'image' | 'imageEdit' | 'video', {
+  body?: Record<string, unknown>
+  headers?: Record<string, string>
+}>>
+
+const FORBIDDEN_TEMPLATE_HEADERS = new Set(['authorization', 'cookie', 'host', 'content-length'])
+const isJsonTemplateValue = (value: unknown, depth = 0): boolean => {
+  if (depth > 8 || value === null) return value === null
+  if (['string', 'number', 'boolean'].includes(typeof value)) return true
+  if (Array.isArray(value)) return value.length <= 100 && value.every(item => isJsonTemplateValue(item, depth + 1))
+  if (value && typeof value === 'object') return Object.keys(value as Record<string, unknown>).length <= 100
+    && Object.values(value as Record<string, unknown>).every(item => isJsonTemplateValue(item, depth + 1))
+  return false
+}
+
+export const normalizeProviderRequestTemplates = (input: unknown): ProviderRequestTemplates => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('调用模板必须是 JSON 对象')
+  const output: ProviderRequestTemplates = {}
+  for (const key of ['image', 'imageEdit', 'video'] as const) {
+    const template = (input as Record<string, unknown>)[key]
+    if (template === undefined) continue
+    if (!template || typeof template !== 'object' || Array.isArray(template)) throw new Error(`${key} 模板必须是对象`)
+    const record = template as Record<string, unknown>
+    if (record.script !== undefined || record.url !== undefined || record.method !== undefined) {
+      throw new Error('调用模板不支持脚本、URL 或 HTTP 方法；这些由受管厂商配置决定')
+    }
+    const body = record.body
+    const headers = record.headers
+    if (body !== undefined && (!body || typeof body !== 'object' || Array.isArray(body) || !isJsonTemplateValue(body))) throw new Error(`${key} body 必须是受限 JSON`)
+    if (headers !== undefined && (!headers || typeof headers !== 'object' || Array.isArray(headers))) throw new Error(`${key} headers 必须是键值对象`)
+    const safeHeaders = Object.fromEntries(Object.entries(headers || {}).map(([headerName, value]) => {
+      if (FORBIDDEN_TEMPLATE_HEADERS.has(headerName.toLowerCase())) throw new Error(`不允许覆盖请求头：${headerName}`)
+      if (typeof value !== 'string' || value.length > 500) throw new Error(`请求头 ${headerName} 必须是短文本`)
+      return [headerName, value]
+    })) as Record<string, string>
+    output[key] = { ...(body ? { body: body as Record<string, unknown> } : {}), ...(Object.keys(safeHeaders).length ? { headers: safeHeaders } : {}) }
+  }
+  return output
+}
+
+export const getProviderRequestTemplates = async (providerId: string): Promise<ProviderRequestTemplates> => {
+  const provider = await prisma.aiProvider.findUnique({ where: { id: providerId }, select: { extraJson: true } })
+  if (!provider) throw new Error('厂商不存在')
+  const extra = provider.extraJson && typeof provider.extraJson === 'object' && !Array.isArray(provider.extraJson)
+    ? provider.extraJson as Record<string, unknown> : {}
+  return normalizeProviderRequestTemplates(extra.requestTemplates || {})
+}
+
+export const updateProviderRequestTemplates = async (providerId: string, input: unknown) => {
+  const provider = await prisma.aiProvider.findUnique({ where: { id: providerId }, select: { extraJson: true } })
+  if (!provider) throw new Error('厂商不存在')
+  const requestTemplates = normalizeProviderRequestTemplates(input)
+  const extra = provider.extraJson && typeof provider.extraJson === 'object' && !Array.isArray(provider.extraJson)
+    ? provider.extraJson as Record<string, unknown> : {}
+  await prisma.aiProvider.update({ where: { id: providerId }, data: { extraJson: { ...extra, requestTemplates } } })
+  return requestTemplates
+}
+
 const getLegacyDefaultConfigRecord = () => prisma.aiProviderConfig.findFirst({
   where: {
     userId: null,

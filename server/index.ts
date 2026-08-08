@@ -31,6 +31,8 @@ import { isSystemInitPath } from './system-init/constants'
 import { handleSystemInitRequest } from './system-init/request-handler'
 import { isWorkflowDefinitionsPath } from './workflow-definitions/constants'
 import { handleWorkflowDefinitionsRequest } from './workflow-definitions/request-handler'
+import { isCanvasProjectsPath } from './canvas-projects/constants'
+import { handleCanvasProjectsRequest } from './canvas-projects/request-handler'
 import { isWorkflowRunsPath } from './workflow-runs/constants'
 import { handleWorkflowRunsRequest } from './workflow-runs/request-handler'
 import { recoverServerWorkflowRuns } from './workflow-runs/executor'
@@ -536,6 +538,14 @@ const REQUEST_ROUTE_STRATEGIES: RequestRouteStrategy[] = [
     match: isSystemConfigPath,
     handle: async (req, res) => {
       await handleSystemConfigRequest(req, res)
+      return true
+    },
+  },
+  {
+    key: 'canvas-projects',
+    match: isCanvasProjectsPath,
+    handle: async (req, res) => {
+      await handleCanvasProjectsRequest(req, res)
       return true
     },
   },

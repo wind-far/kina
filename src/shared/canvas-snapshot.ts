@@ -1,0 +1,197 @@
+/**
+ * 账号级无限画布的可移植快照协议。
+ *
+ * 该协议刻意只使用 JSON 值：它既是版本快照的运行时配置，也是导入导出文件
+ * 的稳定边界。旧工作流版本仍可读取；未知节点会被保留为占位节点，避免导入时
+ * 静默丢失第三方插件数据。
+ */
+
+export const CANVAS_SNAPSHOT_SCHEMA_VERSION = 3
+
+export type CanvasBackgroundMode = 'dots' | 'lines' | 'blank'
+
+export interface CanvasSnapshotNode {
+  id: string
+  type: string
+  position: { x: number; y: number }
+  data: Record<string, unknown>
+  zIndex?: number
+  selected?: boolean
+}
+
+export interface CanvasSnapshotEdge {
+  id: string
+  source: string
+  target: string
+  sourceHandle?: string | null
+  targetHandle?: string | null
+  type?: string
+  data?: Record<string, unknown>
+}
+
+export interface CanvasSnapshotV3 {
+  schemaVersion: typeof CANVAS_SNAPSHOT_SCHEMA_VERSION
+  scene: 'INFINITE_CANVAS'
+  nodes: CanvasSnapshotNode[]
+  edges: CanvasSnapshotEdge[]
+  viewport: { x: number; y: number; zoom: number }
+  backgroundMode: CanvasBackgroundMode
+  showImageInfo: boolean
+  chatSessions: unknown[]
+  activeChatId: string | null
+  extensions: Record<string, unknown>
+}
+
+export interface CanvasImportResult {
+  snapshot: CanvasSnapshotV3
+  warnings: string[]
+}
+
+const asRecord = (value: unknown): Record<string, unknown> => {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+const numberValue = (value: unknown, fallback = 0) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+const uniqueId = (value: unknown, prefix: string, index: number, seen: Set<string>) => {
+  const base = String(value || '').trim() || `${prefix}_${index + 1}`
+  let candidate = base
+  let suffix = 2
+  while (seen.has(candidate)) {
+    candidate = `${base}_${suffix++}`
+  }
+  seen.add(candidate)
+  return candidate
+}
+
+const normalizeNode = (value: unknown, index: number, nodeIds: Set<string>, warnings: string[]): CanvasSnapshotNode | null => {
+  const input = asRecord(value)
+  const type = String(input.type || input.kind || 'unknown').trim() || 'unknown'
+  const positionInput = asRecord(input.position)
+  const data = asRecord(input.data)
+  const id = uniqueId(input.id, 'node', index, nodeIds)
+
+  if (!['text', 'image', 'video', 'audio', 'imageConfig', 'videoConfig', 'llmConfig', 'director'].includes(type)) {
+    warnings.push(`节点 ${id} 的类型“${type}”当前不可执行，已作为兼容占位节点保留。`)
+    return {
+      id,
+      type: 'unknown',
+      position: { x: numberValue(positionInput.x), y: numberValue(positionInput.y) },
+      data: { label: String(data.label || input.label || type), originalType: type, originalNode: input },
+      zIndex: numberValue(input.zIndex, index),
+    }
+  }
+
+  return {
+    id,
+    type,
+    position: { x: numberValue(positionInput.x), y: numberValue(positionInput.y) },
+    data,
+    zIndex: Number.isFinite(Number(input.zIndex)) ? numberValue(input.zIndex) : undefined,
+    selected: Boolean(input.selected),
+  }
+}
+
+/** 将 CanvasMind 当前或目标项目的常见导出结构收敛为 v3。 */
+export const normalizeCanvasImport = (value: unknown): CanvasImportResult => {
+  const input = asRecord(value)
+  const nestedCanvas = asRecord(input.canvas)
+  const source = Object.keys(nestedCanvas).length ? nestedCanvas : input
+  const warnings: string[] = []
+  const nodeIds = new Set<string>()
+  const rawNodes = Array.isArray(source.nodes) ? source.nodes : []
+  const nodes = rawNodes
+    .map((node, index) => normalizeNode(node, index, nodeIds, warnings))
+    .filter((node): node is CanvasSnapshotNode => Boolean(node))
+  const rawEdges = Array.isArray(source.edges) ? source.edges : []
+  const edgeIds = new Set<string>()
+  const edges = rawEdges.flatMap((edge, index): CanvasSnapshotEdge[] => {
+    const inputEdge = asRecord(edge)
+    const sourceId = String(inputEdge.source || '').trim()
+    const targetId = String(inputEdge.target || '').trim()
+    if (!nodeIds.has(sourceId) || !nodeIds.has(targetId) || sourceId === targetId) {
+      warnings.push(`第 ${index + 1} 条连线引用了缺失或相同的节点，已忽略。`)
+      return []
+    }
+    return [{
+      id: uniqueId(inputEdge.id, 'edge', index, edgeIds),
+      source: sourceId,
+      target: targetId,
+      sourceHandle: typeof inputEdge.sourceHandle === 'string' ? inputEdge.sourceHandle : null,
+      targetHandle: typeof inputEdge.targetHandle === 'string' ? inputEdge.targetHandle : null,
+      type: typeof inputEdge.type === 'string' ? inputEdge.type : undefined,
+      data: asRecord(inputEdge.data),
+    }]
+  })
+  const viewport = asRecord(source.viewport)
+  const runtime = asRecord(source.runtimeConfigJson)
+  const backgroundMode = source.backgroundMode === 'lines' || source.backgroundMode === 'blank'
+    ? source.backgroundMode
+    : runtime.backgroundMode === 'lines' || runtime.backgroundMode === 'blank'
+      ? runtime.backgroundMode
+      : 'dots'
+
+  return {
+    snapshot: {
+      schemaVersion: CANVAS_SNAPSHOT_SCHEMA_VERSION,
+      scene: 'INFINITE_CANVAS',
+      nodes,
+      edges,
+      viewport: {
+        x: numberValue(viewport.x),
+        y: numberValue(viewport.y),
+        zoom: Math.max(0.1, Math.min(4, numberValue(viewport.zoom, 1))),
+      },
+      backgroundMode,
+      showImageInfo: Boolean(source.showImageInfo ?? runtime.showImageInfo),
+      chatSessions: Array.isArray(source.chatSessions) ? source.chatSessions : Array.isArray(runtime.chatSessions) ? runtime.chatSessions : [],
+      activeChatId: typeof source.activeChatId === 'string'
+        ? source.activeChatId
+        : typeof runtime.activeChatId === 'string' ? runtime.activeChatId : null,
+      extensions: asRecord(source.extensions),
+    },
+    warnings,
+  }
+}
+
+export const canvasSnapshotToWorkflowPayload = (snapshot: CanvasSnapshotV3) => ({
+  definitionJson: {
+    schemaVersion: CANVAS_SNAPSHOT_SCHEMA_VERSION,
+    scene: 'INFINITE_CANVAS',
+    nodeCount: snapshot.nodes.length,
+    edgeCount: snapshot.edges.length,
+  },
+  nodesJson: snapshot.nodes,
+  edgesJson: snapshot.edges,
+  viewportJson: snapshot.viewport,
+  runtimeConfigJson: {
+    savedAt: new Date().toISOString(),
+    backgroundMode: snapshot.backgroundMode,
+    showImageInfo: snapshot.showImageInfo,
+    chatSessions: snapshot.chatSessions,
+    activeChatId: snapshot.activeChatId,
+    canvasSnapshotSchemaVersion: CANVAS_SNAPSHOT_SCHEMA_VERSION,
+    extensions: snapshot.extensions,
+  },
+})
+
+export const workflowVersionToCanvasSnapshot = (version: unknown): CanvasSnapshotV3 => {
+  const input = asRecord(version)
+  const runtime = asRecord(input.runtimeConfigJson)
+  return normalizeCanvasImport({
+    nodes: input.nodesJson,
+    edges: input.edgesJson,
+    viewport: input.viewportJson,
+    runtimeConfigJson: runtime,
+    backgroundMode: runtime.backgroundMode,
+    showImageInfo: runtime.showImageInfo,
+    chatSessions: runtime.chatSessions,
+    activeChatId: runtime.activeChatId,
+    extensions: runtime.extensions,
+  }).snapshot
+}

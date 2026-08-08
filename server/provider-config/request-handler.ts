@@ -11,6 +11,8 @@ import {
   getPublicModelCatalog,
   listAdminProviders,
   updateAdminProvider,
+  getProviderRequestTemplates,
+  updateProviderRequestTemplates,
 } from './service'
 import {
   batchUpsertProviderModels,
@@ -91,6 +93,11 @@ const matchProviderTestPath = (requestPath: string) => {
   }
 }
 
+const matchProviderRequestTemplatesPath = (requestPath: string) => {
+  const matched = requestPath.match(/^\/api\/provider-config\/providers\/([^/]+)\/request-templates$/)
+  return matched ? { providerId: decodeURIComponent(matched[1]) } : null
+}
+
 // 处理厂商配置与模型配置请求。
 export const handleProviderConfigRequest = async (req: any, res: any) => {
   try {
@@ -106,6 +113,24 @@ export const handleProviderConfigRequest = async (req: any, res: any) => {
     const providerModelDiscoverMatch = matchProviderModelDiscoverPath(requestPath)
     const providerModelBatchUpsertMatch = matchProviderModelBatchUpsertPath(requestPath)
     const providerTestMatch = matchProviderTestPath(requestPath)
+    const providerRequestTemplatesMatch = matchProviderRequestTemplatesPath(requestPath)
+
+    if (providerRequestTemplatesMatch && req.method === 'GET') {
+      const currentUser = await requireAdminSessionUser(req, res)
+      if (!currentUser) return
+      sendJson(res, 200, { data: await getProviderRequestTemplates(providerRequestTemplatesMatch.providerId) })
+      return
+    }
+
+    if (providerRequestTemplatesMatch && req.method === 'PUT') {
+      const currentUser = await requireAdminSessionUser(req, res)
+      if (!currentUser) return
+      const payload = await readJsonBody(req)
+      const data = await updateProviderRequestTemplates(providerRequestTemplatesMatch.providerId, payload)
+      await recordAdminAuditLog({ req, operatorUserId: currentUser.id, action: 'admin_provider_request_templates_update', targetType: 'ai_provider', targetId: providerRequestTemplatesMatch.providerId, afterJson: data })
+      sendJson(res, 200, { data, message: '受限调用模板已保存' })
+      return
+    }
 
     if (req.method === 'GET' && requestPath === PROVIDER_CONFIG_CATALOG_PATH) {
       const data = await getPublicModelCatalog()

@@ -24,12 +24,14 @@ import {
   type WorkflowCanvasEdge,
   type WorkflowCanvasNode,
 } from './useWorkflowCanvas'
+import { CANVAS_SNAPSHOT_SCHEMA_VERSION } from '@/shared/canvas-snapshot'
 
 export interface WorkflowPersistenceSnapshot {
   definitionJson: {
     scene: string
     nodeCount: number
     edgeCount: number
+    schemaVersion?: number
   }
   nodesJson: WorkflowCanvasNode[]
   edgesJson: WorkflowCanvasEdge[]
@@ -44,6 +46,8 @@ export interface WorkflowPersistenceSnapshot {
     showImageInfo: boolean
     chatSessions: unknown[]
     activeChatId: string | null
+    canvasSnapshotSchemaVersion?: number
+    extensions?: Record<string, unknown>
   }
 }
 
@@ -78,12 +82,13 @@ export const useWorkflowPersistence = () => {
 
   const hasWorkflow = computed(() => Boolean(currentWorkflowId.value))
 
-  const buildWorkflowSnapshot = (): WorkflowPersistenceSnapshot => {
+  const buildWorkflowSnapshot = (scene = 'WORKFLOW_CANVAS'): WorkflowPersistenceSnapshot => {
     return {
       definitionJson: {
-        scene: 'WORKFLOW_CANVAS',
+        scene,
         nodeCount: nodes.value.length,
         edgeCount: edges.value.length,
+        ...(scene === 'INFINITE_CANVAS' ? { schemaVersion: CANVAS_SNAPSHOT_SCHEMA_VERSION } : {}),
       },
       nodesJson: JSON.parse(JSON.stringify(nodes.value)) as WorkflowCanvasNode[],
       edgesJson: JSON.parse(JSON.stringify(edges.value)) as WorkflowCanvasEdge[],
@@ -98,6 +103,10 @@ export const useWorkflowPersistence = () => {
         showImageInfo: canvasShowImageInfo.value,
         chatSessions: JSON.parse(JSON.stringify(canvasChatSessions.value)),
         activeChatId: canvasActiveChatId.value,
+        ...(scene === 'INFINITE_CANVAS' ? {
+          canvasSnapshotSchemaVersion: CANVAS_SNAPSHOT_SCHEMA_VERSION,
+          extensions: {},
+        } : {}),
       },
     }
   }
@@ -241,7 +250,7 @@ export const useWorkflowPersistence = () => {
   const saveWorkflow = async (options: SaveWorkflowOptions) => {
     saving.value = true
     try {
-      const snapshot = buildWorkflowSnapshot()
+      const snapshot = buildWorkflowSnapshot(options.scene)
 
       if (!options.workflowId && !currentWorkflowId.value) {
         const payload: WorkflowDefinitionCreatePayload = {
@@ -288,7 +297,7 @@ export const useWorkflowPersistence = () => {
   const autosaveWorkflow = async (options: AutosaveWorkflowOptions) => {
     saving.value = true
     try {
-      const snapshot = buildWorkflowSnapshot()
+      const snapshot = buildWorkflowSnapshot(options.scene)
 
       if (!options.workflowId && !currentWorkflowId.value) {
         const detail = await createWorkflowDefinition({

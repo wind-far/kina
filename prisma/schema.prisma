@@ -47,6 +47,9 @@ model AppUser {
   workflowDefinitions        WorkflowDefinition[]
   workflowDefinitionVersions WorkflowDefinitionVersion[]
   workflowRuns               WorkflowRun[]
+  canvasPluginInstalls       CanvasPluginInstall[]
+  canvasPromptSources       CanvasPromptSource[]
+  canvasPrompts             CanvasPrompt[]         @relation("CanvasPromptOwner")
   videoProjects              VideoProject[]
 
   @@map("app_users")
@@ -562,6 +565,96 @@ model GenerationSession {
   @@index([userId, lastRecordAt], map: "idx_generation_sessions_user_last_record_at")
   @@index([userId, source, lastRecordAt], map: "idx_generation_sessions_user_source_last_record_at")
   @@map("generation_sessions")
+}
+
+/// 受信无限画布插件。远程包仅作为沙箱 iframe 的入口，不会在主应用上下文执行。
+model CanvasPlugin {
+  id           String                @id @default(cuid()) @db.VarChar(36)
+  slug         String                @unique(map: "uk_canvas_plugins_slug") @db.VarChar(100)
+  name         String                @db.VarChar(100)
+  description  String?               @db.VarChar(255)
+  manifestJson Json                  @map("manifest_json")
+  isEnabled    Boolean               @default(true) @map("is_enabled")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+  releases     CanvasPluginRelease[]
+  installs     CanvasPluginInstall[]
+
+  @@index([isEnabled, updatedAt], map: "idx_canvas_plugins_enabled_updated")
+  @@map("canvas_plugins")
+}
+
+/// 插件发布版本由管理员审核并绑定 SHA-256 完整性值。
+model CanvasPluginRelease {
+  id              String       @id @default(cuid()) @db.VarChar(36)
+  pluginId        String       @map("plugin_id") @db.VarChar(36)
+  version         String       @db.VarChar(50)
+  packageUrl      String       @map("package_url") @db.Text
+  integritySha256 String       @map("integrity_sha256") @db.VarChar(128)
+  manifestJson    Json         @map("manifest_json")
+  isTrusted       Boolean      @default(false) @map("is_trusted")
+  publishedById   String?      @map("published_by_id") @db.VarChar(36)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  plugin          CanvasPlugin @relation(fields: [pluginId], references: [id], onDelete: Cascade)
+
+  @@unique([pluginId, version], map: "uk_canvas_plugin_releases_plugin_version")
+  @@index([pluginId, createdAt], map: "idx_canvas_plugin_releases_plugin_created")
+  @@map("canvas_plugin_releases")
+}
+
+/// 用户启用状态独立保存，便于升级和卸载同时不影响其他用户画布。
+model CanvasPluginInstall {
+  id        String       @id @default(cuid()) @db.VarChar(36)
+  userId    String       @map("user_id") @db.VarChar(36)
+  pluginId  String       @map("plugin_id") @db.VarChar(36)
+  releaseId String       @map("release_id") @db.VarChar(36)
+  isEnabled Boolean      @default(true) @map("is_enabled")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+  user      AppUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plugin    CanvasPlugin @relation(fields: [pluginId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pluginId], map: "uk_canvas_plugin_installs_user_plugin")
+  @@index([userId, isEnabled], map: "idx_canvas_plugin_installs_user_enabled")
+  @@map("canvas_plugin_installs")
+}
+
+/// 账号级提示词源。远程同步只允许受限的 HTTPS 原始 JSON 地址，避免服务端代发任意请求。
+model CanvasPromptSource {
+  id         String         @id @default(cuid()) @db.VarChar(36)
+  userId     String?        @map("user_id") @db.VarChar(36)
+  name       String         @db.VarChar(100)
+  sourceUrl  String?        @map("source_url") @db.Text
+  isEnabled  Boolean        @default(true) @map("is_enabled")
+  configJson Json?          @map("config_json")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+  user       AppUser?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prompts    CanvasPrompt[]
+
+  @@index([userId, isEnabled, updatedAt], map: "idx_canvas_prompt_sources_user_enabled")
+  @@map("canvas_prompt_sources")
+}
+
+/// 提示词条目可来自同步源或个人手工沉淀，并可直接插入画布节点。
+model CanvasPrompt {
+  id          String              @id @default(cuid()) @db.VarChar(36)
+  userId      String?             @map("user_id") @db.VarChar(36)
+  sourceId    String?             @map("source_id") @db.VarChar(36)
+  externalKey String?             @map("external_key") @db.VarChar(191)
+  title       String              @db.VarChar(191)
+  content     String              @db.LongText
+  tagsJson    Json?               @map("tags_json")
+  isEnabled   Boolean             @default(true) @map("is_enabled")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  user        AppUser?            @relation("CanvasPromptOwner", fields: [userId], references: [id], onDelete: Cascade)
+  source      CanvasPromptSource? @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, externalKey], map: "uk_canvas_prompts_source_external")
+  @@index([userId, isEnabled, updatedAt], map: "idx_canvas_prompts_user_enabled")
+  @@index([sourceId, isEnabled], map: "idx_canvas_prompts_source_enabled")
+  @@map("canvas_prompts")
 }
 
 /// 统一生成记录表。

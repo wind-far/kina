@@ -24,7 +24,7 @@ import type { WorkflowCanvasPosition } from './workflow-orchestrator-types'
 import workflowReferenceSample from '@/assets/workflow-reference-sample.svg'
 import { resolveWorkflowNodeMenuTarget } from '@/shared/workflow-node-menu'
 
-export type WorkflowNodeType = 'text' | 'imageConfig' | 'videoConfig' | 'image' | 'video' | 'llmConfig' | 'director' | 'audio'
+export type WorkflowNodeType = 'text' | 'imageConfig' | 'videoConfig' | 'image' | 'video' | 'llmConfig' | 'director' | 'audio' | 'unknown'
 export type WorkflowNodeAddMenuType = 'text' | 'image' | 'video' | 'director' | 'audio' | 'reference'
 
 export interface WorkflowNodeDataBase {
@@ -103,6 +103,12 @@ export interface WorkflowAudioNodeData extends WorkflowNodeDataBase {
   duration?: number
 }
 
+/** 导入的远程插件节点在插件未启用时仍可安全地保留和导出。 */
+export interface WorkflowUnknownNodeData extends WorkflowNodeDataBase {
+  originalType?: string
+  originalNode?: Record<string, unknown>
+}
+
 export interface WorkflowNodeDataMap {
   text: WorkflowTextNodeData
   imageConfig: WorkflowImageConfigNodeData
@@ -112,6 +118,7 @@ export interface WorkflowNodeDataMap {
   llmConfig: WorkflowLlmConfigNodeData
   director: WorkflowDirectorNodeData
   audio: WorkflowAudioNodeData
+  unknown: WorkflowUnknownNodeData
 }
 
 export type WorkflowNodeData = WorkflowNodeDataMap[WorkflowNodeType]
@@ -367,6 +374,8 @@ const getDefaultNodeData = <T extends WorkflowNodeType>(type: T): WorkflowNodeDa
         duration: 0,
         label: '音频节点',
       } as WorkflowNodeDataMap[T]
+    case 'unknown':
+      return { label: '未安装的插件节点' } as WorkflowNodeDataMap[T]
     default:
       throw new Error(`不支持的节点类型: ${String(type)}`)
   }

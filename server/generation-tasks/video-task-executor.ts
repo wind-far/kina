@@ -1,5 +1,6 @@
 import type { GenerationTaskStartPayload, GenerationTaskStreamEvent } from './shared'
 import type { GenerationRecordPayload } from '../generation-records/shared'
+import { legacyImagesToSkillMediaReferences, normalizeSkillMediaReferences } from '../../src/shared/skill-runtime'
 import type { VideoGenerationUpstreamInput, VideoGenerationUpstreamResult } from './video-upstream'
 
 type VideoExecutionTask = {
@@ -48,6 +49,17 @@ export const executeVideoTask = async (
     ? payload.referenceImages.map(item => String(item || '').trim()).filter(Boolean)
     : []
   const referenceImageRoles = readReferenceImageRoles(payload)
+  const mediaReferences = normalizeSkillMediaReferences(payload.mediaReferences)
+  const normalizedMediaReferences = mediaReferences.length
+    ? mediaReferences
+    : legacyImagesToSkillMediaReferences(referenceImages).map((item, index) => ({
+      ...item,
+      role: referenceImageRoles[index] === 'first_frame_image'
+        ? 'first_frame' as const
+        : referenceImageRoles[index] === 'last_frame_image'
+          ? 'last_frame' as const
+          : 'reference' as const,
+    }))
   context.emitTaskProgressEvent(task.recordId, {
     stage: 'resolved_provider',
     message: '已解析厂商与模型配置，准备请求上游视频接口',
@@ -73,6 +85,7 @@ export const executeVideoTask = async (
     duration: String(payload.duration || payload.requestBody?.duration || '').trim() || undefined,
     referenceImages,
     referenceImageRoles,
+    mediaReferences: normalizedMediaReferences,
   })
   await context.ensureTaskNotAborted(task)
   context.emitTaskProgressEvent(task.recordId, {

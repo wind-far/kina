@@ -7,10 +7,12 @@ import type {
 } from '@prisma/client'
 import { isPrismaConfigured, prisma } from '../db/prisma'
 import { getOrSetJsonCache, invalidateRedisCaches, redisKeys } from '../redis'
+import { ensureBuiltInSkillSources, loadSkillSourceInstructions } from './source-service'
 
 export interface AdminSkillItem {
   id: string
   providerId: string
+  sourcePackageKey: string
   skillKey: string
   label: string
   description: string
@@ -147,6 +149,8 @@ export interface AdminSkillStageTemplatePayload {
 
 export interface AdminSkillPayload {
   providerId?: string
+  /** 受信 Skill 来源包；由管理员在来源中心登记，运行时用于许可证校验。 */
+  sourcePackageKey?: string
   skillKey?: string
   label?: string
   description?: string
@@ -576,6 +580,7 @@ const normalizeSkillPayload = (payload: AdminSkillPayload) => {
 
   return {
     providerId: normalizeTrimmedString(payload.providerId),
+    sourcePackageKey: normalizeTrimmedString(payload.sourcePackageKey),
     skillKey,
     label,
     description: normalizeTrimmedString(payload.description),
@@ -630,6 +635,7 @@ const resolveDependencySkillRecords = async (client: SkillConfigTransactionClien
 const buildAdminSkillItem = (item: {
   id: string
   providerId: string | null
+  sourcePackage?: { packageKey: string } | null
   skillKey: string
   label: string
   description: string | null
@@ -649,6 +655,7 @@ const buildAdminSkillItem = (item: {
 }): AdminSkillItem => ({
   id: item.id,
   providerId: item.providerId || '',
+  sourcePackageKey: item.sourcePackage?.packageKey || '',
   skillKey: item.skillKey,
   label: item.label,
   description: item.description || '',
@@ -779,6 +786,7 @@ const buildSkillDependencyItem = (item: {
 const buildRuntimeSkillDefinition = (skill: {
   id: string
   providerId: string | null
+  sourcePackage?: { packageKey: string } | null
   skillKey: string
   label: string
   description: string | null
@@ -892,6 +900,7 @@ const ensureBuiltInSkillSeeds = async () => {
   }
 
   ensureBuiltInSkillsPromise = (async () => {
+    await ensureBuiltInSkillSources()
     const skillKeys = BUILT_IN_SKILL_SEEDS.map(item => normalizeTrimmedString(item.payload.skillKey))
     const existingSkills = await prisma.aiSkill.findMany({
       where: {
@@ -912,9 +921,14 @@ const ensureBuiltInSkillSeeds = async () => {
     for (const seed of missingSeeds) {
       const normalizedPayload = normalizeSkillPayload(seed.payload)
       await prisma.$transaction(async (tx) => {
+        const sourcePackageKey = normalizeTrimmedString((normalizedPayload.configJson || {}).sourcePackageKey || normalizedPayload.sourcePackageKey)
+        const sourcePackage = sourcePackageKey
+          ? await tx.skillSourcePackage.findUnique({ where: { packageKey: sourcePackageKey }, select: { id: true } })
+          : null
         const skill = await tx.aiSkill.create({
           data: {
             providerId: normalizedPayload.providerId || null,
+            sourcePackageId: sourcePackage?.id || null,
             skillKey: normalizedPayload.skillKey,
             label: normalizedPayload.label,
             description: normalizedPayload.description || null,
@@ -960,6 +974,7 @@ const loadSkillWithTemplates = async (skillKey: string, enabledOnly: boolean) =>
       ...(enabledOnly ? { isEnabled: true } : {}),
     },
     include: {
+      sourcePackage: { select: { packageKey: true } },
       dependencies: {
         include: {
           dependencySkill: true,
@@ -1001,6 +1016,7 @@ const loadSkillWithTemplates = async (skillKey: string, enabledOnly: boolean) =>
 export const listAdminSkills = async () => {
   await ensureBuiltInSkillSeeds()
   const skills = await prisma.aiSkill.findMany({
+    include: { sourcePackage: { select: { packageKey: true } } },
     orderBy: [
       { sortOrder: 'asc' },
       { createdAt: 'asc' },
@@ -1066,12 +1082,17 @@ export const getWorkspaceSkillRuntimeConfig = async (skillKey: string) => {
         workflowType: runtimeSkill.skill.workflowType,
         expectedImageCount: runtimeSkill.skill.expectedImageCount,
         workspaceSkillKey: runtimeSkill.workspaceSkillKey,
+        sourcePackageKey: runtimeSkill.skill.sourcePackageKey,
         dependencySkillKeys: runtimeSkill.dependencySkillKeys,
         prompts: runtimeSkill.prompts,
         workflowTemplate: runtimeSkill.workflowTemplate,
         planTemplates: runtimeSkill.planTemplates,
         stageTemplates: runtimeSkill.stageTemplates,
         configJson: runtimeSkill.skill.configJson,
+        sourceInstructions: await loadSkillSourceInstructions(
+          runtimeSkill.skill.sourcePackageKey,
+          normalizeStringArray((runtimeSkill.skill.configJson || {}).sourceArtifactPaths),
+        ),
       }
     },
   })
@@ -1175,6 +1196,16 @@ const assertProviderExists = async (providerId: string) => {
   }
 
   return provider.id
+}
+
+const resolveSkillSourcePackageId = async (sourcePackageKey: string) => {
+  if (!sourcePackageKey) return null
+  const source = await prisma.skillSourcePackage.findFirst({
+    where: { packageKey: sourcePackageKey, isTrusted: true, isEnabled: true },
+    select: { id: true },
+  })
+  if (!source) throw new Error('Skill 来源不存在、未获信任或已停用')
+  return source.id
 }
 
 const assertSkillKeyAvailable = async (skillKey: string, excludeId = '') => {
@@ -1301,12 +1332,15 @@ const replaceSkillTemplates = async (
 export const createAdminSkill = async (payload: AdminSkillPayload) => {
   const normalizedPayload = normalizeSkillPayload(payload)
   await assertProviderExists(normalizedPayload.providerId)
+  await ensureBuiltInSkillSources()
+  const sourcePackageId = await resolveSkillSourcePackageId(normalizedPayload.sourcePackageKey)
   await assertSkillKeyAvailable(normalizedPayload.skillKey)
 
   await prisma.$transaction(async (tx) => {
     const skill = await tx.aiSkill.create({
       data: {
         providerId: normalizedPayload.providerId || null,
+        sourcePackageId,
         skillKey: normalizedPayload.skillKey,
         label: normalizedPayload.label,
         description: normalizedPayload.description || null,
@@ -1348,6 +1382,8 @@ export const updateAdminSkill = async (skillKey: string, payload: AdminSkillPayl
 
   const normalizedPayload = normalizeSkillPayload(payload)
   await assertProviderExists(normalizedPayload.providerId)
+  await ensureBuiltInSkillSources()
+  const sourcePackageId = await resolveSkillSourcePackageId(normalizedPayload.sourcePackageKey)
   await assertSkillKeyAvailable(normalizedPayload.skillKey, existing.id)
 
   await prisma.$transaction(async (tx) => {
@@ -1355,6 +1391,7 @@ export const updateAdminSkill = async (skillKey: string, payload: AdminSkillPayl
       where: { id: existing.id },
       data: {
         providerId: normalizedPayload.providerId || null,
+        sourcePackageId,
         skillKey: normalizedPayload.skillKey,
         label: normalizedPayload.label,
         description: normalizedPayload.description || null,

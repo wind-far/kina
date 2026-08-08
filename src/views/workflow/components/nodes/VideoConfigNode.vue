@@ -21,8 +21,8 @@ import {
   type WorkflowVideoConfigNodeData,
 } from '../../composables/useWorkflowCanvas'
 import { VIDEO_RATIO_LIST, getAllVideoModels, getDefaultVideoModelKey, getModelByName, loadPublicModelCatalog } from '@/config/models'
-import { resolveGatewayUpstream } from '@/api/ai-gateway'
-import { createVideoTask, pollVideoTask } from '../../api/video'
+import { createGenerationTask, resolveGenerationTaskModel, subscribeGenerationTaskEvents } from '@/api/generation-tasks'
+import type { SkillMediaReference } from '@/shared/skill-runtime'
 import WfSelect from '@/components/common/WfSelect.vue'
 
 const props = defineProps<{
@@ -49,16 +49,15 @@ interface WorkflowVideoModelLike {
 
 const isTextNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'text'> => node?.type === 'text'
 const isImageNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'image'> => node?.type === 'image'
+const isVideoNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'video'> => node?.type === 'video'
+const isAudioNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'audio'> => node?.type === 'audio'
 const isLlmNode = (node?: WorkflowCanvasNode): node is WorkflowCanvasNode<'llmConfig'> => node?.type === 'llmConfig'
 const readImageRole = (data: unknown) => (data && typeof data === 'object' && 'imageRole' in data
   ? String((data as { imageRole?: string }).imageRole || 'input_reference')
   : 'input_reference')
-const readVideoResultUrl = (result: { data?: Array<{ url?: string }> | Record<string, unknown> | null; url?: string }) => {
-  if (Array.isArray(result.data)) {
-    return result.data[0]?.url || result.url
-  }
-  return result.url
-}
+const readMediaRole = (data: unknown) => (data && typeof data === 'object' && 'mediaRole' in data
+  ? String((data as { mediaRole?: string }).mediaRole || 'reference')
+  : '')
 
 const model = ref(props.data?.model || getDefaultVideoModelKey())
 const ratio = ref(props.data?.ratio || '16x9')
@@ -103,7 +102,7 @@ const updateConfig = () => {
 const collectInputs = () => {
   const incoming = edges.value.filter(e => e.target === props.id)
   let prompt = ''
-  const images: Array<{ url: string; role: string }> = []
+  const mediaReferences: SkillMediaReference[] = []
 
   for (const edge of incoming) {
     const src = nodes.value.find(n => n.id === edge.source)
@@ -111,15 +110,23 @@ const collectInputs = () => {
     if (isTextNode(src) && src.data.content) prompt = src.data.content
     if (isLlmNode(src) && src.data.outputContent) prompt = src.data.outputContent
     if (isImageNode(src) && src.data.url) {
-      images.push({ url: src.data.url, role: readImageRole(edge.data) })
+      const legacyRole = readImageRole(edge.data)
+      const role = readMediaRole(edge.data) || (legacyRole === 'first_frame_image' ? 'first_frame' : legacyRole === 'last_frame_image' ? 'last_frame' : 'reference')
+      mediaReferences.push({ mediaType: 'image', url: src.data.url, role: role as SkillMediaReference['role'], sourceNodeId: src.id })
+    }
+    if (isVideoNode(src) && src.data.url) {
+      mediaReferences.push({ mediaType: 'video', url: src.data.url, role: (readMediaRole(edge.data) || 'video_reference') as SkillMediaReference['role'], sourceNodeId: src.id })
+    }
+    if (isAudioNode(src) && src.data.url) {
+      mediaReferences.push({ mediaType: 'audio', url: src.data.url, role: (readMediaRole(edge.data) || 'audio_reference') as SkillMediaReference['role'], sourceNodeId: src.id, startSeconds: 0, endSeconds: src.data.duration })
     }
   }
-  return { prompt, images }
+  return { prompt, mediaReferences }
 }
 
 const handleGenerate = async () => {
-  const { prompt, images } = collectInputs()
-  if (!prompt && !images.length) return
+  const { prompt, mediaReferences } = collectInputs()
+  if (!prompt && !mediaReferences.length) return
 
   isGenerating.value = true
   progress.value = 0
@@ -135,25 +142,11 @@ const handleGenerate = async () => {
   let outputNodeId: string | null = null
 
   try {
-    const { providerId, modelKey } = await resolveGatewayUpstream('video', {
-      modelValue: model.value,
+    const { providerId, modelKey } = resolveGenerationTaskModel({
+      modelKey: model.value,
+      category: 'VIDEO',
+      missingProviderMessage: '未匹配到后台视频厂商配置',
     })
-    const formData = new FormData()
-    formData.append('model', modelKey)
-    if (prompt) formData.append('prompt', prompt)
-    formData.append('ratio', ratio.value)
-    formData.append('quality', resolution.value)
-    formData.append('duration', String(duration.value))
-
-    for (const img of images) {
-      if (img.url.startsWith('data:') || img.url.startsWith('blob:')) {
-        const res = await fetch(img.url)
-        const blob = await res.blob()
-        formData.append(img.role, blob, 'image.png')
-      } else {
-        formData.append(img.role, img.url)
-      }
-    }
 
     // 模板可能已经预置结果节点；优先复用，避免重复运行不断新增输出节点。
     const node = nodes.value.find(n => n.id === props.id)
@@ -172,27 +165,45 @@ const handleGenerate = async () => {
     const createdOutputNodeId = outputNodeId
     setTimeout(() => updateNodeInternals([createdOutputNodeId]), 50)
 
-    const task = await createVideoTask(formData, { signal: controller.signal })
-    const taskId = task?.id || task?.task_id
-
-    if (taskId && providerId) {
-      const result = await pollVideoTask(taskId, providerId, 120, 5000, controller.signal)
-      const videoUrl = readVideoResultUrl(result)
-
-      if (videoUrl) {
-        updateNode(outputNodeId, { url: videoUrl, label: '生成视频', loading: false })
-        updateNode(props.id, { loading: false, error: '', executed: true, outputNodeId: outputNodeId || undefined })
-      } else {
-        updateNode(outputNodeId, { label: '生成失败', loading: false, error: '未返回视频' })
-        updateNode(props.id, { loading: false, error: '未返回视频' })
-      }
-    } else if (taskId) {
-      updateNode(outputNodeId, { label: '生成失败', loading: false, error: '未匹配到视频厂商配置' })
-      updateNode(props.id, { loading: false, error: '未匹配到视频厂商配置' })
-    } else {
-      updateNode(outputNodeId, { label: '生成失败', loading: false, error: '任务创建失败' })
-      updateNode(props.id, { loading: false, error: '任务创建失败' })
-    }
+    const task = await createGenerationTask({
+      source: 'workflow-canvas',
+      type: 'video',
+      requestMode: 'video-generation' as any,
+      prompt,
+      model: model.value,
+      modelKey,
+      ratio: ratio.value,
+      resolution: resolution.value,
+      duration: String(duration.value),
+      mediaReferences,
+      referenceImages: mediaReferences.filter(item => item.mediaType === 'image').map(item => item.url),
+      requestBody: { providerId, mediaReferences },
+    }, { signal: controller.signal })
+    const taskId = String(task?.id || '').trim()
+    if (!taskId) throw new Error('任务创建失败')
+    updateNode(props.id, { taskRecordId: taskId })
+    void subscribeGenerationTaskEvents(taskId, {
+      signal: controller.signal,
+      onEvent: (event) => {
+        if (event.type === 'progress') return
+        if (event.type === 'snapshot' || event.type === 'completed') {
+          const output = Array.isArray(event.record?.outputs) ? event.record.outputs.find(item => item.outputType === 'video' && item.url) : null
+          if (output?.url) {
+            updateNode(createdOutputNodeId, { url: output.url, label: '生成视频', loading: false, error: '' })
+            updateNode(props.id, { loading: !event.done, error: '', executed: Boolean(event.done), outputNodeId: createdOutputNodeId })
+          }
+        }
+        if (event.type === 'failed' || event.type === 'stopped') {
+          const message = String(event.message || event.record?.error || (event.type === 'stopped' ? '任务已停止' : '视频生成失败'))
+          updateNode(createdOutputNodeId, { label: event.type === 'stopped' ? '已停止' : '生成失败', loading: false, error: message })
+          updateNode(props.id, { loading: false, error: message })
+        }
+        if (event.done) {
+          isGenerating.value = false
+          generationController.value = null
+        }
+      },
+    })
   } catch (err: unknown) {
     console.error('视频生成失败:', err)
     const msg = err instanceof DOMException && err.name === 'AbortError'

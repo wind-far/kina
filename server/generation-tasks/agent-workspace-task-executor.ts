@@ -17,6 +17,11 @@ type AgentWorkspaceSkillMeta = {
     providerId: string
     modelKey: string
   }
+  sourceInstructions?: Array<{
+    artifactPath: string
+    content: string
+    integritySha256: string
+  }>
 }
 
 type AgentWorkspacePlan = {
@@ -106,6 +111,7 @@ export interface AgentWorkspaceTaskExecutorContext {
     dependencySkillKeys?: string[]
     prompt: string
     referenceImages?: string[]
+    sourceInstructions?: Array<{ artifactPath: string; content: string }>
   }) => Promise<{
     analysisLines: string[]
     workflowLabel?: string
@@ -388,6 +394,7 @@ export const executeAgentWorkspaceTaskFlow = async (
           dependencySkillKeys,
           prompt: skillPrompt,
           referenceImages,
+          sourceInstructions: skillMeta.sourceInstructions?.map(item => ({ artifactPath: item.artifactPath, content: item.content })),
         })
 
         context.logGenerationTask('agent_workspace:model_plan_success', {

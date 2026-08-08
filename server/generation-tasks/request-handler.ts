@@ -61,6 +61,7 @@ export const handleGenerationTasksRequest = async (req: any, res: any) => {
         type: payload?.type || null,
         requestMode: payload?.requestMode || null,
         referenceImageCount: Array.isArray(payload?.referenceImages) ? payload.referenceImages.length : 0,
+        mediaReferenceCount: Array.isArray(payload?.mediaReferences) ? payload.mediaReferences.length : 0,
         hasRequestBody: Boolean(payload?.requestBody),
       }
       const data = await startGenerationTask(payload, currentUser.id)

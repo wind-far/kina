@@ -4,6 +4,7 @@ import { joinUpstreamUrl } from '../ai-gateway/shared'
 import { resolveGatewayProviderUpstream } from '../provider-config/service'
 import { getUploadsDir } from '../storage/service'
 import { isPathInsideDirectory } from '../shared/path-security'
+import type { SkillMediaReference } from '../../src/shared/skill-runtime'
 
 const UPLOADS_PUBLIC_PATH_PREFIX = '/uploads/'
 const VIDEO_POLL_INTERVAL_MS = 5_000
@@ -21,12 +22,154 @@ export interface VideoGenerationUpstreamInput {
   duration?: string
   referenceImages: string[]
   referenceImageRoles: string[]
+  mediaReferences?: SkillMediaReference[]
 }
 
 export interface VideoGenerationUpstreamResult {
   upstreamUrl: string
   taskId?: string
   videoUrl: string
+}
+
+type H3TaskMode = 't2va' | 'i2va' | 'l2va' | 'fl2va' | 'ref2va'
+
+const isMiniMaxH3Upstream = (upstream: { code?: string; extraJson?: Record<string, unknown> }) => (
+  String(upstream.code || '').trim().toLowerCase() === 'minimax-h3'
+  || String(upstream.extraJson?.adapter || '').trim().toLowerCase() === 'minimax-h3'
+)
+
+const readH3TaskId = (payload: unknown) => readFirstString(payload, [
+  ['task', 'id'], ['data', 'task', 'id'], ['data', 'id'], ['task_id'], ['id'],
+])
+
+const readH3Status = (payload: unknown) => readFirstString(payload, [
+  ['task', 'status'], ['data', 'task', 'status'], ['data', 'status'], ['status'],
+]).toLowerCase()
+
+const readH3VideoUrl = (payload: unknown) => readFirstString(payload, [
+  ['task', 'output', 'video_url'], ['task', 'output', 'url'],
+  ['data', 'output', 'video_url'], ['data', 'video_url'], ['video_url'], ['url'],
+])
+
+const readH3FileId = (payload: unknown) => readFirstString(payload, [
+  ['file_id'], ['data', 'file_id'], ['task', 'file_id'], ['data', 'task', 'file_id'],
+])
+
+export const buildMiniMaxH3MediaPayload = (references: SkillMediaReference[]) => {
+  const images = references.filter(item => item.mediaType === 'image')
+  const videos = references.filter(item => item.mediaType === 'video')
+  const audios = references.filter(item => item.mediaType === 'audio')
+  const first = images.find(item => item.role === 'first_frame')
+  const last = images.find(item => item.role === 'last_frame')
+  const isReferenceMode = videos.length > 0 || audios.length > 0 || images.some(item => ['reference', 'subject', 'style'].includes(item.role))
+  const mode: H3TaskMode = isReferenceMode
+    ? 'ref2va'
+    : first && last ? 'fl2va'
+      : first ? 'i2va'
+        : last ? 'l2va'
+          : 't2va'
+  return {
+    mode,
+    firstFrame: first?.url,
+    lastFrame: last?.url,
+    references: {
+      images: images.filter(item => !['first_frame', 'last_frame'].includes(item.role)).map(item => ({ url: item.url, role: item.role, label: item.label })),
+      videos: videos.map(item => ({ url: item.url, role: item.role, start_seconds: item.startSeconds, end_seconds: item.endSeconds, label: item.label })),
+      audios: audios.map(item => ({ url: item.url, role: item.role, start_seconds: item.startSeconds, end_seconds: item.endSeconds, label: item.label })),
+    },
+  }
+}
+
+const assertH3MediaLimits = (references: SkillMediaReference[]) => {
+  const images = references.filter(item => item.mediaType === 'image')
+  const videos = references.filter(item => item.mediaType === 'video')
+  const audios = references.filter(item => item.mediaType === 'audio')
+  if (images.length > 9) throw new Error('MiniMax H3 Ref2VA 最多支持 9 张图片')
+  if (videos.length > 3) throw new Error('MiniMax H3 Ref2VA 最多支持 3 个视频参考')
+  if (audios.length > 3) throw new Error('MiniMax H3 Ref2VA 最多支持 3 个音频参考')
+  if (images.length + videos.length + audios.length > 12) throw new Error('MiniMax H3 Ref2VA 最多支持 12 个混合参考素材')
+  if (audios.length && !images.length && !videos.length) throw new Error('MiniMax H3 音频参考必须与图片或视频参考一起使用')
+}
+
+const requestMiniMaxH3Generation = async (
+  input: VideoGenerationUpstreamInput,
+  upstream: { baseUrl: string; apiKey: string; endpoint: string; extraJson?: Record<string, unknown> },
+): Promise<VideoGenerationUpstreamResult> => {
+  const references = input.mediaReferences || []
+  assertH3MediaLimits(references)
+  const h3 = upstream.extraJson?.h3 && typeof upstream.extraJson.h3 === 'object' && !Array.isArray(upstream.extraJson.h3)
+    ? upstream.extraJson.h3 as Record<string, unknown> : {}
+  // H3 开源权重与 MiniMax 托管 Video API 不是同一份公开请求契约；禁止猜测端点后发起请求。
+  // 管理员必须在受控厂商配置中填写经验证的 H3 托管接口路径与状态接口路径。
+  const endpoint = String(h3.createEndpoint || '').trim()
+  const statusEndpoint = String(h3.statusEndpoint || '').trim()
+  if (!endpoint || !statusEndpoint) {
+    throw new Error('MiniMax H3 需要在厂商配置的 extraJson.h3 中设置已验证的 createEndpoint 与 statusEndpoint')
+  }
+  const media = buildMiniMaxH3MediaPayload(references)
+  const duration = Number(input.duration || 0)
+  if (duration && (duration < 4 || duration > 15)) throw new Error('MiniMax H3 单段视频时长必须为 4 到 15 秒')
+  const createUrl = joinUpstreamUrl(upstream.baseUrl, endpoint)
+  const requestBody = {
+    model: input.modelKey || 'MiniMax-H3',
+    prompt: input.prompt,
+    duration: duration || undefined,
+    ratio: input.ratio || undefined,
+    resolution: input.resolution || undefined,
+    task_type: media.mode,
+    first_frame_image: media.firstFrame,
+    last_frame_image: media.lastFrame,
+    references: media.mode === 'ref2va' ? media.references : undefined,
+    generate_audio: h3.generateAudio !== false,
+  }
+  const createResponse = await fetch(createUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(upstream.apiKey ? { Authorization: `Bearer ${upstream.apiKey}` } : {}),
+    },
+    body: JSON.stringify(Object.fromEntries(Object.entries(requestBody).filter(([, value]) => value !== undefined))),
+    signal: input.signal,
+  })
+  const createdPayload = await readResponsePayload(createResponse)
+  assertSuccessfulResponse(createResponse, createdPayload)
+  const directVideoUrl = readH3VideoUrl(createdPayload)
+  const taskId = readH3TaskId(createdPayload)
+  if (directVideoUrl) return { upstreamUrl: createUrl, taskId: taskId || undefined, videoUrl: directVideoUrl }
+  if (!taskId) throw new Error(extractVideoError(createdPayload) || 'MiniMax H3 未返回任务 ID 或视频地址')
+
+  const statusUrl = `${joinUpstreamUrl(upstream.baseUrl, statusEndpoint)}${statusEndpoint.includes('?') ? '&' : '?'}task_id=${encodeURIComponent(taskId)}`
+  for (let attempt = 0; attempt < VIDEO_POLL_MAX_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) await waitForNextPoll(input.signal)
+    const statusResponse = await fetch(statusUrl, {
+      headers: upstream.apiKey ? { Authorization: `Bearer ${upstream.apiKey}` } : undefined,
+      signal: input.signal,
+    })
+    const statusPayload = await readResponsePayload(statusResponse)
+    assertSuccessfulResponse(statusResponse, statusPayload)
+    const videoUrl = readH3VideoUrl(statusPayload)
+    if (videoUrl) return { upstreamUrl: createUrl, taskId, videoUrl }
+    const fileId = readH3FileId(statusPayload)
+    if (fileId) {
+      const fileEndpoint = String(h3.fileEndpoint || '').trim()
+      if (!fileEndpoint) throw new Error('MiniMax H3 状态返回文件 ID，但未配置 extraJson.h3.fileEndpoint')
+      const fileUrl = `${joinUpstreamUrl(upstream.baseUrl, fileEndpoint)}${fileEndpoint.includes('?') ? '&' : '?'}file_id=${encodeURIComponent(fileId)}`
+      const fileResponse = await fetch(fileUrl, {
+        headers: upstream.apiKey ? { Authorization: `Bearer ${upstream.apiKey}` } : undefined,
+        signal: input.signal,
+      })
+      const filePayload = await readResponsePayload(fileResponse)
+      assertSuccessfulResponse(fileResponse, filePayload)
+      const resolvedVideoUrl = readH3VideoUrl(filePayload) || readFirstString(filePayload, [
+        ['file', 'download_url'], ['data', 'file', 'download_url'], ['download_url'],
+      ])
+      if (!resolvedVideoUrl) throw new Error('MiniMax H3 文件查询未返回可下载视频地址')
+      return { upstreamUrl: createUrl, taskId, videoUrl: resolvedVideoUrl }
+    }
+    const status = readH3Status(statusPayload)
+    if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) throw new Error(extractVideoError(statusPayload) || 'MiniMax H3 视频生成失败')
+  }
+  throw new Error('MiniMax H3 视频生成超时')
 }
 
 const asObject = (value: unknown): JsonObject | null => (
@@ -189,6 +332,9 @@ export const requestVideoGeneration = async (
     endpointType: 'video',
     modelKey: input.modelKey,
   })
+  if (isMiniMaxH3Upstream(upstream)) {
+    return requestMiniMaxH3Generation(input, upstream)
+  }
   const upstreamUrl = joinUpstreamUrl(upstream.baseUrl, upstream.endpoint)
   const formData = new FormData()
   formData.append('model', input.modelKey)

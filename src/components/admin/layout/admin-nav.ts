@@ -64,6 +64,11 @@ export const adminNavGroups: AdminNavGroup[] = [
         description: '管理技能目录、提示词模板与工作流模板',
       },
       {
+        label: 'Skill 来源',
+        path: '/admin/skill-sources',
+        description: '同步、冻结与审计外部 Skill 文档',
+      },
+      {
         label: '厂商配置',
         path: '/admin/providers',
         description: '管理 AI 厂商地址、密钥与请求端点',

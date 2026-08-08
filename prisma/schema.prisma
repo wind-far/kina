@@ -48,8 +48,10 @@ model AppUser {
   workflowDefinitionVersions WorkflowDefinitionVersion[]
   workflowRuns               WorkflowRun[]
   canvasPluginInstalls       CanvasPluginInstall[]
-  canvasPromptSources       CanvasPromptSource[]
-  canvasPrompts             CanvasPrompt[]         @relation("CanvasPromptOwner")
+  canvasPromptSources        CanvasPromptSource[]
+  canvasPrompts              CanvasPrompt[]              @relation("CanvasPromptOwner")
+  skillComplianceAcceptances SkillComplianceAcceptance[]
+  skillExecutionRuns         SkillExecutionRun[]
   videoProjects              VideoProject[]
 
   @@map("app_users")
@@ -281,6 +283,7 @@ model AiModel {
 model AiSkill {
   id                   String                      @id @default(cuid()) @db.VarChar(36)
   providerId           String?                     @map("provider_id") @db.VarChar(36)
+  sourcePackageId      String?                     @map("source_package_id") @db.VarChar(36)
   skillKey             String                      @unique(map: "uk_ai_skills_skill_key") @map("skill_key") @db.VarChar(100)
   label                String                      @db.VarChar(100)
   description          String?                     @db.VarChar(255)
@@ -298,6 +301,7 @@ model AiSkill {
   createdAt            DateTime                    @default(now()) @map("created_at")
   updatedAt            DateTime                    @updatedAt @map("updated_at")
   provider             AiProvider?                 @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  sourcePackage        SkillSourcePackage?         @relation(fields: [sourcePackageId], references: [id], onDelete: SetNull)
   prompts              AiSkillPromptTemplate[]
   dependencies         AiSkillDependency[]         @relation("AiSkillDependencies")
   dependedBy           AiSkillDependency[]         @relation("AiSkillDependents")
@@ -306,8 +310,88 @@ model AiSkill {
   stageTemplates       AiSkillStageTemplate[]
 
   @@index([providerId], map: "idx_ai_skills_provider_id")
+  @@index([sourcePackageId], map: "idx_ai_skills_source_package_id")
   @@index([isEnabled, sortOrder], map: "idx_ai_skills_enabled_sort")
   @@map("ai_skills")
+}
+
+/// 外部 Skill 的受信来源与许可证版本。管理员只能从此处登记的来源导入内容。
+model SkillSourcePackage {
+  id              String                      @id @default(cuid()) @db.VarChar(36)
+  packageKey      String                      @unique(map: "uk_skill_source_packages_package_key") @map("package_key") @db.VarChar(100)
+  name            String                      @db.VarChar(191)
+  repositoryUrl   String?                     @map("repository_url") @db.Text
+  licenseUrl      String?                     @map("license_url") @db.Text
+  sourceRevision  String?                     @map("source_revision") @db.VarChar(191)
+  integritySha256 String?                     @map("integrity_sha256") @db.VarChar(128)
+  termsVersion    String?                     @map("terms_version") @db.VarChar(100)
+  complianceJson  Json?                       @map("compliance_json")
+  isTrusted       Boolean                     @default(false) @map("is_trusted")
+  isEnabled       Boolean                     @default(true) @map("is_enabled")
+  createdAt       DateTime                    @default(now()) @map("created_at")
+  updatedAt       DateTime                    @updatedAt @map("updated_at")
+  artifacts       SkillSourceArtifact[]
+  skills          AiSkill[]
+  acceptances     SkillComplianceAcceptance[]
+
+  @@index([isTrusted, isEnabled, updatedAt], map: "idx_skill_source_packages_trusted_enabled")
+  @@map("skill_source_packages")
+}
+
+/// 导入后冻结的 Skill 文档与元数据。保留原文、语言和哈希用于升级对比与审计。
+model SkillSourceArtifact {
+  id              String             @id @default(cuid()) @db.VarChar(36)
+  sourcePackageId String             @map("source_package_id") @db.VarChar(36)
+  artifactPath    String             @map("artifact_path") @db.VarChar(500)
+  artifactType    String             @map("artifact_type") @db.VarChar(50)
+  locale          String?            @db.VarChar(32)
+  content         String             @db.LongText
+  integritySha256 String             @map("integrity_sha256") @db.VarChar(128)
+  metadataJson    Json?              @map("metadata_json")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  sourcePackage   SkillSourcePackage @relation(fields: [sourcePackageId], references: [id], onDelete: Cascade)
+
+  @@unique([sourcePackageId, artifactPath], map: "uk_skill_source_artifacts_package_path")
+  @@index([sourcePackageId, artifactType], map: "idx_skill_source_artifacts_package_type")
+  @@map("skill_source_artifacts")
+}
+
+/// 用户对外部 Skill 许可证、地域与安全提示的确认记录。
+model SkillComplianceAcceptance {
+  id              String             @id @default(cuid()) @db.VarChar(36)
+  userId          String             @map("user_id") @db.VarChar(36)
+  sourcePackageId String             @map("source_package_id") @db.VarChar(36)
+  termsVersion    String             @map("terms_version") @db.VarChar(100)
+  countryCode     String             @map("country_code") @db.VarChar(8)
+  acceptedAt      DateTime           @default(now()) @map("accepted_at")
+  metadataJson    Json?              @map("metadata_json")
+  user            AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourcePackage   SkillSourcePackage @relation(fields: [sourcePackageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourcePackageId, termsVersion], map: "uk_skill_compliance_acceptances_user_package_terms")
+  @@index([sourcePackageId, termsVersion], map: "idx_skill_compliance_acceptances_package_terms")
+  @@map("skill_compliance_acceptances")
+}
+
+/// 任务级执行编排记录。每一个计划步骤可在进程重启后继续追踪而非依赖内存状态。
+model SkillExecutionRun {
+  id                 String    @id @default(cuid()) @db.VarChar(36)
+  userId             String    @map("user_id") @db.VarChar(36)
+  skillId            String?   @map("skill_id") @db.VarChar(36)
+  generationRecordId String?   @map("generation_record_id") @db.VarChar(36)
+  status             String    @default("QUEUED") @db.VarChar(32)
+  planJson           Json      @map("plan_json")
+  stateJson          Json?     @map("state_json")
+  startedAt          DateTime? @map("started_at")
+  finishedAt         DateTime? @map("finished_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  user               AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, createdAt], map: "idx_skill_execution_runs_user_status_created")
+  @@index([generationRecordId], map: "idx_skill_execution_runs_generation_record")
+  @@map("skill_execution_runs")
 }
 
 /// 技能依赖关系表。

@@ -29,6 +29,7 @@ export interface AgentWorkspaceSkillRuntimeMeta {
   workspaceSkillKey: string
   dependencySkillKeys: string[]
   imageModelBinding?: AgentWorkspaceImageModelBinding
+  sourceInstructions?: Array<{ artifactPath: string; content: string; integritySha256: string }>
 }
 
 export const workspaceTimingProfile = {
@@ -373,6 +374,7 @@ export const getAgentWorkspaceSkillMeta = async (skill: string): Promise<AgentWo
       ? runtimeConfig.dependencySkillKeys
       : (workspaceDependencySkillKeyMap[normalizedSkill] || []),
     imageModelBinding: resolveWorkspaceImageModelBinding(runtimeConfig?.configJson),
+    sourceInstructions: runtimeConfig?.sourceInstructions || [],
   }
 }
 

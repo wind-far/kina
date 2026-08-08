@@ -5,6 +5,8 @@ import type { GenerationTaskStrategyKey } from './strategy'
 import type { AgentRunState } from '../../src/types/agent'
 import { GenerationTaskRequestError } from './shared'
 import { readCapabilityFlagsFromRequestBody, type ModelCapabilityFlags } from '../../src/shared/provider-capability'
+import { assertProviderSourceAvailableForUser, assertSkillSourceAvailableForUser } from '../skill-config/source-service'
+import { createSkillExecutionRun } from '../skill-config/execution-service'
 
 type RunningGenerationTask = LocalRunningGenerationTask & {
   strategyKey: GenerationTaskStrategyKey
@@ -135,7 +137,9 @@ export const buildInitialRecordPayload = (payload: GenerationTaskStartPayload): 
   duration: String(payload.duration || '').trim(),
   feature: String(payload.feature || '').trim(),
   skill: String(payload.skill || '').trim() || 'general',
-  referenceImages: Array.isArray(payload.referenceImages) ? [...payload.referenceImages] : [],
+  referenceImages: (payload.mediaReferences || [])
+    .filter(item => item.mediaType === 'image')
+    .map(item => item.url),
   done: false,
   stopped: false,
   images: [],
@@ -200,6 +204,8 @@ export const startGenerationTask = async (
   const strategy = context.resolveGenerationTaskStrategy(payload)
   const { providerId, modelKey } = resolveTaskBillingTarget(payload, strategy.key)
   const skillKey = resolveTaskSkillKey(payload, strategy.key)
+  await assertSkillSourceAvailableForUser(currentUserId, skillKey)
+  await assertProviderSourceAvailableForUser(currentUserId, providerId)
   // 解析前端塞入的能力开关（联网搜索/深度思考），用于计费倍率联动。
   // 仅 agent-chat 链路读取；image / agent-workspace 暂时不接 capability 计费。
   const capabilityFlags = readCapabilityFlagsFromRequestBody(payload.requestBody)
@@ -256,6 +262,7 @@ export const startGenerationTask = async (
         : null
 
       const createdRecord = await context.createGenerationRecord(buildInitialRecordPayload(payload), currentUserId)
+      await createSkillExecutionRun({ userId: currentUserId, recordId: createdRecord.id, skillKey, payload })
       await context.attachGenerationPointRecordId({
         associationNo,
         userId: currentUserId,
@@ -346,6 +353,7 @@ export const startGenerationTask = async (
         ),
       } satisfies GenerationRecordPayload
       const createdRecord = await context.createGenerationRecord(initialPayload, currentUserId)
+      await createSkillExecutionRun({ userId: currentUserId, recordId: createdRecord.id, skillKey, payload })
       await context.attachGenerationPointRecordId({
         associationNo,
         userId: currentUserId,
@@ -424,6 +432,7 @@ export const startGenerationTask = async (
       : null
 
     const createdRecord = await context.createGenerationRecord(buildInitialRecordPayload(payload), currentUserId)
+    await createSkillExecutionRun({ userId: currentUserId, recordId: createdRecord.id, skillKey, payload })
     await context.attachGenerationPointRecordId({
       associationNo,
       userId: currentUserId,

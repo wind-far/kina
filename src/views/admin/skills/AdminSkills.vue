@@ -287,6 +287,11 @@
                       </select>
                     </div>
                     <div class="admin-form__field">
+                      <label class="admin-form__label">Skill 来源包</label>
+                      <input v-model.trim="skillForm.sourcePackageKey" class="admin-input" type="text" placeholder="例如 minimax-h3；留空表示内置配置">
+                      <div class="admin-form__hint">外部 Skill 须先在来源接口登记、冻结文档，并在此绑定来源包。</div>
+                    </div>
+                    <div class="admin-form__field">
                       <label class="admin-form__label">图片模型</label>
                       <select v-model="skillForm.imageModelKey" class="admin-input" :disabled="!skillForm.imageModelProviderId">
                         <option value="">{{ skillForm.imageModelProviderId ? '请选择图片模型' : '请先选择厂商' }}</option>
@@ -894,6 +899,7 @@ const editorTabs: Array<{ key: SkillEditorTabKey; label: string; sections: Skill
 
 const skillForm = reactive({
   providerId: '',
+  sourcePackageKey: '',
   skillKey: '',
   label: '',
   description: '',
@@ -1380,6 +1386,7 @@ const buildConfigJson = () => {
 
 const buildPayload = (): AdminSkillPayload => ({
   providerId: skillForm.providerId.trim(),
+  sourcePackageKey: skillForm.sourcePackageKey.trim(),
   skillKey: skillForm.skillKey.trim(),
   label: skillForm.label.trim(),
   description: skillForm.description.trim(),
@@ -1429,6 +1436,7 @@ const applyDetailToForm = (detail: AdminSkillDetail) => {
   const configJson = detail.skill.configJson || {}
 
   skillForm.providerId = detail.skill.providerId || ''
+  skillForm.sourcePackageKey = detail.skill.sourcePackageKey || ''
   skillForm.skillKey = detail.skill.skillKey
   skillForm.label = detail.skill.label
   skillForm.description = detail.skill.description || ''

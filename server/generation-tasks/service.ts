@@ -99,6 +99,7 @@ import {
   requestAgentWorkspaceModelPlan,
 } from './upstream-helpers'
 import { writeScopedLog } from '../shared/logging'
+import { markSkillExecutionRun } from '../skill-config/execution-service'
 
 type RunningGenerationTask = LocalRunningGenerationTask & {
   strategyKey: GenerationTaskStrategyKey
@@ -455,6 +456,7 @@ const runTaskInBackground = (task: RunningGenerationTask, payload: GenerationTas
     const executionStrategyContext = buildTaskExecutionStrategyContext()
 
     try {
+      await markSkillExecutionRun(task.recordId, 'RUNNING')
       ownsExecution = await runTaskWithExecutionLock(task, async () => {
         await executionStrategy.execute(task, payload, executionStrategyContext)
       }, {
@@ -501,6 +503,16 @@ const runTaskInBackground = (task: RunningGenerationTask, payload: GenerationTas
         }
       }
     } finally {
+      try {
+        const record = await getGenerationRecordById(task.recordId, task.userId)
+        await markSkillExecutionRun(
+          task.recordId,
+          record.stopped ? 'STOPPED' : record.error ? 'FAILED' : record.done ? 'COMPLETED' : 'FAILED',
+          { error: record.error || null, stopped: Boolean(record.stopped) },
+        )
+      } catch (error) {
+        logGenerationTaskError('skill_execution_run_finalize_failed', error, { recordId: task.recordId })
+      }
       deleteLocalRunningTask(task.recordId)
       await releaseTaskConcurrencySlots(task.concurrencySlots)
       if (ownsExecution) {

@@ -31,6 +31,11 @@ await executeVideoTask({
   resolution: '720p',
   duration: '5',
   referenceImages: ['/uploads/subject.png'],
+  mediaReferences: [{
+    mediaType: 'image',
+    role: 'first_frame',
+    url: '/uploads/subject.png',
+  }],
   requestBody: {
     providerId: 'provider-1',
     referenceImageRoles: ['first_frame_image'],
@@ -42,6 +47,9 @@ await executeVideoTask({
   requestVideoGeneration: async input => {
     assert.equal(input.providerId, 'provider-1')
     assert.deepEqual(input.referenceImageRoles, ['first_frame_image'])
+    assert.equal(input.mediaReferences?.[0]?.mediaType, 'image')
+    assert.equal(input.mediaReferences?.[0]?.role, 'first_frame')
+    assert.equal(input.mediaReferences?.[0]?.url, '/uploads/subject.png')
     return {
       upstreamUrl: 'https://api.example/videos',
       taskId: 'task-1',

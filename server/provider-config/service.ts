@@ -679,10 +679,14 @@ export const resolveGatewayProviderUpstream = async (input: {
   const endpoint = provider[resolveProviderEndpointField(endpointType)]
 
   return {
+    code: provider.code,
     baseUrl: provider.baseUrl,
     apiKey: decryptProviderApiKey(provider.apiKeyEncrypted),
     endpoint,
     modelCapabilityJson,
+    extraJson: provider.extraJson && typeof provider.extraJson === 'object' && !Array.isArray(provider.extraJson)
+      ? provider.extraJson as Record<string, unknown>
+      : {},
   }
 }
 

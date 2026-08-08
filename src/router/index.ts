@@ -21,6 +21,7 @@ const AdminConversationSettings = () => import('../views/admin/conversations/Adm
 const AdminGenerations = () => import('../views/admin/generations/AdminGenerations.vue')
 const AdminMarketing = () => import('../views/admin/marketing/AdminMarketing.vue')
 const AdminSkills = () => import('../views/admin/skills/AdminSkills.vue')
+const AdminSkillSources = () => import('../views/admin/skills/AdminSkillSources.vue')
 const AdminProviders = () => import('../views/admin/providers/AdminProviders.vue')
 const AdminStorage = () => import('../views/admin/storage/AdminStorage.vue')
 const AdminSystem = () => import('../views/admin/system/AdminSystem.vue')
@@ -208,6 +209,12 @@ const routes: RouteRecordRaw[] = [
           requiresAuth: true,
           requiresAdmin: true,
         },
+      },
+      {
+        path: 'skill-sources',
+        name: 'AdminSkillSources',
+        component: AdminSkillSources,
+        meta: { requiresAuth: true, requiresAdmin: true },
       },
       {
         path: 'providers',

@@ -1,9 +1,9 @@
-import { requireAdminSessionUser } from '../auth/session'
+import { requireAdminSessionUser, requireCurrentSessionUser } from '../auth/session'
 import { isPrismaConfigured } from '../db/prisma'
 import { readJsonBody, sendJson } from '../ai-gateway/shared'
 import { invalidateAdminCaches } from '../shared/admin-cache'
 import { recordAdminAuditLog } from '../shared/admin-audit'
-import { SKILL_CONFIG_CATALOG_PATH, SKILL_CONFIG_SKILLS_PATH } from './constants'
+import { SKILL_CONFIG_CATALOG_PATH, SKILL_CONFIG_SKILLS_PATH, SKILL_CONFIG_SOURCES_PATH } from './constants'
 import {
   createAdminSkill,
   deleteAdminSkill,
@@ -13,6 +13,7 @@ import {
   setAdminSkillEnabled,
   updateAdminSkill,
 } from './service'
+import { acceptSkillSourceTerms, importSkillSourceArtifacts, listSkillSourcePackages, syncMiniMaxH3SourceArtifacts, upsertSkillSourcePackage } from './source-service'
 
 const matchSkillDetailPath = (requestPath: string) => {
   const matched = requestPath.match(/^\/api\/skill-config\/skills\/([^/]+)$/)
@@ -23,6 +24,11 @@ const matchSkillDetailPath = (requestPath: string) => {
   return {
     skillKey: decodeURIComponent(matched[1]),
   }
+}
+
+const matchSkillSourcePath = (requestPath: string, suffix = '') => {
+  const matched = requestPath.match(new RegExp(`^/api/skill-config/sources/([^/]+)${suffix}$`))
+  return matched ? decodeURIComponent(matched[1]) : ''
 }
 
 const sendSkillConfigError = (res: any, status: number, message: string) => {
@@ -45,6 +51,52 @@ export const handleSkillConfigRequest = async (req: any, res: any) => {
 
     const requestPath = String(req.url || '').split('?')[0]
     const skillDetailMatch = matchSkillDetailPath(requestPath)
+    const sourceTermsPackageKey = matchSkillSourcePath(requestPath, '/acceptance')
+    const sourceArtifactsPackageKey = matchSkillSourcePath(requestPath, '/artifacts')
+    const sourceSyncPackageKey = matchSkillSourcePath(requestPath, '/sync')
+
+    if (req.method === 'GET' && requestPath === SKILL_CONFIG_SOURCES_PATH) {
+      const currentUser = await requireCurrentSessionUser(req, res)
+      if (!currentUser?.id) return
+      sendJson(res, 200, { data: await listSkillSourcePackages(currentUser.id) })
+      return
+    }
+
+    if (req.method === 'POST' && sourceTermsPackageKey) {
+      const currentUser = await requireCurrentSessionUser(req, res)
+      if (!currentUser?.id) return
+      const data = await acceptSkillSourceTerms({ userId: currentUser.id, packageKey: sourceTermsPackageKey, req })
+      sendJson(res, 200, { data, message: '已确认 Skill 使用条款' })
+      return
+    }
+
+    if (req.method === 'POST' && requestPath === SKILL_CONFIG_SOURCES_PATH) {
+      const currentUser = await requireAdminSessionUser(req, res)
+      if (!currentUser?.id) return
+      const data = await upsertSkillSourcePackage(await readJsonBody(req))
+      await recordAdminAuditLog({ req, operatorUserId: currentUser.id, action: 'admin_skill_source_upsert', targetType: 'skill_source_package', targetId: data.packageKey, beforeJson: null, afterJson: data })
+      sendJson(res, 200, { data, message: 'Skill 来源已保存' })
+      return
+    }
+
+    if (req.method === 'POST' && sourceArtifactsPackageKey) {
+      const currentUser = await requireAdminSessionUser(req, res)
+      if (!currentUser?.id) return
+      const data = await importSkillSourceArtifacts(sourceArtifactsPackageKey, await readJsonBody(req))
+      await recordAdminAuditLog({ req, operatorUserId: currentUser.id, action: 'admin_skill_source_artifacts_import', targetType: 'skill_source_package', targetId: sourceArtifactsPackageKey, beforeJson: null, afterJson: { artifactCount: data.length } })
+      sendJson(res, 200, { data, message: 'Skill 文档已导入并冻结版本' })
+      return
+    }
+
+    if (req.method === 'POST' && sourceSyncPackageKey) {
+      const currentUser = await requireAdminSessionUser(req, res)
+      if (!currentUser?.id) return
+      if (sourceSyncPackageKey !== 'minimax-h3') throw new Error('当前仅支持同步受信的 MiniMax H3 官方 Skill 清单')
+      const data = await syncMiniMaxH3SourceArtifacts()
+      await recordAdminAuditLog({ req, operatorUserId: currentUser.id, action: 'admin_skill_source_sync', targetType: 'skill_source_package', targetId: sourceSyncPackageKey, beforeJson: null, afterJson: data })
+      sendJson(res, 200, { data, message: 'MiniMax H3 Skill 文档已同步并冻结版本' })
+      return
+    }
 
     if (req.method === 'GET' && requestPath === SKILL_CONFIG_CATALOG_PATH) {
       const data = await listPublicEnabledSkills()

@@ -13,6 +13,7 @@ export type AdminSkillPromptScene = 'CHAT' | 'PLANNER'
 export interface AdminSkillItem {
   id: string
   providerId: string
+  sourcePackageKey: string
   skillKey: string
   label: string
   description: string
@@ -132,6 +133,7 @@ export interface AdminSkillStageTemplatePayload {
 
 export interface AdminSkillPayload {
   providerId: string
+  sourcePackageKey: string
   skillKey: string
   label: string
   description: string

@@ -4,6 +4,7 @@ import type { PersistedGenerationRecord } from './generation-records'
 import { consumeSseStream, type SseMessage } from '@/utils/sse'
 import type { GenerationTaskStreamEventBase } from '@/shared/generation-task-stream'
 import type { ResearchTaskConfig } from '@/shared/research/research-types'
+import type { SkillMediaReference } from '@/shared/skill-runtime'
 import { resolveRequestModelKey, resolveRequestProviderId } from '@/config/models'
 
 // 重新导出失败码，便于业务代码 import { GenerationTaskFailureCode } from '@/api/generation-tasks'
@@ -12,8 +13,8 @@ export type { GenerationTaskFailureCode } from '@/shared/generation-task-stream'
 export interface GenerationTaskStartPayload {
   sessionId?: string
   source?: string
-  type: 'image' | 'agent' | 'research'
-  requestMode?: 'image-generation' | 'image-edit'
+  type: 'image' | 'video' | 'agent' | 'research'
+  requestMode?: 'image-generation' | 'image-edit' | 'video-generation'
   prompt: string
   model?: string
   modelKey?: string
@@ -23,6 +24,7 @@ export interface GenerationTaskStartPayload {
   feature?: string
   skill?: string
   referenceImages?: string[]
+  mediaReferences?: SkillMediaReference[]
   researchConfig?: Partial<ResearchTaskConfig> | null
   requestBody?: Record<string, unknown>
 }
@@ -34,7 +36,7 @@ interface RequestOptions {
 export interface ResolvedGenerationTaskModelInput {
   modelKey?: string
   fallbackModelKey?: string
-  category: 'CHAT' | 'IMAGE'
+  category: 'CHAT' | 'IMAGE' | 'VIDEO'
   missingProviderMessage?: string
   missingModelMessage?: string
 }

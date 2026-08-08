@@ -132,7 +132,7 @@ export interface WorkflowCanvasNode<T extends WorkflowNodeType = WorkflowNodeTyp
   selected?: boolean
 }
 
-export type WorkflowEdgeType = 'promptOrder' | 'imageOrder' | 'imageRole'
+export type WorkflowEdgeType = 'promptOrder' | 'imageOrder' | 'imageRole' | 'mediaRole'
 
 export interface WorkflowPromptOrderEdgeData {
   promptOrder: number
@@ -146,10 +146,15 @@ export interface WorkflowImageRoleEdgeData {
   imageRole: string
 }
 
+export interface WorkflowMediaRoleEdgeData {
+  mediaRole: string
+}
+
 export type WorkflowEdgeData =
   | WorkflowPromptOrderEdgeData
   | WorkflowImageOrderEdgeData
   | WorkflowImageRoleEdgeData
+  | WorkflowMediaRoleEdgeData
   | Record<string, unknown>
   | undefined
 
@@ -514,7 +519,13 @@ export const addTypedWorkflowEdge = (params: WorkflowAddEdgeParams) => {
     return addEdge({ ...params, type: 'imageOrder', data: { imageOrder } })
   }
   if (sourceNode?.type === 'image' && targetNode?.type === 'videoConfig') {
-    return addEdge({ ...params, type: 'imageRole', data: { imageRole: 'first_frame_image' } })
+    return addEdge({ ...params, type: 'mediaRole', data: { mediaRole: 'first_frame' } })
+  }
+  if (sourceNode?.type === 'video' && targetNode?.type === 'videoConfig') {
+    return addEdge({ ...params, type: 'mediaRole', data: { mediaRole: 'video_reference' } })
+  }
+  if (sourceNode?.type === 'audio' && targetNode?.type === 'videoConfig') {
+    return addEdge({ ...params, type: 'mediaRole', data: { mediaRole: 'audio_reference' } })
   }
   if (sourceNode?.type === 'text' && targetNode?.type === 'videoConfig') {
     return addEdge({ ...params, type: 'promptOrder', data: { promptOrder: 1 } })

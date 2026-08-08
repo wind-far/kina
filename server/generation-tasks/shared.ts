@@ -1,6 +1,8 @@
 import { readJsonBody, sendJson } from '../ai-gateway/shared'
 import type { GenerationTaskStreamEventBase } from '../../src/shared/generation-task-stream'
 import type { ResearchTaskConfig } from '../../src/shared/research/research-types'
+import type { SkillMediaReference } from '../../src/shared/skill-runtime'
+import { legacyImagesToSkillMediaReferences, normalizeSkillMediaReferences } from '../../src/shared/skill-runtime'
 
 // 重新导出共享协议中的类型与失败码，让服务端代码继续按原路径引用
 export type {
@@ -13,7 +15,7 @@ export interface GenerationTaskStartPayload {
   sessionId?: string
   source?: string
   type: string
-  requestMode?: 'image-generation' | 'image-edit'
+  requestMode?: 'image-generation' | 'image-edit' | 'video-generation'
   prompt: string
   model?: string
   modelKey?: string
@@ -23,6 +25,8 @@ export interface GenerationTaskStartPayload {
   feature?: string
   skill?: string
   referenceImages?: string[]
+  /** 通用多模态引用；referenceImages 仅作为历史兼容字段保留。 */
+  mediaReferences?: SkillMediaReference[]
   researchConfig?: Partial<ResearchTaskConfig> | null
   requestBody?: Record<string, unknown> | null
 }
@@ -43,7 +47,12 @@ export class GenerationTaskRequestError extends Error {
 // 读取生成任务请求体。
 export const readGenerationTaskBody = async (req: any) => {
   const payload = await readJsonBody(req)
-  return payload as GenerationTaskStartPayload
+  const taskPayload = payload as GenerationTaskStartPayload
+  taskPayload.mediaReferences = normalizeSkillMediaReferences(taskPayload.mediaReferences)
+  if (!taskPayload.mediaReferences.length) {
+    taskPayload.mediaReferences = legacyImagesToSkillMediaReferences(taskPayload.referenceImages)
+  }
+  return taskPayload
 }
 
 // 返回统一的生成任务接口错误。

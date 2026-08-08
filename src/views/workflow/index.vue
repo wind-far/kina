@@ -55,6 +55,7 @@ import DirectorNode from './components/nodes/DirectorNode.vue'
 import AudioNode from './components/nodes/AudioNode.vue'
 import UnknownNode from './components/nodes/UnknownNode.vue'
 import CanvasPluginHost from './components/CanvasPluginHost.vue'
+import CanvasPluginManager from './components/CanvasPluginManager.vue'
 import CanvasPromptLibrary from './components/CanvasPromptLibrary.vue'
 import AgentFab from './components/AgentFab.vue'
 
@@ -160,6 +161,8 @@ const {
 const showNodeMenu = ref(false)
 const showTemplatePanel = ref(false)
 const showPromptLibrary = ref(false)
+const showCanvasPluginManager = ref(false)
+const canvasPluginHostVersion = ref(0)
 const showWorkflowLibraryPanel = ref(false)
 const canvasSnapToGrid = ref(true)
 const canvasAlignmentGuides = ref(true)
@@ -2093,6 +2096,17 @@ watch(currentCanvasSnapshot, () => {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 4h10a4 4 0 0 1 4 4v12l-4-2-4 2-4-2-4 2V8a4 4 0 0 1 4-4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 9h7M8 13h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             </button>
             <button
+              v-if="workspaceScene === 'INFINITE_CANVAS'"
+              class="wf-btn wf-btn-icon"
+              :class="{ active: showCanvasPluginManager }"
+              type="button"
+              aria-label="画布插件"
+              data-tooltip="画布插件"
+              @click="showCanvasPluginManager = !showCanvasPluginManager"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8.8 4.5a2.8 2.8 0 1 1 4.4 2.3V10h2.3a2.8 2.8 0 1 1 2.3 4.4V19H5v-4.6A2.8 2.8 0 1 1 7.3 10h2.3V6.8A2.8 2.8 0 0 1 8.8 4.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+            </button>
+            <button
               class="wf-btn wf-btn-icon"
               :class="{ active: showNodeMenu }"
               aria-label="添加节点"
@@ -2411,8 +2425,14 @@ watch(currentCanvasSnapshot, () => {
 
       <CanvasPluginHost
         v-if="workspaceScene === 'INFINITE_CANVAS'"
+        :key="canvasPluginHostVersion"
         :snapshot="canvasPluginSnapshot"
         @proposal="handleCanvasPluginProposal"
+      />
+      <CanvasPluginManager
+        v-if="workspaceScene === 'INFINITE_CANVAS' && showCanvasPluginManager"
+        @close="showCanvasPluginManager = false"
+        @updated="canvasPluginHostVersion += 1"
       />
 
       <!-- 折叠态下的展开把手 -->

@@ -1,6 +1,7 @@
 import { readJsonBody, sendJson } from '../ai-gateway/shared'
 import { requireAdminSessionUser, requireCurrentSessionUser } from '../auth/session'
 import { installCanvasPlugin, listCanvasPluginsForUser, publishTrustedCanvasPlugin, uninstallCanvasPlugin } from './service'
+import { recordAdminAuditLog } from '../shared/admin-audit'
 
 const sendPluginError = (res: any, status: number, message: string) => {
   res.statusCode = status
@@ -19,7 +20,16 @@ export const handleCanvasPluginsRequest = async (req: any, res: any, requestPath
     if (requestPath === '/api/canvas/plugins/registry' && req.method === 'POST') {
       const admin = await requireAdminSessionUser(req, res)
       if (!admin) return true
-      sendJson(res, 200, { data: await publishTrustedCanvasPlugin(await readJsonBody(req), admin.id), message: '受信插件已发布' })
+      const data = await publishTrustedCanvasPlugin(await readJsonBody(req), admin.id)
+      await recordAdminAuditLog({
+        req,
+        operatorUserId: admin.id,
+        action: 'canvas_plugin.publish',
+        targetType: 'canvas_plugin',
+        targetId: data.plugin.id,
+        afterJson: { slug: data.plugin.slug, version: data.release.version, packageUrl: data.release.packageUrl },
+      })
+      sendJson(res, 200, { data, message: '受信插件已发布' })
       return true
     }
     const matched = requestPath.match(/^\/api\/canvas\/plugins\/([^/]+)\/install$/)

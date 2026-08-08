@@ -5,7 +5,7 @@
  * - localStorage 持久化 active session id，刷新后自动恢复上次选中
  * - 模块级单例（与 useChatSessions / useWorkflowCanvas 风格一致），多个组件共享同一份会话状态
  */
-import { computed, ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 import {
   listGenerationSessions,
   createGenerationSession,
@@ -13,29 +13,46 @@ import {
   deleteGenerationSession,
   type PersistedGenerationSession,
 } from '@/api/generation-sessions'
+import { CANVAS_ASSISTANT_SOURCE } from '@/shared/canvas-assistant-session'
 
-const ASSISTANT_SOURCE = 'canvas-assistant'
-const ACTIVE_SESSION_STORAGE_KEY = `${ASSISTANT_SOURCE}_active_session_id`
+interface AssistantSessionState {
+  sessions: Ref<PersistedGenerationSession[]>
+  activeSessionId: Ref<string>
+  isLoading: Ref<boolean>
+  isInitialized: Ref<boolean>
+}
 
-const sessions = ref<PersistedGenerationSession[]>([])
-const activeSessionId = ref<string>('')
-const isLoading = ref(false)
-const isInitialized = ref(false)
+const stateBySource = new Map<string, AssistantSessionState>()
 
-const readPersistedActiveId = (): string => {
+const normalizeAssistantSource = (source?: string | null) => String(source || '').trim().slice(0, 64) || CANVAS_ASSISTANT_SOURCE
+
+const getAssistantSessionState = (source: string): AssistantSessionState => {
+  const existing = stateBySource.get(source)
+  if (existing) return existing
+  const created: AssistantSessionState = {
+    sessions: ref<PersistedGenerationSession[]>([]),
+    activeSessionId: ref(''),
+    isLoading: ref(false),
+    isInitialized: ref(false),
+  }
+  stateBySource.set(source, created)
+  return created
+}
+
+const readPersistedActiveId = (source: string): string => {
   try {
-    return localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY) || ''
+    return localStorage.getItem(`${source}_active_session_id`) || ''
   } catch {
     return ''
   }
 }
 
-const writePersistedActiveId = (id: string) => {
+const writePersistedActiveId = (source: string, id: string) => {
   try {
     if (id) {
-      localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, id)
+      localStorage.setItem(`${source}_active_session_id`, id)
     } else {
-      localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY)
+      localStorage.removeItem(`${source}_active_session_id`)
     }
   } catch {
     // ignore (隐私模式 / quota 等)
@@ -48,14 +65,17 @@ const pickFallbackSessionId = (list: PersistedGenerationSession[]): string => {
   return (def || list[0]).id
 }
 
-const syncActiveAgainstList = (list: PersistedGenerationSession[]) => {
-  const persisted = readPersistedActiveId()
+const syncActiveAgainstList = (state: AssistantSessionState, source: string, list: PersistedGenerationSession[]) => {
+  const persisted = readPersistedActiveId(source)
   const matchedId = persisted && list.some((s) => s.id === persisted) ? persisted : pickFallbackSessionId(list)
-  activeSessionId.value = matchedId
-  if (matchedId) writePersistedActiveId(matchedId)
+  state.activeSessionId.value = matchedId
+  if (matchedId) writePersistedActiveId(source, matchedId)
 }
 
-export function useAssistantSessions() {
+export function useAssistantSessions(source?: string | null) {
+  const ASSISTANT_SOURCE = normalizeAssistantSource(source)
+  const state = getAssistantSessionState(ASSISTANT_SOURCE)
+  const { sessions, activeSessionId, isLoading, isInitialized } = state
   const activeSession = computed<PersistedGenerationSession | null>(
     () => sessions.value.find((s) => s.id === activeSessionId.value) || null,
   )
@@ -67,7 +87,7 @@ export function useAssistantSessions() {
     try {
       const list = await listGenerationSessions(ASSISTANT_SOURCE)
       sessions.value = Array.isArray(list) ? list : []
-      syncActiveAgainstList(sessions.value)
+      syncActiveAgainstList(state, ASSISTANT_SOURCE, sessions.value)
       isInitialized.value = true
     } finally {
       isLoading.value = false
@@ -78,7 +98,7 @@ export function useAssistantSessions() {
     const created = await createGenerationSession({ source: ASSISTANT_SOURCE, title })
     sessions.value = [created, ...sessions.value.filter((s) => s.id !== created.id)]
     activeSessionId.value = created.id
-    writePersistedActiveId(created.id)
+    writePersistedActiveId(ASSISTANT_SOURCE, created.id)
     return created
   }
 
@@ -100,7 +120,7 @@ export function useAssistantSessions() {
     if (activeSessionId.value === id) {
       const next = pickFallbackSessionId(sessions.value)
       activeSessionId.value = next
-      writePersistedActiveId(next)
+      writePersistedActiveId(ASSISTANT_SOURCE, next)
     }
   }
 
@@ -108,7 +128,7 @@ export function useAssistantSessions() {
     if (!id) return
     if (!sessions.value.some((s) => s.id === id)) return
     activeSessionId.value = id
-    writePersistedActiveId(id)
+    writePersistedActiveId(ASSISTANT_SOURCE, id)
   }
 
   // 给上层调：发消息前确保有一个会话；没有就走默认（loadSessions 兜底已建过）
@@ -122,7 +142,7 @@ export function useAssistantSessions() {
     }
     const next = pickFallbackSessionId(sessions.value)
     activeSessionId.value = next
-    writePersistedActiveId(next)
+    writePersistedActiveId(ASSISTANT_SOURCE, next)
     return next
   }
 

@@ -695,7 +695,7 @@ const resolveReferenceImagesFromMeta = (metaJson: unknown) => {
 const KNOWN_GENERATION_RECORD_SOURCES = new Set(['generate', 'workflow', 'canvas-assistant'])
 const resolveGenerationRecordSource = (metaJson: unknown) => {
   const source = String((metaJson as any)?.source || '').trim().toLowerCase()
-  if (KNOWN_GENERATION_RECORD_SOURCES.has(source)) {
+  if (KNOWN_GENERATION_RECORD_SOURCES.has(source) || source.startsWith('canvas-assistant:')) {
     return source
   }
   return 'generate'
@@ -1155,7 +1155,11 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
         throw new Error('无权修改当前生成记录')
       }
 
-      const session = await resolveGenerationSessionForUser(tx, currentUserId, payload.sessionId || existingRecord.sessionId, payload.source)
+      const existingSource = String((existingRecord.metaJson as any)?.source || '').trim()
+      // 更新任务常只携带 sessionId。此时沿用记录原来源，避免在没有 source
+      // 的停止/收口路径中把项目级助手会话错误地按 generate 解析。
+      const sourceForSession = String(payload.source || existingSource).trim() || undefined
+      const session = await resolveGenerationSessionForUser(tx, currentUserId, payload.sessionId || existingRecord.sessionId, sourceForSession)
       const existingReferenceImages = Array.isArray((existingRecord.metaJson as any)?.referenceImages)
         ? (existingRecord.metaJson as any).referenceImages
         : []

@@ -84,6 +84,7 @@ import {
   shouldDismissWorkflowPromptDock,
 } from '@/shared/workflow-prompt-visibility'
 import { resolveWorkflowVideoReferenceRole } from '@/shared/workflow-video-prompt'
+import { buildCanvasAssistantSessionSource } from '@/shared/canvas-assistant-session'
 import { collectWorkflowAssistantContext } from '@/shared/workflow-assistant-context'
 import {
   collectWorkflowSubjectReferences,
@@ -235,6 +236,10 @@ interface WorkflowNodeOption {
 const currentWorkflowTitle = computed(() => {
   return currentWorkflowDetail.value?.definition?.name || workflowName.value || '未命名项目'
 })
+// 无限画布的云端助手会话按项目隔离；普通工作流继续使用原有公共助手来源。
+const assistantSessionSource = computed(() => workspaceScene.value === 'INFINITE_CANVAS'
+  ? buildCanvasAssistantSessionSource(currentWorkflowId.value)
+  : 'canvas-assistant')
 const canvasPluginSnapshot = computed(() => ({
   nodes: nodes.value,
   edges: edges.value,
@@ -2352,10 +2357,12 @@ watch(currentCanvasSnapshot, () => {
       <!-- 右侧助手面板（复用 canana 视图的 RightPanel）：fixed 定位 + translateX 动画 -->
       <aside class="workflow-assistant-aside">
         <RightPanel
+          :key="assistantSessionSource"
           :title="currentWorkflowTitle"
           :visible="!isAssistantCollapsed"
           :initial-message="pendingAssistantMessage"
           :context-references="assistantContextReferences"
+          :session-source="assistantSessionSource"
           @close="toggleAssistantPanel"
           @message-received="pendingAssistantMessage = ''"
           @add-image-to-canvas="handleAssistantAddImage"

@@ -136,6 +136,13 @@ export const resolveGenerationSessionForUser = async (
     throw new Error('目标会话不存在或无权访问')
   }
 
+  // sessionId 一旦显式指定，必须仍属于本次 source。否则同一账户可通过
+  // 构造另一个项目的 sessionId，把画布助手记录写入错误的项目会话。
+  const hasExplicitSource = Boolean(String(source || '').trim())
+  if (hasExplicitSource && String(existingSession.source || '') !== normalizedSource) {
+    throw new Error('目标会话不属于当前创作来源')
+  }
+
   return existingSession
 }
 

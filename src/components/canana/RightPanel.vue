@@ -20,12 +20,14 @@ import {
   collectWorkflowAssistantImageReferences,
 } from '@/shared/workflow-assistant-context'
 import { useAssistantSessions } from '@/composables/useAssistantSessions'
+import { CANVAS_ASSISTANT_SOURCE } from '@/shared/canvas-assistant-session'
 
 const props = defineProps({
   title: { type: String, default: '' },
   visible: { type: Boolean, default: false },
   initialMessage: { type: String, default: '' },
-  contextReferences: { type: Array, default: () => [] }
+  contextReferences: { type: Array, default: () => [] },
+  sessionSource: { type: String, default: CANVAS_ASSISTANT_SOURCE },
 })
 
 const emit = defineEmits(['close', 'message-received', 'add-image-to-canvas'])
@@ -42,7 +44,7 @@ const {
   setActive,
   ensureSession,
   ASSISTANT_SOURCE,
-} = useAssistantSessions()
+} = useAssistantSessions(props.sessionSource)
 
 const sessionListVisible = ref(false)
 const sessionListAnchor = ref(null)

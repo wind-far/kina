@@ -6,7 +6,12 @@ import {
 } from '../../src/shared/canvas-snapshot'
 import { createWorkflowDefinition, getWorkflowDefinitionDetail } from '../workflow-definitions/service'
 import { deleteUploadedStorageFile, saveUploadedBuffer, type StoredUploadReference } from '../storage/service'
-import { applyTargetCanvasAssetUrls, parseTargetCanvasArchive, selectTargetCanvasArchiveProject } from './target-archive'
+import {
+  applyTargetCanvasAssetUrls,
+  parseTargetCanvasArchive,
+  selectTargetCanvasArchiveProject,
+  type TargetCanvasArchivePayload,
+} from './target-archive'
 
 export interface CanvasProjectAccessContext { currentUserId: string }
 
@@ -113,14 +118,38 @@ const isSupportedCanvasArchiveAsset = (mimeType: string) => [
   'audio/mpeg', 'audio/wav', 'audio/ogg',
 ].includes(mimeType.toLowerCase())
 
-const cleanupFailedCanvasArchiveProjectUploads = async (uploads: StoredUploadReference[], warnings: string[], projectIndex: number) => {
+const cleanupFailedCanvasArchiveProjectUploads = async (
+  uploads: StoredUploadReference[],
+  warnings: string[],
+  projectIndex: number,
+  deleteUpload: (upload: StoredUploadReference) => Promise<unknown> = deleteUploadedStorageFile,
+) => {
   for (const upload of uploads.reverse()) {
     try {
-      await deleteUploadedStorageFile(upload)
+      await deleteUpload(upload)
     } catch {
       warnings.push(`第 ${projectIndex + 1} 个项目有一个已上传资源未能自动回收，请在存储中人工检查。`)
     }
   }
+}
+
+type CanvasArchiveStoredAsset = StoredUploadReference & { publicUrl: string }
+
+export interface CanvasArchiveImportDependencies {
+  saveAsset: (input: {
+    buffer: Buffer
+    filename: string
+    mimeType: string
+    category: string
+  }) => Promise<CanvasArchiveStoredAsset>
+  deleteAsset: (input: StoredUploadReference) => Promise<unknown>
+  createProject: (payload: { name?: string; data?: unknown }, context: CanvasProjectAccessContext) => Promise<{ detail: any; warnings: string[] }>
+}
+
+const defaultCanvasArchiveImportDependencies: CanvasArchiveImportDependencies = {
+  saveAsset: saveUploadedBuffer,
+  deleteAsset: deleteUploadedStorageFile,
+  createProject: importCanvasProject,
 }
 
 /**
@@ -128,8 +157,12 @@ const cleanupFailedCanvasArchiveProjectUploads = async (uploads: StoredUploadRef
  * 或本地 uploads，再把其公开 URL 回写到快照。未支持的 MIME 和缺失资源不会阻断
  * 项目导入，但会在迁移报告中明确列出。
  */
-export const importCanvasProjectArchive = async (archive: Buffer, name: string | undefined, context: CanvasProjectAccessContext) => {
-  const parsed = parseTargetCanvasArchive(archive)
+export const importParsedCanvasProjectArchive = async (
+  parsed: TargetCanvasArchivePayload,
+  name: string | undefined,
+  context: CanvasProjectAccessContext,
+  dependencies: CanvasArchiveImportDependencies = defaultCanvasArchiveImportDependencies,
+) => {
   const warnings = [...parsed.warnings]
   const details: any[] = []
   for (const projectIndex of parsed.projectIndexes) {
@@ -142,7 +175,7 @@ export const importCanvasProjectArchive = async (archive: Buffer, name: string |
         continue
       }
       try {
-        const saved = await saveUploadedBuffer({
+        const saved = await dependencies.saveAsset({
           buffer: asset.buffer,
           filename: asset.path.split('/').pop() || 'canvas-asset',
           mimeType: asset.mimeType,
@@ -159,14 +192,14 @@ export const importCanvasProjectArchive = async (archive: Buffer, name: string |
       }
     }
     try {
-      const result = await importCanvasProject({
+      const result = await dependencies.createProject({
         name: parsed.projectIndexes.length === 1 ? name : undefined,
         data: applyTargetCanvasAssetUrls(project.data, assetUrls),
       }, context)
       details.push(result.detail)
       warnings.push(...result.warnings.map(warning => `第 ${projectIndex + 1} 个项目：${warning}`))
     } catch (error: any) {
-      await cleanupFailedCanvasArchiveProjectUploads(uploadedReferences, warnings, projectIndex)
+      await cleanupFailedCanvasArchiveProjectUploads(uploadedReferences, warnings, projectIndex, dependencies.deleteAsset)
       warnings.push(`第 ${projectIndex + 1} 个项目导入失败：${error?.message || '未知错误'}`)
     }
   }
@@ -176,6 +209,10 @@ export const importCanvasProjectArchive = async (archive: Buffer, name: string |
     throw error
   }
   return { detail: details[0], details, importedCount: details.length, warnings }
+}
+
+export const importCanvasProjectArchive = async (archive: Buffer, name: string | undefined, context: CanvasProjectAccessContext) => {
+  return await importParsedCanvasProjectArchive(parseTargetCanvasArchive(archive), name, context)
 }
 
 const collectAssistantContext = (snapshot: CanvasSnapshotV3, selection: unknown) => {

@@ -12,7 +12,7 @@ const root = (path) => readFile(fileURLToPath(new URL(`../../${path}`, import.me
 
 assert.equal(
   sanitizeManagedPromptContent('<script>alert(1)</script>保留提示词\n```rm -rf /```'),
-  'alert(1)保留提示词\n[已移除代码块]',
+  '保留提示词\n[已移除代码块]',
 )
 assert.throws(() => assertAllowedSourceUrl('https://example.com/prompts.json'), /raw\.githubusercontent\.com/)
 assert.equal(
@@ -26,7 +26,7 @@ const jsonEntries = parseCanvasPromptSourcePayload('JSON', JSON.stringify({ prom
 ] }))
 assert.equal(jsonEntries.length, 2)
 assert.equal(jsonEntries[0].targetNodeType, 'imageConfig')
-assert.equal(jsonEntries[1].content, 'evil()安全内容')
+assert.equal(jsonEntries[1].content, '安全内容')
 
 const skillEntries = parseSkillMarkdownEntries('# MiniMax H3 Product Skill\n使用参考图生成 15 秒视频。\n```javascript\nalert(1)\n```', 'MiniMax H3')
 assert.equal(skillEntries[0].kind, 'VIDEO_CONFIG')

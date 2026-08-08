@@ -44,6 +44,7 @@ const nodeTypeForPromptKind = (kind: ManagedPromptEntry['kind']) => kind === 'IM
 
 /** Skill 文件只作为数据解析；移除脚本、嵌入页面、事件属性和 fenced code，绝不执行。 */
 export const sanitizeManagedPromptContent = (value: unknown) => String(value || '')
+  .replace(/<\s*(script|iframe|object|embed|style)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
   .replace(/<\s*\/?\s*(script|iframe|object|embed|style)[^>]*>/gi, '')
   .replace(/\son[a-z]+\s*=\s*(["']).*?\1/gi, '')
   .replace(/```[\s\S]*?```/g, '[已移除代码块]')

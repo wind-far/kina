@@ -87,7 +87,12 @@ export const exportCanvasProjectSelection = async (projectId: string, selection:
 
 export const importCanvasProject = async (payload: { name?: string; data?: unknown }, context: CanvasProjectAccessContext) => {
   const source = payload?.data && typeof payload.data === 'object' ? payload.data as any : payload
-  const project = source?.project && typeof source.project === 'object' ? source.project : {}
+  const targetExportProject = source?.app === 'infinite-canvas' && Array.isArray(source?.projects)
+    ? source.projects[0]?.project
+    : null
+  const project = source?.project && typeof source.project === 'object'
+    ? source.project
+    : targetExportProject && typeof targetExportProject === 'object' ? targetExportProject : {}
   const { snapshot, warnings } = normalizeCanvasImport(source)
   const name = String(payload?.name || project?.name || '导入的无限画布').trim().slice(0, 100) || '导入的无限画布'
   const detail = await createWorkflowDefinition({

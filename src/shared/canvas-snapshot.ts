@@ -97,18 +97,104 @@ const normalizeNode = (value: unknown, index: number, nodeIds: Set<string>, warn
   }
 }
 
+/**
+ * 将 basketikun/infinite-canvas v3 的项目节点收敛为 CanvasMind 节点。
+ * 目标项目把业务字段放在 metadata 中，并以 config 统一表示各类生成配置；
+ * 这里保留原始元数据和资源键，避免导入时静默丢失未实现的插件或 ZIP 资源引用。
+ */
+const adaptTargetInfiniteCanvasNode = (value: unknown): Record<string, unknown> => {
+  const input = asRecord(value)
+  const metadata = asRecord(input.metadata)
+  const images = Array.isArray(metadata.images) ? metadata.images.map(asRecord) : []
+  const primaryImageId = String(metadata.primaryImageId || '')
+  const primaryImage = images.find(image => String(image.id || '') === primaryImageId) || images[0] || {}
+  const sourceType = String(input.type || 'unknown').trim() || 'unknown'
+  const generationMode = String(metadata.generationMode || '').trim()
+  const type = sourceType === 'config'
+    ? generationMode === 'video' ? 'videoConfig' : generationMode === 'text' ? 'llmConfig' : 'imageConfig'
+    : sourceType
+  const content = String(metadata.content || metadata.composerContent || metadata.prompt || '')
+  const resourceKey = String(metadata.storageKey || primaryImage.storageKey || '')
+  const resourceContent = String(primaryImage.content || metadata.content || '')
+  const data: Record<string, unknown> = {
+    label: String(input.title || sourceType || '导入节点'),
+    content,
+    prompt: String(metadata.prompt || ''),
+    model: String(metadata.model || ''),
+    fontSize: Number.isFinite(Number(metadata.fontSize)) ? Number(metadata.fontSize) : undefined,
+    loading: metadata.status === 'loading',
+    error: metadata.status === 'error' ? String(metadata.errorDetails || '导入任务失败') : '',
+    sourceResource: resourceKey ? {
+      storageKey: resourceKey,
+      mimeType: String(metadata.mimeType || primaryImage.mimeType || ''),
+      bytes: numberValue(metadata.bytes ?? primaryImage.bytes),
+    } : undefined,
+    originalMetadata: metadata,
+  }
+  if (['image', 'video', 'audio'].includes(type) && resourceContent) data.url = resourceContent
+  if (type === 'imageConfig') {
+    data.size = String(metadata.size || '')
+    data.quality = String(metadata.quality || '')
+    data.count = numberValue(metadata.count, 1)
+  }
+  if (type === 'videoConfig') {
+    data.seconds = String(metadata.seconds || '')
+    data.quality = String(metadata.vquality || metadata.quality || '')
+  }
+  return {
+    id: input.id,
+    type,
+    position: input.position,
+    width: input.width,
+    height: input.height,
+    data,
+  }
+}
+
+const isTargetInfiniteCanvasExport = (input: Record<string, unknown>) => input.app === 'infinite-canvas' && Array.isArray(input.projects)
+
+const resolveImportSource = (input: Record<string, unknown>, warnings: string[]) => {
+  const nestedCanvas = asRecord(input.canvas)
+  if (Object.keys(nestedCanvas).length) return { source: nestedCanvas, targetExport: false, targetAssets: [] as unknown[] }
+  if (!isTargetInfiniteCanvasExport(input)) return { source: input, targetExport: false, targetAssets: [] as unknown[] }
+
+  const projects = input.projects as unknown[]
+  const firstItem = asRecord(projects[0])
+  const project = asRecord(firstItem.project)
+  if (!projects.length || !Object.keys(project).length) {
+    warnings.push('目标项目导出中未找到可导入的项目。')
+    return { source: {}, targetExport: true, targetAssets: [] as unknown[] }
+  }
+  if (projects.length > 1) warnings.push(`目标项目导出包含 ${projects.length} 个项目；当前一次仅导入第一个项目。`)
+  const files = Array.isArray(firstItem.files) ? firstItem.files : []
+  if (files.length) warnings.push(`已保留 ${files.length} 个目标项目资源引用；请使用 ZIP 资源迁移后再访问其二进制内容。`)
+  return { source: project, targetExport: true, targetAssets: files }
+}
+
 /** 将 CanvasMind 当前或目标项目的常见导出结构收敛为 v3。 */
 export const normalizeCanvasImport = (value: unknown): CanvasImportResult => {
   const input = asRecord(value)
-  const nestedCanvas = asRecord(input.canvas)
-  const source = Object.keys(nestedCanvas).length ? nestedCanvas : input
   const warnings: string[] = []
+  const { source, targetExport, targetAssets } = resolveImportSource(input, warnings)
   const nodeIds = new Set<string>()
   const rawNodes = Array.isArray(source.nodes) ? source.nodes : []
   const nodes = rawNodes
+    .map(node => targetExport ? adaptTargetInfiniteCanvasNode(node) : node)
     .map((node, index) => normalizeNode(node, index, nodeIds, warnings))
     .filter((node): node is CanvasSnapshotNode => Boolean(node))
-  const rawEdges = Array.isArray(source.edges) ? source.edges : []
+  const rawEdges = Array.isArray(source.edges)
+    ? source.edges
+    : Array.isArray(source.connections)
+      ? source.connections.map((connection) => {
+          const inputConnection = asRecord(connection)
+          return {
+            id: inputConnection.id,
+            source: inputConnection.fromNodeId,
+            target: inputConnection.toNodeId,
+            type: 'promptOrder',
+          }
+        })
+      : []
   const edgeIds = new Set<string>()
   const edges = rawEdges.flatMap((edge, index): CanvasSnapshotEdge[] => {
     const inputEdge = asRecord(edge)
@@ -145,7 +231,7 @@ export const normalizeCanvasImport = (value: unknown): CanvasImportResult => {
       viewport: {
         x: numberValue(viewport.x),
         y: numberValue(viewport.y),
-        zoom: Math.max(0.1, Math.min(4, numberValue(viewport.zoom, 1))),
+        zoom: Math.max(0.1, Math.min(4, numberValue(viewport.zoom ?? viewport.k, 1))),
       },
       backgroundMode,
       showImageInfo: Boolean(source.showImageInfo ?? runtime.showImageInfo),
@@ -153,7 +239,14 @@ export const normalizeCanvasImport = (value: unknown): CanvasImportResult => {
       activeChatId: typeof source.activeChatId === 'string'
         ? source.activeChatId
         : typeof runtime.activeChatId === 'string' ? runtime.activeChatId : null,
-      extensions: asRecord(source.extensions),
+      extensions: {
+        ...asRecord(source.extensions),
+        ...(targetExport ? {
+          importSource: 'basketikun/infinite-canvas',
+          importSourceVersion: input.version,
+          sourceAssetManifest: targetAssets,
+        } : {}),
+      },
     },
     warnings,
   }

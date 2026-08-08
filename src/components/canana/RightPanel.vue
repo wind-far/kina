@@ -21,6 +21,10 @@ import {
 } from '@/shared/workflow-assistant-context'
 import { useAssistantSessions } from '@/composables/useAssistantSessions'
 import { CANVAS_ASSISTANT_SOURCE } from '@/shared/canvas-assistant-session'
+import {
+  buildCanvasAssistantProposalInstruction,
+  parseCanvasAssistantProposal,
+} from '@/shared/canvas-assistant-proposal'
 
 const props = defineProps({
   title: { type: String, default: '' },
@@ -28,9 +32,10 @@ const props = defineProps({
   initialMessage: { type: String, default: '' },
   contextReferences: { type: Array, default: () => [] },
   sessionSource: { type: String, default: CANVAS_ASSISTANT_SOURCE },
+  allowCanvasProposals: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['close', 'message-received', 'add-image-to-canvas'])
+const emit = defineEmits(['close', 'message-received', 'add-image-to-canvas', 'canvas-proposal'])
 
 // 会话列表（与 /generate 通过 source='canvas-assistant' 物理隔离）
 const {
@@ -200,10 +205,14 @@ const mapRecordToMessages = (record) => {
       error: record.error || '',
     })
   } else if (rtype === 'agent' || rtype === 'chat') {
+    const parsed = props.allowCanvasProposals
+      ? parseCanvasAssistantProposal(record.content || '')
+      : { displayContent: record.content || '', proposal: null }
     out.push({
       id: `${baseId}-a`,
       type: 'ai-text',
-      content: record.content || '',
+      content: parsed.displayContent || (parsed.proposal ? '已生成画布提案，请确认后应用。' : ''),
+      canvasProposal: parsed.proposal || undefined,
       loading: !record.done && !record.content,
       error: record.error || '',
     })
@@ -414,7 +423,12 @@ const runChatStream = async (prompt, aiMsg) => {
       requestBody: {
         model: modelKey,
         providerId,
-        messages: [{ role: 'user', content: prompt }],
+        messages: props.allowCanvasProposals
+          ? [
+              { role: 'system', content: buildCanvasAssistantProposalInstruction() },
+              { role: 'user', content: prompt },
+            ]
+          : [{ role: 'user', content: prompt }],
         stream: true,
       },
     })
@@ -448,8 +462,12 @@ const runChatStream = async (prompt, aiMsg) => {
           return
         }
         if (event.type === 'completed') {
-          const finalContent = String(event.record?.content || '')
-          if (finalContent) aiMsg.content = finalContent
+          const finalContent = String(event.record?.content || aiMsg.content || '')
+          const parsed = props.allowCanvasProposals
+            ? parseCanvasAssistantProposal(finalContent)
+            : { displayContent: finalContent, proposal: null }
+          aiMsg.content = parsed.displayContent || (parsed.proposal ? '已生成画布提案，请确认后应用。' : '')
+          aiMsg.canvasProposal = parsed.proposal || undefined
           aiMsg.loading = false
           scrollToBottom()
           return
@@ -601,7 +619,7 @@ watch(() => props.initialMessage, async (newMessage) => {
     error: '',
   })
   scrollToBottom()
-  await runChatStream(buildContextualPrompt(newMessage), tailMessage())
+  await runChatStream(buildWorkflowAssistantContextPrompt(newMessage, canvasContextReferences.value), tailMessage())
 })
 
 // 计算内容生成器高度（用于任务指示器定位）
@@ -753,6 +771,14 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
                 <span class="ai-text-dot" />
               </div>
               <div v-if="msg.error" class="ai-text-error">{{ msg.error }}</div>
+              <button
+                v-if="msg.canvasProposal && !msg.loading && !msg.error"
+                class="canvas-proposal-apply"
+                type="button"
+                @click="emit('canvas-proposal', msg.canvasProposal)"
+              >
+                查看并应用画布提案
+              </button>
             </div>
           </div>
 
@@ -979,6 +1005,17 @@ const contentGeneratorHeight = computed(() => hasMessages.value ? 102 : 102)
 }
 .ai-text-dot:nth-child(2) { animation-delay: 0.15s; }
 .ai-text-dot:nth-child(3) { animation-delay: 0.3s; }
+.canvas-proposal-apply {
+  background: var(--brand-primary, #6d5dfc);
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  margin-top: 10px;
+  padding: 7px 10px;
+}
+.canvas-proposal-apply:hover { filter: brightness(1.08); }
 @keyframes ai-typing {
   0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
   30% { opacity: 1; transform: translateY(-2px); }

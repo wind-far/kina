@@ -36,4 +36,44 @@ assert.equal(payload.definitionJson.schemaVersion, CANVAS_SNAPSHOT_SCHEMA_VERSIO
 assert.equal(payload.runtimeConfigJson.canvasSnapshotSchemaVersion, CANVAS_SNAPSHOT_SCHEMA_VERSION)
 assert.deepEqual(payload.nodesJson[0].position, { x: 20, y: 30 })
 
+// basketikun/infinite-canvas 当前导出的 projects.json（ZIP 内元数据）兼容 fixture。
+const targetExport = normalizeCanvasImport({
+  app: 'infinite-canvas',
+  version: 3,
+  exportedAt: '2026-08-08T00:00:00.000Z',
+  projects: [{
+    project: {
+      id: 'target-project',
+      title: '目标项目',
+      nodes: [
+        { id: 'copy', type: 'text', title: '文案', position: { x: 16, y: 24 }, width: 360, height: 180, metadata: { content: '夏季新品', fontSize: 16 } },
+        { id: 'config', type: 'config', title: '生图设置', position: { x: 420, y: 24 }, width: 360, height: 180, metadata: { generationMode: 'image', model: 'gpt-image', size: '1024x1024' } },
+        { id: 'image', type: 'image', title: '主视觉', position: { x: 830, y: 24 }, width: 480, height: 360, metadata: { storageKey: 'image:hero', mimeType: 'image/png', images: [{ id: 'hero', content: 'data:image/png;base64,AA==', storageKey: 'image:hero', mimeType: 'image/png' }], primaryImageId: 'hero' } },
+        { id: 'plugin', type: 'demo:mask', title: '插件节点', position: { x: 16, y: 300 }, width: 360, height: 180, metadata: {} },
+      ],
+      connections: [
+        { id: 'copy-config', fromNodeId: 'copy', toNodeId: 'config' },
+        { id: 'config-image', fromNodeId: 'config', toNodeId: 'image' },
+      ],
+      viewport: { x: 11, y: -7, k: 1.25 },
+      backgroundMode: 'lines',
+      showImageInfo: true,
+      chatSessions: [{ id: 'chat-1', messages: [] }],
+      activeChatId: 'chat-1',
+    },
+    files: [{ storageKey: 'image:hero', path: 'projects/target-project/files/hero.png', mimeType: 'image/png', bytes: 2 }],
+  }],
+})
+assert.deepEqual(targetExport.snapshot.nodes.map(node => node.type), ['text', 'imageConfig', 'image', 'unknown'])
+assert.equal(targetExport.snapshot.nodes[0].data.content, '夏季新品')
+assert.equal(targetExport.snapshot.nodes[2].data.url, 'data:image/png;base64,AA==')
+assert.equal(targetExport.snapshot.nodes[2].data.sourceResource.storageKey, 'image:hero')
+assert.equal(targetExport.snapshot.edges.length, 2)
+assert.deepEqual(targetExport.snapshot.viewport, { x: 11, y: -7, zoom: 1.25 })
+assert.equal(targetExport.snapshot.backgroundMode, 'lines')
+assert.equal(targetExport.snapshot.chatSessions.length, 1)
+assert.equal(targetExport.snapshot.extensions.importSource, 'basketikun/infinite-canvas')
+assert.equal(targetExport.snapshot.extensions.sourceAssetManifest.length, 1)
+assert.match(targetExport.warnings.join('\n'), /资源引用/)
+
 console.log('canvas snapshot import/export regression passed')

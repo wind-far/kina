@@ -31,6 +31,7 @@ import {
   previewCanvasAssistantOperation,
   type CanvasAssistantPreviewOperation,
 } from './api/canvas-projects'
+import type { CanvasAssistantProposal } from '@/shared/canvas-assistant-proposal'
 import type { WorkflowCanvasPosition } from './composables/workflow-orchestrator-types'
 import {
   getWorkflowExecutionPlan,
@@ -271,6 +272,64 @@ const handleCanvasPluginProposal = async (proposal: { pluginId: string; operatio
   }
 }
 
+const applyCanvasAssistantProposal = async (
+  proposal: { summary?: string; operations?: unknown[] },
+  fallbackPrompt = '',
+) => {
+  const operations = Array.isArray(proposal?.operations) ? proposal.operations : []
+  if (!operations.length) throw new Error('助手提案未返回可应用的操作')
+  const allowed = new Set(['insert_text_node', 'insert_director_node', 'connect_nodes'])
+  if (operations.some((operation: any) => !allowed.has(operation?.type))) {
+    throw new Error('助手提案包含不受支持的操作，已拒绝应用')
+  }
+  await ElMessageBox.confirm(proposal.summary || '确认将助手提案插入画布？该操作可撤销，并会自动保存。', '应用助手提案', {
+    confirmButtonText: '插入', cancelButtonText: '取消', type: 'info',
+  })
+  const insertedNodeIds = new Map<string, string>()
+  // 一次确认对应一个历史快照：撤销时不会遗留孤立节点或连接。
+  pauseHistory()
+  try {
+    for (const operation of operations as CanvasAssistantPreviewOperation[]) {
+      if (operation.type === 'insert_text_node') {
+        const nodeId = addNode('text', { x: Number(operation.position?.x) || 120, y: Number(operation.position?.y) || 120 }, {
+          content: String(operation.data?.content || fallbackPrompt), label: String(operation.data?.label || '助手草稿'),
+        })
+        if (operation.clientKey) insertedNodeIds.set(operation.clientKey, nodeId)
+      }
+      if (operation.type === 'insert_director_node') {
+        const nodeId = addNode('director', { x: Number(operation.position?.x) || 420, y: Number(operation.position?.y) || 120 }, {
+          label: String(operation.data?.label || '助手镜头计划'),
+          brief: String(operation.data?.brief || fallbackPrompt),
+          shotPlan: String(operation.data?.shotPlan || ''),
+          mode: operation.data?.mode === 'commercial' || operation.data?.mode === 'storyboard' ? operation.data.mode : 'short-video',
+        })
+        if (operation.clientKey) insertedNodeIds.set(operation.clientKey, nodeId)
+      }
+      if (operation.type === 'connect_nodes') {
+        const source = insertedNodeIds.get(String(operation.sourceClientKey || ''))
+        const target = insertedNodeIds.get(String(operation.targetClientKey || ''))
+        if (source && target) addEdge({ source, target, type: operation.edgeType || 'promptOrder', data: { promptOrder: 1 } })
+      }
+    }
+  } finally {
+    resumeHistory(true)
+  }
+  ElMessage.success('助手提案已应用到画布，可使用撤销恢复。')
+}
+
+const handleCloudCanvasProposal = async (proposal: CanvasAssistantProposal) => {
+  if (workspaceScene.value !== 'INFINITE_CANVAS') {
+    ElMessage.warning('当前不是无限画布项目，不能应用画布提案。')
+    return
+  }
+  try {
+    await applyCanvasAssistantProposal(proposal)
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(error?.message || '画布助手提案暂时不可用')
+  }
+}
+
 const runCanvasAssistantPreview = async () => {
   if (workspaceScene.value !== 'INFINITE_CANVAS' || !currentWorkflowId.value) {
     ElMessage.warning('请先保存无限画布项目后再使用画布助手。')
@@ -284,43 +343,7 @@ const runCanvasAssistantPreview = async () => {
     if (!prompt) return
     const selection = nodes.value.filter(node => node.selected).map(node => node.id)
     const result = await previewCanvasAssistantOperation(currentWorkflowId.value, prompt, selection)
-    const operations = Array.isArray(result?.proposal?.operations) ? result.proposal.operations : []
-    if (!operations.length) throw new Error('助手预览未返回可应用的操作')
-    const allowed = new Set(['insert_text_node', 'insert_director_node', 'connect_nodes'])
-    if (operations.some(operation => !allowed.has(operation.type))) throw new Error('助手预览包含不受支持的操作，已拒绝应用')
-    await ElMessageBox.confirm(result?.proposal?.summary || '确认将助手预览插入画布？该操作可撤销，并会自动保存。', '应用助手预览', {
-      confirmButtonText: '插入', cancelButtonText: '取消', type: 'info',
-    })
-    const insertedNodeIds = new Map<string, string>()
-    // 一次确认对应一个历史快照：撤销时不会遗留孤立节点或连接。
-    pauseHistory()
-    try {
-      for (const operation of operations as CanvasAssistantPreviewOperation[]) {
-        if (operation.type === 'insert_text_node') {
-          const nodeId = addNode('text', { x: Number(operation.position?.x) || 120, y: Number(operation.position?.y) || 120 }, {
-            content: String(operation.data?.content || prompt), label: String(operation.data?.label || '助手草稿'),
-          })
-          if (operation.clientKey) insertedNodeIds.set(operation.clientKey, nodeId)
-        }
-        if (operation.type === 'insert_director_node') {
-          const nodeId = addNode('director', { x: Number(operation.position?.x) || 420, y: Number(operation.position?.y) || 120 }, {
-            label: String(operation.data?.label || '助手镜头计划'),
-            brief: String(operation.data?.brief || prompt),
-            shotPlan: String(operation.data?.shotPlan || ''),
-            mode: operation.data?.mode === 'commercial' || operation.data?.mode === 'storyboard' ? operation.data.mode : 'short-video',
-          })
-          if (operation.clientKey) insertedNodeIds.set(operation.clientKey, nodeId)
-        }
-        if (operation.type === 'connect_nodes') {
-          const source = insertedNodeIds.get(String(operation.sourceClientKey || ''))
-          const target = insertedNodeIds.get(String(operation.targetClientKey || ''))
-          if (source && target) addEdge({ source, target, type: operation.edgeType || 'promptOrder', data: { promptOrder: 1 } })
-        }
-      }
-    } finally {
-      resumeHistory(true)
-    }
-    ElMessage.success('助手预览已应用到画布，可使用撤销恢复。')
+    await applyCanvasAssistantProposal(result?.proposal || {}, prompt)
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return
     ElMessage.error(error?.message || '画布助手暂时不可用')
@@ -2417,9 +2440,11 @@ watch(currentCanvasSnapshot, () => {
           :initial-message="pendingAssistantMessage"
           :context-references="assistantContextReferences"
           :session-source="assistantSessionSource"
+          :allow-canvas-proposals="workspaceScene === 'INFINITE_CANVAS'"
           @close="toggleAssistantPanel"
           @message-received="pendingAssistantMessage = ''"
           @add-image-to-canvas="handleAssistantAddImage"
+          @canvas-proposal="handleCloudCanvasProposal"
         />
       </aside>
 

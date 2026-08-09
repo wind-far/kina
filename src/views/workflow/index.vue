@@ -6,7 +6,7 @@
 import { computed, ref, watch, onMounted, onUnmounted, nextTick, markRaw, reactive } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { VueFlow, useVueFlow, SelectionMode, type Connection, type NodeMouseEvent, type NodeTypesObject } from '@vue-flow/core'
+import { VueFlow, useVueFlow, SelectionMode, type Connection, type NodeMouseEvent, type NodeTypesObject, type OnConnectStartParams } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { useAsyncAction, useShortcut } from '@/composables'
 import { useLoadingStore } from '@/stores/loading'
@@ -91,6 +91,7 @@ import {
   workflowPromptFileToDataUrl,
 } from '@/shared/workflow-prompt-references'
 import { resolveWorkflowPromptImageParameters } from '@/shared/workflow-prompt-image-parameters'
+import { resolveWorkflowNodeAddMenuPlacement } from '@/shared/workflow-node-add-menu'
 import {
   isWorkflowPromptAnchorNodeType,
   shouldDismissWorkflowPromptDock,
@@ -1216,6 +1217,24 @@ const addNewNode = (type: WorkflowNodeType) => {
 // 快速连线：按住 Alt 点击节点 A，再按住 Alt 点击节点 B，自动连线。
 // Shift 保留给 Vue Flow 的多选，避免两种交互争夺同一个修饰键。
 const quickLinkSourceId = ref<string | null>(null)
+const pendingConnectionStart = ref<null | {
+  nodeId: string
+  handleId?: string
+  handleType?: string
+  screen?: { x: number; y: number }
+}>(null)
+const pendingConnectionCompleted = ref(false)
+const pendingConnectionMenuLine = ref<null | {
+  start: { x: number; y: number }
+  end: { x: number; y: number }
+}>(null)
+const pendingConnectionMenuPath = computed(() => {
+  const line = pendingConnectionMenuLine.value
+  if (!line) return ''
+  const direction = line.end.x >= line.start.x ? 1 : -1
+  const curve = Math.max(48, Math.abs(line.end.x - line.start.x) * 0.45)
+  return `M ${line.start.x} ${line.start.y} C ${line.start.x + direction * curve} ${line.start.y}, ${line.end.x - direction * curve} ${line.end.y}, ${line.end.x} ${line.end.y}`
+})
 
 // 把"按节点类型推断 edge type"的逻辑抽出来，拖拽连线（onConnect）与快速连线共用。
 const applyTypedEdgeConnection = (params: WorkflowAddEdgeParams) => {
@@ -1239,6 +1258,8 @@ const applyTypedEdgeConnection = (params: WorkflowAddEdgeParams) => {
 
 // 处理连接
 const onConnect = (params: Connection) => {
+  pendingConnectionCompleted.value = true
+  pendingConnectionMenuLine.value = null
   if (workflowRunning.value) {
     ElMessage.warning('工作流执行中，暂不能修改连线')
     return
@@ -1257,6 +1278,60 @@ const onConnect = (params: Connection) => {
   }
   applyTypedEdgeConnection(connection)
 }
+
+const getConnectionPointer = (event?: MouseEvent | TouchEvent) => {
+  if (!event) return null
+  if (typeof TouchEvent !== 'undefined' && event instanceof TouchEvent && event.changedTouches?.length) {
+    const touch = event.changedTouches[0]
+    return { x: touch.clientX, y: touch.clientY }
+  }
+  const mouseEvent = event as MouseEvent
+  return { x: mouseEvent.clientX, y: mouseEvent.clientY }
+}
+const onConnectStart = (params: { event?: MouseEvent | TouchEvent } & OnConnectStartParams) => {
+  pendingConnectionMenuLine.value = null
+  window.dispatchEvent(new CustomEvent('canvasmind:close-node-add-menus'))
+  pendingConnectionStart.value = params.nodeId ? {
+    nodeId: params.nodeId,
+    handleId: params.handleId || undefined,
+    handleType: params.handleType,
+    screen: getConnectionPointer(params.event) || undefined,
+  } : null
+  pendingConnectionCompleted.value = false
+}
+const onConnectEnd = (event?: MouseEvent | TouchEvent) => {
+  const pending = pendingConnectionStart.value
+  pendingConnectionStart.value = null
+  if (!pending || pendingConnectionCompleted.value) return
+  const screen = getConnectionPointer(event)
+  if (!screen) return
+  const side = pending.handleId === 'left' || pending.handleType === 'target' ? 'left' : 'right'
+  const flow = screenToFlowCoordinate(screen)
+  const menuPlacement = resolveWorkflowNodeAddMenuPlacement({
+    screen,
+    side,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  })
+  pendingConnectionMenuLine.value = {
+    start: pending.screen || screen,
+    end: menuPlacement.edge,
+  }
+  window.dispatchEvent(new CustomEvent('canvasmind:open-node-add-menu', {
+    detail: {
+      nodeId: pending.nodeId,
+      side,
+      screen,
+      flow,
+    },
+  }))
+}
+
+const clearPendingConnectionMenuLine = () => {
+  pendingConnectionMenuLine.value = null
+}
+onMounted(() => window.addEventListener('canvasmind:node-add-menu-closed', clearPendingConnectionMenuLine))
+onUnmounted(() => window.removeEventListener('canvasmind:node-add-menu-closed', clearPendingConnectionMenuLine))
 
 const hasExistingEdge = (source: string, target: string, sourceHandle?: string, targetHandle?: string) => {
   return edges.value.some(edge =>
@@ -1305,6 +1380,36 @@ const restoreAppendSelection = (targetNodeId: string, event: MouseEvent) => {
   edges.value = edges.value.map(edge => ({ ...edge, selected: selectedEdgeIds.has(edge.id) }))
 }
 
+/**
+ * 参考工作台在选中图片生成节点时，会把它已有的上游提示词直接带进生成输入栏。
+ * 旧实现只打开空输入栏，因而即使连线正确也看不出该图片究竟会使用哪段提示词。
+ */
+const hydrateWorkflowPromptFromSelectedImage = (targetNodeId: string) => {
+  const target = nodes.value.find(node => node.id === targetNodeId)
+  if (!target || target.type !== 'image') return
+
+  const upstreamPrompt = edges.value
+    .filter(edge => edge.target === targetNodeId)
+    .map(edge => nodes.value.find(node => node.id === edge.source))
+    .map((node) => {
+      if (!node) return ''
+      const data = node.data as Record<string, unknown>
+      if (node.type === 'text') return String(data.content || '')
+      if (node.type === 'llmConfig') return String(data.outputContent || data.systemPrompt || '')
+      return ''
+    })
+    .map(text => text.trim())
+    .filter(Boolean)
+    .join('\n\n')
+
+  const data = target.data as Record<string, unknown>
+  workflowPrompt.value = upstreamPrompt || String(data.prompt || '').trim()
+  if (typeof data.model === 'string' && data.model) workflowPromptModel.value = data.model
+  if (Number.isFinite(Number(data.batchCount))) {
+    workflowPromptCount.value = Math.max(1, Math.min(4, Number(data.batchCount)))
+  }
+}
+
 const handleNodeClick = (payload: { event: MouseEvent | TouchEvent; node: { id: string } }) => {
   const originalEvent = payload.event as MouseEvent
   const targetNodeId = payload.node?.id
@@ -1316,6 +1421,7 @@ const handleNodeClick = (payload: { event: MouseEvent | TouchEvent; node: { id: 
   // 输入栏直接记录用户点击的节点，避免出现“节点已选中、输入栏却消失”的不一致。
   promptAnchorLastNodeClickAt.value = Date.now()
   promptAnchorNodeId.value = shouldOpenPrompt ? targetNodeId : ''
+  if (shouldOpenPrompt) hydrateWorkflowPromptFromSelectedImage(targetNodeId)
   // Vue Flow 会在节点点击后继续派发 pane-click。延迟一帧重设锚点，避免
   // pane-click 的清理逻辑把刚选中的节点输入栏立即卸载。
   requestAnimationFrame(() => {
@@ -2517,6 +2623,8 @@ watch(currentCanvasSnapshot, () => {
             :connection-line-component="CanvasConnectionLine"
             :node-class-name="resolveNodeClass"
             @connect="onConnect"
+            @connect-start="onConnectStart"
+            @connect-end="onConnectEnd"
             @node-click="handleNodeClick"
             @pane-click="onPaneClick"
             @viewport-change="handleViewportChange"
@@ -2536,6 +2644,16 @@ watch(currentCanvasSnapshot, () => {
               :variant="canvasBackgroundMode === 'dots' ? 'dots' : 'lines'"
             />
           </VueFlow>
+
+          <Teleport to="body">
+            <svg
+              v-if="pendingConnectionMenuLine"
+              class="workflow-pending-connection-line"
+              aria-hidden="true"
+            >
+              <path :d="pendingConnectionMenuPath" />
+            </svg>
+          </Teleport>
 
           <CanvasMiniMap :visible="isMiniMapOpen" />
           <CanvasZoomControls
@@ -3131,6 +3249,22 @@ watch(currentCanvasSnapshot, () => {
 .workflow-canvas .vue-flow__node > * {
   transform: rotate(var(--canvas-node-rotation, 0deg));
   transform-origin: center;
+}
+
+.workflow-pending-connection-line {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 210;
+}
+.workflow-pending-connection-line path {
+  fill: none;
+  stroke: var(--brand-main-default, #55b8cc);
+  stroke-width: 2;
+  stroke-linecap: round;
 }
 
 .wf-canvas-assistant-preset {

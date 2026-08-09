@@ -75,16 +75,17 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplateDefinition[] = [
       const txtId = getId()
       nodes.push({ id: txtId, type: 'text', position: { x: startPosition.x, y: startPosition.y + rsp * 1.5 }, data: { content: '', label: '角色提示词' } })
 
-      // 角色图配置
-      const cfgId = getId()
-      nodes.push({ id: cfgId, type: 'imageConfig', position: { x: startPosition.x + sp, y: startPosition.y + rsp * 1.5 }, data: { label: '主角色图', model: 'doubao-seedream-4-5-251128', size: '2048x2048' } })
+      // 参考布局以可见图片节点承接角色提示词。模型参数仍由选中图片节点的
+      // 生成面板保存，不在主画布中暴露 imageConfig 中间卡。
+      const mainImageId = getId()
+      nodes.push({ id: mainImageId, type: 'image', position: { x: startPosition.x + sp, y: startPosition.y + rsp * 1.5 }, data: { url: '', label: '主角色图' } })
 
       // 角色图结果
       const imgId = getId()
       nodes.push({ id: imgId, type: 'image', position: { x: startPosition.x + sp * 2, y: startPosition.y + rsp * 1.5 }, data: { url: '', label: '角色图结果' } })
 
-      edges.push({ id: `e_${txtId}_${cfgId}`, source: txtId, target: cfgId, sourceHandle: 'right', targetHandle: 'left' })
-      edges.push({ id: `e_${cfgId}_${imgId}`, source: cfgId, target: imgId, sourceHandle: 'right', targetHandle: 'left' })
+      edges.push({ id: `e_${txtId}_${mainImageId}`, source: txtId, target: mainImageId, sourceHandle: 'right', targetHandle: 'left' })
+      edges.push({ id: `e_${mainImageId}_${imgId}`, source: mainImageId, target: imgId, sourceHandle: 'right', targetHandle: 'left' })
 
       // 4个角度
       const ax = startPosition.x + sp * 3 + 100
@@ -95,11 +96,11 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplateDefinition[] = [
         const tId = getId()
         nodes.push({ id: tId, type: 'text', position: { x: ax, y: ay }, data: { content: cfg.prompt(''), label: `${cfg.label}提示词` } })
 
-        const cId = getId()
-        nodes.push({ id: cId, type: 'imageConfig', position: { x: ax + sp, y: ay }, data: { label: `${cfg.label} (${cfg.english})`, model: 'doubao-seedream-4-5-251128', size: '2048x2048' } })
+        const imageId = getId()
+        nodes.push({ id: imageId, type: 'image', position: { x: ax + sp, y: ay }, data: { url: '', label: `${cfg.label} (${cfg.english})` } })
 
-        edges.push({ id: `e_${tId}_${cId}`, source: tId, target: cId, type: 'promptOrder', data: { promptOrder: 1 }, sourceHandle: 'right', targetHandle: 'left' })
-        edges.push({ id: `e_${imgId}_${cId}`, source: imgId, target: cId, type: 'imageOrder', data: { imageOrder: 1 }, sourceHandle: 'right', targetHandle: 'left' })
+        edges.push({ id: `e_${tId}_${imageId}`, source: tId, target: imageId, type: 'promptOrder', data: { promptOrder: 1 }, sourceHandle: 'right', targetHandle: 'left' })
+        edges.push({ id: `e_${imgId}_${imageId}`, source: imgId, target: imageId, type: 'imageOrder', data: { imageOrder: 1 }, sourceHandle: 'right', targetHandle: 'left' })
       })
 
       return { nodes, edges }

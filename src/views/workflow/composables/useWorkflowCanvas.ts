@@ -81,6 +81,15 @@ export interface WorkflowVideoConfigNodeData extends WorkflowNodeDataBase {
 
 export interface WorkflowImageNodeData extends WorkflowNodeDataBase {
   url: string
+  /**
+   * 直连图片节点的生成设置。早期版本只允许 imageConfig 保存这些字段；
+   * 保留在图片节点上，才能把旧的多视角工作流无损升级为参考图中的直接生成卡片。
+   */
+  prompt?: string
+  model?: string
+  size?: string
+  quality?: string
+  batchCount?: number
   /** 作为画布主体引用，随工作流持久化并自动加入生成参考 */
   isSubject?: boolean
   base64?: string
@@ -659,14 +668,15 @@ export const addConnectedWorkflowNode = (
   anchorId: string,
   side: 'left' | 'right',
   menuType: WorkflowNodeAddMenuType,
+  position?: WorkflowCanvasPosition,
 ) => {
   const anchor = nodes.value.find(node => node.id === anchorId)
   if (!anchor) return null
 
   const { nodeType, label } = resolveWorkflowNodeMenuTarget(menuType)
   const id = addNode(nodeType, {
-    x: anchor.position.x + (side === 'right' ? 440 : -440),
-    y: anchor.position.y,
+    x: Number(position?.x ?? anchor.position.x + (side === 'right' ? 440 : -440)),
+    y: Number(position?.y ?? anchor.position.y),
   }, { label } as Partial<WorkflowNodeDataMap[typeof nodeType]>)
   const source = side === 'right' ? anchorId : id
   const target = side === 'right' ? id : anchorId
@@ -724,22 +734,6 @@ export const redo = (): boolean => {
   return true
 }
 
-const restoreState = (state: WorkflowCanvasStateSnapshot) => {
-  isRestoring = true
-  const nextState = cloneCanvasState(state)
-  nodes.value = nextState.nodes.map(node => applyNodeRotationPresentation(node))
-  edges.value = nextState.edges
-  if (nextState.viewport) canvasViewport.value = { ...nextState.viewport }
-  if (nextState.backgroundMode !== undefined) canvasBackgroundMode.value = nextState.backgroundMode
-  if (nextState.showImageInfo !== undefined) canvasShowImageInfo.value = nextState.showImageInfo
-  if (nextState.chatSessions !== undefined) canvasChatSessions.value = nextState.chatSessions
-  if (nextState.activeChatId !== undefined) canvasActiveChatId.value = nextState.activeChatId
-  // 同步 lastSerialized，避免 restore 后 watch 把同一状态再入一次栈
-  lastSerializedSnapshot = JSON.stringify(captureSnapshot())
-  // 等 watch microtask 跑完再解锁
-  setTimeout(() => { isRestoring = false }, 100)
-}
-
 const syncNodeIdCounter = (canvasNodes: WorkflowCanvasNode[]) => {
   const maxNodeIndex = canvasNodes.reduce((maxValue, node) => {
     const matched = String(node.id || '').match(/^node_(\d+)$/)
@@ -754,12 +748,124 @@ const syncNodeIdCounter = (canvasNodes: WorkflowCanvasNode[]) => {
   nodeId = maxNodeIndex + 1
 }
 
+/**
+ * 旧快照可能已经保存了 imageConfig.outputNodeId，却在任务完成前遗漏了实际的
+ * 图片节点。保留这类边会让它们看起来像从空白画布发出；恢复时仅补回有明确 ID
+ * 的输出节点，不猜测、不删除用户节点，下次常规自动保存会持久化该修复。
+ */
+const restoreMissingImageOutputs = (state: WorkflowCanvasStateSnapshot): WorkflowCanvasStateSnapshot => {
+  const restored = cloneCanvasState(state)
+  const knownNodeIds = new Set(restored.nodes.map(node => node.id))
+
+  restored.nodes
+    .filter((node): node is WorkflowCanvasNode<'imageConfig'> => node.type === 'imageConfig')
+    .forEach((configNode) => {
+      const outputNodeId = String(configNode.data?.outputNodeId || '').trim()
+      if (!outputNodeId || knownNodeIds.has(outputNodeId)) return
+
+      const label = String(configNode.data?.label || '图片')
+      restored.nodes.push({
+        id: outputNodeId,
+        type: 'image',
+        position: {
+          x: Number(configNode.position?.x || 0) + 400,
+          y: Number(configNode.position?.y || 0),
+        },
+        data: {
+          url: '',
+          label: `${label}结果`,
+          loading: Boolean(configNode.data?.loading),
+          error: String(configNode.data?.error || ''),
+          taskRecordId: configNode.data?.taskRecordId,
+          generationMeta: configNode.data?.generationMeta,
+          generationStatus: configNode.data?.generationStatus,
+        },
+      })
+      knownNodeIds.add(outputNodeId)
+
+      if (!restored.edges.some(edge => edge.source === configNode.id && edge.target === outputNodeId)) {
+        restored.edges.push({
+          id: `recovered_${configNode.id}_${outputNodeId}`,
+          source: configNode.id,
+          target: outputNodeId,
+          sourceHandle: 'right',
+          targetHandle: 'left',
+        })
+      }
+    })
+
+  return restored
+}
+
+/**
+ * 早期「多角度分镜」模板把每个生成入口做成 imageConfig，而参考工作台把它们
+ * 直接呈现为可选中的图片节点。只迁移这个有明确结构和固定标签的旧模板：保留
+ * 原节点 ID、位置、参数与所有连线，避免扩大到用户其它普通工作流。
+ */
+const restoreLegacyMultiAngleImageNodes = (state: WorkflowCanvasStateSnapshot): WorkflowCanvasStateSnapshot => {
+  const restored = cloneCanvasState(state)
+  const hasRoleResult = restored.nodes.some(node => node.type === 'image' && String(node.data?.label || '') === '角色图结果')
+  if (!hasRoleResult) return restored
+
+  const inlineImageLabels = new Set([
+    '主角色图',
+    '正视 (Front View)',
+    '侧视 (Side View)',
+    '后视 (Back View)',
+    "俯视 (Top/Bird's Eye View)",
+  ])
+
+  restored.nodes = restored.nodes.map((node) => {
+    if (node.type !== 'imageConfig' || !inlineImageLabels.has(String(node.data?.label || ''))) return node
+
+    const config = node.data as WorkflowImageConfigNodeData
+    return {
+      ...node,
+      type: 'image' as const,
+      data: {
+        ...config,
+        // image 节点要求始终有 url；空字符串代表参考工作台里的待生成状态。
+        url: '',
+        loading: Boolean(config.loading),
+        error: String(config.error || ''),
+        prompt: String(config.prompt || ''),
+        model: String(config.model || ''),
+        size: String(config.size || ''),
+        quality: String(config.quality || ''),
+        batchCount: Math.max(1, Number(config.batchCount) || 1),
+      },
+    } as WorkflowCanvasNode<'image'>
+  })
+
+  return restored
+}
+
+const restoreWorkflowCanvasState = (state: WorkflowCanvasStateSnapshot): WorkflowCanvasStateSnapshot => (
+  restoreLegacyMultiAngleImageNodes(restoreMissingImageOutputs(state))
+)
+
+const restoreState = (state: WorkflowCanvasStateSnapshot) => {
+  isRestoring = true
+  const nextState = restoreWorkflowCanvasState(state)
+  nodes.value = nextState.nodes.map(node => applyNodeRotationPresentation(node))
+  edges.value = nextState.edges
+  if (nextState.viewport) canvasViewport.value = { ...nextState.viewport }
+  if (nextState.backgroundMode !== undefined) canvasBackgroundMode.value = nextState.backgroundMode
+  if (nextState.showImageInfo !== undefined) canvasShowImageInfo.value = nextState.showImageInfo
+  if (nextState.chatSessions !== undefined) canvasChatSessions.value = nextState.chatSessions
+  if (nextState.activeChatId !== undefined) canvasActiveChatId.value = nextState.activeChatId
+  // 同步 lastSerialized，避免 restore 后 watch 把同一状态再入一次栈
+  lastSerializedSnapshot = JSON.stringify(captureSnapshot())
+  // 等 watch microtask 跑完再解锁
+  setTimeout(() => { isRestoring = false }, 100)
+}
+
 // 直接应用外部读取到的画布快照，供工作流持久化加载使用。
 export const applyCanvasSnapshot = (
   state: WorkflowCanvasStateSnapshot,
   viewportState?: WorkflowCanvasViewportSnapshot | null,
 ) => {
-  const nextState = cloneCanvasState(state)
+  const nextState = restoreWorkflowCanvasState(state)
   isRestoring = true
   nodes.value = nextState.nodes.map(node => applyNodeRotationPresentation(node))
   edges.value = nextState.edges

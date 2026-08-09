@@ -424,7 +424,8 @@ watch(
       updateNode(props.id, { autoExecute: false })
       setTimeout(() => handleGenerate(), 200)
     }
-  }
+  },
+  { immediate: true },
 )
 
 watch(

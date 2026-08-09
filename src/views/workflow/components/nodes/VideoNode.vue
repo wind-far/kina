@@ -421,8 +421,8 @@ onMounted(async () => {
       />
     </div>
 
-    <CanvasNodeAddHandle side="left" :visible="isSelected" />
-    <CanvasNodeAddHandle side="right" :visible="isSelected" />
+    <CanvasNodeAddHandle side="left" :visible="isSelected" :node-id="id" />
+    <CanvasNodeAddHandle side="right" :visible="isSelected" :node-id="id" />
 
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
 

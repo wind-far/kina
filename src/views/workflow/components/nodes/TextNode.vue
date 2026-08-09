@@ -13,11 +13,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import {
   CopyDocument,
-  Picture,
   VideoCamera,
-  Delete,
-  Plus,
-  Minus,
   EditPen,
   Upload,
   MagicStick,
@@ -26,17 +22,11 @@ import {
   Grid,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasNodeTopToolbar, { type NodeTopToolbarItem } from '@/components/canvas/CanvasNodeTopToolbar.vue'
-import ContentGenerator from '@/components/generate/ContentGenerator.vue'
-import type { CreationType } from '@/components/generate/selectors'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
-import CanvasNodeResizer from '@/components/canvas/CanvasNodeResizer.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
   updateNode,
-  removeNode,
-  duplicateNode,
   addNode,
   addEdge,
   nodes,
@@ -61,7 +51,6 @@ const titleEdit = useNodeTitleEdit(props.id, () => props.data?.label || 'Text')
 const { updateNodeInternals } = useVueFlow()
 
 const content = ref(props.data?.content || '')
-const showActions = ref(false)
 const isPolishing = ref(false)
 const polishModel = ref(props.data?.polishModel || getDefaultChatModelKey())
 const fontSize = ref(props.data?.fontSize ?? 14)
@@ -71,13 +60,6 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const reverseImageInputRef = ref<HTMLInputElement | null>(null)
 const fullScreenVisible = ref(false)
 const fullScreenDraft = ref('')
-
-const FONT_SIZE_MIN = 10
-const FONT_SIZE_MAX = 28
-const handleFontSizeChange = (delta: number) => {
-  fontSize.value = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, fontSize.value + delta))
-  updateNode(props.id, { fontSize: fontSize.value })
-}
 
 const chatModelOptions = computed(() => getAllChatModels().map((m) => ({ label: m.label, value: m.key })))
 
@@ -105,15 +87,23 @@ watch(() => props.data?.content, (v) => { if (v !== undefined) content.value = v
 watch(() => props.data?.polishModel, (v) => { if (v !== undefined) polishModel.value = v })
 watch(() => props.data?.fontSize, (v) => { if (v !== undefined) fontSize.value = v })
 
+/**
+ * 空文本的编辑态只属于当前一次选中。此前 forceEditMode 在节点失焦后一直保留，
+ * 节点便会卡在空白 textarea，既没有“尝试”菜单也无法自然回到初始状态。
+ */
+watch(isSelected, async (selected, wasSelected) => {
+  if (!selected && wasSelected && !content.value.trim() && !isPolishing.value) {
+    forceEditMode.value = false
+    return
+  }
+  if (selected && forceEditMode.value && !content.value.trim()) {
+    await nextTick()
+    textareaRef.value?.focus()
+  }
+})
+
 const handleInput = () => {
   updateNode(props.id, { content: content.value, polishModel: polishModel.value })
-}
-
-const handleDelete = () => removeNode(props.id)
-
-const handleDuplicate = () => {
-  const newId = duplicateNode(props.id)
-  if (newId) setTimeout(() => updateNodeInternals([newId]), 50)
 }
 
 // 空态菜单：自己编写内容（切到 textarea + focus）
@@ -148,27 +138,11 @@ const handleFileChange = async (event: Event) => {
   }
 }
 
-// 快捷创建文生图配置节点
-const createImageConfig = () => {
-  const node = nodes.value.find((n) => n.id === props.id)
-  if (!node) return
-  const newId = addNode('imageConfig', { x: node.position.x + 380, y: node.position.y })
-  addEdge({
-    source: props.id,
-    target: newId,
-    sourceHandle: 'right',
-    targetHandle: 'left',
-    type: 'promptOrder',
-    data: { promptOrder: 1 },
-  })
-  setTimeout(() => updateNodeInternals([newId]), 50)
-}
-
 // 快捷创建视频配置节点
 const createVideoConfig = () => {
   const node = nodes.value.find((n) => n.id === props.id)
   if (!node) return
-  const newId = addNode('videoConfig', { x: node.position.x + 380, y: node.position.y })
+  const newId = addNode('videoConfig', { x: node.position.x + 380, y: node.position.y }, { autoExecute: true })
   addEdge({
     source: props.id,
     target: newId,
@@ -216,16 +190,6 @@ const handleReverseImageChange = async (event: Event) => {
     input.value = ''
   }
 }
-
-// hover 工具栏配置
-const hoverActions = computed<NodeToolbarAction[]>(() => [
-  { id: 'font-minus', label: '缩小字号', icon: Minus, disabled: fontSize.value <= FONT_SIZE_MIN, onClick: () => handleFontSizeChange(-1) },
-  { id: 'font-plus', label: '放大字号', icon: Plus, disabled: fontSize.value >= FONT_SIZE_MAX, onClick: () => handleFontSizeChange(1) },
-  { id: 'duplicate', label: '复制', icon: CopyDocument, onClick: handleDuplicate },
-  { id: 'image-config', label: '生图', icon: Picture, onClick: createImageConfig },
-  { id: 'video-config', label: '生视频', icon: VideoCamera, onClick: createVideoConfig },
-  { id: 'delete', label: '删除', icon: Delete, danger: true, onClick: handleDelete },
-])
 
 const emptyMenuItems = [
   { id: 'start-edit', label: '自己编写内容', icon: EditPen, onClick: handleStartEdit },
@@ -318,54 +282,6 @@ const topToolbarItems = computed<NodeTopToolbarItem[]>(() => [
   ], onMenuSelect: handleTablePicker },
 ])
 
-// 选中态下方浮层 prompt：仅在节点被选中时显示
-const promptText = ref('')
-/**
- * 节点下方 PromptInput 发送 = AI 润色：
- *   - 节点 content 有内容 → 把 content 作为「原文」+ PromptInput 文本作为「润色诉求」一起送给 AI
- *   - 节点 content 为空 → 直接把 PromptInput 文本送给 AI 生成润色版作为初始内容
- * 流式写回 content。底层 workflow streamChatCompletions 已通过 createGenerationTask 持久化。
- */
-const handlePromptSend = async (text: string, _type: CreationType, _options?: unknown) => {
-  if (!text.trim() || isPolishing.value) return
-  const original = content.value
-  isPolishing.value = true
-  forceEditMode.value = true
-  promptText.value = ''
-  const userMsg = original.trim()
-    ? `请基于以下原文进行润色，融入新的诉求：\n\n【原文】\n${original}\n\n【润色诉求】\n${text}`
-    : text
-  try {
-    let result = ''
-    for await (const chunk of streamChatCompletions({
-      model: polishModel.value,
-      messages: [
-        {
-          role: 'system',
-          content:
-            '你是一个专业的 AI 创作提示词与文本润色专家。将用户输入润色为高质量的内容，保留原意但融入更生动的细节、画面感与情绪。直接返回润色后的纯文本，不要解释。',
-        },
-        { role: 'user', content: userMsg },
-      ],
-    })) {
-      result += chunk
-      content.value = result // 流式边写边显示
-    }
-    if (result) {
-      updateNode(props.id, { content: result })
-    } else {
-      content.value = original
-    }
-  } catch (err) {
-    content.value = original
-    ElMessage.error('AI 润色失败')
-    // eslint-disable-next-line no-console
-    console.error('[TextNode] polish failed', err)
-  } finally {
-    isPolishing.value = false
-  }
-}
-
 // 流式润色时让 textarea 自动滚到底部跟随
 watch(content, async () => {
   if (!isPolishing.value) return
@@ -376,8 +292,7 @@ watch(content, async () => {
 </script>
 
 <template>
-  <div class="text-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
-    <CanvasNodeResizer :visible="isSelected" :min-width="300" :min-height="200" />
+  <div class="text-node-wrapper">
     <!-- 节点外置标题：浮在节点上方左侧 -->
     <div class="text-node-title" :title="titleEdit.editing.value ? '' : '双击编辑名称'" @dblclick.stop="titleEdit.start">
       <el-icon class="text-node-title-icon"><Document /></el-icon>
@@ -460,31 +375,11 @@ watch(content, async () => {
     </div>
 
     <!-- 左右连接点：用 CanvasNodeAddHandle 直接做 "+" 按钮 + 拖拽连线 -->
-    <CanvasNodeAddHandle side="left" :visible="isSelected" />
-    <CanvasNodeAddHandle side="right" :visible="isSelected" />
-
-    <!-- 节点上方浮动工具栏 -->
-    <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
+    <CanvasNodeAddHandle side="left" :visible="isSelected" :node-id="id" />
+    <CanvasNodeAddHandle side="right" :visible="isSelected" :node-id="id" />
 
     <!-- 选中态 + 有内容时：节点顶部浮出富文本工具栏 -->
     <CanvasNodeTopToolbar :visible="isSelected && !isEmpty" :items="topToolbarItems" />
-
-    <!-- 选中态下方浮出 prompt 输入框（按节点类型差异化） -->
-    <div v-if="isSelected" class="text-node-prompt-panel nodrag nopan" @mousedown.stop>
-      <ContentGenerator
-        layout="sidebar"
-        :collapsible="false"
-        :default-expanded="true"
-        initial-creation-type="agent"
-        :hide-type-selector="true"
-        :hide-skill-selector="true"
-        :hide-image-upload="true"
-        :verbose-toolbar="true"
-        placeholder-override="描述润色诉求或想生成的文本内容，按 Enter 发送（AI 会基于当前内容润色）"
-        popup-placement="top"
-        @send="handlePromptSend"
-      />
-    </div>
 
     <el-dialog
       v-model="fullScreenVisible"
@@ -818,18 +713,6 @@ watch(content, async () => {
   background: var(--canvas-float-block-hover) !important;
   border-color: var(--canvas-selection-border) !important;
   transform: scale(1.1);
-}
-
-/* 选中态下方 prompt 浮层 */
-.text-node-prompt-panel {
-  position: absolute;
-  top: calc(100% + 12px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: max-content;
-  min-width: 380px;
-  max-width: 560px;
-  z-index: 5;
 }
 
 /* 节点外左右 "+" 按钮（参照 RunningHUB .node-add-btn / .node-plus-button） */

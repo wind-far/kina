@@ -28,13 +28,14 @@ import {
   MoreFilled,
   Crop,
   ZoomIn,
+  MagicStick,
+  Document,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import CanvasGenerationInfo from '@/components/canvas/CanvasGenerationInfo.vue'
 import CanvasNodeHoverToolbar, { type NodeToolbarAction } from '@/components/canvas/CanvasNodeHoverToolbar.vue'
 import CanvasNodeTopToolbar, { type NodeTopToolbarItem } from '@/components/canvas/CanvasNodeTopToolbar.vue'
 import CanvasNodeAddHandle from '@/components/canvas/CanvasNodeAddHandle.vue'
-import CanvasNodeResizer from '@/components/canvas/CanvasNodeResizer.vue'
 import { useNodeTitleEdit } from '@/composables/useNodeTitleEdit'
 import {
   updateNode,
@@ -48,7 +49,9 @@ import {
   type WorkflowImageNodeData,
 } from '../../composables/useWorkflowCanvas'
 import { uploadStorageFile } from '@/api/storage'
-import { loadPublicModelCatalog } from '@/config/models'
+import { uploadAssetItem } from '@/api/asset-items'
+import { getDefaultChatModelKey, loadPublicModelCatalog } from '@/config/models'
+import { streamChatCompletions } from '../../api/chat'
 import {
   createGenerationTask,
   subscribeGenerationTaskEvents,
@@ -82,7 +85,28 @@ const cropZoom = ref(1)
 const cropX = ref(50)
 const cropY = ref(50)
 const cropSaving = ref(false)
+const assetSaving = ref(false)
+const localUpscaleSaving = ref(false)
+const reversePromptRunning = ref(false)
+const nodeInfoDialogVisible = ref(false)
 const cropAspectOptions = ['original', '1x1', '4x3', '16x9', '3x4'] as const
+
+const currentNodeInfoJson = computed(() => {
+  const node = nodes.value.find(item => item.id === props.id)
+  if (!node) return '{}'
+  return JSON.stringify({
+    id: node.id,
+    type: node.type,
+    position: node.position,
+    size: node.style || null,
+    data: node.data,
+  }, null, 2)
+})
+
+const copyCurrentNodeInfo = async () => {
+  await window.navigator.clipboard?.writeText(currentNodeInfoJson.value)
+  ElMessage.success('节点 JSON 已复制')
+}
 
 watch(
   [() => props.data?.url, () => props.data?.loading, () => props.data?.error],
@@ -126,7 +150,7 @@ const handleImageLoadError = () => {
     loading: false,
     error,
     // 失效图片不应继续保留此前拖出的巨大图片画布。
-    style: { width: 300, height: 200 },
+    style: { width: 300, height: 220 },
   })
   refreshNodeInternals()
 }
@@ -222,6 +246,24 @@ const createDownstreamImageNode = (label: string) => {
   return newId
 }
 
+const createDerivedImageNode = (label: string, url: string, width?: number, height?: number) => {
+  const newId = createDownstreamImageNode(label)
+  if (!newId) return ''
+  const ratio = width && height ? width / height : 4 / 3
+  const cardWidth = 360
+  const cardHeight = Math.max(180, Math.min(520, Math.round(cardWidth / ratio)))
+  updateNode(newId, {
+    label,
+    url,
+    loading: false,
+    error: '',
+    style: { width: cardWidth, height: cardHeight },
+  })
+  manualSaveHistory()
+  focusNode(newId)
+  return newId
+}
+
 const queueImageVariation = (label: string, prompt: string) => {
   if (!requireImage()) return
   const newId = createDownstreamImageNode(label)
@@ -245,6 +287,113 @@ const handleDownload = async () => {
     URL.revokeObjectURL(url)
   } catch {
     window.open(imageUrl.value, '_blank')
+  }
+}
+
+const saveToAssetLibrary = async () => {
+  if (!imageUrl.value || assetSaving.value) return
+  assetSaving.value = true
+  try {
+    const response = await fetch(imageUrl.value)
+    if (!response.ok) throw new Error(`读取图片失败 (${response.status})`)
+    const blob = await response.blob()
+    const mimeType = blob.type.startsWith('image/') ? blob.type : 'image/png'
+    const extension = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'png'
+    await uploadAssetItem(
+      new File([blob], `${titleEdit.draft.value || props.data?.label || 'canvas-image'}.${extension}`, { type: mimeType }),
+      'image',
+      {
+        title: props.data?.label || '画布图片',
+        tags: props.data?.tags || [],
+        sourceLabel: 'canvas-save',
+      },
+    )
+    ElMessage.success('已保存到我的素材')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '保存素材失败')
+  } finally {
+    assetSaving.value = false
+  }
+}
+
+const upscaleImageLocally = async () => {
+  if (!imageUrl.value || localUpscaleSaving.value) return
+  localUpscaleSaving.value = true
+  try {
+    const response = await fetch(imageUrl.value)
+    if (!response.ok) throw new Error(`读取图片失败 (${response.status})`)
+    const bitmap = await createImageBitmap(await response.blob())
+    const pixelLimitScale = Math.sqrt(16_000_000 / Math.max(1, bitmap.width * bitmap.height))
+    const edgeLimitScale = 4096 / Math.max(bitmap.width, bitmap.height)
+    const scale = Math.min(2, pixelLimitScale, edgeLimitScale)
+    if (scale <= 1.01) {
+      bitmap.close()
+      ElMessage.info('图片已达到本地放大尺寸上限')
+      return
+    }
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('浏览器不支持本地图片放大')
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close()
+    const outputBlob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(
+      blob => blob ? resolve(blob) : reject(new Error('放大结果导出失败')),
+      'image/png',
+      0.96,
+    ))
+    const uploaded = await uploadStorageFile(new File([outputBlob], `upscale-${Date.now()}.png`, { type: 'image/png' }), 'asset')
+    if (!uploaded?.publicUrl) throw new Error('放大结果上传失败')
+    createDerivedImageNode('本地放大 2×', uploaded.publicUrl, canvas.width, canvas.height)
+    ElMessage.success(`已生成 ${canvas.width} × ${canvas.height} 放大节点`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '本地放大失败')
+  } finally {
+    localUpscaleSaving.value = false
+  }
+}
+
+const reversePromptFromImage = async () => {
+  if (!imageUrl.value || reversePromptRunning.value) return
+  const sourceNode = nodes.value.find(node => node.id === props.id)
+  if (!sourceNode) return
+  const newId = addNode('text', {
+    x: sourceNode.position.x + 470,
+    y: sourceNode.position.y + edges.value.filter(edge => edge.source === props.id).length * 260,
+  }, { label: '反推提示词', content: '正在分析图片…', loading: true })
+  addEdge({
+    source: props.id,
+    target: newId,
+    sourceHandle: 'right',
+    targetHandle: 'left',
+    type: 'promptOrder',
+  })
+  focusNode(newId)
+  reversePromptRunning.value = true
+  let result = ''
+  try {
+    for await (const chunk of streamChatCompletions({
+      model: getDefaultChatModelKey(),
+      referenceImages: [imageUrl.value],
+      messages: [
+        { role: 'system', content: '你是视觉提示词专家。根据参考图反推出可直接用于图片生成的中文提示词，准确描述主体、构图、镜头、光线、色彩、材质与风格。只输出提示词。' },
+        { role: 'user', content: '请反推这张图片的生成提示词。' },
+      ],
+    })) {
+      result += chunk
+      updateNode(newId, { content: result, loading: true })
+    }
+    if (!result.trim()) throw new Error('模型未返回提示词')
+    updateNode(newId, { content: result.trim(), loading: false, error: '' })
+    manualSaveHistory()
+  } catch (error) {
+    updateNode(newId, { content: result || '反推失败', loading: false, error: error instanceof Error ? error.message : '反推提示词失败' })
+    ElMessage.error(error instanceof Error ? error.message : '反推提示词失败')
+  } finally {
+    reversePromptRunning.value = false
   }
 }
 
@@ -385,9 +534,9 @@ const saveCrop = async () => {
     ))
     const uploaded = await uploadStorageFile(new File([outputBlob], `crop-${Date.now()}.png`, { type: 'image/png' }), 'asset')
     if (!uploaded?.publicUrl) throw new Error('裁剪结果上传失败')
-    updateNode(props.id, { url: uploaded.publicUrl, error: '' })
+    createDerivedImageNode('裁剪结果', uploaded.publicUrl, canvas.width, canvas.height)
     cropDialogVisible.value = false
-    ElMessage.success('图片已裁剪')
+    ElMessage.success('已生成裁剪结果节点')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '图片裁剪失败')
   } finally {
@@ -565,6 +714,22 @@ const handleToolbarMenu = (group: string, command: string) => {
     handleDuplicate()
     return
   }
+  if (group === 'more' && command === 'local-upscale') {
+    void upscaleImageLocally()
+    return
+  }
+  if (group === 'more' && command === 'reverse-prompt') {
+    void reversePromptFromImage()
+    return
+  }
+  if (group === 'more' && command === 'save-asset') {
+    void saveToAssetLibrary()
+    return
+  }
+  if (group === 'more' && command === 'info') {
+    nodeInfoDialogVisible.value = true
+    return
+  }
   const preset = presets[`${group}:${command}`]
   if (preset) queueImageVariation(preset.label, preset.prompt)
 }
@@ -603,15 +768,21 @@ const topToolbarItems = computed<NodeTopToolbarItem[]>(() => [
     { id: 'night', label: '霓虹夜景' },
   ], onMenuSelect: command => handleToolbarMenu('light', command) },
   { id: 'more', label: '更多', icon: MoreFilled, hasDropdown: true, menuItems: [
-    { id: 'upscale', label: '高清修复' },
+    { id: 'local-upscale', label: '本地放大 2×', disabled: localUpscaleSaving.value },
+    { id: 'upscale', label: 'AI 高清修复' },
+    { id: 'reverse-prompt', label: '反推提示词', disabled: reversePromptRunning.value },
     { id: 'remove-bg', label: '去除背景' },
     { id: 'consistent', label: '风格一致化' },
+    { id: 'save-asset', label: '保存到我的素材', disabled: assetSaving.value },
+    { id: 'info', label: '节点信息与 JSON' },
     { id: 'duplicate', label: '复制节点' },
   ], onMenuSelect: command => handleToolbarMenu('more', command) },
   { type: 'divider' },
   { id: 'crop', label: '裁剪', icon: Crop, iconOnly: true, onClick: openCropDialog },
   { id: 'download-mini', label: '下载', icon: Download, iconOnly: true, onClick: handleDownload },
   { id: 'preview', label: '放大预览', icon: ZoomIn, iconOnly: true, onClick: () => imageUrl.value && window.open(imageUrl.value, '_blank') },
+  { id: 'reverse-prompt', label: '反推提示词', icon: MagicStick, iconOnly: true, disabled: reversePromptRunning.value, onClick: reversePromptFromImage },
+  { id: 'node-info', label: '节点信息', icon: Document, iconOnly: true, onClick: () => { nodeInfoDialogVisible.value = true } },
   { type: 'divider' },
   { id: 'agent', label: '加入 Agent', textMark: 'R', onClick: addImageToAssistant },
 ])
@@ -896,11 +1067,6 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
 
 <template>
   <div class="image-node-wrapper" @mouseenter="showActions = true" @mouseleave="showActions = false">
-    <CanvasNodeResizer
-      :visible="isSelected"
-      :min-width="180"
-      :min-height="140"
-    />
     <!-- 节点外置标题 -->
     <div class="image-node-title" :title="titleEdit.editing.value ? '' : '双击编辑名称'" @dblclick.stop="titleEdit.start">
       <el-icon class="image-node-title-icon"><Picture /></el-icon>
@@ -1040,8 +1206,8 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
       />
     </div>
 
-    <CanvasNodeAddHandle side="left" :visible="isSelected" />
-    <CanvasNodeAddHandle side="right" :visible="isSelected" />
+    <CanvasNodeAddHandle side="left" :visible="isSelected" :node-id="id" />
+    <CanvasNodeAddHandle side="right" :visible="isSelected" :node-id="id" />
 
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
 
@@ -1087,20 +1253,32 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
       </template>
     </el-dialog>
 
+    <el-dialog
+      v-model="nodeInfoDialogVisible"
+      title="节点信息"
+      width="620px"
+      append-to-body
+      class="workflow-image-info-dialog"
+    >
+      <pre class="workflow-image-node-json">{{ currentNodeInfoJson }}</pre>
+      <template #footer>
+        <el-button @click="nodeInfoDialogVisible = false">关闭</el-button>
+        <el-button type="primary" @click="copyCurrentNodeInfo">复制 JSON</el-button>
+      </template>
+    </el-dialog>
+
   </div>
 </template>
 
 <style scoped>
 .image-node-wrapper {
-  /* Vue Flow 把尺寸写在节点宿主上。用 inset 锚定而非百分比高度，
-     防止空态/错误态按内容高度收缩成顶部的一条。 */
-  position: absolute;
-  inset: 0;
-  width: auto;
-  height: auto;
-  /* 未设置固定宽高的新节点也必须提供可测量的初始尺寸。 */
-  min-width: 180px;
-  min-height: 140px;
+  /* 保持在普通布局流中：Vue Flow 依赖该根元素测量节点和 Handle。
+     若 wrapper/card 都 absolute，宿主可能被测成 0×0，图片框消失而边仍在。 */
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 280px;
+  min-height: 220px;
   box-sizing: border-box;
 }
 
@@ -1167,6 +1345,21 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
   object-fit: cover;
   transform-origin: center;
 }
+
+.workflow-image-node-json {
+  box-sizing: border-box;
+  max-height: 58vh;
+  margin: 0;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--stroke-secondary);
+  border-radius: 10px;
+  background: var(--canvas-bg-block-default);
+  color: var(--text-primary);
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .workflow-image-crop__ratios { display: flex; justify-content: center; gap: 8px; }
 .workflow-image-crop__ratios button {
   padding: 5px 10px;
@@ -1193,8 +1386,9 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
 .workflow-image-crop label b { color: var(--text-tertiary); font-weight: 500; text-align: right; }
 
 .image-node-card {
-  /* 脱离普通流并锁定到 Vue Flow 分配的节点边界。
-     否则 loading/error 的 flex 高度会按内容收缩为一条窄横条。 */
+  /* wrapper 保持普通布局以供 Vue Flow 测量，card 单独绝对铺满。
+     旧配置节点带有较大的 style.height 时，普通流中的百分比高度会退回到
+     220px，造成卡片底部留出一整块空白。 */
   position: absolute;
   inset: 0;
   width: auto;
@@ -1214,12 +1408,12 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
 }
 /* 有图态：节点变宽，图片居中（参照 RunningHUB 生成结果布局 img_11） */
 .image-node-card:has(.image-node-display) {
-  width: auto;
-  height: auto;
+  width: 100%;
+  height: 100%;
 }
 .image-node-wrapper:has(.image-node-display) {
-  min-width: 180px;
-  min-height: 140px;
+  min-width: 280px;
+  min-height: 220px;
 }
 .image-node-card.is-selected {
   border-color: var(--canvas-selection-border);

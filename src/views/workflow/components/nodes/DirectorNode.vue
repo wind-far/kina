@@ -77,8 +77,8 @@ const hoverActions = computed<NodeToolbarAction[]>(() => [
         <textarea v-model="shotPlan" class="nodrag nopan" placeholder="每行一个镜头或场次…" @input="persist" @mousedown.stop />
       </label>
     </div>
-    <CanvasNodeAddHandle side="left" :visible="isSelected" />
-    <CanvasNodeAddHandle side="right" :visible="isSelected" />
+    <CanvasNodeAddHandle side="left" :visible="isSelected" :node-id="id" />
+    <CanvasNodeAddHandle side="right" :visible="isSelected" :node-id="id" />
     <CanvasNodeHoverToolbar :visible="showActions" :actions="hoverActions" />
   </div>
 </template>

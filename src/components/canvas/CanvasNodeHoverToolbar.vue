@@ -2,7 +2,8 @@
 /**
  * 节点 hover 工具栏
  *
- * 浮在节点上方居中显示，由节点组件内部根据自身 hover 状态控制。
+ * 历史兼容组件。工作台复刻版不展示节点悬停快捷栏；保留 API 仅避免旧节点
+ * 组件的 actions 逻辑失效，只有显式传 enabled 时才渲染。
  * 每个节点（Text/Image/Video/Config 系）按 type 传入不同 actions 列表。
  *
  * 视觉与 CanvasDockToolbar 一致（毛玻璃 + 阴影 + lv-theme 配色），
@@ -30,16 +31,20 @@ export interface NodeToolbarAction {
   onClick: () => void
 }
 
-defineProps<{
+withDefaults(defineProps<{
   visible?: boolean
+  enabled?: boolean
   actions: NodeToolbarAction[]
-}>()
+}>(), {
+  visible: false,
+  enabled: false,
+})
 </script>
 
 <template>
   <Transition name="canvas-node-hover-toolbar">
     <div
-      v-if="visible && actions.length > 0"
+      v-if="enabled && visible && actions.length > 0"
       class="canvas-node-hover-toolbar nodrag nopan"
       @mousedown.stop
       @click.stop

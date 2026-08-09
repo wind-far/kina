@@ -6,6 +6,7 @@ import i18n from "@infinite/i18n";
 import { ImageSettingsTheme } from "@infinite/components/image-settings-panel";
 import { boolConfig, isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceResolution, seedanceDurationOptions, seedanceResolutionOptions } from "@infinite/lib/seedance-video";
 import { type CanvasTheme } from "@infinite/lib/canvas-theme";
+import { normalizeVideoAspectRatio, readVideoAspectRatioDimensions, VIDEO_ASPECT_RATIO_OPTIONS } from "@infinite/lib/video-aspect-ratio";
 import { type AiConfig } from "@infinite/stores/use-config-store";
 
 const resolutionOptions = [
@@ -13,14 +14,7 @@ const resolutionOptions = [
     { value: "480", label: "480p" },
 ];
 
-const sizeOptions = [
-    { value: "16:9", width: 16, height: 9 },
-    { value: "9:16", width: 9, height: 16 },
-    { value: "1:1", width: 1, height: 1 },
-    { value: "21:9", width: 21, height: 9 },
-    { value: "3:4", width: 3, height: 4 },
-    { value: "4:3", width: 4, height: 3 },
-];
+const sizeOptions = VIDEO_ASPECT_RATIO_OPTIONS;
 
 const secondOptions = [6, 10, 12, 16, 20];
 
@@ -44,7 +38,7 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
 
     const seconds = config.videoSeconds || "6";
     const size = normalizeVideoSizeValue(config.size);
-    const dimensions = readSizeDimensions(size);
+    const dimensions = readVideoAspectRatioDimensions(size);
     const resolution = normalizeVideoResolutionValue(config.vquality);
     const updateDimension = (key: "width" | "height", value: number | null) => {
         const next = Math.max(1, Math.floor(value || dimensions[key] || 1));
@@ -175,14 +169,7 @@ export function videoSecondsLabel(value: string) {
 }
 
 export function normalizeVideoSizeValue(value: string) {
-    const match = String(value || "").trim().match(/^(\d+)(?:x|:)(\d+)$/i);
-    if (!match) return "16:9";
-    const width = Number(match[1]);
-    const height = Number(match[2]);
-    if (!width || !height) return "16:9";
-    return sizeOptions.reduce((closest, item) => (
-        Math.abs(item.width / item.height - width / height) < Math.abs(closest.width / closest.height - width / height) ? item : closest
-    ), sizeOptions[0]).value;
+    return normalizeVideoAspectRatio(value);
 }
 
 export function normalizeVideoResolutionValue(value: string) {
@@ -255,9 +242,4 @@ function SwitchRow({ label, checked, theme, onChange }: { label: string; checked
             </span>
         </div>
     );
-}
-
-function readSizeDimensions(size: string) {
-    const match = size.match(/^(\d+):(\d+)$/);
-    return { width: Number(match?.[1]) || 16, height: Number(match?.[2]) || 9 };
 }

@@ -6,6 +6,7 @@ import { referenceImagesToSingleFile } from "@infinite/lib/image-utils";
 import { getMediaBlob, uploadMediaFile, type UploadedFile } from "@infinite/services/file-storage";
 import { imageToDataUrl } from "@infinite/services/image-storage";
 import { boolConfig, buildSeedancePromptText, isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceRatio, normalizeSeedanceResolution, seedanceVideoReferenceError, SEEDANCE_REFERENCE_LIMITS } from "@infinite/lib/seedance-video";
+import { normalizeVideoAspectRatio } from "@infinite/lib/video-aspect-ratio";
 import { buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelScript, type AiConfig } from "@infinite/stores/use-config-store";
 import { runModelPlugin } from "./model-plugin";
 import type { ReferenceImage } from "@infinite/types/image";
@@ -96,6 +97,7 @@ async function createPluginVideoTask(config: AiConfig, model: string, script: st
     if (!config.baseUrl.trim()) throw new Error(apiText("baseUrlRequired"));
     if (!config.apiKey.trim()) throw new Error(apiText("apiKeyRequired"));
     const refs = await Promise.all(references.map((image) => imageToDataUrl(image)));
+    const ratio = normalizeVideoAspectRatio(config.size);
     const result = videoPluginResult(
         await runModelPlugin({
             capability: "video",
@@ -105,9 +107,9 @@ async function createPluginVideoTask(config: AiConfig, model: string, script: st
             images: refs,
             params: {
                 seconds: normalizeVideoSeconds(config.videoSeconds),
-                size: normalizeVideoSize(config.size),
+                size: ratio,
                 resolution: normalizeVideoResolution(config.vquality),
-                ratio: config.size,
+                ratio,
                 generateAudio: boolConfig(config.videoGenerateAudio, true),
                 watermark: boolConfig(config.videoWatermark, false),
             },

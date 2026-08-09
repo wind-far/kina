@@ -1,4 +1,5 @@
 import { decodeChannelModel, encodeChannelModel, resolveModelChannel, type AiConfig, type ModelCapability, type ModelChannel, useConfigStore } from "@infinite/stores/use-config-store";
+import { normalizeVideoAspectRatio } from "@infinite/lib/video-aspect-ratio";
 
 type CanvasMindModelCategory = "CHAT" | "IMAGE" | "VIDEO";
 
@@ -284,6 +285,7 @@ export async function requestCanvasMindVideo(
     options?: RequestOptions,
 ) {
     const model = await resolveRuntimeModel(config, "VIDEO");
+    const ratio = normalizeVideoAspectRatio(config.size);
     const allMediaReferences = [
         ...referenceImages.map((url) => ({ mediaType: "image" as const, url, role: "reference" })),
         ...mediaReferences,
@@ -295,7 +297,7 @@ export async function requestCanvasMindVideo(
         prompt,
         model: model.label,
         modelKey: model.modelKey,
-        ratio: config.size,
+        ratio,
         resolution: config.vquality,
         duration: config.videoSeconds,
         referenceImages,
@@ -304,7 +306,7 @@ export async function requestCanvasMindVideo(
             providerId: model.providerId,
             model: model.modelKey,
             prompt,
-            ratio: config.size,
+            ratio,
             quality: config.vquality,
             duration: config.videoSeconds,
         },

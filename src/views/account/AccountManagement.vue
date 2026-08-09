@@ -41,6 +41,13 @@
               </div>
 
               <div class="actions-vUPE88 is-myself">
+                <button class="share-btn" type="button" @click="userConfigOpen = true">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 15.25A3.25 3.25 0 1 0 12 8.75a3.25 3.25 0 0 0 0 6.5Z" stroke="currentColor" stroke-width="1.8" />
+                    <path d="M19.4 13.5a7.8 7.8 0 0 0 .05-1.5 7.8 7.8 0 0 0-.05-1.5l2-1.55-2-3.46-2.46 1a8.05 8.05 0 0 0-2.59-1.5L14 2.35h-4l-.35 2.64a8.05 8.05 0 0 0-2.59 1.5l-2.46-1-2 3.46 2 1.55a7.8 7.8 0 0 0-.05 1.5c0 .51.02 1.01.05 1.5l-2 1.55 2 3.46 2.46-1a8.05 8.05 0 0 0 2.59 1.5L10 21.65h4l.35-2.64a8.05 8.05 0 0 0 2.59-1.5l2.46 1 2-3.46-2-1.55Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                  </svg>
+                  <div class="share-btn-text">配置</div>
+                </button>
                 <button class="share-btn" type="button" @click="handleShareProfile">
                   <svg width="16" height="16" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
                     <g>
@@ -79,8 +86,6 @@
                 </div>
               </div>
               </div>
-
-              <UserVideoProviderConfig />
 
               <div class="scroll-container-AhepyD">
               <div>
@@ -258,6 +263,7 @@
           @delete="handleWorkDetailDelete"
           @report="handleWorkDetailReport"
       />
+      <UserAppConfigModal v-model="userConfigOpen" />
     </template>
   </FrontstagePageShell>
 </template>
@@ -267,7 +273,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import FrontstagePageShell from '@/components/layout/FrontstagePageShell.vue'
 import HomeDetailModalFrom from '@/components/home/components/HomeDetailModalFrom.vue'
-import UserVideoProviderConfig from '@/components/account/UserVideoProviderConfig.vue'
+import UserAppConfigModal from '@/components/account/UserAppConfigModal.vue'
 import { applyAssetAction, listAssetItems, type PersistedAssetItem } from '@/api/asset-items'
 import { buildAssetUrl } from '@/api/http'
 import {
@@ -320,6 +326,9 @@ const accountFeedItems = ref<AccountFeedItem[]>([])
 
 // 是否正在退出登录。
 const isLoggingOut = ref(false)
+
+// 个人中心与无限画布共用同一套渠道、偏好与本地存储配置。
+const userConfigOpen = ref(false)
 
 // 详情弹层状态。
 const workDetailOpen = ref(false)

@@ -1,11 +1,11 @@
 import { prisma } from '../server/db/prisma'
 
 async function main() {
-  const tables = await prisma.$queryRawUnsafe<Array<{ TABLE_NAME: string }>>(
-    'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME'
+  const tables = await prisma.$queryRawUnsafe<Array<{ table_name: string }>>(
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"
   )
   console.log('TABLES')
-  console.log(JSON.stringify(tables.map(item => item.TABLE_NAME), null, 2))
+  console.log(JSON.stringify(tables.map(item => item.table_name), null, 2))
 
   try {
     const rows = await prisma.$queryRawUnsafe<Array<{ migration_name: string; finished_at: Date | null; rolled_back_at: Date | null }>>(

@@ -41,7 +41,7 @@ type WorkflowDefinitionWithRelations = Prisma.WorkflowDefinitionGetPayload<{
 }>
 
 // 列表页只需要版本元数据。画布快照中的 JSON 可能达到数十 MB，必须在详情页
-// 按需读取，避免列表查询因排序/关联聚合携带大字段而耗尽 MySQL 排序内存。
+// 按需读取，避免列表查询因排序/关联聚合携带大字段而放大数据库内存占用。
 const workflowDefinitionVersionSummarySelect = {
   id: true,
   workflowId: true,

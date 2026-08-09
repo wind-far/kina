@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { PrismaMariaDb } from '@prisma/adapter-mariadb'
+import { PrismaPg } from '@prisma/adapter-pg'
 import prismaClientPackage from '@prisma/client'
 import type { PrismaClient as PrismaClientInstance } from '@prisma/client'
 
@@ -21,7 +21,7 @@ const createPrismaClient = () => {
     throw new Error('缺少 DATABASE_URL，无法初始化 PrismaClient。')
   }
 
-  const adapter = new PrismaMariaDb(databaseUrl)
+  const adapter = new PrismaPg({ connectionString: databaseUrl })
 
   return new PrismaClient({
     adapter,

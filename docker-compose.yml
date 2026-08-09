@@ -8,13 +8,13 @@ services:
       # 默认读取 .env.production，可通过 APP_ENV_FILE 覆盖
       - ${APP_ENV_FILE:-./.env.production}
     ports:
-      # 对外暴露统一应用端口。
-      - "${SERVER_PORT:-5409}:${SERVER_PORT:-5409}"
+      # 默认仅发布到宿主机回环地址，由受管反向代理对外提供服务。
+      - "${PUBLISH_HOST:-127.0.0.1}:${SERVER_PORT:-5409}:${SERVER_PORT:-5409}"
     volumes:
       # 持久化上传文件。
       - uploads_data:/app/uploads
 #    extra_hosts:
-#      # 兼容 Linux 环境下通过 host.docker.internal 访问宿主机 MySQL。
+#      # 仅当宿主机 PostgreSQL 明确允许容器网段访问时才使用该映射。
 #      - "host.docker.internal:host-gateway"
     healthcheck:
       # 通过统一健康检查接口判断容器是否可用。

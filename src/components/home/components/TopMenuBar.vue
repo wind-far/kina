@@ -112,6 +112,7 @@ import { useMarketingModalStore } from '@/stores/marketing-modal'
 import { useSystemSettingsStore } from '@/stores/system-settings'
 import { useHomeSideMenuConfig } from '@/composables/useHomeSideMenuConfig'
 import { resolveHomeSideMenuRoutePath } from '@/shared/home-side-menu-route'
+import { resolveSiteLogoUrl } from '@/shared/brand-assets'
 import HomeSideMenuIcon from './HomeSideMenuIcon.vue'
 
 const route = useRoute()
@@ -127,7 +128,7 @@ const isLoggedIn = computed(() => authStore.isLoggedIn.value)
 const loginButtonText = authStore.loginButtonText
 const currentPath = computed(() => route.path)
 
-const resolvedSiteLogoUrl = computed(() => String(publicSystemSettings.value.siteInfo.siteLogoUrl || '').trim())
+const resolvedSiteLogoUrl = computed(() => resolveSiteLogoUrl(publicSystemSettings.value.siteInfo.siteLogoUrl))
 const resolvedSiteName = computed(() => String(publicSystemSettings.value.siteInfo.siteName || 'Canana').trim() || 'Canana')
 const resolvedAvatarSrc = computed(() => {
   return authStore.currentUser.value?.avatarUrl

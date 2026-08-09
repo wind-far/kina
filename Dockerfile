@@ -20,7 +20,7 @@ COPY prisma.config.ts ./
 # Prisma 7 在 postinstall 的 prisma generate 阶段会读取 DATABASE_URL，
 # 这里提供一个仅用于生成客户端的占位值，避免镜像构建期因缺少真实数据库配置而失败。
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-  DATABASE_URL='mysql://root:placeholder@127.0.0.1:3306/canana_mind' \
+  DATABASE_URL='postgresql://canvasmind:placeholder@127.0.0.1:5432/canvasmind' \
   pnpm install --frozen-lockfile
 # ==================== Stage 2: 构建产物 ====================
 FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS builder
@@ -56,6 +56,7 @@ WORKDIR /app
 
 # 声明生产环境与默认运行目录。
 ENV NODE_ENV=production \
+  SERVER_HOST=0.0.0.0 \
   SERVER_PORT=5409 \
   STATIC_DIST_DIR=/app/dist \
   UPLOADS_DIR=/app/uploads
@@ -71,7 +72,7 @@ RUN --mount=type=cache,target=/root/.npm \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
   && npm install --omit=dev --no-fund --no-audit \
-  && DATABASE_URL='mysql://root:placeholder@127.0.0.1:3306/canana_mind' npx prisma generate
+  && DATABASE_URL='postgresql://canvasmind:placeholder@127.0.0.1:5432/canvasmind' npx prisma generate
 
 # 创建上传目录，供本地媒体资源持久化使用。
 RUN mkdir -p /app/uploads

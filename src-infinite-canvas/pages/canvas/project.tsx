@@ -609,7 +609,8 @@ function InfiniteCanvasPage() {
 
         const updateSize = () => {
             const rect = el.getBoundingClientRect();
-            setSize({ width: rect.width, height: rect.height });
+            const nextSize = { width: rect.width, height: rect.height };
+            setSize((current) => (current.width === nextSize.width && current.height === nextSize.height ? current : nextSize));
             if (!didInitialCenterRef.current) {
                 didInitialCenterRef.current = true;
                 setViewport({ x: rect.width / 2, y: rect.height / 2, k: 1 });
@@ -1539,14 +1540,24 @@ function InfiniteCanvasPage() {
     );
 
     const handleNodeResize = useCallback((nodeId: string, width: number, height: number, position?: Position) => {
-        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, width, height, position: position || node.position } : node)));
+        setNodes((prev) => {
+            const index = prev.findIndex((node) => node.id === nodeId);
+            if (index < 0) return prev;
+            const current = prev[index];
+            const nextPosition = position || current.position;
+            if (current.width === width && current.height === height && current.position.x === nextPosition.x && current.position.y === nextPosition.y) return prev;
+
+            const next = prev.slice();
+            next[index] = { ...current, width, height, position: nextPosition };
+            return next;
+        });
     }, []);
 
     const handleNodeResizeStart = useCallback(() => {
-        setIsNodeResizing(true);
-        setExpandedImageNodeId(null);
+        setIsNodeResizing((current) => current || true);
+        setExpandedImageNodeId((current) => current ? null : current);
     }, []);
-    const handleNodeResizeEnd = useCallback(() => setIsNodeResizing(false), []);
+    const handleNodeResizeEnd = useCallback(() => setIsNodeResizing((current) => current ? false : current), []);
 
     const toggleNodeFreeResize = useCallback((nodeId: string) => {
         setNodes((prev) =>

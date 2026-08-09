@@ -63,6 +63,7 @@ import CenterMenu from './CenterMenu.vue'
 import BottomMenu from './BottomMenu.vue'
 import HomeSideMenuIcon from './HomeSideMenuIcon.vue'
 import type { SystemConfigPayload } from '@/api/system-config'
+import { resolveSiteLogoUrl } from '@/shared/brand-assets'
 
 const props = withDefaults(defineProps<{
   systemSettingsOverride?: SystemConfigPayload | null
@@ -93,11 +94,11 @@ const { publicSystemSettings } = useSystemSettingsStore()
 const router = useRouter()
 
 const resolvedSiteLogoUrl = computed(() => {
-  return String(
+  return resolveSiteLogoUrl(
     props.systemSettingsOverride?.siteInfo.siteLogoUrl
     || publicSystemSettings.value.siteInfo.siteLogoUrl
     || '',
-  ).trim()
+  )
 })
 
 const resolvedSiteName = computed(() => {

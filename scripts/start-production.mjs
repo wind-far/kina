@@ -2,7 +2,6 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { config as loadEnvFile } from 'dotenv'
-import { runStartupLegacySecretsSync } from './lib/run-startup-legacy-secrets-sync.mjs'
 
 // 执行子命令；默认收集输出，必要时再决定是否原样透传。
 const runCommand = (command, args, options = {}) => {
@@ -59,25 +58,21 @@ const hasProductionEnvFile = async () => {
   }
 }
 
-// 从 Prisma migrate deploy 输出里提取核心信息，避免把整段原始日志直接打出来。
-const summarizePrismaMigrateOutput = (rawText) => {
-  const normalizedText = String(rawText || '')
-
-  const datasourceMatch = normalizedText.match(/Datasource "db": MySQL database "([^"]+)" at "([^"]+)"/)
-  const migrationCountMatch = normalizedText.match(/(\d+)\s+migrations found in prisma\/migrations/i)
-  const noPendingMatch = /No pending migrations to apply\./i.test(normalizedText)
-  const appliedMatch = normalizedText.match(/Applying migration/i)
-
-  return {
-    databaseName: datasourceMatch?.[1] || '',
-    databaseAddress: datasourceMatch?.[2] || '',
-    migrationCount: migrationCountMatch?.[1] || '',
-    statusText: noPendingMatch
-      ? '没有待执行迁移'
-      : appliedMatch
-        ? '已执行迁移'
-        : '迁移检查已完成',
+// 兼容仓库根目录启动和独立服务包目录启动。
+const resolveServerEntry = async () => {
+  const candidates = [
+    path.resolve(process.cwd(), 'server/index.js'),
+    path.resolve(process.cwd(), 'dist-service/server/index.js'),
+  ]
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate)
+      return candidate
+    } catch {
+      // 继续检查下一种发布布局。
+    }
   }
+  throw new Error('未找到生产服务入口 server/index.js')
 }
 
 const resolveRedisStatusText = () => {
@@ -103,26 +98,12 @@ const start = async () => {
     process.env.ENV_FILE = '.env.production'
   }
 
-  // 先执行数据库迁移，创建 secret 相关表；删旧密钥列由后续同步负责。
-  console.info('[start-production] 正在检查数据库迁移')
-  const migrateResult = await runCommand('npx', ['prisma', 'migrate', 'deploy'])
-  const migrationSummary = summarizePrismaMigrateOutput(`${migrateResult.stdout}\n${migrateResult.stderr}`)
-  console.info(
-    `[start-production] 数据库迁移检查完成: ${migrationSummary.databaseName || 'unknown'} @ ${migrationSummary.databaseAddress || 'unknown'} · `
-    + `${migrationSummary.migrationCount || '0'} 个迁移 · ${migrationSummary.statusText}`,
-  )
-
-  // 迁移建表后，再把旧 api_key 写入 secret_configs，最后删除 legacy 列。
-  try {
-    await runStartupLegacySecretsSync()
-  } catch (error) {
-    console.error('[start-production] 旧版厂商密钥同步失败，将继续启动', error)
-  }
-
+  // 数据库迁移由独立的最小权限迁移单元执行，应用进程不持有 DDL 权限。
   // 根据运行环境决定是否显式加载 .env.production。
+  const serverEntry = await resolveServerEntry()
   const serverArgs = hasEnvFile
-    ? ['--env-file=.env.production', 'dist-service/server/index.js']
-    : ['dist-service/server/index.js']
+    ? ['--env-file=.env.production', serverEntry]
+    : [serverEntry]
 
   console.info(`[start-production] Redis: ${resolveRedisStatusText()}`)
   console.info('[start-production] 正在启动后端服务')

@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
 }
 
 enum UserRole {
@@ -181,7 +181,7 @@ model AiProviderConfig {
   name              String                  @db.VarChar(100)
   providerType      ProviderType            @default(OPENAI_COMPATIBLE) @map("provider_type")
   baseUrl           String                  @map("base_url") @db.Text
-  apiKeyEncrypted   String?                 @map("api_key_encrypted") @db.LongText
+  apiKeyEncrypted   String?                 @map("api_key_encrypted") @db.Text
   apiKeyHint        String?                 @map("api_key_hint") @db.VarChar(64)
   chatEndpoint      String                  @default("/chat/completions") @map("chat_endpoint") @db.VarChar(255)
   imageEndpoint     String                  @default("/images/generations") @map("image_endpoint") @db.VarChar(255)
@@ -233,7 +233,7 @@ model AiProvider {
   description        String?   @db.VarChar(255)
   iconUrl            String?   @map("icon_url") @db.Text
   baseUrl            String    @map("base_url") @db.Text
-  apiKeyEncrypted    String?   @map("api_key_encrypted") @db.LongText
+  apiKeyEncrypted    String?   @map("api_key_encrypted") @db.Text
   apiKeyHint         String?   @map("api_key_hint") @db.VarChar(64)
   chatEndpoint       String    @default("/chat/completions") @map("chat_endpoint") @db.VarChar(255)
   imageEndpoint      String    @default("/images/generations") @map("image_endpoint") @db.VarChar(255)
@@ -345,7 +345,7 @@ model SkillSourceArtifact {
   artifactPath    String             @map("artifact_path") @db.VarChar(500)
   artifactType    String             @map("artifact_type") @db.VarChar(50)
   locale          String?            @db.VarChar(32)
-  content         String             @db.LongText
+  content         String             @db.Text
   integritySha256 String             @map("integrity_sha256") @db.VarChar(128)
   metadataJson    Json?              @map("metadata_json")
   createdAt       DateTime           @default(now()) @map("created_at")
@@ -416,8 +416,8 @@ model AiSkillPromptTemplate {
   id                 String             @id @default(cuid()) @db.VarChar(36)
   skillId            String             @map("skill_id") @db.VarChar(36)
   scene              AiSkillPromptScene
-  systemPrompt       String             @map("system_prompt") @db.LongText
-  userPromptTemplate String             @map("user_prompt_template") @db.LongText
+  systemPrompt       String             @map("system_prompt") @db.Text
+  userPromptTemplate String             @map("user_prompt_template") @db.Text
   isEnabled          Boolean            @default(true) @map("is_enabled")
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
@@ -452,7 +452,7 @@ model AiSkillPlanTemplate {
   skillId        String   @map("skill_id") @db.VarChar(36)
   itemKey        String   @map("item_key") @db.VarChar(100)
   titleTemplate  String   @map("title_template") @db.VarChar(255)
-  promptTemplate String   @map("prompt_template") @db.LongText
+  promptTemplate String   @map("prompt_template") @db.Text
   sortOrder      Int      @default(0) @map("sort_order")
   isEnabled      Boolean  @default(true) @map("is_enabled")
   createdAt      DateTime @default(now()) @map("created_at")
@@ -472,7 +472,7 @@ model AiSkillStageTemplate {
   stageKey                     String   @map("stage_key") @db.VarChar(100)
   stageLabel                   String   @map("stage_label") @db.VarChar(100)
   indicatorTitle               String?  @map("indicator_title") @db.VarChar(100)
-  indicatorDescriptionTemplate String?  @map("indicator_description_template") @db.LongText
+  indicatorDescriptionTemplate String?  @map("indicator_description_template") @db.Text
   sortOrder                    Int      @default(0) @map("sort_order")
   isEnabled                    Boolean  @default(true) @map("is_enabled")
   createdAt                    DateTime @default(now()) @map("created_at")
@@ -556,7 +556,7 @@ model WorkflowRun {
   totalNodes        Int                       @default(0) @map("total_nodes")
   completedNodes    Int                       @default(0) @map("completed_nodes")
   currentNodeId     String?                   @map("current_node_id") @db.VarChar(191)
-  errorMessage      String?                   @map("error_message") @db.LongText
+  errorMessage      String?                   @map("error_message") @db.Text
   resultJson        Json?                     @map("result_json")
   heartbeatAt       DateTime?                 @map("heartbeat_at")
   stopRequestedAt   DateTime?                 @map("stop_requested_at")
@@ -586,7 +586,7 @@ model WorkflowNodeRun {
   status             WorkflowNodeRunStatus @default(PENDING)
   sortOrder          Int                   @default(0) @map("sort_order")
   outputJson         Json?                 @map("output_json")
-  errorMessage       String?               @map("error_message") @db.LongText
+  errorMessage       String?               @map("error_message") @db.Text
   startedAt          DateTime?             @map("started_at")
   finishedAt         DateTime?             @map("finished_at")
   createdAt          DateTime              @default(now()) @map("created_at")
@@ -609,8 +609,8 @@ model ObjectStorageConfig {
   name               String              @db.VarChar(100)
   code               String              @db.VarChar(30)
   providerType       StorageProviderType @default(S3_COMPATIBLE) @map("provider_type")
-  accessKeyEncrypted String              @map("access_key_encrypted") @db.LongText
-  secretKeyEncrypted String              @map("secret_key_encrypted") @db.LongText
+  accessKeyEncrypted String              @map("access_key_encrypted") @db.Text
+  secretKeyEncrypted String              @map("secret_key_encrypted") @db.Text
   endpoint           String              @db.Text
   region             String?             @db.VarChar(100)
   bucket             String              @db.VarChar(255)
@@ -720,7 +720,7 @@ model CanvasPromptSource {
   allowedRolesJson Json?    @map("allowed_roles_json")
   currentVersionNo Int      @default(0) @map("current_version_no")
   lastSyncStatus String     @default("NEVER") @map("last_sync_status") @db.VarChar(32)
-  lastSyncError String?     @map("last_sync_error") @db.LongText
+  lastSyncError String?     @map("last_sync_error") @db.Text
   lastSyncedAt DateTime?    @map("last_synced_at")
   isEnabled  Boolean        @default(true) @map("is_enabled")
   configJson Json?          @map("config_json")
@@ -742,7 +742,7 @@ model CanvasPrompt {
   sourceId    String?             @map("source_id") @db.VarChar(36)
   externalKey String?             @map("external_key") @db.VarChar(191)
   title       String              @db.VarChar(191)
-  content     String              @db.LongText
+  content     String              @db.Text
   summary     String?             @db.VarChar(500)
   kind        String              @default("TEXT") @db.VarChar(32)
   targetNodeType String?          @map("target_node_type") @db.VarChar(32)
@@ -789,7 +789,7 @@ model CanvasPromptSyncRun {
   sourceVersionNo Int?           @map("source_version_no")
   targetVersionNo Int?           @map("target_version_no")
   importedCount Int              @default(0) @map("imported_count")
-  errorMessage String?           @map("error_message") @db.LongText
+  errorMessage String?           @map("error_message") @db.Text
   detailJson  Json?              @map("detail_json")
   createdAt   DateTime           @default(now()) @map("created_at")
   finishedAt  DateTime?          @map("finished_at")
@@ -809,9 +809,9 @@ model GenerationRecord {
   clientRecordId   Int?               @map("client_record_id")
   type             GenerationType
   status           GenerationStatus   @default(PENDING)
-  prompt           String             @db.LongText
-  content          String?            @db.LongText
-  errorMessage     String?            @map("error_message") @db.LongText
+  prompt           String             @db.Text
+  content          String?            @db.Text
+  errorMessage     String?            @map("error_message") @db.Text
   modelLabel       String?            @map("model_label") @db.VarChar(100)
   modelKey         String?            @map("model_key") @db.VarChar(191)
   ratio            String?            @db.VarChar(32)
@@ -846,8 +846,8 @@ model GenerationOutput {
   id                 String           @id @default(cuid()) @db.VarChar(36)
   generationRecordId String           @map("generation_record_id") @db.VarChar(36)
   outputType         OutputType       @map("output_type")
-  url                String?          @db.LongText
-  textContent        String?          @map("text_content") @db.LongText
+  url                String?          @db.Text
+  textContent        String?          @map("text_content") @db.Text
   mimeType           String?          @map("mime_type") @db.VarChar(100)
   width              Int?
   height             Int?
@@ -874,16 +874,16 @@ model AssetItem {
   generationOutputId String?            @map("generation_output_id") @db.VarChar(36)
   assetType          AssetType          @map("asset_type")
   title              String?            @db.VarChar(255)
-  description        String?            @db.LongText
-  coverUrl           String?            @map("cover_url") @db.LongText
-  fileUrl            String             @map("file_url") @db.LongText
-  thumbnailUrl       String?            @map("thumbnail_url") @db.LongText
+  description        String?            @db.Text
+  coverUrl           String?            @map("cover_url") @db.Text
+  fileUrl            String             @map("file_url") @db.Text
+  thumbnailUrl       String?            @map("thumbnail_url") @db.Text
   width              Int?
   height             Int?
   durationSeconds    Int?               @map("duration_seconds")
   fileSizeBytes      BigInt?            @map("file_size_bytes")
   mimeType           String?            @map("mime_type") @db.VarChar(128)
-  promptText         String?            @map("prompt_text") @db.LongText
+  promptText         String?            @map("prompt_text") @db.Text
   modelLabel         String?            @map("model_label") @db.VarChar(100)
   aspectRatio        String?            @map("aspect_ratio") @db.VarChar(32)
   visibility         AssetVisibility    @default(PRIVATE)
@@ -918,7 +918,7 @@ model VideoProject {
   id                    String   @id @default(cuid()) @db.VarChar(36)
   userId                String   @map("user_id") @db.VarChar(36)
   name                  String   @db.VarChar(255)
-  thumbnail             String?  @db.LongText
+  thumbnail             String?  @db.Text
   version               Int      @default(3)
   metadataJson          Json     @map("metadata_json")
   settingsJson          Json     @map("settings_json")
@@ -957,20 +957,20 @@ model AgentRun {
   id                   String                @id @default(cuid()) @db.VarChar(36)
   generationRecordId   String                @unique(map: "uk_agent_runs_generation_record_id") @map("generation_record_id") @db.VarChar(36)
   userId               String                @map("user_id") @db.VarChar(36)
-  query                String                @db.LongText
+  query                String                @db.Text
   skill                String?               @db.VarChar(100)
   status               AgentRunStatus        @default(IDLE)
   agentName            String?               @map("agent_name") @db.VarChar(100)
   agentAvatarUrl       String?               @map("agent_avatar_url") @db.Text
   indicatorStatus      AgentIndicatorStatus? @default(IDLE) @map("indicator_status")
   indicatorTitle       String?               @map("indicator_title") @db.VarChar(100)
-  indicatorDescription String?               @map("indicator_description") @db.LongText
+  indicatorDescription String?               @map("indicator_description") @db.Text
   resultTitle          String?               @map("result_title") @db.VarChar(255)
-  resultSummary        String?               @map("result_summary") @db.LongText
+  resultSummary        String?               @map("result_summary") @db.Text
   expectedImageCount   Int?                  @default(0) @map("expected_image_count")
   outputVisible        Boolean               @default(false) @map("output_visible")
-  errorMessage         String?               @map("error_message") @db.LongText
-  stopReason           String?               @map("stop_reason") @db.LongText
+  errorMessage         String?               @map("error_message") @db.Text
+  stopReason           String?               @map("stop_reason") @db.Text
   startedAt            DateTime?             @map("started_at")
   finishedAt           DateTime?             @map("finished_at")
   createdAt            DateTime              @default(now()) @map("created_at")
@@ -993,7 +993,7 @@ model AgentRunStep {
   stepKey     String          @map("step_key") @db.VarChar(100)
   title       String          @db.VarChar(100)
   status      AgentStepStatus @default(PENDING)
-  description String?         @db.LongText
+  description String?         @db.Text
   sortOrder   Int             @default(0) @map("sort_order")
   startedAt   DateTime?       @map("started_at")
   completedAt DateTime?       @map("completed_at")

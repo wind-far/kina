@@ -76,7 +76,9 @@
                   class="side-menu-default-avatar"
                   role="img"
                   :aria-label="loginButtonText"
-                >🤪</span>
+                >
+                  <HomeSideMenuIcon icon-key="account" />
+                </span>
               </div>
             </div>
           </div>
@@ -535,9 +537,11 @@ const isBottomItemActive = (item: { key: string; actionType: string; actionValue
 
 .side-menu-default-avatar {
   align-items: center;
+  background: var(--bg-block-primary-default, #f0f1f4);
+  border-radius: 50%;
+  color: var(--text-secondary, #6b7280);
   display: flex;
-  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
-  font-size: 28px;
+  font-size: 18px;
   height: 100%;
   justify-content: center;
   line-height: 1;

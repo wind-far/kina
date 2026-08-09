@@ -21,7 +21,7 @@
 - 技能、模型、厂商、存储等后台配置能力
 - 营销中心（会员、积分、卡密、签到奖励）
 - 用户管理、登录方式管理（验证码 + 多平台 OAuth）
-- Prisma + MySQL 的可落库服务端结构
+- Prisma + PostgreSQL 的可落库服务端结构
 - 可选 Redis 集成（限流、并发控制、跨实例 SSE 广播、缓存）
 
 ## 🎯 当前项目定位
@@ -103,7 +103,7 @@
 
 - `Node.js >= 20.19.0`
 - `npm >= 9`
-- `MySQL / MariaDB`（Prisma 连接数据库）
+- `PostgreSQL 17+`（Prisma 连接数据库）
 - `Redis`（可选；用于任务运行态、缓存、跨实例事件广播）
 
 ### 安装依赖
@@ -253,7 +253,8 @@ VITE_API_BASE_URL=https://你的域名或接口地址
 STATIC_DIST_DIR=/app/dist
 UPLOADS_DIR=/app/uploads
 CORS_ALLOWED_ORIGINS=https://你的前端域名
-DATABASE_URL=mysql://用户名:密码@数据库地址:3306/canana_mind
+SERVER_HOST=127.0.0.1
+DATABASE_URL=postgresql://用户名:密码@数据库地址:5432/canvasmind
 PROVIDER_CONFIG_SECRET=请替换成你自己的密钥
 STORAGE_CONFIG_SECRET=
 AUTH_LOGIN_CODE_EXPIRE_MINUTES=5
@@ -486,8 +487,8 @@ canana-vue/
 
 - `Node.js >= 20.19.0`
 - 原生 `node:http`（基于策略表的轻量路由分发）
-- `Prisma 7` + `@prisma/adapter-mariadb`
-- `MySQL / MariaDB`
+- `Prisma 7` + `@prisma/adapter-pg`
+- `PostgreSQL 17+`
 - `ioredis`（可选，用于限流、锁、Pub/Sub、缓存）
 - `@aws-sdk/client-s3`（S3 兼容对象存储）
 - `tsx`（开发态热更新）+ `esbuild`（生产打包）

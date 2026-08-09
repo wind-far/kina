@@ -18,6 +18,7 @@ import type { GenerationRecordPayload, GenerationOutputPayload } from './shared'
 
 const GENERATION_RECORDS_LIST_SCOPE = 'generation-records-list'
 const GENERATION_RECORDS_LIST_CACHE_PATTERN = redisKeys.cache(GENERATION_RECORDS_LIST_SCOPE, '*')
+const REMOTE_ASSET_DOWNLOAD_TIMEOUT_MS = 30_000
 const buildGenerationRecordsListCacheKey = (currentUserId: string) => {
   return redisKeys.cache(GENERATION_RECORDS_LIST_SCOPE, currentUserId)
 }
@@ -253,7 +254,14 @@ const downloadRemoteAsset = async (url: string) => {
     url,
   })
 
-  const response = await fetch(url)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REMOTE_ASSET_DOWNLOAD_TIMEOUT_MS)
+  let response: Response
+  try {
+    response = await fetch(url, { signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
 
   if (!response.ok) {
     logGenerationRecord('download_remote_asset:error', {

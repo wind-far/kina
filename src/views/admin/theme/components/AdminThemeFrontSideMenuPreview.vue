@@ -505,6 +505,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import SideMenu from '@/components/home/components/SideMenu.vue'
 import HomeSideMenuIcon from '@/components/home/components/HomeSideMenuIcon.vue'
+import { resolveSiteLogoUrl } from '@/shared/brand-assets'
 import AdminThemeWorkbenchItemActions, { type WorkbenchMenuActionKey } from './AdminThemeWorkbenchItemActions.vue'
 import type {
   SystemConfigPayload,
@@ -535,7 +536,7 @@ const emit = defineEmits<{
   'menu-reorder': [payload: { sourceMenuKey: string, targetMenuKey: string, position: 'before' | 'after' }]
 }>()
 
-const resolvedSiteLogoUrl = computed(() => String(props.siteInfo.siteLogoUrl || '').trim())
+const resolvedSiteLogoUrl = computed(() => resolveSiteLogoUrl(props.siteInfo.siteLogoUrl))
 const resolvedSiteName = computed(() => String(props.siteInfo.siteName || 'Canana').trim() || 'Canana')
 const showTopMenu = computed(() => props.settings.showTopMenu)
 const showCenterMenu = computed(() => props.settings.showCenterMenu)

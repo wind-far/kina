@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 测试 MySQL 连接（读取指定 env 文件中的 DATABASE_URL）
+ * 测试 PostgreSQL 连接（读取指定 env 文件中的 DATABASE_URL）
  *
  * 用法：
  *   node scripts/test-db-connection.mjs .env.development
@@ -51,14 +51,14 @@ const main = async () => {
   console.log(`[db:test] 环境文件: ${envFile}`)
   console.log(`[db:test] DATABASE_URL: ${maskDatabaseUrl(databaseUrl)}`)
 
-  const { PrismaMariaDb } = await import('@prisma/adapter-mariadb')
+  const { PrismaPg } = await import('@prisma/adapter-pg')
   const { PrismaClient } = await import('@prisma/client')
 
-  const adapter = new PrismaMariaDb(databaseUrl)
+  const adapter = new PrismaPg({ connectionString: databaseUrl })
   const prisma = new PrismaClient({ adapter })
 
   try {
-    const info = await prisma.$queryRaw`SELECT DATABASE() AS db, VERSION() AS version`
+    const info = await prisma.$queryRaw`SELECT current_database() AS db, version() AS version`
     const migrations = await prisma.$queryRaw`SELECT COUNT(*) AS cnt FROM _prisma_migrations`
     console.log('[db:test] 连接成功')
     console.log('[db:test] 数据库信息:', info)

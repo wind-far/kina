@@ -62,6 +62,9 @@ import { isPathInsideDirectory } from './shared/path-security'
 // 后端服务默认监听端口。
 const DEFAULT_SERVER_PORT = 5409
 
+// 生产服务默认仅监听回环地址；需要公网访问时必须由受管反向代理转发。
+const DEFAULT_SERVER_HOST = '127.0.0.1'
+
 // 前端构建产物默认目录。
 const DEFAULT_STATIC_DIST_DIR = path.resolve(process.cwd(), 'dist')
 
@@ -85,6 +88,11 @@ const readServerPort = () => {
 
   // 返回合法端口，否则回退默认值。
   return Number.isFinite(rawPort) && rawPort > 0 ? rawPort : DEFAULT_SERVER_PORT
+}
+
+// 读取监听地址。显式配置可用于容器环境，但裸机部署保持回环地址。
+const readServerHost = () => {
+  return String(process.env.SERVER_HOST || DEFAULT_SERVER_HOST).trim() || DEFAULT_SERVER_HOST
 }
 
 // 读取静态资源目录配置。
@@ -651,6 +659,7 @@ const server = createServer(async (req, res) => {
 
 // 读取最终监听端口。
 const serverPort = readServerPort()
+const serverHost = readServerHost()
 
 // 进程级异常兜底：避免后台任务（runTaskInBackground）中嵌套异常冒泡导致进程崩溃，
 // 进而切断所有正在订阅的 SSE 连接。仅记录日志，不退出进程。
@@ -662,14 +671,14 @@ process.on('uncaughtException', (error) => {
 })
 
 // 启动服务并输出日志。
-server.listen(serverPort, '0.0.0.0', () => {
+server.listen(serverPort, serverHost, () => {
   const staticDistDir = readStaticDistDir()
   const uploadsDir = getUploadsDir()
   const allowedOrigins = readAllowedOrigins()
 
   // 输出启动概览，避免部署时只能看到一个端口日志。
   writeScopedLog('info', '服务端', '启动完成')
-  writeScopedLog('info', '服务端', `服务地址: http://0.0.0.0:${serverPort}`)
+  writeScopedLog('info', '服务端', `服务地址: http://${serverHost}:${serverPort}`)
   writeScopedLog('info', '服务端', `静态目录: ${staticDistDir}`)
   writeScopedLog('info', '服务端', `上传目录: ${uploadsDir}`)
   writeScopedLog('info', '服务端', `CORS 来源: ${allowedOrigins.join(', ')}`)

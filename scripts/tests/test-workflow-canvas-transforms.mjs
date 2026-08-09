@@ -9,7 +9,7 @@ const [canvasState, workflowView, clipboard, shortcuts, nodeSources] = await Pro
   readSource('../../src/composables/useCanvasClipboard.ts'),
   readSource('../../src/components/canvas/CanvasZoomControls.vue'),
   Promise.all([
-    'TextNode.vue', 'ImageNode.vue', 'VideoNode.vue', 'DirectorNode.vue', 'AudioNode.vue', 'UnknownNode.vue', 'PluginNode.vue',
+    'VideoNode.vue', 'DirectorNode.vue', 'AudioNode.vue', 'UnknownNode.vue', 'PluginNode.vue',
   ].map((name) => readSource(`../../src/views/workflow/components/nodes/${name}`))),
 ])
 

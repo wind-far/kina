@@ -1,0 +1,26 @@
+[Unit]
+Description=CanvasMind PostgreSQL migration
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=nobody
+Group=nogroup
+UMask=0077
+WorkingDirectory=/opt/canvasmind/current/dist-service
+EnvironmentFile=/etc/canvasmind/migrate.env
+ExecStart=/usr/local/bin/npm run prisma:migrate:deploy
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=512M
+TasksMax=128

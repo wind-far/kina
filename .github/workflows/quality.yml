@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      DATABASE_URL: mysql://root:placeholder@127.0.0.1:3306/canana_mind
+      DATABASE_URL: postgresql://canvasmind:placeholder@127.0.0.1:5432/canvasmind
 
     steps:
       - name: 检出代码

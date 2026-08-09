@@ -1,0 +1,45 @@
+[Unit]
+Description=CanvasMind application
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nobody
+Group=nogroup
+UMask=0077
+WorkingDirectory=/opt/canvasmind/current
+EnvironmentFile=/etc/canvasmind/canvasmind.env
+ExecStart=/usr/local/bin/node dist-service/start-production.mjs
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=60s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/canvasmind
+MemoryHigh=1G
+MemoryMax=1536M
+CPUQuota=150%
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

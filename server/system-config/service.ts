@@ -772,7 +772,7 @@ type RawExecutor = {
 
 const upsertSystemConfigItem = async (executor: RawExecutor, code: string, config: unknown) => {
   const rows = await executor.$queryRawUnsafe<any[]>(
-    'SELECT id FROM system_settings WHERE code = ? LIMIT 1',
+    'SELECT id FROM system_settings WHERE code = $1 LIMIT 1',
     code,
   )
   const existingRow = Array.isArray(rows) && rows[0] ? rows[0] : null
@@ -787,10 +787,10 @@ const upsertSystemConfigItem = async (executor: RawExecutor, code: string, confi
       config_json,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, NOW(), NOW())
-    ON DUPLICATE KEY UPDATE
-      name = VALUES(name),
-      config_json = VALUES(config_json),
+    ) VALUES ($1, $2, $3, $4::jsonb, NOW(), NOW())
+    ON CONFLICT (code) DO UPDATE SET
+      name = EXCLUDED.name,
+      config_json = EXCLUDED.config_json,
       updated_at = NOW()`,
     rowId,
     code,

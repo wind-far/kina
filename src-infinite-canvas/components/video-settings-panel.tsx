@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import i18n from "@infinite/i18n";
 import { ImageSettingsTheme } from "@infinite/components/image-settings-panel";
-import { boolConfig, isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceRatio, normalizeSeedanceResolution, seedanceDurationOptions, seedancePixelLabel, seedanceRatioOptions, seedanceResolutionOptions } from "@infinite/lib/seedance-video";
+import { boolConfig, isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceResolution, seedanceDurationOptions, seedanceResolutionOptions } from "@infinite/lib/seedance-video";
 import { type CanvasTheme } from "@infinite/lib/canvas-theme";
 import { type AiConfig } from "@infinite/stores/use-config-store";
 
@@ -14,19 +14,18 @@ const resolutionOptions = [
 ];
 
 const sizeOptions = [
-    { value: "1280x720", labelKey: "landscape", width: 1280, height: 720 },
-    { value: "720x1280", labelKey: "portrait", width: 720, height: 1280 },
-    { value: "1024x1024", labelKey: "square", width: 1024, height: 1024 },
-    { value: "1792x1024", labelKey: "widescreen", width: 1792, height: 1024 },
-    { value: "1024x1792", labelKey: "tall", width: 1024, height: 1792 },
-    { value: "auto", labelKey: "auto", width: 0, height: 0 },
+    { value: "16:9", width: 16, height: 9 },
+    { value: "9:16", width: 9, height: 16 },
+    { value: "1:1", width: 1, height: 1 },
+    { value: "21:9", width: 21, height: 9 },
+    { value: "3:4", width: 3, height: 4 },
+    { value: "4:3", width: 4, height: 3 },
 ];
 
 const secondOptions = [6, 10, 12, 16, 20];
-const seedanceRatioLabelKeys: Record<string, string> = { "16:9": "landscape", "9:16": "portrait", "1:1": "square", "4:3": "standardLandscape", "3:4": "standardPortrait", "21:9": "cinematic", adaptive: "adaptive" };
 
 export const videoResolutionOptions = resolutionOptions.map((item) => ({ value: item.value, label: item.label }));
-export const videoSizeOptions = sizeOptions.map((item) => ({ value: item.value, get label() { return i18n.t(`settingsPanels.video.sizes.${item.labelKey}`); } }));
+export const videoSizeOptions = sizeOptions.map((item) => ({ value: item.value, label: item.value }));
 export const videoSecondOptions = secondOptions.map((value) => String(value));
 
 type VideoSettingsPanelProps = {
@@ -48,8 +47,8 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
     const dimensions = readSizeDimensions(size);
     const resolution = normalizeVideoResolutionValue(config.vquality);
     const updateDimension = (key: "width" | "height", value: number | null) => {
-        const next = Math.max(1, Math.floor(value || dimensions[key] || 720));
-        onConfigChange("size", `${key === "width" ? next : dimensions.width}x${key === "height" ? next : dimensions.height}`);
+        const next = Math.max(1, Math.floor(value || dimensions[key] || 1));
+        onConfigChange("size", `${key === "width" ? next : dimensions.width}:${key === "height" ? next : dimensions.height}`);
     };
 
     return (
@@ -68,9 +67,9 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 </SettingGroup>
                 <SettingGroup title={t("settingsPanels.video.size")} color={theme.node.muted}>
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2.5">
-                        <DimensionInput prefix="W" value={dimensions.width} disabled={size === "auto"} theme={theme} onChange={(value) => updateDimension("width", value)} />
+                        <DimensionInput prefix="W" value={dimensions.width} disabled={false} theme={theme} onChange={(value) => updateDimension("width", value)} />
                         <span className="text-lg opacity-45">↔</span>
-                        <DimensionInput prefix="H" value={dimensions.height} disabled={size === "auto"} theme={theme} onChange={(value) => updateDimension("height", value)} />
+                        <DimensionInput prefix="H" value={dimensions.height} disabled={false} theme={theme} onChange={(value) => updateDimension("height", value)} />
                     </div>
                     <div className="grid grid-cols-3 gap-2.5">
                         {sizeOptions.map((item) => (
@@ -83,12 +82,7 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
                                 onClick={() => onConfigChange("size", item.value)}
                             >
                                 <SizePreview width={item.width} height={item.height} color={theme.node.text} />
-                                <span>{t(`settingsPanels.video.sizes.${item.labelKey}`)}</span>
-                                {item.value === "auto" ? null : (
-                                    <span className="text-[11px] leading-none opacity-55">
-                                        {item.value}
-                                    </span>
-                                )}
+                                <span>{item.value}</span>
                             </button>
                         ))}
                     </div>
@@ -111,7 +105,7 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
 function SeedanceVideoSettingsPanel({ config, onConfigChange, theme, showTitle, className }: VideoSettingsPanelProps) {
     const { t } = useTranslation();
     const resolution = normalizeSeedanceResolution(config.vquality);
-    const ratio = normalizeSeedanceRatio(config.size);
+    const ratio = normalizeVideoSizeValue(config.size);
     const duration = normalizeSeedanceDuration(config.videoSeconds);
     const generateAudio = boolConfig(config.videoGenerateAudio, true);
     const watermark = boolConfig(config.videoWatermark, false);
@@ -131,7 +125,7 @@ function SeedanceVideoSettingsPanel({ config, onConfigChange, theme, showTitle, 
                 </SettingGroup>
                 <SettingGroup title={t("settingsPanels.video.ratio")} color={theme.node.muted}>
                     <div className="grid grid-cols-3 gap-2.5">
-                        {seedanceRatioOptions.map((item) => (
+                        {sizeOptions.map((item) => (
                             <button
                                 key={item.value}
                                 type="button"
@@ -140,9 +134,8 @@ function SeedanceVideoSettingsPanel({ config, onConfigChange, theme, showTitle, 
                                 onMouseDown={(event) => event.stopPropagation()}
                                 onClick={() => onConfigChange("size", item.value)}
                             >
-                                <SizePreview width={ratioPreview(item.value).width} height={ratioPreview(item.value).height} color={theme.node.text} />
-                                <span>{i18n.t(`settingsPanels.video.ratios.${seedanceRatioLabelKeys[item.value]}`)}</span>
-                                <span className="text-[10px] leading-none opacity-55">{item.value === "adaptive" ? "adaptive" : seedancePixelLabel(resolution, item.value)}</span>
+                                <SizePreview width={item.width} height={item.height} color={theme.node.text} />
+                                <span>{item.value}</span>
                             </button>
                         ))}
                     </div>
@@ -173,12 +166,7 @@ export function videoResolutionLabel(value: string) {
 }
 
 export function videoSizeLabel(value: string) {
-    const ratio = normalizeSeedanceRatio(value);
-    if (value === "adaptive" || value === "auto") return i18n.t("settingsPanels.video.adaptive");
-    if (ratio === value) return i18n.t(`settingsPanels.video.ratios.${seedanceRatioLabelKeys[ratio]}`);
-    const size = normalizeVideoSizeValue(value);
-    const option = sizeOptions.find((item) => item.value === size);
-    return option ? i18n.t(`settingsPanels.video.sizes.${option.labelKey}`) : size;
+    return normalizeVideoSizeValue(value);
 }
 
 export function videoSecondsLabel(value: string) {
@@ -187,9 +175,14 @@ export function videoSecondsLabel(value: string) {
 }
 
 export function normalizeVideoSizeValue(value: string) {
-    if (value === "auto") return "auto";
-    if (/^\d+x\d+$/.test(value || "")) return value;
-    return ["9:16", "2:3", "3:4"].includes(value) ? "720x1280" : "1280x720";
+    const match = String(value || "").trim().match(/^(\d+)(?:x|:)(\d+)$/i);
+    if (!match) return "16:9";
+    const width = Number(match[1]);
+    const height = Number(match[2]);
+    if (!width || !height) return "16:9";
+    return sizeOptions.reduce((closest, item) => (
+        Math.abs(item.width / item.height - width / height) < Math.abs(closest.width / closest.height - width / height) ? item : closest
+    ), sizeOptions[0]).value;
 }
 
 export function normalizeVideoResolutionValue(value: string) {
@@ -251,16 +244,6 @@ function SizePreview({ width, height, color }: { width: number; height: number; 
     return <span className="rounded-[3px] border-2" style={{ width: previewWidth, height: previewHeight, borderColor: color }} />;
 }
 
-function ratioPreview(ratio: string) {
-    if (ratio === "9:16") return { width: 9, height: 16 };
-    if (ratio === "1:1") return { width: 1, height: 1 };
-    if (ratio === "4:3") return { width: 4, height: 3 };
-    if (ratio === "3:4") return { width: 3, height: 4 };
-    if (ratio === "21:9") return { width: 21, height: 9 };
-    if (ratio === "adaptive") return { width: 0, height: 0 };
-    return { width: 16, height: 9 };
-}
-
 function SwitchRow({ label, checked, theme, onChange }: { label: string; checked: boolean; theme: CanvasTheme; onChange: (checked: boolean) => void }) {
     return (
         <div className="flex h-8 items-center justify-between gap-3">
@@ -275,7 +258,6 @@ function SwitchRow({ label, checked, theme, onChange }: { label: string; checked
 }
 
 function readSizeDimensions(size: string) {
-    if (size === "auto") return { width: 0, height: 0 };
-    const match = size.match(/^(\d+)x(\d+)$/);
-    return { width: Number(match?.[1]) || 1280, height: Number(match?.[2]) || 720 };
+    const match = size.match(/^(\d+):(\d+)$/);
+    return { width: Number(match?.[1]) || 16, height: Number(match?.[2]) || 9 };
 }

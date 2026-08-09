@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { joinUpstreamUrl } from '../ai-gateway/shared'
 import { resolveGatewayProviderUpstream } from '../provider-config/service'
-import { getUploadsDir } from '../storage/service'
+import { getUploadsDir, saveUploadedBuffer } from '../storage/service'
 import { isPathInsideDirectory } from '../shared/path-security'
 import type { SkillMediaReference } from '../../src/shared/skill-runtime'
 
@@ -30,6 +30,12 @@ export interface VideoGenerationUpstreamResult {
   upstreamUrl: string
   taskId?: string
   videoUrl: string
+  mimeType?: string
+}
+
+type VideoOutputMaterializeDependencies = {
+  fetchImpl?: typeof fetch
+  saveBuffer?: typeof saveUploadedBuffer
 }
 
 type H3TaskMode = 't2va' | 'i2va' | 'l2va' | 'fl2va' | 'ref2va'
@@ -55,6 +61,71 @@ const readH3VideoUrl = (payload: unknown) => readFirstString(payload, [
 const readH3FileId = (payload: unknown) => readFirstString(payload, [
   ['file_id'], ['data', 'file_id'], ['task', 'file_id'], ['data', 'task', 'file_id'],
 ])
+
+const inferVideoMimeType = (value: string) => {
+  const normalized = value.toLowerCase().split('?')[0]
+  if (normalized.endsWith('.webm')) return 'video/webm'
+  if (normalized.endsWith('.mov')) return 'video/quicktime'
+  return 'video/mp4'
+}
+
+const shouldAuthorizeVideoDownload = (videoUrl: string, upstreamBaseUrl: string) => {
+  try {
+    return new URL(videoUrl).origin === new URL(upstreamBaseUrl).origin
+  } catch {
+    return false
+  }
+}
+
+export const materializeVideoOutput = async (input: {
+  videoUrl: string
+  upstreamBaseUrl: string
+  apiKey: string
+  signal: AbortSignal
+}, dependencies: VideoOutputMaterializeDependencies = {}) => {
+  const videoUrl = String(input.videoUrl || '').trim()
+  if (!/^https?:\/\//i.test(videoUrl)) {
+    return { videoUrl, mimeType: inferVideoMimeType(videoUrl) }
+  }
+
+  const fetchImpl = dependencies.fetchImpl || fetch
+  const saveBuffer = dependencies.saveBuffer || saveUploadedBuffer
+  const includeAuthorization = Boolean(input.apiKey) && shouldAuthorizeVideoDownload(videoUrl, input.upstreamBaseUrl)
+  const response = await fetchImpl(videoUrl, {
+    headers: includeAuthorization ? { Authorization: `Bearer ${input.apiKey}` } : undefined,
+    signal: input.signal,
+  })
+  if (!response.ok) {
+    throw new Error(`视频任务读取失败 (${response.status})`)
+  }
+
+  const responseMimeType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
+  if (responseMimeType && !responseMimeType.startsWith('video/') && responseMimeType !== 'application/octet-stream') {
+    throw new Error(`视频任务读取失败：上游返回了 ${responseMimeType}，不是视频内容`)
+  }
+  const mimeType = responseMimeType.startsWith('video/') ? responseMimeType : inferVideoMimeType(videoUrl)
+  const stored = await saveBuffer({
+    buffer: Buffer.from(await response.arrayBuffer()),
+    filename: `generated-video${mimeType === 'video/webm' ? '.webm' : mimeType === 'video/quicktime' ? '.mov' : '.mp4'}`,
+    mimeType,
+    category: 'generation/video',
+  })
+  return { videoUrl: stored.publicUrl, mimeType }
+}
+
+const persistVideoGenerationResult = async (
+  result: VideoGenerationUpstreamResult,
+  upstream: { baseUrl: string; apiKey: string },
+  signal: AbortSignal,
+): Promise<VideoGenerationUpstreamResult> => ({
+  ...result,
+  ...await materializeVideoOutput({
+    videoUrl: result.videoUrl,
+    upstreamBaseUrl: upstream.baseUrl,
+    apiKey: upstream.apiKey,
+    signal,
+  }),
+})
 
 export const buildMiniMaxH3MediaPayload = (references: SkillMediaReference[]) => {
   const images = references.filter(item => item.mediaType === 'image')
@@ -136,7 +207,13 @@ const requestMiniMaxH3Generation = async (
   assertSuccessfulResponse(createResponse, createdPayload)
   const directVideoUrl = readH3VideoUrl(createdPayload)
   const taskId = readH3TaskId(createdPayload)
-  if (directVideoUrl) return { upstreamUrl: createUrl, taskId: taskId || undefined, videoUrl: directVideoUrl }
+  if (directVideoUrl) {
+    return persistVideoGenerationResult(
+      { upstreamUrl: createUrl, taskId: taskId || undefined, videoUrl: directVideoUrl },
+      upstream,
+      input.signal,
+    )
+  }
   if (!taskId) throw new Error(extractVideoError(createdPayload) || 'MiniMax H3 未返回任务 ID 或视频地址')
 
   const statusUrl = `${joinUpstreamUrl(upstream.baseUrl, statusEndpoint)}${statusEndpoint.includes('?') ? '&' : '?'}task_id=${encodeURIComponent(taskId)}`
@@ -149,7 +226,9 @@ const requestMiniMaxH3Generation = async (
     const statusPayload = await readResponsePayload(statusResponse)
     assertSuccessfulResponse(statusResponse, statusPayload)
     const videoUrl = readH3VideoUrl(statusPayload)
-    if (videoUrl) return { upstreamUrl: createUrl, taskId, videoUrl }
+    if (videoUrl) {
+      return persistVideoGenerationResult({ upstreamUrl: createUrl, taskId, videoUrl }, upstream, input.signal)
+    }
     const fileId = readH3FileId(statusPayload)
     if (fileId) {
       const fileEndpoint = String(h3.fileEndpoint || '').trim()
@@ -165,7 +244,11 @@ const requestMiniMaxH3Generation = async (
         ['file', 'download_url'], ['data', 'file', 'download_url'], ['download_url'],
       ])
       if (!resolvedVideoUrl) throw new Error('MiniMax H3 文件查询未返回可下载视频地址')
-      return { upstreamUrl: createUrl, taskId, videoUrl: resolvedVideoUrl }
+      return persistVideoGenerationResult(
+        { upstreamUrl: createUrl, taskId, videoUrl: resolvedVideoUrl },
+        upstream,
+        input.signal,
+      )
     }
     const status = readH3Status(statusPayload)
     if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) throw new Error(extractVideoError(statusPayload) || 'MiniMax H3 视频生成失败')
@@ -356,7 +439,13 @@ export const requestVideoGeneration = async (
   assertSuccessfulResponse(response, createdPayload)
   const directVideoUrl = extractVideoUrl(createdPayload)
   const taskId = extractVideoTaskId(createdPayload)
-  if (directVideoUrl) return { upstreamUrl, taskId: taskId || undefined, videoUrl: directVideoUrl }
+  if (directVideoUrl) {
+    return persistVideoGenerationResult(
+      { upstreamUrl, taskId: taskId || undefined, videoUrl: directVideoUrl },
+      upstream,
+      input.signal,
+    )
+  }
   if (!taskId) throw new Error(extractVideoError(createdPayload) || '视频上游未返回任务 ID 或视频地址')
 
   const statusUrl = `${upstreamUrl.replace(/\/+$/, '')}/${encodeURIComponent(taskId)}`
@@ -369,7 +458,9 @@ export const requestVideoGeneration = async (
     const statusPayload = await readResponsePayload(statusResponse)
     assertSuccessfulResponse(statusResponse, statusPayload)
     const videoUrl = extractVideoUrl(statusPayload)
-    if (videoUrl) return { upstreamUrl, taskId, videoUrl }
+    if (videoUrl) {
+      return persistVideoGenerationResult({ upstreamUrl, taskId, videoUrl }, upstream, input.signal)
+    }
     const status = extractVideoTaskStatus(statusPayload)
     if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) {
       throw new Error(extractVideoError(statusPayload) || '视频生成失败')

@@ -101,7 +101,7 @@ export const executeVideoTask = async (
     outputs: [{
       outputType: 'video',
       url: result.videoUrl,
-      mimeType: result.videoUrl.toLowerCase().includes('.webm') ? 'video/webm' : 'video/mp4',
+      mimeType: result.mimeType || (result.videoUrl.toLowerCase().includes('.webm') ? 'video/webm' : 'video/mp4'),
       durationSeconds: readDurationSeconds(payload.duration),
       metaJson: {
         upstreamTaskId: result.taskId || null,

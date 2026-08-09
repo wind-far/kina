@@ -1,9 +1,9 @@
 <template>
   <div class="asset-grid">
-    <div class="list-wrapper">
-      <div class="title-cq9JYl">最近项目</div>
+      <div class="list-wrapper">
+      <div class="title-cq9JYl">{{ selectionMode ? '选择要管理的项目' : '最近项目' }}</div>
       <div class="asset-row">
-        <div class="asset-item-YH5WOJ" @click="$emit('create')">
+        <div v-if="!selectionMode" class="asset-item-YH5WOJ" @click="$emit('create')">
           <div class="thumbnail-tyGYmG">
             <div class="create-icon-container">
               <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
@@ -23,9 +23,16 @@
           v-for="item in projectCards"
           :key="item.id"
           class="asset-item-YH5WOJ"
-          :class="{ 'menu-open-ixfKj3': openedMenuWorkflowId === item.id }"
-          @click="$emit('open', item.workflow)"
+          :class="{
+            'menu-open-ixfKj3': openedMenuWorkflowId === item.id,
+            'is-selection-mode': selectionMode,
+            'is-selected-project': selectedIds.includes(item.id),
+          }"
+          @click="selectionMode ? $emit('toggle-selection', item.workflow) : $emit('open', item.workflow)"
         >
+          <span v-if="selectionMode" class="project-selection-check" aria-hidden="true">
+            {{ selectedIds.includes(item.id) ? '✓' : '' }}
+          </span>
           <div class="hover-overlay-nFOtt0">
             <div class="cover-wrap">
               <div class="thumbnail-layout">
@@ -53,6 +60,7 @@
             <div class="title-h9gr0i">{{ item.title }}</div>
             <div class="date-VzL15B">{{ item.metaText }}</div>
             <div
+              v-if="!selectionMode"
               class="more-button-vlEtX_"
               :class="{
                 'active-Bxjkgn': openedMenuWorkflowId === item.id,
@@ -140,6 +148,7 @@ const emit = defineEmits<{
   open: [workflow: WorkflowDefinitionSummary]
   rename: [workflow: WorkflowDefinitionSummary]
   delete: [workflow: WorkflowDefinitionSummary]
+  'toggle-selection': [workflow: WorkflowDefinitionSummary]
 }>()
 
 interface ProjectCardItem {
@@ -150,9 +159,14 @@ interface ProjectCardItem {
   workflow: WorkflowDefinitionSummary
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   workflows: WorkflowDefinitionSummary[]
-}>()
+  selectionMode?: boolean
+  selectedIds?: string[]
+}>(), {
+  selectionMode: false,
+  selectedIds: () => [],
+})
 
 const openedMenuWorkflowId = ref('')
 

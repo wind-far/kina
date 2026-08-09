@@ -1,4 +1,4 @@
-import type { WorkflowDefinitionSummary, WorkflowDefinitionVersionDetail } from '@/views/workflow/api/definitions'
+import type { WorkflowDefinitionSummary, WorkflowDefinitionVersionSummary } from '@/views/workflow/api/definitions'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -89,7 +89,7 @@ const readImageNodeUrls = (data: UnknownRecord, urls: string[], seen: Set<string
 }
 
 const readVersionPreviewUrls = (
-  version: WorkflowDefinitionVersionDetail | null,
+  version: WorkflowDefinitionVersionSummary | null,
   urls: string[],
   seen: Set<string>,
 ) => {

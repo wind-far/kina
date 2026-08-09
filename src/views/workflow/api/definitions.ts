@@ -19,12 +19,12 @@ export interface WorkflowDefinitionSummary {
   tagsJson: unknown
   createdAt: string
   updatedAt: string
-  currentVersion?: WorkflowDefinitionVersionDetail | null
-  latestVersion?: WorkflowDefinitionVersionDetail | null
+  currentVersion?: WorkflowDefinitionVersionSummary | null
+  latestVersion?: WorkflowDefinitionVersionSummary | null
   versionCount: number
 }
 
-export interface WorkflowDefinitionVersionDetail {
+export interface WorkflowDefinitionVersionSummary {
   id: string
   workflowId: string
   createdBy: string | null
@@ -32,6 +32,20 @@ export interface WorkflowDefinitionVersionDetail {
   versionName: string | null
   changeSummary: string | null
   status: string
+  publishedAt: string | null
+  createdAt: string
+  updatedAt: string
+  // 列表接口不加载这些大 JSON 快照；详情接口会完整返回。
+  definitionJson?: unknown
+  nodesJson?: unknown
+  edgesJson?: unknown
+  viewportJson?: unknown
+  inputSchemaJson?: unknown
+  outputSchemaJson?: unknown
+  runtimeConfigJson?: unknown
+}
+
+export interface WorkflowDefinitionVersionDetail extends WorkflowDefinitionVersionSummary {
   definitionJson: unknown
   nodesJson: unknown
   edgesJson: unknown
@@ -39,13 +53,13 @@ export interface WorkflowDefinitionVersionDetail {
   inputSchemaJson: unknown
   outputSchemaJson: unknown
   runtimeConfigJson: unknown
-  publishedAt: string | null
-  createdAt: string
-  updatedAt: string
 }
 
 export interface WorkflowDefinitionDetailResponse {
-  definition: WorkflowDefinitionSummary
+  definition: Omit<WorkflowDefinitionSummary, 'currentVersion' | 'latestVersion'> & {
+    currentVersion?: WorkflowDefinitionVersionDetail | null
+    latestVersion?: WorkflowDefinitionVersionDetail | null
+  }
   versions: WorkflowDefinitionVersionDetail[]
 }
 
@@ -214,11 +228,14 @@ export const updateWorkflowDefinition = async (
   })
 }
 
-export const deleteWorkflowDefinition = async (workflowId: string) => {
+export const deleteWorkflowDefinition = async (
+  workflowId: string,
+  options: { showSuccessMessage?: boolean } = {},
+) => {
   return await requestWorkflowApi<{ id: string; name: string; deleted: boolean }>({
     url: `${WORKFLOW_DEFINITIONS_PATH}/${encodeURIComponent(workflowId)}`,
     method: 'DELETE',
-    successMessage: '项目已删除',
+    successMessage: options.showSuccessMessage === false ? undefined : '项目已删除',
   })
 }
 

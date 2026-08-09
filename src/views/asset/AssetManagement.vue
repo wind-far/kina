@@ -237,6 +237,7 @@ const openCanvasProject = async (project: WorkflowDefinitionSummary, fallbackVer
     query: {
       returnTo: '/asset?tab=canvas',
       workflowId: project.id,
+      projectName: project.name,
       ...(versionId ? { versionId } : {}),
     },
   })

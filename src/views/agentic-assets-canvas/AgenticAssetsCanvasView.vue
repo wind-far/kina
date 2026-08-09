@@ -19,11 +19,32 @@
 
             <AssetsGridSection
               :workflows="workflowList"
+              :selection-mode="batchMode"
+              :selected-ids="selectedProjectIds"
               @create="handleCreateProject"
               @delete="handleDeleteProject"
               @open="handleOpenProject"
               @rename="handleRenameProject"
+              @toggle-selection="toggleProjectSelection"
             />
+            <div v-if="workflowList.length" class="agentic-assets-canvas-batch-bar">
+              <template v-if="batchMode">
+                <span>已选择 {{ selectedProjectIds.length }} 个项目</span>
+                <button type="button" @click="toggleSelectAllProjects">
+                  {{ allLoadedProjectsSelected ? '取消全选' : '全选已加载' }}
+                </button>
+                <button
+                  type="button"
+                  class="is-danger"
+                  :disabled="!selectedProjectIds.length || batchDeleting"
+                  @click="handleBatchDeleteProjects"
+                >
+                  {{ batchDeleting ? '删除中…' : '删除所选' }}
+                </button>
+                <button type="button" @click="exitBatchMode">完成</button>
+              </template>
+              <button v-else type="button" @click="batchMode = true">批量管理</button>
+            </div>
           </div>
         </div>
       </div>
@@ -85,8 +106,33 @@ const workflowListPage = ref(1)
 const workflowListPageSize = 12
 const workflowListHasMore = ref(true)
 const workflowListTotal = ref(0)
+const batchMode = ref(false)
+const batchDeleting = ref(false)
+const selectedProjectIds = ref<string[]>([])
 const isWorkflowProject = computed(() => props.projectKind === 'workflow')
 const projectScene = computed(() => isWorkflowProject.value ? 'WORKFLOW_CANVAS' : 'INFINITE_CANVAS')
+const allLoadedProjectsSelected = computed(() => (
+  workflowList.value.length > 0
+  && workflowList.value.every(project => selectedProjectIds.value.includes(project.id))
+))
+
+const toggleProjectSelection = (project: WorkflowDefinitionSummary) => {
+  const selected = new Set(selectedProjectIds.value)
+  if (selected.has(project.id)) selected.delete(project.id)
+  else selected.add(project.id)
+  selectedProjectIds.value = [...selected]
+}
+
+const toggleSelectAllProjects = () => {
+  selectedProjectIds.value = allLoadedProjectsSelected.value
+    ? []
+    : workflowList.value.map(project => project.id)
+}
+
+const exitBatchMode = () => {
+  batchMode.value = false
+  selectedProjectIds.value = []
+}
 
 const fetchWorkflowPage = async (page: number) => {
   return await listWorkflowDefinitions({
@@ -182,6 +228,7 @@ const openProjectEditor = async (
       query: {
         returnTo: route.fullPath,
         workflowId: project.id,
+        projectName: project.name,
         ...(fallbackVersionId ? { versionId: fallbackVersionId } : {}),
       },
     })
@@ -212,6 +259,10 @@ const handleCreateProject = () => {
 }
 
 const handleOpenProject = (project: WorkflowDefinitionSummary) => {
+  if (batchMode.value) {
+    toggleProjectSelection(project)
+    return
+  }
   void openProjectEditor(project)
 }
 
@@ -270,6 +321,29 @@ const handleDeleteProject = async (workflow: WorkflowDefinitionSummary) => {
   await deleteWorkflowAction.run(workflow.id)
 }
 
+const handleBatchDeleteProjects = async () => {
+  const ids = selectedProjectIds.value.filter(id => workflowList.value.some(project => project.id === id))
+  if (!ids.length || batchDeleting.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${ids.length} 个项目吗？该操作不可恢复。`,
+      '批量删除项目',
+      { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+
+  batchDeleting.value = true
+  try {
+    await Promise.all(ids.map(id => deleteWorkflowDefinition(id, { showSuccessMessage: false })))
+    exitBatchMode()
+    await loadWorkflowList()
+  } finally {
+    batchDeleting.value = false
+  }
+}
+
 const handleSend = (message: string, type: CreationType, options?: GeneratorSendOptions) => {
   if (typeof window !== 'undefined') {
     window.sessionStorage.setItem('canana:home-header:pending-send', JSON.stringify({
@@ -301,6 +375,7 @@ onMounted(() => {
 })
 
 watch(() => props.projectKind, () => {
+  exitBatchMode()
   workflowList.value = []
   workflowListPage.value = 1
   workflowListHasMore.value = true

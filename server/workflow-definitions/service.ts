@@ -40,6 +40,43 @@ type WorkflowDefinitionWithRelations = Prisma.WorkflowDefinitionGetPayload<{
   }
 }>
 
+// 列表页只需要版本元数据。画布快照中的 JSON 可能达到数十 MB，必须在详情页
+// 按需读取，避免列表查询因排序/关联聚合携带大字段而耗尽 MySQL 排序内存。
+const workflowDefinitionVersionSummarySelect = {
+  id: true,
+  workflowId: true,
+  createdBy: true,
+  versionNo: true,
+  versionName: true,
+  changeSummary: true,
+  status: true,
+  publishedAt: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.WorkflowDefinitionVersionSelect
+
+type WorkflowDefinitionListItem = Prisma.WorkflowDefinitionGetPayload<{
+  include: {
+    currentVersion: {
+      select: typeof workflowDefinitionVersionSummarySelect
+    }
+    versions: {
+      select: typeof workflowDefinitionVersionSummarySelect
+      orderBy: {
+        versionNo: 'desc'
+      }
+      take: 1
+    }
+    _count: {
+      select: {
+        versions: true
+      }
+    }
+  }
+}>
+
+type WorkflowDefinitionSummaryRecord = WorkflowDefinitionWithRelations | WorkflowDefinitionListItem
+
 const WORKFLOW_SCENE_VALUES: WorkflowScene[] = [
   'WORKFLOW_CANVAS',
   'INFINITE_CANVAS',
@@ -217,8 +254,9 @@ const buildWorkflowWhereInput = (
   return where
 }
 
-const mapWorkflowDefinitionSummary = (item: WorkflowDefinitionWithRelations) => {
+const mapWorkflowDefinitionSummary = (item: WorkflowDefinitionSummaryRecord) => {
   const latestVersion = item.versions[0] || null
+  const versionCount = '_count' in item ? item._count.versions : item.versions.length
 
   return serializeWorkflowRecord({
     id: item.id,
@@ -240,7 +278,7 @@ const mapWorkflowDefinitionSummary = (item: WorkflowDefinitionWithRelations) => 
     updatedAt: item.updatedAt,
     currentVersion: item.currentVersion,
     latestVersion,
-    versionCount: item.versions.length,
+    versionCount,
   })
 }
 
@@ -299,10 +337,19 @@ export const listWorkflowDefinitions = async (
     prisma.workflowDefinition.findMany({
       where,
       include: {
-        currentVersion: true,
+        currentVersion: {
+          select: workflowDefinitionVersionSummarySelect,
+        },
         versions: {
+          select: workflowDefinitionVersionSummarySelect,
           orderBy: {
             versionNo: 'desc',
+          },
+          take: 1,
+        },
+        _count: {
+          select: {
+            versions: true,
           },
         },
       },
@@ -316,7 +363,7 @@ export const listWorkflowDefinitions = async (
     prisma.workflowDefinition.count({ where }),
   ])
 
-  const normalizedItems = items.map(item => mapWorkflowDefinitionSummary(item as WorkflowDefinitionWithRelations))
+  const normalizedItems = items.map(item => mapWorkflowDefinitionSummary(item))
 
   return {
     items: normalizedItems,

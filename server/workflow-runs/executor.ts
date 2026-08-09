@@ -21,6 +21,9 @@ type RuntimeOutput = {
 const activeRuns = new Map<string, AbortController>()
 const EXECUTABLE_NODE_TYPES = new Set(['llmConfig', 'imageConfig', 'videoConfig'])
 const TERMINAL_RUN_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELLED', 'INTERRUPTED'])
+// 上游图片和视频任务可能持续数分钟。定期更新运行记录，既能让页面得到活跃状态，
+// 也为后续的卡死任务巡检提供可靠依据。
+const WORKFLOW_RUN_HEARTBEAT_INTERVAL_MS = 10_000
 
 const asObjects = (value: unknown) => (Array.isArray(value)
   ? value.filter((item): item is JsonObject => Boolean(item) && typeof item === 'object')
@@ -159,8 +162,17 @@ const waitForGenerationTask = async (
   runId: string,
   signal: AbortSignal,
 ) => {
+  let lastHeartbeatAt = Date.now()
   while (true) {
     if (signal.aborted) throw new DOMException('工作流执行已取消', 'AbortError')
+    const now = Date.now()
+    if (now - lastHeartbeatAt >= WORKFLOW_RUN_HEARTBEAT_INTERVAL_MS) {
+      await prisma.workflowRun.updateMany({
+        where: { id: runId, status: 'RUNNING' },
+        data: { heartbeatAt: new Date(now) },
+      })
+      lastHeartbeatAt = now
+    }
     const [record, run] = await Promise.all([
       getGenerationTaskRecord(recordId, userId),
       prisma.workflowRun.findUnique({ where: { id: runId }, select: { status: true } }),
@@ -269,19 +281,29 @@ const executeNode = async (
   node: JsonObject,
   input: { prompt: string; images: string[]; imageRoles: string[]; mediaReferences: SkillMediaReference[] },
   signal: AbortSignal,
+  existingGenerationRecordId?: string | null,
 ) => {
-  const payload = await buildTaskPayload(node, input, `${run.id}:${String(node.id)}:${Date.now()}`)
-  const record = await startGenerationTask(payload, run.userId)
-  const recordId = String(record.id || '')
-  if (!recordId) throw new Error('服务端生成任务未返回记录 ID')
-  await prisma.workflowNodeRun.update({
-    where: { workflowRunId_nodeId: { workflowRunId: run.id, nodeId: String(node.id) } },
-    data: { generationRecordId: recordId },
-  })
+  const existingRecordId = String(existingGenerationRecordId || '').trim()
+  let payload: GenerationTaskStartPayload | null = null
+  let recordId = existingRecordId
+  if (!recordId) {
+    payload = await buildTaskPayload(node, input, `${run.id}:${String(node.id)}:${Date.now()}`)
+    const record = await startGenerationTask(payload, run.userId)
+    recordId = String(record.id || '')
+    if (!recordId) throw new Error('服务端生成任务未返回记录 ID')
+    await prisma.workflowNodeRun.update({
+      where: { workflowRunId_nodeId: { workflowRunId: run.id, nodeId: String(node.id) } },
+      data: { generationRecordId: recordId },
+    })
+  }
+
+  // 服务重启后已记录 generationRecordId 的节点只重新订阅/轮询原任务，绝不再次
+  // 提交上游请求或重复计费。对于已经完成的记录，waitForGenerationTask 会立即返回。
   const completed = await waitForGenerationTask(recordId, run.userId, run.id, signal)
   const images = Array.isArray(completed.images) ? completed.images.map(String).filter(Boolean) : []
   const videoUrl = asObjects(completed.outputs)
     .find(output => String(output.outputType || '').toLowerCase() === 'video')?.url
+  const data = readNodeData(node)
   return {
     generationRecordId: recordId,
     content: String(completed.content || '').trim(),
@@ -289,18 +311,18 @@ const executeNode = async (
     images,
     generationMeta: buildWorkflowGenerationMetadata({
       kind: node.type === 'videoConfig' ? 'video' : node.type === 'llmConfig' ? 'text' : 'image',
-      prompt: payload.prompt,
-      model: payload.model,
-      modelKey: payload.modelKey,
-      systemPrompt: node.type === 'llmConfig' ? String(readNodeData(node).systemPrompt || '') : undefined,
-      outputFormat: node.type === 'llmConfig' ? String(readNodeData(node).outputFormat || '') : undefined,
-      size: node.type === 'imageConfig' ? String(readNodeData(node).size || '') : undefined,
-      quality: node.type === 'imageConfig' ? String(readNodeData(node).quality || '') : undefined,
-      ratio: payload.ratio,
-      resolution: payload.resolution,
-      duration: Number(payload.duration || 0),
-      count: node.type === 'imageConfig' ? normalizeWorkflowImageBatchCount(readNodeData(node).batchCount) : undefined,
-      references: payload.mediaReferences || input.mediaReferences,
+      prompt: payload?.prompt || String(completed.prompt || ''),
+      model: payload?.model || String(completed.model || data.model || ''),
+      modelKey: payload?.modelKey || String(completed.modelKey || ''),
+      systemPrompt: node.type === 'llmConfig' ? String(data.systemPrompt || '') : undefined,
+      outputFormat: node.type === 'llmConfig' ? String(data.outputFormat || '') : undefined,
+      size: node.type === 'imageConfig' ? String(data.size || '') : undefined,
+      quality: node.type === 'imageConfig' ? String(data.quality || '') : undefined,
+      ratio: payload?.ratio || String(data.ratio || data.size || ''),
+      resolution: payload?.resolution || String(data.resolution || data.quality || ''),
+      duration: Number(payload?.duration || data.duration || 0),
+      count: node.type === 'imageConfig' ? normalizeWorkflowImageBatchCount(data.batchCount) : undefined,
+      references: payload?.mediaReferences || input.mediaReferences,
       sourceConfigNodeId: String(node.id || ''),
     }),
   } satisfies RuntimeOutput
@@ -369,7 +391,13 @@ const executeWorkflowRun = async (runId: string, controller: AbortController) =>
         data: { currentNodeId: nodeId, heartbeatAt: new Date() },
       })
 
-      const output = await executeNode(run, node, collectInputs(nodeId, nodesById, edges, outputs), controller.signal)
+      const output = await executeNode(
+        run,
+        node,
+        collectInputs(nodeId, nodesById, edges, outputs),
+        controller.signal,
+        nodeRun.generationRecordId,
+      )
       outputs.set(nodeId, output)
       const now = new Date()
       await prisma.$transaction(async tx => {
@@ -438,32 +466,75 @@ export const requestWorkflowRunStop = (runId: string) => {
 export const recoverServerWorkflowRuns = async () => {
   const staleRuns = await prisma.workflowRun.findMany({
     where: { executor: 'SERVER', status: 'RUNNING' },
-    select: { id: true },
+    include: {
+      nodeRuns: {
+        select: {
+          id: true,
+          generationRecordId: true,
+          status: true,
+          generationRecord: { select: { status: true } },
+        },
+      },
+    },
   })
-  if (staleRuns.length) {
-    const ids = staleRuns.map(item => item.id)
+  let resumedFromTask = 0
+  let interrupted = 0
+
+  for (const run of staleRuns) {
+    const resumableNode = run.nodeRuns.find(node => (
+      node.status === 'RUNNING'
+      && Boolean(node.generationRecordId)
+      && ['PENDING', 'RUNNING', 'COMPLETED'].includes(String(node.generationRecord?.status || ''))
+    ))
     const now = new Date()
+
+    if (resumableNode?.generationRecordId) {
+      await prisma.$transaction(async tx => {
+        await tx.workflowNodeRun.updateMany({
+          where: { id: resumableNode.id, status: 'RUNNING' },
+          data: { status: 'PENDING', errorMessage: null, startedAt: null, finishedAt: null },
+        })
+        const completedNodes = await tx.workflowNodeRun.count({
+          where: { workflowRunId: run.id, status: 'COMPLETED' },
+        })
+        await tx.workflowRun.updateMany({
+          where: { id: run.id, status: 'RUNNING' },
+          data: {
+            status: 'PENDING',
+            completedNodes,
+            currentNodeId: null,
+            errorMessage: null,
+            finishedAt: null,
+            heartbeatAt: now,
+          },
+        })
+      })
+      resumedFromTask += 1
+      continue
+    }
+
     await prisma.$transaction([
       prisma.workflowRun.updateMany({
-        where: { id: { in: ids }, status: 'RUNNING' },
+        where: { id: run.id, status: 'RUNNING' },
         data: { status: 'INTERRUPTED', errorMessage: '服务重启导致运行中断，可从失败处重试', finishedAt: now },
       }),
       prisma.workflowNodeRun.updateMany({
-        where: { workflowRunId: { in: ids }, status: 'RUNNING' },
+        where: { workflowRunId: run.id, status: 'RUNNING' },
         data: { status: 'FAILED', errorMessage: '服务重启导致节点中断', finishedAt: now },
       }),
       prisma.workflowNodeRun.updateMany({
-        where: { workflowRunId: { in: ids }, status: 'PENDING' },
+        where: { workflowRunId: run.id, status: 'PENDING' },
         data: { status: 'CANCELLED', errorMessage: '服务重启导致运行中断', finishedAt: now },
       }),
     ])
+    interrupted += 1
   }
   const pendingRuns = await prisma.workflowRun.findMany({
     where: { executor: 'SERVER', status: 'PENDING' },
     select: { id: true },
   })
   pendingRuns.forEach(run => enqueueWorkflowRun(run.id))
-  return { interrupted: staleRuns.length, resumed: pendingRuns.length }
+  return { interrupted, resumed: pendingRuns.length, resumedFromTask }
 }
 
 export const isTerminalWorkflowRunStatus = (status: string) => TERMINAL_RUN_STATUSES.has(status)

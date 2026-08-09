@@ -154,7 +154,7 @@ const handleReferenceImageError = (src: string, index: number) => {
 }
 
 .record-header-content-dS6EmO {
-  align-items: flex-end;
+  align-items: flex-start;
   color: var(--text-primary);
   display: flex;
   gap: 4px;
@@ -274,28 +274,24 @@ const handleReferenceImageError = (src: string, index: number) => {
 
 .prompt-suffix-labels-wrapper-I8rEI5 {
   flex-grow: 1;
-  height: calc(var(--line-height) + var(--padding-top) * 2);
-  max-height: calc(var(--line-height) * 2 + var(--padding-top) * 2);
   min-width: 0;
   position: relative;
 }
 
 .prompt-suffix-labels-uZQd1x {
-  max-height: calc(var(--line-height) * 2);
   min-width: 0;
-  overflow: hidden;
   padding: var(--padding-top) 6px;
-  position: absolute;
+  position: relative;
   width: 100%;
 }
 
 .prompt-suffix-labels-content-D3IiYo {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   overflow: hidden;
   padding-right: 2px;
-  word-break: break-word;
 }
 
 .prompt-ZVqVxN {
@@ -303,18 +299,25 @@ const handleReferenceImageError = (src: string, index: number) => {
   font-size: 14px;
   font-weight: 400;
   line-height: 20px;
-  margin-right: 8px;
   min-width: 0;
+  overflow: hidden;
+  align-self: stretch;
+  display: block;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   user-select: text;
 }
 
 .prompt-value-container-JfHRne {
-  display: inline;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .labels-b517mw {
   align-items: center;
-  display: inline;
+  display: flex;
   flex-shrink: 0;
   flex-wrap: nowrap;
 }

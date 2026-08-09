@@ -1,5 +1,6 @@
 import { prisma } from '../db/prisma'
 import { decryptProviderApiKey, encryptProviderApiKey, maskApiKey } from './crypto'
+import { deduplicatePublicCatalogModels } from './catalog-dedup'
 import { getOrSetJsonCache, invalidateRedisCaches, redisKeys } from '../redis'
 import { resolveUserProviderConnection } from '../user-provider-config/service'
 import {
@@ -575,11 +576,21 @@ export const getPublicModelCatalog = async (): Promise<PublicModelCatalogResult>
       })
 
       const providerItems: PublicProviderCatalogItem[] = []
-      const chatModels: PublicModelCatalogItem[] = []
-      const imageModels: PublicModelCatalogItem[] = []
-      const videoModels: PublicModelCatalogItem[] = []
+      let chatModels: PublicModelCatalogItem[] = []
+      let imageModels: PublicModelCatalogItem[] = []
+      let videoModels: PublicModelCatalogItem[] = []
+      const environmentManagedProviderIds = new Set<string>()
 
       for (const provider of providers) {
+        const isEnvironmentManaged = Boolean(
+          provider.extraJson
+          && typeof provider.extraJson === 'object'
+          && !Array.isArray(provider.extraJson)
+          && (provider.extraJson as Record<string, unknown>).environmentProviderBootstrap === true,
+        )
+        if (isEnvironmentManaged) {
+          environmentManagedProviderIds.add(provider.id)
+        }
         const supportedTypes = Array.isArray(provider.supportedTypesJson)
           ? provider.supportedTypesJson.map(item => String(item || '').trim()).filter(Boolean)
           : []
@@ -619,6 +630,14 @@ export const getPublicModelCatalog = async (): Promise<PublicModelCatalogResult>
           }
         }
       }
+
+      const visibleModels = deduplicatePublicCatalogModels(
+        [...chatModels, ...imageModels, ...videoModels],
+        environmentManagedProviderIds,
+      )
+      chatModels = visibleModels.filter(item => item.category === 'CHAT')
+      imageModels = visibleModels.filter(item => item.category === 'IMAGE')
+      videoModels = visibleModels.filter(item => item.category === 'VIDEO')
 
       const defaults = {
         chat: chatModels.find(item => item.isDefault)?.selectionKey || chatModels[0]?.selectionKey || '',

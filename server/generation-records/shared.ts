@@ -29,12 +29,16 @@ export interface GenerationRecordPayload {
   duration?: string
   feature?: string
   skill?: string
+  /** 非空表示用户主动再次生成，用于历史列表中的操作类型筛选。 */
+  retryKey?: string
   referenceImages?: string[]
   done?: boolean
   stopped?: boolean
   agentTaskId?: string
   images?: string[]
   outputs?: GenerationOutputPayload[]
+  /** 上游结果已拿到时直接写入原始链接，不下载、不上传、不归档文件。仅服务端任务收口使用。 */
+  writeOutputLinksOnly?: boolean
   agentRun?: AgentRunState | null
   research?: Record<string, unknown> | null
 }

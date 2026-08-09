@@ -46,6 +46,7 @@ export interface PersistedGenerationRecord {
   duration: string
   feature: string
   skill: string
+  retryKey?: string
   referenceImages?: string[]
   done: boolean
   stopped?: boolean
@@ -77,6 +78,7 @@ export interface GenerationRecordUpsertPayload {
   duration: string
   feature: string
   skill: string
+  retryKey?: string
   referenceImages?: string[]
   done: boolean
   stopped?: boolean

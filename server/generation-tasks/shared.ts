@@ -24,6 +24,8 @@ export interface GenerationTaskStartPayload {
   duration?: string
   feature?: string
   skill?: string
+  /** 用户主动再次生成时的唯一标识；只参与任务幂等判断，不能下传至模型请求。 */
+  retryKey?: string
   referenceImages?: string[]
   /** 通用多模态引用；referenceImages 仅作为历史兼容字段保留。 */
   mediaReferences?: SkillMediaReference[]

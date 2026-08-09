@@ -106,6 +106,8 @@ interface GeneratingRecord {
   source?: string
   type: GenerationRecordType
   prompt: string
+  /** 原始创建时间；“今天”必须跨日重新计算，不能作为永久字符串保存。 */
+  createdAt: string
   time: string
   model: string
   modelKey: string
@@ -117,6 +119,8 @@ interface GeneratingRecord {
   skill: string
   /** 文生图/图生图本次任务希望生成的张数，对应上游 n 参数。仅图片任务有意义 */
   count?: number
+  /** “再次生成”使用独立幂等键，避免服务端返回旧的终态记录。 */
+  retryKey?: string
   content: string
   /** 模型的思考过程（reasoning_content / thinking block）。从 record.metaJson.thinkingContent 回填。 */
   thinkingContent?: string
@@ -183,6 +187,7 @@ interface GenerateSessionScrollState {
   isScrollingUp: boolean
 }
 const generatingRecords = ref<GeneratingRecord[]>([])
+let groupLabelRefreshTimer: ReturnType<typeof setInterval> | null = null
 let nextId = 0
 const recordPersistTimers = new Map<number, ReturnType<typeof setTimeout>>()
 const recordPersistInflight = new Set<number>()
@@ -195,10 +200,37 @@ const previewVisible = ref(false)
 const previewIndex = ref(0)
 const previewImages = ref<GeneratePreviewImageItem[]>([])
 const sessionSearchKeyword = ref('')
+const sessionTimeFilter = ref<'all' | 'today' | 'yesterday' | 'last7days' | 'thisMonth'>('all')
+const sessionTypeFilter = ref<'all' | 'image' | 'video' | 'agent' | 'research'>('all')
+const sessionActionFilter = ref<'all' | 'create' | 'regenerate'>('all')
 const generationSessions = ref<PersistedGenerationSession[]>([])
 const currentSessionId = ref('')
 const conversationSidebarCollapsed = ref(false)
+// 空会话首次进入时可自动收起；用户手动展开后，本次页面生命周期内优先尊重该选择。
+const conversationSidebarAutoCollapseDismissed = ref(false)
 const isGenerationSessionsLoading = ref(false)
+
+const sessionTimeFilterLabel = computed(() => ({
+  all: '时间',
+  today: '今天',
+  yesterday: '昨天',
+  last7days: '近 7 天',
+  thisMonth: '本月',
+}[sessionTimeFilter.value]))
+
+const sessionTypeFilterLabel = computed(() => ({
+  all: '生成类型',
+  image: '图片',
+  video: '视频',
+  agent: '智能体',
+  research: '研究报告',
+}[sessionTypeFilter.value]))
+
+const sessionActionFilterLabel = computed(() => ({
+  all: '操作类型',
+  create: '首次生成',
+  regenerate: '再次生成',
+}[sessionActionFilter.value]))
 
 const RESEARCH_SEARCH_REVEAL_INTERVAL_MS = 90
 const RESEARCH_UI_REVEAL_INTERVAL_MS = 70
@@ -1039,6 +1071,7 @@ const buildPreviewImagesFromRecord = (record: GeneratingRecord): GeneratePreview
     type: record.type,
     model: record.model,
     modelKey: record.modelKey,
+    retryKey: record.retryKey || undefined,
     ratio: record.ratio,
     resolution: record.resolution,
     duration: record.duration,
@@ -1104,10 +1137,17 @@ const handleRegenerateImageRecord = async (record: GeneratingRecord) => {
     skill: record.skill,
     referenceImages: [...(record.referenceImages || [])],
     count: record.count && record.count > 0 ? record.count : 1,
+    retryKey: `retry-${record.dbId || record.id}-${Date.now().toString(36)}`,
   })
 }
 
 const handleOpenImageRecordMore = (record: GeneratingRecord) => {
+  if (!record.images.length) {
+    ElMessage.info(record.stopped
+      ? '本次任务已停止且没有生成结果，请重新编辑或再次生成'
+      : '暂无可预览的图片结果')
+    return
+  }
   openRecordPreview(record, 0)
 }
 
@@ -1166,6 +1206,19 @@ const visibleGeneratingRecords = computed(() => {
       return false
     }
 
+    if (!matchesRecordTimeFilter(record, sessionTimeFilter.value)) {
+      return false
+    }
+
+    if (sessionTypeFilter.value !== 'all' && record.type !== sessionTypeFilter.value) {
+      return false
+    }
+
+    const recordAction = record.retryKey ? 'regenerate' : 'create'
+    if (sessionActionFilter.value !== 'all' && recordAction !== sessionActionFilter.value) {
+      return false
+    }
+
     if (!keyword) {
       return true
     }
@@ -1216,12 +1269,16 @@ const sidebarDefaultSession = computed<GenerateConversationSidebarItem>(() => ({
   imageUrl: generationSessions.value.find(session => session.isDefault)?.coverImageUrl || '',
 }))
 
-// 空会话且没有最近记录时，左侧空栏没有信息价值，直接走折叠态保证主区居中。
+// 空会话且没有最近记录时，左侧空栏没有信息价值，首次进入时折叠以保证主区居中。
+const shouldAutoCollapseConversationSidebar = computed(() => {
+  return isCurrentSessionEmpty.value && sidebarRecentSessions.value.length === 0
+})
+
 const isConversationSidebarEffectivelyCollapsed = computed(() => {
   if (conversationSidebarCollapsed.value) {
     return true
   }
-  return isCurrentSessionEmpty.value && sidebarRecentSessions.value.length === 0
+  return !conversationSidebarAutoCollapseDismissed.value && shouldAutoCollapseConversationSidebar.value
 })
 
 const applyCurrentSessionId = (sessionId: string) => {
@@ -1296,16 +1353,25 @@ const handleSessionSearch = () => {
   contentGeneratorRef.value?.expand()
 }
 
-const handleSessionTimeFilterClick = () => {
-  ElMessage.info('时间筛选下一步接入。')
+const handleSessionTimeFilterSelect = (value: string) => {
+  const next = String(value || '')
+  if (['all', 'today', 'yesterday', 'last7days', 'thisMonth'].includes(next)) {
+    sessionTimeFilter.value = next as typeof sessionTimeFilter.value
+  }
 }
 
-const handleSessionTypeFilterClick = () => {
-  ElMessage.info('生成类型筛选下一步接入。')
+const handleSessionTypeFilterSelect = (value: string) => {
+  const next = String(value || '')
+  if (['all', 'image', 'video', 'agent', 'research'].includes(next)) {
+    sessionTypeFilter.value = next as typeof sessionTypeFilter.value
+  }
 }
 
-const handleSessionActionFilterClick = () => {
-  ElMessage.info('操作类型筛选下一步接入。')
+const handleSessionActionFilterSelect = (value: string) => {
+  const next = String(value || '')
+  if (['all', 'create', 'regenerate'].includes(next)) {
+    sessionActionFilter.value = next as typeof sessionActionFilter.value
+  }
 }
 
 const handleJumpToResearchVerification = (targetId: string) => {
@@ -1321,6 +1387,7 @@ const buildManualResearchVerificationRecord = (sourceRecord: GeneratingRecord): 
     source: 'generate',
     type: 'research',
     prompt: `核查报告：${sourceRecord.prompt}`,
+    createdAt: new Date().toISOString(),
     time: formatGroupLabel(new Date()),
     model: sourceRecord.model,
     modelKey: sourceRecord.modelKey,
@@ -1536,7 +1603,13 @@ const submitDeleteSidebarSession = async () => {
 }
 
 const handleToggleConversationSidebar = () => {
-  conversationSidebarCollapsed.value = !conversationSidebarCollapsed.value
+  // 不能只反转持久化值：空会话的自动折叠条件仍会为真，导致用户点击“展开”没有视觉变化。
+  if (isConversationSidebarEffectivelyCollapsed.value) {
+    conversationSidebarCollapsed.value = false
+    conversationSidebarAutoCollapseDismissed.value = true
+  } else {
+    conversationSidebarCollapsed.value = true
+  }
   writeStoredConversationSidebarCollapsed(conversationSidebarCollapsed.value)
 }
 
@@ -1603,6 +1676,7 @@ const toGenerationRecordPayload = (record: GeneratingRecord): GenerationRecordUp
   duration: record.duration,
   feature: record.feature,
   skill: record.skill,
+  retryKey: record.retryKey,
   referenceImages: record.referenceImages || [],
   done: record.done,
   stopped: Boolean(record.stopped),
@@ -1613,19 +1687,54 @@ const toGenerationRecordPayload = (record: GeneratingRecord): GenerationRecordUp
 })
 
 // 格式化时间分组标签
-const formatGroupLabel = (date: Date): string => {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  const diff = today.getTime() - target.getTime()
-  const dayMs = 86400000
+const formatGroupLabel = (date: Date, now = new Date()): string => {
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+  // 以本地日历日比较，不能直接拿两个本地午夜做毫秒差；夏令时地区会出现 23/25 小时。
+  const toCalendarDayIndex = (value: Date) => (
+    Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()) / 86400000
+  )
+  const diff = toCalendarDayIndex(now) - toCalendarDayIndex(date)
 
   if (diff === 0) return '今天'
-  if (diff === dayMs) return '昨天'
+  if (diff === 1) return '昨天'
   if (date.getFullYear() === now.getFullYear()) {
     return `${date.getMonth() + 1}月${date.getDate()}日`
   }
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+const refreshRecordGroupLabels = () => {
+  const now = new Date()
+  for (const record of generatingRecords.value) {
+    const nextLabel = formatGroupLabel(new Date(record.createdAt), now)
+    if (nextLabel) {
+      record.time = nextLabel
+    }
+  }
+}
+
+const getCalendarDayDifference = (date: Date, now = new Date()) => {
+  if (Number.isNaN(date.getTime())) return Number.POSITIVE_INFINITY
+  const toCalendarDayIndex = (value: Date) => (
+    Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()) / 86400000
+  )
+  return toCalendarDayIndex(now) - toCalendarDayIndex(date)
+}
+
+const matchesRecordTimeFilter = (
+  record: GeneratingRecord,
+  filter: 'all' | 'today' | 'yesterday' | 'last7days' | 'thisMonth',
+) => {
+  if (filter === 'all') return true
+  const createdAt = new Date(record.createdAt)
+  const now = new Date()
+  const dayDifference = getCalendarDayDifference(createdAt, now)
+  if (filter === 'today') return dayDifference === 0
+  if (filter === 'yesterday') return dayDifference === 1
+  if (filter === 'last7days') return dayDifference >= 0 && dayDifference < 7
+  return createdAt.getFullYear() === now.getFullYear() && createdAt.getMonth() === now.getMonth()
 }
 
 // 服务端新旧记录同时兼容：新接口会返回 images，部分历史记录或 SSE 终态仅携带 outputs。
@@ -1659,6 +1768,7 @@ const createRecordFromPersisted = (record: PersistedGenerationRecord): Generatin
     source: record.source || 'generate',
     type: record.type,
     prompt: record.prompt,
+    createdAt: record.createdAt,
     time: formatGroupLabel(new Date(record.createdAt)),
     // 后端若返回旧的 model 文本，这里统一按最新后台模型目录重新解析展示名称。
     model: resolveModelLabel(
@@ -2520,6 +2630,16 @@ const loadPersistedGeneratingRecords = async () => {
   }
 }
 
+// 全局登录态在应用挂载后异步恢复。生成页必须等待同一请求结束，
+// 否则刷新时会把“尚未恢复”误判为“未登录”，从而不加载会话和历史记录。
+const loadPersistedGenerateWorkspace = async () => {
+  await authStore.loadSession()
+  await Promise.all([
+    loadPersistedGenerationSessions(),
+    loadPersistedGeneratingRecords(),
+  ])
+  refreshRecordGroupLabels()
+}
 
 const ensureCurrentGenerationSession = async () => {
   if (!authStore.isLoggedIn.value) {
@@ -2596,7 +2716,7 @@ const syncSessionMetaFromRecord = (record: GeneratingRecord, saved: PersistedGen
 }
 
 // 处理发送事件
-const handleSend = async (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string, referenceImages?: string[], count?: number, capabilityFlags?: ModelCapabilityFlags }) => {
+const handleSend = async (message: string, type: CreationType, options?: { model?: string, modelKey?: string, ratio?: string, resolution?: string, duration?: string, feature?: string, skill?: string, referenceImages?: string[], count?: number, retryKey?: string, capabilityFlags?: ModelCapabilityFlags }) => {
   if (!authStore.isLoggedIn.value) {
     openLoginModal('generate-send-guard')
     return
@@ -2627,6 +2747,7 @@ const handleSend = async (message: string, type: CreationType, options?: { model
     source: 'generate',
     type: recordType,
     prompt: message,
+    createdAt: new Date().toISOString(),
     time: formatGroupLabel(new Date()),
     model: options?.model || resolveModelLabel(options?.modelKey || '', modelCategory) || '',
     modelKey: options?.modelKey || '',
@@ -2637,6 +2758,7 @@ const handleSend = async (message: string, type: CreationType, options?: { model
     feature: options?.feature || '',
     skill: normalizedSkill,
     count: recordType === 'image' ? (options?.count && options.count > 0 ? options.count : 1) : undefined,
+    retryKey: options?.retryKey,
     capabilityFlags: options?.capabilityFlags || undefined,
     content: recordType === 'image' ? '[[queued]]任务已创建，等待服务端执行' : '',
     images: [],
@@ -2907,6 +3029,7 @@ const startImageGenerationTask = async (record: GeneratingRecord) => {
       duration: record.duration,
       feature: record.feature,
       skill: record.skill,
+      retryKey: record.retryKey,
       referenceImages: Array.isArray(record.referenceImages) ? [...record.referenceImages] : [],
       requestBody: data,
     })
@@ -3011,10 +3134,12 @@ const handlePageClick = (e: MouseEvent) => {
 }
 
 onMounted(() => {
+  refreshRecordGroupLabels()
+  // 刷新日历日分组：页面跨过午夜仍会从“今天”切换成“昨天”。
+  groupLabelRefreshTimer = setInterval(refreshRecordGroupLabels, 60_000)
   currentSessionId.value = readStoredCurrentSessionId()
   conversationSidebarCollapsed.value = readStoredConversationSidebarCollapsed()
-  void loadPersistedGenerationSessions()
-  void loadPersistedGeneratingRecords()
+  void loadPersistedGenerateWorkspace()
 
   // 检查路由参数（从首页跳转过来的发送请求）
   const { message, type, model, ratio, resolution, skill } = route.query
@@ -3056,13 +3181,16 @@ onMounted(() => {
   document.addEventListener('click', handlePageClick)
 
   authLoginSuccessListener = () => {
-    void loadPersistedGenerationSessions()
-    void loadPersistedGeneratingRecords()
+    void loadPersistedGenerateWorkspace()
   }
   window.addEventListener(AUTH_LOGIN_SUCCESS_EVENT, authLoginSuccessListener)
 })
 
 onUnmounted(() => {
+  if (groupLabelRefreshTimer) {
+    clearInterval(groupLabelRefreshTimer)
+    groupLabelRefreshTimer = null
+  }
   recordPersistTimers.forEach(timer => clearTimeout(timer))
   recordPersistTimers.clear()
   researchSearchRevealTimers.forEach(timer => clearTimeout(timer))
@@ -3124,11 +3252,14 @@ onUnmounted(() => {
               ref="generateSessionListRef"
               v-model:search-value="sessionSearchKeyword"
               scroll-list-id="scroll-list-generate-session"
+              :time-filter-label="sessionTimeFilterLabel"
+              :type-filter-label="sessionTypeFilterLabel"
+              :action-filter-label="sessionActionFilterLabel"
               @create-session="handleCreateSession"
               @search="handleSessionSearch"
-              @time-filter-click="handleSessionTimeFilterClick"
-              @type-filter-click="handleSessionTypeFilterClick"
-              @action-filter-click="handleSessionActionFilterClick"
+              @time-filter-select="handleSessionTimeFilterSelect"
+              @type-filter-select="handleSessionTypeFilterSelect"
+              @action-filter-select="handleSessionActionFilterSelect"
               @scroll-state="handleSessionListScrollState"
           >
             <template v-for="(record, index) in visibleGeneratingRecords" :key="record.id">
@@ -3214,10 +3345,10 @@ onUnmounted(() => {
           </GenerateSessionList>
           <ContentGenerator
               ref="contentGeneratorRef"
+              class="generate-history-composer"
               :default-expanded="true"
               @send="handleSend"
           />
-          <div style=height:1px></div>
         </div>
       </div>
     </div>
@@ -3319,6 +3450,32 @@ onUnmounted(() => {
   min-height: 0;
   overflow: hidden;
   padding: 32px 24px 96px;
+}
+
+/* 空白创作态的输入器与参考页使用同一固定高度，避免浏览器小数像素导致居中时上下偏移。 */
+.main-content-G632JF.new-conversation .dimension-layout-FUl4Nj.default-layout-eH8Zi1 {
+  background: #fefeff;
+  height: 176px;
+}
+
+/* 历史列表与创作框共享同一列布局：创作框占用真实高度，而不是以 sticky 方式覆盖滚动内容。 */
+.entry-lav5_s {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.entry-lav5_s > .record-list-container {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+.entry-lav5_s > .generate-history-composer {
+  bottom: auto;
+  flex: 0 0 auto;
+  margin: 0 auto max(20px, env(safe-area-inset-bottom));
+  position: relative;
 }
 
 .new-conversation-hero-canana {

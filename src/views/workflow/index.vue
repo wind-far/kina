@@ -727,6 +727,10 @@ const runCanvasAssistantPreset = (preset: typeof CANVAS_ASSISTANT_PRESETS[number
   void runCanvasAssistantTask({ prompt: preset.prompt, presetId: preset.id })
 }
 
+// 左侧栏入口按当前界面要求隐藏，但保留动作实现，避免把“隐藏按钮”误做成删除能力。
+void runCanvasAssistantPreview
+void runCanvasAssistantPreset
+
 const insertLibraryPrompt = (prompt: { title: string; content: string; targetNodeType?: 'text' | 'imageConfig' | 'videoConfig'; tags?: string[]; sourceId?: string | null }) => {
   const x = -viewport.value.x / viewport.value.zoom + (window.innerWidth / 2) / viewport.value.zoom
   const y = -viewport.value.y / viewport.value.zoom + (window.innerHeight / 2) / viewport.value.zoom
@@ -1263,10 +1267,49 @@ const hasExistingEdge = (source: string, target: string, sourceHandle?: string, 
   )
 }
 
+const appendSelectionSnapshot = ref<{ nodeIds: string[]; edgeIds: string[]; targetNodeId: string } | null>(null)
+
+const isAppendSelectionEvent = (event: PointerEvent | MouseEvent) => (
+  event.shiftKey || event.ctrlKey || event.metaKey
+)
+
+// Vue Flow 的 multiSelectionActive 依赖 document 的 keydown；在部分嵌入式浏览器中，
+// 修饰键点击只会携带鼠标事件字段。先在捕获阶段保留选区，再在 node-click 后统一恢复，
+// 让 Shift / Ctrl / Cmd 点击始终可追加或取消节点。
+const captureAppendSelection = (event: PointerEvent) => {
+  const targetNodeId = event.target instanceof Element
+    ? event.target.closest<HTMLElement>('.vue-flow__node')?.dataset.id
+    : ''
+  if (!targetNodeId || !isAppendSelectionEvent(event)) {
+    appendSelectionSnapshot.value = null
+    return
+  }
+  appendSelectionSnapshot.value = {
+    nodeIds: nodes.value.filter(node => node.selected).map(node => node.id),
+    edgeIds: edges.value.filter(edge => Boolean((edge as { selected?: boolean }).selected)).map(edge => edge.id),
+    targetNodeId,
+  }
+}
+
+const restoreAppendSelection = (targetNodeId: string, event: MouseEvent) => {
+  const snapshot = appendSelectionSnapshot.value
+  appendSelectionSnapshot.value = null
+  if (!snapshot || snapshot.targetNodeId !== targetNodeId || !isAppendSelectionEvent(event)) return
+
+  const selectedIds = new Set(snapshot.nodeIds)
+  if (selectedIds.has(targetNodeId)) selectedIds.delete(targetNodeId)
+  else selectedIds.add(targetNodeId)
+  const selectedEdgeIds = new Set(snapshot.edgeIds)
+
+  nodes.value = nodes.value.map(node => ({ ...node, selected: selectedIds.has(node.id) }))
+  edges.value = edges.value.map(edge => ({ ...edge, selected: selectedEdgeIds.has(edge.id) }))
+}
+
 const handleNodeClick = (payload: { event: MouseEvent | TouchEvent; node: { id: string } }) => {
   const originalEvent = payload.event as MouseEvent
   const targetNodeId = payload.node?.id
   if (!targetNodeId) return
+  restoreAppendSelection(targetNodeId, originalEvent)
   const shouldOpenPrompt = isWorkflowPromptAnchorNodeType(nodes.value.find(node => node.id === targetNodeId)?.type)
 
   // Vue Flow 的 selected 标记在部分交互路径下不会同步到 v-model 节点数组。
@@ -2094,7 +2137,7 @@ const { isPanelCollapsed: isAssistantCollapsed, togglePanel: toggleAssistantPane
 const pendingAssistantMessage = ref('')
 const workflowPrompt = ref('')
 const workflowPromptGenerationMode = ref<'image' | 'video'>('image')
-const workflowPromptImageModel = ref('gpt-image-2')
+const workflowPromptImageModel = ref('')
 const workflowPromptVideoModel = ref('')
 const workflowPromptCount = ref(1)
 const workflowPromptUploadedReferences = ref<Array<{ id: string; url: string; label: string }>>([])
@@ -2109,14 +2152,13 @@ const readWorkflowPromptModelPrice = (model: { defaultParams?: Record<string, un
 }
 
 const workflowPromptImageModels = computed<WorkflowPromptModelOption[]>(() => {
-  const catalog = getAllImageModels().map(model => ({
+  return getAllImageModels().map(model => ({
     key: model.key,
     label: model.label || model.modelKey,
     provider: model.providerName || model.providerCode,
     price: readWorkflowPromptModelPrice(model, '张'),
     maxCount: model.maxImagesPerRequest,
   }))
-  return catalog.length ? catalog : [{ key: 'gpt-image-2', label: 'gpt-image-2', provider: '（慢）OpenAI', price: '1 积分/张', maxCount: 1 }]
 })
 
 const workflowPromptVideoModels = computed<WorkflowPromptModelOption[]>(() => getAllVideoModels().map(model => ({
@@ -2349,7 +2391,7 @@ onMounted(() => {
   initSampleData()
   initHistory()
   void loadPublicModelCatalog().then(() => {
-    const nextImageModel = getDefaultImageModelKey() || workflowPromptImageModels.value[0]?.key || 'gpt-image-2'
+    const nextImageModel = getDefaultImageModelKey() || workflowPromptImageModels.value[0]?.key || ''
     const nextVideoModel = getDefaultVideoModelKey() || workflowPromptVideoModels.value[0]?.key || ''
     if (!workflowPromptImageModels.value.some(model => model.key === workflowPromptImageModel.value)) {
       workflowPromptImageModel.value = nextImageModel
@@ -2449,6 +2491,7 @@ watch(currentCanvasSnapshot, () => {
             'workflow-canvas-wrap--prompt-open': Boolean(promptAnchorNodeId),
             'workflow-canvas-wrap--alignment-guides': canvasAlignmentGuides,
           }"
+          @pointerdown.capture="captureAppendSelection"
           @dragover="onCanvasFileDragOver"
           @drop="onCanvasFileDrop"
         >
@@ -2537,7 +2580,7 @@ watch(currentCanvasSnapshot, () => {
 
         <header class="workflow-header">
           <div class="workflow-header-left">
-            <button class="wf-btn wf-btn-sm" :disabled="goBackLoading" aria-label="返回" data-tooltip="返回上一页" @click="goBack">
+            <button class="wf-btn wf-btn-sm" :disabled="goBackLoading" aria-label="返回" @click="goBack">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
@@ -2685,28 +2728,6 @@ watch(currentCanvasSnapshot, () => {
             </button>
 
             <button
-              v-if="workspaceScene === 'INFINITE_CANVAS'"
-              class="wf-btn wf-btn-icon"
-              :class="{ active: showPromptLibrary }"
-              type="button"
-              aria-label="提示词库"
-              data-tooltip="提示词库"
-              @click="showPromptLibrary = !showPromptLibrary"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 4h10a4 4 0 0 1 4 4v12l-4-2-4 2-4-2-4 2V8a4 4 0 0 1 4-4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 9h7M8 13h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            </button>
-            <button
-              v-if="workspaceScene === 'INFINITE_CANVAS'"
-              class="wf-btn wf-btn-icon"
-              :class="{ active: showCanvasPluginManager }"
-              type="button"
-              aria-label="画布插件"
-              data-tooltip="画布插件"
-              @click="showCanvasPluginManager = !showCanvasPluginManager"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8.8 4.5a2.8 2.8 0 1 1 4.4 2.3V10h2.3a2.8 2.8 0 1 1 2.3 4.4V19H5v-4.6A2.8 2.8 0 1 1 7.3 10h2.3V6.8A2.8 2.8 0 0 1 8.8 4.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
-            </button>
-            <button
               class="wf-btn wf-btn-icon"
               :class="{ active: showNodeMenu }"
               aria-label="添加节点"
@@ -2717,32 +2738,6 @@ watch(currentCanvasSnapshot, () => {
                 <path d="M12 5v14m-7-7h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
               </svg>
             </button>
-
-            <button
-              v-if="workspaceScene === 'INFINITE_CANVAS'"
-              class="wf-btn wf-btn-icon"
-              type="button"
-              aria-label="画布助手"
-              data-tooltip="画布助手（先预览，后确认）"
-              @click="runCanvasAssistantPreview"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-                <path d="M19 16.5 19.8 19l2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-              </svg>
-            </button>
-
-            <template v-if="workspaceScene === 'INFINITE_CANVAS'">
-              <button
-                v-for="preset in CANVAS_ASSISTANT_PRESETS"
-                :key="preset.id"
-                class="wf-btn wf-btn-icon wf-canvas-assistant-preset"
-                type="button"
-                :aria-label="preset.title"
-                :data-tooltip="`${preset.title}（基于当前选区）`"
-                @click="runCanvasAssistantPreset(preset)"
-              >{{ preset.shortLabel }}</button>
-            </template>
 
             <button
               class="wf-btn wf-btn-icon"

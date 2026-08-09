@@ -143,7 +143,16 @@ export const executeImageTask = async (
       requestBody,
       onRetry: (retryState) => context.markTaskRetryState(task, retryState),
     })
-  await context.ensureTaskNotAborted(task)
+
+  // 上游结果一旦返回，必须先把原始数据写入记录。这里不再经过下载、落盘或资源归档：
+  // 服务重启、SSE 断开或运行态同步失败都不能让已经返回的图片链接丢失。
+  await context.updateGenerationRecord(task.recordId, {
+    ...context.buildInitialRecordPayload(payload),
+    done: true,
+    stopped: false,
+    images: imageUrls,
+    writeOutputLinksOnly: true,
+  }, task.userId)
 
   context.logGenerationTask('image_task:request_upstream', {
     recordId: task.recordId,
@@ -157,26 +166,28 @@ export const executeImageTask = async (
   })
   context.emitTaskProgressEvent(task.recordId, {
     stage: 'syncing_record',
-    message: '图片结果已解析，正在同步记录与资源信息',
+    message: '图片结果已写入记录，正在同步界面状态',
   })
-
-  await context.updateGenerationRecord(task.recordId, {
-    ...context.buildInitialRecordPayload(payload),
-    done: true,
-    stopped: false,
-    images: imageUrls,
-  }, task.userId)
-  const completedRecord = await context.getGenerationRecordById(task.recordId, task.userId)
-  await context.syncSharedTaskRuntime(task, 'completed')
-  context.emitTaskStreamEvent(task.recordId, {
-    type: 'completed',
-    recordId: task.recordId,
-    done: true,
-    stopped: false,
-    record: completedRecord,
-    stage: 'completed',
-    message: '图片生成完成，结果已写入记录',
-  })
+  // 记录已提交后，运行态/SSE 仅是通知层。通知失败不能反向把已保存的结果改成失败或清空。
+  try {
+    const completedRecord = await context.getGenerationRecordById(task.recordId, task.userId)
+    await context.syncSharedTaskRuntime(task, 'completed')
+    context.emitTaskStreamEvent(task.recordId, {
+      type: 'completed',
+      recordId: task.recordId,
+      done: true,
+      stopped: false,
+      record: completedRecord,
+      stage: 'completed',
+      message: '图片生成完成，结果已写入记录',
+    })
+  } catch (error) {
+    context.logGenerationTask('image_task:post_persist_notification_failed', {
+      recordId: task.recordId,
+      userId: task.userId,
+      message: error instanceof Error ? error.message : String(error || 'unknown error'),
+    })
+  }
 
   context.logGenerationTask('image_task:request_success', {
     recordId: task.recordId,

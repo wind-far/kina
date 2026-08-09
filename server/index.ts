@@ -674,13 +674,30 @@ server.listen(serverPort, '0.0.0.0', () => {
   writeScopedLog('info', '服务端', `上传目录: ${uploadsDir}`)
   writeScopedLog('info', '服务端', `CORS 来源: ${allowedOrigins.join(', ')}`)
   writeScopedLog('info', '服务端', `Redis: ${resolveRedisStartupSummary()}`)
-  void bootstrapEnvironmentProviders()
-    .then(result => writeScopedLog('info', '环境厂商配置', '启动同步完成', result))
-    .catch(error => writeScopedLog('error', '环境厂商配置', '启动同步失败', error))
-  void recoverServerWorkflowRuns()
-    .then(result => writeScopedLog('info', '工作流执行器', '启动恢复完成', result))
-    .catch(error => writeScopedLog('error', '工作流执行器', '启动恢复失败', error))
-  void recoverInterruptedGenerationTasks()
-    .then(result => writeScopedLog('info', '生成任务恢复器', '启动恢复完成', result))
-    .catch(error => writeScopedLog('error', '生成任务恢复器', '启动恢复失败', error))
+  // 启动恢复必须串行：先把 .env 中的厂商和模型同步到目录，再收口上一进程的
+  // 生成任务，最后才允许待执行工作流入队。否则恢复出的 PENDING 工作流可能在
+  // 模型目录尚未初始化时执行，或者被任务恢复器误判为上一进程的遗留任务。
+  void (async () => {
+    try {
+      const result = await bootstrapEnvironmentProviders()
+      writeScopedLog('info', '环境厂商配置', '启动同步完成', result)
+    } catch (error) {
+      // 环境变量同步失败时仍继续后续恢复：管理员已保存的模型配置可能仍可用。
+      writeScopedLog('error', '环境厂商配置', '启动同步失败', error)
+    }
+
+    try {
+      const result = await recoverInterruptedGenerationTasks()
+      writeScopedLog('info', '生成任务恢复器', '启动恢复完成', result)
+    } catch (error) {
+      writeScopedLog('error', '生成任务恢复器', '启动恢复失败', error)
+    }
+
+    try {
+      const result = await recoverServerWorkflowRuns()
+      writeScopedLog('info', '工作流执行器', '启动恢复完成', result)
+    } catch (error) {
+      writeScopedLog('error', '工作流执行器', '启动恢复失败', error)
+    }
+  })()
 })

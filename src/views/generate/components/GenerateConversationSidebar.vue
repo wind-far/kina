@@ -21,7 +21,7 @@
 
     <div ref="listRef" class="list-JWYG84">
       <div class="sticky-top" :class="{ 'scrolled': isListScrolled }">
-        <div class="new-conversation-entry active-aic4ZS" @click="emit('create-session')">
+        <div class="new-conversation-entry" @click="emit('create-session')">
           <div class="new-conversation-icon-kkgjyz">
             <svg width="1em" height="1em" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" role="presentation" xmlns="http://www.w3.org/2000/svg">
               <g>

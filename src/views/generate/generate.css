@@ -771,6 +771,12 @@
     width: 100%
 }
 
+/* 单张完成图不应保留四列占位，按原图比例大图展示。 */
+.responsive-image-grid.responsive-image-grid--single {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 720px
+}
+
 .responsive-image-grid > :nth-child(4n+1) {
     border-bottom-left-radius: 2px;
     border-top-left-radius: 2px;
@@ -1179,9 +1185,15 @@
     overflow-x: hidden;
     overflow-y: auto;
     position: relative;
+    scroll-padding-bottom: 24px;
     scrollbar-width: auto;
     transform: none;
     width: 100%
+}
+
+.virtual-list-container.reverse-virtual-list .scroll-container-j7wUS8 .virtual-list {
+    direction: rtl;
+    transform: rotate(180deg)
 }
 
 .virtual-list-container .scroll-container-j7wUS8 .virtual-list .scroll-list {
@@ -1196,8 +1208,9 @@
     width: 100%
 }
 
-.virtual-list-container .scroll-container-j7wUS8 .virtual-list .item-Xh64V7 {
-    transform: none
+.virtual-list-container.reverse-virtual-list .scroll-container-j7wUS8 .virtual-list .scroll-list > * {
+    direction: ltr;
+    transform: rotate(180deg)
 }
 
 .virtual-list-container .scroll-container-j7wUS8 .virtual-list::-webkit-scrollbar {
@@ -3015,8 +3028,9 @@
     }
 }
 
-div.normal-button-mS74ha {
+.normal-button-mS74ha {
     background: var(--bg-block-primary-default);
+    border: 0;
     border-radius: 8px;
     height: 16px;
     padding: 10px;
@@ -3025,7 +3039,9 @@ div.normal-button-mS74ha {
 
 .card-bottom-button-view-xY_JqR {
     align-items: center;
+    appearance: none;
     background-color: var(--bg-block-primary-default);
+    border: 0;
     border-radius: 8px;
     color: var(--text-primary, #f5fbff);
     display: flex;

@@ -16,7 +16,7 @@
           />
         </div>
         <div
-          v-if="renderedConversationEntries.length"
+          v-if="!done && renderedConversationEntries.length"
           class="process-group completed-Mr7mg1 image-stage-process-group"
           :class="{ 'expanded-bG3kBU': conversationExpanded }"
         >
@@ -105,10 +105,10 @@
           </div>
           <!-- 生成完成：显示图片 -->
           <div v-else-if="done && images.length" class="image-record-content">
-            <div class="responsive-image-grid">
+            <div class="responsive-image-grid" :class="{ 'responsive-image-grid--single': images.length === 1 }">
               <div v-for="(url, i) in images" :key="i"
                    class="image-card-wrapper landscape"
-                   :style="`--aspect-ratio:${aspectRatio}`">
+                   :style="{ '--aspect-ratio': String(resolveCompletedImageAspectRatio(url)) }">
                 <div class="image-record-item">
                   <div class="context-menu-trigger-WJ6VDZ">
                     <div class="slot-card-container-gulhrr image-card-container-dFemyw">
@@ -116,11 +116,12 @@
                         <div class="image-card-container-qy7ui4">
                           <div class="container-bG3PQ9 image-GnB1sY">
                             <div style="transition:opacity 300ms;opacity:1">
-                              <img class="image-TLmgkP"
+                              <img class="image-TLmgkP completed-image-TLmgkP"
 
                                    draggable="false"
-                                   loading="lazy"
+                                   loading="eager"
                                    :src="url"
+                                   @load="handleCompletedImageLoad($event, url)"
                                    @click.stop="handlePreview(i)" />
                             </div>
                           </div>
@@ -156,8 +157,10 @@
               </div>
             </div>
             <!-- 进度徽章 -->
-            <div class="progress-badge-RuihdC progress-badge-RQDqWu">
-              {{ currentProgress }}%{{ currentProgressText || '造梦中' }}
+            <div class="progress-badge-RuihdC progress-badge-RQDqWu" aria-live="polite">
+              <span class="progress-badge__pulse" aria-hidden="true"></span>
+              <span>{{ currentProgress }}%</span>
+              <span class="progress-badge__label">{{ currentProgressText || '造梦中' }}</span>
             </div>
             <button class="stop-generate-button-canana" type="button" @click="$emit('stop')">
               停止生成
@@ -166,9 +169,10 @@
           <div v-if="done && !error" class="operations">
             <div class="record-bottom-slots-AYv3JV">
               <div>
-                <div class="card-bottom-button-view-xY_JqR"
-                     style="--right-padding:14px"
-                     @click="$emit('edit')">
+                <button class="card-bottom-button-view-xY_JqR"
+                        style="--right-padding:14px"
+                        type="button"
+                        @click="$emit('edit')">
                   <div class="icon-Eb0kRz">
                     <svg fill="none"
                          height="1em"
@@ -187,12 +191,13 @@
                     </svg>
                   </div>
                   <div>重新编辑</div>
-                </div>
+                </button>
               </div>
               <div>
-                <div class="card-bottom-button-view-xY_JqR"
-                     style="--right-padding:14px"
-                     @click="$emit('regenerate')">
+                <button class="card-bottom-button-view-xY_JqR"
+                        style="--right-padding:14px"
+                        type="button"
+                        @click="$emit('regenerate')">
                   <div class="icon-Eb0kRz">
                     <svg fill="none"
                          height="1em"
@@ -211,11 +216,17 @@
                     </svg>
                   </div>
                   <div>再次生成</div>
-                </div>
+                </button>
               </div>
-              <div class="operation-button-oVtvlN normal-button-mS74ha"
-                   @click="$emit('more')">
-                <span class="icon-oB5C0a">
+              <button
+                  v-if="images.length"
+                  class="card-bottom-button-view-xY_JqR"
+                  style="--right-padding:14px"
+                  type="button"
+                  aria-label="预览图片"
+                  @click="$emit('more')"
+              >
+                <span class="icon-Eb0kRz">
                   <svg fill="none"
                        height="1em"
                        preserveAspectRatio="xMidYMid meet"
@@ -232,7 +243,8 @@
                     </g>
                   </svg>
                 </span>
-              </div>
+                <span>预览图片</span>
+              </button>
             </div>
           </div>
         </div>
@@ -296,6 +308,28 @@ const emit = defineEmits(['edit', 'regenerate', 'more', 'preview', 'stop'])
 
 const handlePreview = (index: number) => {
   emit('preview', index)
+}
+
+// 完成态以图片自然宽高修正卡片比例，不能继续用请求参数的固定比例裁切实际结果。
+const completedImageAspectRatios = ref<Record<string, number>>({})
+
+const resolveCompletedImageAspectRatio = (url: string) => {
+  const naturalRatio = Number(completedImageAspectRatios.value[url])
+  return Number.isFinite(naturalRatio) && naturalRatio > 0 ? naturalRatio : props.aspectRatio
+}
+
+const handleCompletedImageLoad = (event: Event, url: string) => {
+  const image = event.target as HTMLImageElement | null
+  const naturalWidth = Number(image?.naturalWidth || 0)
+  const naturalHeight = Number(image?.naturalHeight || 0)
+  if (!naturalWidth || !naturalHeight) return
+
+  const naturalRatio = naturalWidth / naturalHeight
+  if (completedImageAspectRatios.value[url] === naturalRatio) return
+  completedImageAspectRatios.value = {
+    ...completedImageAspectRatios.value,
+    [url]: naturalRatio,
+  }
 }
 
 const currentProgress = ref(props.progress)
@@ -371,20 +405,29 @@ const resolveStageTone = (stageKey: string) => {
   }
 }
 
-// 当父级已经通过 SSE 提供明确进度时，当前卡片不再使用本地假进度动画。
-const hasControlledProgress = () => Number(props.progress) > 0 || Boolean(String(props.progressText || '').trim())
+// 图片模型通常只在排队、开始请求、返回结果等关键点推送状态。两个关键点之间仍要让
+// 进度平滑前进，但绝不伪造“已完成”：每一阶段都有自己的上限，真正完成只能由服务端事件设为 100%。
+const resolvePreviewProgressCeiling = () => {
+  const confirmedProgress = Math.max(0, Math.min(99, Number(props.progress) || 0))
+  if (confirmedProgress < 12) return 30
+  if (confirmedProgress < 35) return 68
+  if (confirmedProgress < 72) return 88
+  if (confirmedProgress < 92) return 97
+  return 99
+}
 
 const startTimer = () => {
-  if (hasControlledProgress()) {
+  if (timer || props.done || props.error || props.stopped) {
     return
   }
   timer = setInterval(() => {
-    if (currentProgress.value < 99) {
-      const remaining = 99 - currentProgress.value
-      const step = Math.max(1, Math.floor(remaining * 0.08))
-      currentProgress.value = Math.min(99, currentProgress.value + step)
+    const progressCeiling = resolvePreviewProgressCeiling()
+    if (currentProgress.value < progressCeiling) {
+      const remaining = progressCeiling - currentProgress.value
+      const step = Math.max(1, Math.ceil(remaining * 0.12))
+      currentProgress.value = Math.min(progressCeiling, currentProgress.value + step)
     }
-  }, 800)
+  }, 900)
 }
 
 const stopTimer = () => {
@@ -432,7 +475,11 @@ const syncCurrentStageTypingText = () => {
 
 // 完成时停止进度条
 watch(() => props.done, (val) => {
-  if (val) stopTimer()
+  if (val) {
+    stopTimer()
+  } else {
+    startTimer()
+  }
 })
 
 watch(() => props.error, (val) => {
@@ -444,19 +491,17 @@ watch(() => props.stopped, (val) => {
 })
 
 watch(() => props.progress, (val) => {
-  currentProgress.value = Number.isFinite(Number(val)) ? Number(val) : 0
-  if (hasControlledProgress()) {
-    stopTimer()
-  } else if (!props.done && !props.error && !props.stopped && !timer) {
+  const nextProgress = Number.isFinite(Number(val)) ? Number(val) : 0
+  // 页面重新进入时可能先拿到数据库里的排队快照，再收到 SSE 的较新阶段；不能倒退到 5%。
+  currentProgress.value = Math.max(currentProgress.value, nextProgress)
+  if (!props.done && !props.error && !props.stopped && !timer) {
     startTimer()
   }
 })
 
 watch(() => props.progressText, (val) => {
   currentProgressText.value = val || ''
-  if (hasControlledProgress()) {
-    stopTimer()
-  } else if (!props.done && !props.error && !props.stopped && !timer) {
+  if (!props.done && !props.error && !props.stopped && !timer) {
     startTimer()
   }
 })
@@ -533,21 +578,55 @@ onUnmounted(() => {
 /* 进度徽章 */
 .progress-badge-RuihdC {
   align-items: center;
-  background: var(--bg-block-primary-default, rgba(204, 221, 255, .08));
-  border-radius: 6px;
-  color: var(--text-primary);
+  background: rgba(15, 23, 42, .82);
+  border: 1px solid rgba(255, 255, 255, .32);
+  border-radius: 8px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, .28);
+  color: #fff;
   display: flex;
+  gap: 6px;
   font-family: PingFang SC, sans-serif;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 20px;
-  padding: 2px 7px 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 22px;
+  padding: 4px 10px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
+  backdrop-filter: blur(8px);
+}
+
+.progress-badge__pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #69e2ff;
+  box-shadow: 0 0 0 3px rgba(105, 226, 255, .22);
+  animation: progress-badge-pulse 1.35s ease-in-out infinite;
+}
+
+.progress-badge__label {
+  padding-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, .42);
+}
+
+@keyframes progress-badge-pulse {
+  50% {
+    opacity: .55;
+    transform: scale(.82);
+  }
 }
 
 .image-record-content .progress-badge-RQDqWu {
   left: 8px;
   position: absolute;
   top: 8px;
+}
+
+/* 完成图按自然比例铺满卡片，避免全局 cover 样式截掉海报、长图边缘。 */
+.image-record-content .image-card-container-dFemyw .completed-image-TLmgkP {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 /* 错误状态 */

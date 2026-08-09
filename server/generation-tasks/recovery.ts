@@ -13,6 +13,9 @@ const RECOVERY_ERROR_MESSAGE = '服务重启导致任务中断，可重试'
 /** 仅在没有仍被其他实例持有的执行锁时，才允许启动恢复器结束任务。 */
 export const shouldFinalizeInterruptedGenerationTask = (lockState: ExecutionLockState) => lockState === 'inactive'
 
+// 服务重启只能收口没有结果的遗留任务；已写入任意输出的任务必须保留结果并视为完成。
+export const resolveInterruptedTaskTerminalStatus = (hasOutput: boolean) => hasOutput ? 'COMPLETED' : 'FAILED'
+
 const getExecutionLockState = async (recordId: string): Promise<ExecutionLockState> => {
   if (!isRedisEnabled()) return 'inactive'
   try {
@@ -40,7 +43,14 @@ export const recoverInterruptedGenerationTasks = async () => {
       status: { in: ['PENDING', 'RUNNING'] },
       createdAt: { lt: recoveryStartedAt },
     },
-    select: { id: true, userId: true },
+    select: {
+      id: true,
+      userId: true,
+      outputs: {
+        select: { id: true },
+        take: 1,
+      },
+    },
     orderBy: { createdAt: 'asc' },
     take: Number.isFinite(GENERATION_TASK_RECOVERY_LIMIT) && GENERATION_TASK_RECOVERY_LIMIT > 0
       ? GENERATION_TASK_RECOVERY_LIMIT
@@ -60,29 +70,33 @@ export const recoverInterruptedGenerationTasks = async () => {
       continue
     }
 
+    const hasOutput = record.outputs.length > 0
+    const terminalStatus = resolveInterruptedTaskTerminalStatus(hasOutput)
+    const errorMessage = hasOutput ? null : RECOVERY_ERROR_MESSAGE
+
     // 条件更新保证多实例同时启动时，只有一个实例能完成收口。
     const result = await prisma.generationRecord.updateMany({
       where: { id: record.id, status: { in: ['PENDING', 'RUNNING'] } },
-      data: { status: 'FAILED', errorMessage: RECOVERY_ERROR_MESSAGE, finishedAt: new Date() },
+      data: { status: terminalStatus, errorMessage, finishedAt: new Date() },
     })
     if (!result.count) continue
 
     recovered += 1
     affectedUsers.add(record.userId)
-    await markSkillExecutionRun(record.id, 'FAILED', {
+    await markSkillExecutionRun(record.id, hasOutput ? 'COMPLETED' : 'FAILED', {
       recovery: 'server_restart',
-      message: RECOVERY_ERROR_MESSAGE,
+      message: hasOutput ? '服务重启后已保留已写入的生成结果' : RECOVERY_ERROR_MESSAGE,
     })
     await patchSharedTaskRuntime(record.id, current => current
       ? {
           ...current,
-          status: 'failed',
+          status: hasOutput ? 'completed' : 'failed',
           updatedAt: new Date().toISOString(),
           execution: {
             ...current.execution,
             completedAt: new Date().toISOString(),
-            lastErrorAt: new Date().toISOString(),
-            lastErrorMessage: RECOVERY_ERROR_MESSAGE,
+            lastErrorAt: hasOutput ? current.execution?.lastErrorAt || '' : new Date().toISOString(),
+            lastErrorMessage: hasOutput ? current.execution?.lastErrorMessage || '' : RECOVERY_ERROR_MESSAGE,
           },
         }
       : current)

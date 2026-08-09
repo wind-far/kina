@@ -49,7 +49,12 @@ import {
 } from '../../composables/useWorkflowCanvas'
 import { uploadStorageFile } from '@/api/storage'
 import { loadPublicModelCatalog } from '@/config/models'
-import { createGenerationTask, subscribeGenerationTaskEvents, resolveGenerationTaskModel } from '@/api/generation-tasks'
+import {
+  createGenerationTask,
+  subscribeGenerationTaskEvents,
+  resolveGenerationTaskModel,
+  type GenerationTaskStreamEvent,
+} from '@/api/generation-tasks'
 import { appendImageReferencesToRequestBody } from '@/shared/image-generation-request'
 import {
   commitWorkflowGridNodesAtomically,
@@ -91,10 +96,12 @@ watch(
 // 上游连线检测：当 target=本节点 的边存在时，节点处于"已连接参考图片"状态
 const hasUpstream = computed(() => edges.value.some((e) => e.target === props.id))
 
-// 4 类状态优先级：加载 > 错误 > 有图 > ready-state（无图但有上游）> 空态菜单
-const showLoading = computed(() => isLoading.value)
-const showError = computed(() => !isLoading.value && !!errorMsg.value)
-const showImage = computed(() => !isLoading.value && !errorMsg.value && !!imageUrl.value)
+// 4 类状态优先级：错误 > 有图 > 加载 > ready-state（无图但有上游）> 空态菜单。
+// 重新生成或旧快照可能同时携带上一次的图片 URL 与 loading 标记；此时应继续
+// 显示已有结果，不能用加载遮罩把整张图片卡片盖成空白巨框。
+const showError = computed(() => !!errorMsg.value)
+const showImage = computed(() => !showError.value && !!imageUrl.value)
+const showLoading = computed(() => !showError.value && isLoading.value && !showImage.value)
 const showReady = computed(() => !showLoading.value && !showError.value && !showImage.value && hasUpstream.value)
 const showEmpty = computed(() => !showLoading.value && !showError.value && !showImage.value && !showReady.value)
 
@@ -487,6 +494,7 @@ const emptyMenuItems = [
 // 选中态下方浮层：用 ContentGenerator（与 /generate 同款），锁定 image 类型
 onMounted(() => {
   void loadPublicModelCatalog()
+  reconcileOrphanedImageLoading()
   resumePendingTask()
 })
 // 上游图片素材 → 作为图生图参考图（直接拿 url 数组）
@@ -611,11 +619,88 @@ const topToolbarItems = computed<NodeTopToolbarItem[]>(() => [
 // ContentGenerator 发送：用上游图作为参考 + 用户 prompt 调图生图，结果回填到当前节点
 const isGenerating = ref(false)
 const taskStreamController = ref<AbortController | null>(null)
+
+/**
+ * 任务的最终快照也会通过 `snapshot` 事件送达（例如刷新后重新连接）。
+ * 不能只在拿到图片 URL 时清理 loading，否则上游异常地完成但没有输出时，
+ * 节点会永久显示“生成中”。
+ */
+const resolveImageTaskTerminalError = (event: GenerationTaskStreamEvent) => {
+  if (event.type === 'stopped' || event.stopped || event.record?.stopped) return '任务已停止'
+  const recordError = String(event.record?.error || '').trim()
+  if (event.type === 'failed') return String(event.message || recordError || '图片生成失败').trim() || '图片生成失败'
+  return recordError || '任务完成但未返回图片，请重试'
+}
+
+/**
+ * 兼容旧版快照：早期图片直连生成只保存了 loading，未保存 taskRecordId。
+ * 没有可续接任务、也没有正在管理它的上游配置节点时，该节点不可能仍在生成；
+ * 清掉陈旧 loading，避免历史工作流或普通空图片节点永久被 spinner 覆盖。
+ */
+const reconcileOrphanedImageLoading = () => {
+  if (!props.data?.loading || String(props.data?.taskRecordId || '').trim()) return
+
+  const isManagedByPendingImageConfig = edges.value
+    .filter(edge => edge.target === props.id)
+    .map(edge => nodes.value.find(node => node.id === edge.source))
+    .some(node => node?.type === 'imageConfig' && Boolean(node.data?.loading))
+  if (isManagedByPendingImageConfig) return
+
+  updateNode(props.id, {
+    loading: false,
+    error: '',
+    executed: true,
+  })
+}
+
+const applyImageTaskResult = (
+  event: GenerationTaskStreamEvent,
+  taskId: string,
+  generationMeta: ReturnType<typeof buildWorkflowGenerationMetadata>,
+) => {
+  if (event.type !== 'snapshot' && event.type !== 'completed') return false
+
+  const urls = Array.isArray(event.record?.images) ? event.record.images.filter(Boolean) : []
+  if (urls.length) {
+    updateNode(props.id, {
+      url: urls[0],
+      loading: false,
+      error: '',
+      executed: true,
+      taskRecordId: taskId,
+      generationMeta,
+      generationStatus: 'completed',
+    })
+    return true
+  }
+
+  // `snapshot + done` 表示重连时服务端已经给出了最终记录；它和 completed
+  // 一样必须结束节点加载态，避免留下无法恢复的 spinner。
+  if (event.done) {
+    const error = resolveImageTaskTerminalError(event)
+    updateNode(props.id, {
+      loading: false,
+      error,
+      executed: false,
+      taskRecordId: taskId,
+      generationMeta,
+      generationStatus: error === '任务已停止' ? 'stopped' : 'failed',
+    })
+    return true
+  }
+
+  return false
+}
+
 /** 直接在图片结果节点发起的任务同样可在刷新后续接，不重新消耗生成额度。 */
 const resumePendingTask = () => {
   const taskId = String(props.data?.taskRecordId || '').trim()
-  const generationMeta = props.data?.generationMeta
-  if (!taskId || !props.data?.loading || !generationMeta || isGenerating.value) return
+  const generationMeta = props.data?.generationMeta || buildWorkflowGenerationMetadata({
+    kind: 'image',
+    prompt: '',
+    sourceConfigNodeId: props.id,
+  })
+  if (!taskId || !props.data?.loading || isGenerating.value) return
   isGenerating.value = true
   taskStreamController.value?.abort()
   const controller = new AbortController()
@@ -623,14 +708,16 @@ const resumePendingTask = () => {
   void subscribeGenerationTaskEvents(taskId, {
     signal: controller.signal,
     onEvent: (event) => {
-      if (event.type === 'snapshot' || event.type === 'completed') {
-        const urls = Array.isArray(event.record?.images) ? event.record.images.filter(Boolean) : []
-        if (urls.length) {
-          updateNode(props.id, { url: urls[0], loading: false, error: '', executed: true, taskRecordId: taskId, generationMeta })
-        }
+      if (applyImageTaskResult(event, taskId, generationMeta)) {
+        isGenerating.value = false
       }
       if (event.type === 'failed' || event.type === 'stopped') {
-        updateNode(props.id, { loading: false, error: String(event.message || event.record?.error || (event.type === 'stopped' ? '任务已停止' : '图片生成失败')), generationMeta })
+        updateNode(props.id, {
+          loading: false,
+          error: resolveImageTaskTerminalError(event),
+          generationMeta,
+          generationStatus: event.type === 'stopped' ? 'stopped' : 'failed',
+        })
       }
       if (event.done) {
         isGenerating.value = false
@@ -662,7 +749,6 @@ const handlePromptSend = async (
   }
   isGenerating.value = true
   taskStreamController.value?.abort()
-  updateNode(props.id, { loading: true, error: '' })
   try {
     const fallbackKey = String(options?.modelKey || '').trim() || ''
     const { providerId, modelKey } = resolveGenerationTaskModel({
@@ -692,6 +778,16 @@ const handlePromptSend = async (
     })
     const finalBody = hasRef ? appendImageReferencesToRequestBody(requestBody, refImages) : requestBody
 
+    // 在请求创建任务前也写入可恢复上下文。即使页面在请求期间重载，
+    // 也不会把普通空节点误判成一个无来源的“生成中”节点。
+    updateNode(props.id, {
+      loading: true,
+      error: '',
+      taskRecordId: '',
+      generationMeta,
+      generationStatus: 'running',
+    })
+
     const saved = await createGenerationTask({
       source: 'workflow',
       type: 'image',
@@ -706,24 +802,34 @@ const handlePromptSend = async (
     const taskId = String(saved?.id || '').trim()
     if (!taskId) throw new Error('图片任务创建失败')
 
+    // 创建成功后立即持久化任务定位信息。刷新页面时可以续接同一个任务，
+    // 而不是遗失 taskId 后把节点永久留在 loading 状态。
+    updateNode(props.id, {
+      loading: true,
+      error: '',
+      taskRecordId: taskId,
+      generationMeta,
+      generationStatus: 'running',
+    })
+
     const controller = new AbortController()
     taskStreamController.value = controller
     await subscribeGenerationTaskEvents(taskId, {
       signal: controller.signal,
       onEvent: (event) => {
-        if (event.type === 'snapshot' || event.type === 'completed') {
-          const urls = Array.isArray(event.record?.images) ? event.record.images.filter(Boolean) : []
-          if (urls.length) {
-            updateNode(props.id, { url: urls[0], loading: false, error: '', executed: true, taskRecordId: taskId, generationMeta })
-            isGenerating.value = false
-          }
+        if (applyImageTaskResult(event, taskId, generationMeta)) {
+          isGenerating.value = false
         }
         if (event.type === 'failed') {
-          updateNode(props.id, { loading: false, error: String(event.message || event.record?.error || '图片生成失败') })
+          updateNode(props.id, {
+            loading: false,
+            error: resolveImageTaskTerminalError(event),
+            generationStatus: 'failed',
+          })
           isGenerating.value = false
         }
         if (event.type === 'stopped') {
-          updateNode(props.id, { loading: false, error: '任务已停止' })
+          updateNode(props.id, { loading: false, error: resolveImageTaskTerminalError(event), generationStatus: 'stopped' })
           isGenerating.value = false
         }
       },
@@ -986,10 +1092,12 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
 
 <style scoped>
 .image-node-wrapper {
-  /* 保持在正常文档流中，供 Vue Flow 首次测量自定义节点尺寸。 */
-  position: relative;
-  width: 100%;
-  height: 100%;
+  /* Vue Flow 把尺寸写在节点宿主上。用 inset 锚定而非百分比高度，
+     防止空态/错误态按内容高度收缩成顶部的一条。 */
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
   /* 未设置固定宽高的新节点也必须提供可测量的初始尺寸。 */
   min-width: 180px;
   min-height: 140px;
@@ -1085,9 +1193,12 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
 .workflow-image-crop label b { color: var(--text-tertiary); font-weight: 500; text-align: right; }
 
 .image-node-card {
-  position: relative;
-  width: 100%;
-  height: 100%;
+  /* 脱离普通流并锁定到 Vue Flow 分配的节点边界。
+     否则 loading/error 的 flex 高度会按内容收缩为一条窄横条。 */
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
   min-width: 0;
   min-height: 0;
   background: var(--canvas-node-bg);
@@ -1103,8 +1214,8 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
 }
 /* 有图态：节点变宽，图片居中（参照 RunningHUB 生成结果布局 img_11） */
 .image-node-card:has(.image-node-display) {
-  width: 100%;
-  height: 100%;
+  width: auto;
+  height: auto;
 }
 .image-node-wrapper:has(.image-node-display) {
   min-width: 180px;
@@ -1261,11 +1372,17 @@ onUnmounted(() => window.removeEventListener('canvasmind:workflow-image-prompt',
 /* 加载 / 错误 */
 .image-node-loading,
 .image-node-error {
-  flex: 1 1 0;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  padding: 24px;
+  box-sizing: border-box;
+  text-align: center;
   color: var(--text-tertiary);
   font-size: 12px;
 }

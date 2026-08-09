@@ -23,6 +23,8 @@ export interface GenerationTaskStartPayload {
   duration?: string
   feature?: string
   skill?: string
+  /** 用户主动再次生成时的唯一标识；只用于服务端幂等键，绝不转发给模型上游。 */
+  retryKey?: string
   referenceImages?: string[]
   mediaReferences?: SkillMediaReference[]
   researchConfig?: Partial<ResearchTaskConfig> | null
@@ -202,7 +204,9 @@ export const subscribeGenerationTaskEvents = async (
             lastEventId = incomingId
           }
           options.onEvent(parsed as GenerationTaskStreamEvent)
-          if (TERMINAL_EVENT_TYPES.has(normalizedEventType)) {
+          // 已完成任务在重连时只会返回最终 snapshot 后关闭连接，不会再补发
+          // completed/failed/stopped 事件；把该快照视作终态，避免客户端无意义重连。
+          if (TERMINAL_EVENT_TYPES.has(normalizedEventType) || (normalizedEventType === 'snapshot' && parsed.done)) {
             terminated = true
           }
         } catch {

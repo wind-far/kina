@@ -160,6 +160,15 @@ const bindTaskStream = (taskId: string, outputNodeId: string, generationMeta: Re
             awaitingConfirmationTaskId.value = ''
             isGenerating.value = false
           })
+        } else if (event.done) {
+          const message = String(event.message || event.record?.error || (event.stopped ? '任务已停止' : '任务完成但未返回视频')).trim() || '任务完成但未返回视频'
+          updateNode(outputNodeId, { label: event.stopped ? '已停止' : '生成失败', loading: false, error: message })
+          updateNode(props.id, {
+            loading: false,
+            error: message,
+            executed: false,
+            generationStatus: event.stopped ? 'stopped' : 'failed',
+          })
         }
       }
       if (event.type === 'failed' || event.type === 'stopped') {

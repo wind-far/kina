@@ -18,9 +18,16 @@ for (const source of [imageConfig, videoConfig, llmConfig]) {
 }
 assert.match(imageConfig, /只恢复已有任务的 SSE 订阅/)
 assert.match(imageNode, /刷新后续接/)
+assert.match(imageNode, /任务完成但未返回图片，请重试/)
+assert.match(imageNode, /taskRecordId: taskId,\s*generationMeta,\s*generationStatus: 'running'/)
+assert.match(imageNode, /const reconcileOrphanedImageLoading/)
+assert.match(imageNode, /isManagedByPendingImageConfig/)
+assert.match(imageNode, /taskRecordId: '',\s*generationMeta,\s*generationStatus: 'running'/)
 assert.match(videoConfig, /不重新提交视频请求/)
+assert.match(videoConfig, /任务完成但未返回视频/)
 assert.match(llmConfig, /刷新不会再次发送文本生成请求/)
 assert.match(generationApi, /lastEventId/)
 assert.match(generationApi, /WATCHDOG_TIMEOUT_MS/)
+assert.match(generationApi, /normalizedEventType === 'snapshot' && parsed\.done/)
 
 console.log('workflow generation resume declarations passed')

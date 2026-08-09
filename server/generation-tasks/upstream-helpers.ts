@@ -526,22 +526,26 @@ export const resolveWorkspaceImageModel = async (binding?: {
   modelKey: string
 }) => {
   const catalog = await getPublicModelCatalog()
-  if (binding?.providerId && binding?.modelKey) {
-    const matchedImageModel = catalog.models.image.find(item => {
-      return item.providerId === binding.providerId && item.modelKey === binding.modelKey
-    })
-    if (!matchedImageModel) {
-      throw new Error('当前技能绑定的图片模型不可用，请在后台技能配置中重新选择')
+  if (!binding?.providerId || !binding?.modelKey) {
+    const environmentImageModel = catalog.models.image.find(item => item.providerCode === 'env-image-provider')
+    if (environmentImageModel) {
+      return environmentImageModel
     }
-    return matchedImageModel
+    const savedImageModel = catalog.models.image.find(item => item.providerCode !== 'env-image-provider')
+    if (savedImageModel) {
+      return savedImageModel
+    }
+    throw new Error('图片任务必须绑定明确的图片厂商和模型，或在 .env 中配置 IMAGE_PROVIDER_*')
   }
 
-  const imageModel = catalog.models.image[0]
-  if (!imageModel) {
-    throw new Error('未配置可用图片模型，请先在后台启用图片模型')
+  const matchedImageModel = catalog.models.image.find(item => {
+    return item.providerId === binding.providerId && item.modelKey === binding.modelKey
+  })
+  if (!matchedImageModel) {
+    throw new Error('当前技能绑定的图片模型不可用，请在后台技能配置中重新选择')
   }
 
-  return imageModel
+  return matchedImageModel
 }
 
 const extractJsonObjectFromText = (text: string) => {

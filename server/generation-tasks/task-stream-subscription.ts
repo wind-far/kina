@@ -1,58 +1,28 @@
-import { getGenerationRecordById, updateGenerationRecord } from '../generation-records/service'
+import { getGenerationRecordById } from '../generation-records/service'
 import type { GenerationTaskStreamEvent } from './shared'
 import {
   addTaskStreamSubscriber,
-  hasLocalRunningTask,
   isUserStreamSubscriberLimitReached,
   removeTaskStreamSubscriber,
   SSE_PER_USER_LIMIT,
 } from './local-runtime'
-import { getSharedTaskRuntime } from './runtime-store'
 import {
   cleanupDistributedTaskSubscriptionIfIdle,
   ensureDistributedTaskSubscription,
 } from './event-bus'
 import { getReplayEventsAfter } from './task-event-replay'
+import { getSharedTaskRecentEvents } from './runtime-store'
 
 // SSE 连接最长生命周期（毫秒）：到期强制关闭，防止 TCP 半开连接导致 res 既不 close 也不 error
 // 触发的资源泄漏。客户端通过自动重连 + lastEventId 续上即可。默认与 Redis 任务快照 TTL 一致（30 分钟）。
 const SSE_MAX_CONNECTION_MS = Number.parseInt(process.env.SSE_MAX_CONNECTION_MS || '1800000', 10)
 
-// 当本地与共享运行态都显示任务已经不再执行，但记录仍停留在未完成态时，
-// 这里统一补收口，避免前端刷新后长时间挂在“生成中”。
+// 读取快照必须是无副作用的：浏览器刷新会重新订阅 SSE，但运行态可能在其他进程、
+// 正在切换实例，或尚未来得及写入共享缓存。此前在这里把“暂时看不到运行态”直接
+// 写成 STOPPED，会在上游结果已经返回、资源尚在同步时中断落库，导致刷新后丢失图片。
+// 服务重启后的遗留任务由 recovery.ts 在启动期收口，用户的读取/刷新请求不能终止任务。
 export const resolveTaskRecordSnapshot = async (recordId: string, currentUserId: string) => {
-  let record = await getGenerationRecordById(recordId, currentUserId)
-  const sharedRuntime = await getSharedTaskRuntime(recordId)
-
-  if (
-    !record.done
-    && !record.stopped
-    && !hasLocalRunningTask(recordId)
-    && sharedRuntime?.status !== 'running'
-    && sharedRuntime?.status !== 'queued'
-  ) {
-    await updateGenerationRecord(recordId, {
-      type: record.type,
-      prompt: record.prompt,
-      content: record.content,
-      error: record.error,
-      model: record.model,
-      modelKey: record.modelKey,
-      ratio: record.ratio,
-      resolution: record.resolution,
-      duration: record.duration,
-      feature: record.feature,
-      skill: record.skill,
-      done: true,
-      stopped: true,
-      images: record.images,
-      agentRun: record.agentRun,
-    }, currentUserId)
-
-    record = await getGenerationRecordById(recordId, currentUserId)
-  }
-
-  return record
+  return getGenerationRecordById(recordId, currentUserId)
 }
 
 // 统一封装任务 SSE 订阅入口，service.ts 只保留任务生命周期编排。
@@ -103,6 +73,27 @@ export const subscribeGenerationTaskStream = async (
     stage: record.done ? 'snapshot_completed' : 'snapshot_running',
     message: record.done ? '已返回任务最终快照' : '已返回任务当前快照',
   } satisfies GenerationTaskStreamEvent)}\n\n`)
+
+  // 生成记录只持久化终态；页面切换回来时，数据库快照仍可能是“排队中”。
+  // 追加最后一个运行事件，立即恢复上一次已确认的阶段和进度，不必等待下一次上游回调。
+  if (!record.done) {
+    try {
+      const recentEvents = await getSharedTaskRecentEvents(recordId)
+      const latestEvent = Array.isArray(recentEvents) ? recentEvents.at(-1) : undefined
+      if (latestEvent?.stage || latestEvent?.message) {
+        res.write(`event: progress\ndata: ${JSON.stringify({
+          type: 'progress',
+          recordId,
+          done: Boolean(latestEvent.done),
+          stopped: Boolean(latestEvent.stopped),
+          stage: latestEvent.stage || 'queued',
+          message: latestEvent.message || '任务执行中',
+        } satisfies GenerationTaskStreamEvent)}\n\n`)
+      }
+    } catch {
+      // Redis 不可用时仍以数据库快照订阅，不影响后台任务继续执行。
+    }
+  }
 
   // 若客户端带了 lastEventId，按需重放期间错过的事件
   const lastEventId = options.lastEventId || 0

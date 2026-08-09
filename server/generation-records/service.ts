@@ -322,40 +322,56 @@ const materializeOutputAsset = async (
     return output
   }
 
-  const sourceAsset = isDataUrl(rawUrl)
-    ? parseDataUrl(rawUrl)
-    : await downloadRemoteAsset(rawUrl)
+  try {
+    const sourceAsset = isDataUrl(rawUrl)
+      ? parseDataUrl(rawUrl)
+      : await downloadRemoteAsset(rawUrl)
 
-  const savedAsset = await saveUploadedBuffer({
-    buffer: sourceAsset.buffer,
-    mimeType: output.mimeType || sourceAsset.mimeType,
-    filename: `generation-output-${index + 1}`,
-    category: `generated/${output.outputType}`,
-  })
+    const savedAsset = await saveUploadedBuffer({
+      buffer: sourceAsset.buffer,
+      mimeType: output.mimeType || sourceAsset.mimeType,
+      filename: `generation-output-${index + 1}`,
+      category: `generated/${output.outputType}`,
+    })
 
-  logGenerationRecord('materialize_output_asset:uploaded', {
-    index,
-    outputType: output.outputType,
-    originalUrlPreview: rawUrl.slice(0, 160),
-    savedUrl: savedAsset.publicUrl,
-    storageType: savedAsset.storageType,
-    storageCode: savedAsset.storageCode,
-    relativePath: savedAsset.relativePath,
-    mimeType: output.mimeType || sourceAsset.mimeType || savedAsset.mimeType,
-    size: sourceAsset.buffer.byteLength,
-  })
-
-  return {
-    ...output,
-    url: savedAsset.publicUrl,
-    mimeType: output.mimeType || sourceAsset.mimeType || savedAsset.mimeType,
-    metaJson: {
-      ...(output.metaJson || {}),
-      originalUrl: rawUrl,
+    logGenerationRecord('materialize_output_asset:uploaded', {
+      index,
+      outputType: output.outputType,
+      originalUrlPreview: rawUrl.slice(0, 160),
+      savedUrl: savedAsset.publicUrl,
       storageType: savedAsset.storageType,
       storageCode: savedAsset.storageCode,
       relativePath: savedAsset.relativePath,
-    },
+      mimeType: output.mimeType || sourceAsset.mimeType || savedAsset.mimeType,
+      size: sourceAsset.buffer.byteLength,
+    })
+
+    return {
+      ...output,
+      url: savedAsset.publicUrl,
+      mimeType: output.mimeType || sourceAsset.mimeType || savedAsset.mimeType,
+      metaJson: {
+        ...(output.metaJson || {}),
+        originalUrl: rawUrl,
+        storageType: savedAsset.storageType,
+        storageCode: savedAsset.storageCode,
+        relativePath: savedAsset.relativePath,
+      },
+    }
+  } catch (error) {
+    // 生成结果已经由上游返回，转存失败不应丢弃结果或阻塞终态；前端可直接展示原始 URL。
+    logGenerationRecordError('materialize_output_asset:fallback', error, {
+      index,
+      outputType: output.outputType,
+      urlPreview: rawUrl.slice(0, 160),
+    })
+    return {
+      ...output,
+      metaJson: {
+        ...(output.metaJson || {}),
+        materializeFailed: true,
+      },
+    }
   }
 }
 
@@ -397,7 +413,10 @@ const normalizeReferenceImages = async (referenceImages: string[] | null | undef
 }
 
 // 统一归一化输出列表，并将需要托管的资源写入自己的存储系统。
-const normalizeOutputs = async (payload: GenerationRecordPayload) => {
+const normalizeOutputs = async (
+  payload: GenerationRecordPayload,
+  options: { writeOutputLinksOnly?: boolean } = {},
+) => {
   const outputs = collectOutputs(payload)
 
   logGenerationRecord('normalize_outputs:start', {
@@ -407,7 +426,15 @@ const normalizeOutputs = async (payload: GenerationRecordPayload) => {
     explicitOutputCount: Array.isArray(payload.outputs) ? payload.outputs.length : 0,
   })
 
-  const normalizedOutputs = await Promise.all(outputs.map((output, index) => materializeOutputAsset(output, index)))
+  const normalizedOutputs = await Promise.all(outputs.map((output, index) => {
+    const rawUrl = String(output.url || '').trim()
+    // 图片任务完成后直接保存上游结果（URL 或 Data URL）：资产记录复用该值展示，
+    // 绝不下载或归档文件，避免 b64_json 再次进入物化流程而卡住完成态。
+    if (options.writeOutputLinksOnly && rawUrl) {
+      return output
+    }
+    return materializeOutputAsset(output, index)
+  }))
 
   logGenerationRecord('normalize_outputs:success', {
     type: payload.type,
@@ -736,6 +763,9 @@ const serializeGenerationRecord = (record: any) => ({
   duration: record.durationLabel || '',
   feature: record.feature || '',
   skill: record.skill || 'general',
+  retryKey: typeof (record.metaJson as any)?.retryKey === 'string'
+    ? (record.metaJson as any).retryKey
+    : '',
   referenceImages: resolveReferenceImagesFromMeta(record.metaJson),
   done: ['COMPLETED', 'FAILED', 'STOPPED'].includes(record.status),
   stopped: record.status === 'STOPPED',
@@ -912,6 +942,9 @@ export const createGenerationRecord = async (payload: GenerationRecordPayload, c
           metaJson: {
             source: String(payload.source || 'generate').trim() || 'generate',
             referenceImages: normalizedReferenceImages,
+            ...(typeof payload.retryKey === 'string' && payload.retryKey.trim()
+              ? { retryKey: payload.retryKey.trim() }
+              : {}),
             ...(typeof payload.thinkingContent === 'string'
               ? { thinkingContent: payload.thinkingContent }
               : {}),
@@ -1121,8 +1154,10 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
   let outputs: GenerationOutputPayload[] = []
   let normalizedReferenceImages: string[] | undefined
   try {
-    outputs = await normalizeOutputs(payload)
-    if (payload.referenceImages !== undefined) {
+    outputs = await normalizeOutputs(payload, {
+      writeOutputLinksOnly: Boolean(payload.writeOutputLinksOnly),
+    })
+    if (payload.referenceImages !== undefined && !payload.writeOutputLinksOnly) {
       normalizedReferenceImages = await normalizeReferenceImages(payload.referenceImages)
     }
   } catch (error) {
@@ -1186,6 +1221,9 @@ export const updateGenerationRecord = async (id: string, payload: GenerationReco
           metaJson: {
             ...(((existingRecord.metaJson as Record<string, unknown> | null) || {})),
             source: String(payload.source || (existingRecord.metaJson as any)?.source || 'generate').trim() || 'generate',
+            ...(typeof payload.retryKey === 'string' && payload.retryKey.trim()
+              ? { retryKey: payload.retryKey.trim() }
+              : {}),
             ...(shouldOverwriteReferenceImages
               ? { referenceImages: normalizedReferenceImages }
               : {}),

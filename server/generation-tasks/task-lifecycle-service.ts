@@ -137,6 +137,7 @@ export const buildInitialRecordPayload = (payload: GenerationTaskStartPayload): 
   duration: String(payload.duration || '').trim(),
   feature: String(payload.feature || '').trim(),
   skill: String(payload.skill || '').trim() || 'general',
+  retryKey: String(payload.retryKey || '').trim() || undefined,
   referenceImages: (payload.mediaReferences || [])
     .filter(item => item.mediaType === 'image')
     .map(item => item.url),
@@ -162,7 +163,10 @@ const buildGenerationTaskIdempotencyKey = (
     prompt: String(payload.prompt || '').trim(),
     requestMode: String(payload.requestMode || '').trim(),
     referenceImages: Array.isArray(payload.referenceImages) ? payload.referenceImages : [],
-    requestBody: payload.requestBody || null,
+    // retryKey 仅区分用户明确发起的“再次生成”，不会污染实际模型请求体。
+    requestBody: payload.retryKey
+      ? { ...(payload.requestBody || {}), __retryKey: String(payload.retryKey) }
+      : payload.requestBody || null,
   })
 }
 

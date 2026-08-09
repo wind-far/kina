@@ -32,6 +32,7 @@
       "@api/*": ["src/api/*"],
       "@types/*": ["src/types/*"],
       "@cutia/*": ["src-cutia/*"],
+      "@infinite/*": ["src-infinite-canvas/*"],
       "@i18next-toolkit/nextjs-approuter": ["src-cutia/shims/i18next-toolkit/index.ts"]
     }
   },

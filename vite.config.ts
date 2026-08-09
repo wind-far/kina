@@ -7,9 +7,13 @@ import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import { visualizer } from 'rollup-plugin-visualizer'
 import path from 'path'
+import { readFileSync } from 'node:fs'
 import fs from 'node:fs/promises'
+import { parseChangelog } from './src-infinite-canvas/lib/release'
 
 const MOCK_AGENT_HTTP_RAW_PATH = path.resolve(__dirname, 'src/views/generate/mocks/http_raw.txt')
+const INFINITE_CANVAS_VERSION = readFileSync(path.resolve(__dirname, 'third_party/infinite-canvas/VERSION'), 'utf8').trim() || 'dev'
+const INFINITE_CANVAS_RELEASES = parseChangelog(readFileSync(path.resolve(__dirname, 'third_party/infinite-canvas/CHANGELOG.md'), 'utf8'))
 
 const createMockAgentRawPlugin = () => ({
   name: 'mock-agent-http-raw',
@@ -70,6 +74,10 @@ export default defineConfig(({ mode }) => {
   ).replace(/\/+$/, '')
 
   return {
+  define: {
+    __APP_VERSION__: JSON.stringify(INFINITE_CANVAS_VERSION),
+    __APP_RELEASES__: JSON.stringify(INFINITE_CANVAS_RELEASES),
+  },
   plugins: [
     // Vue 插件仅处理 .vue 文件，避免与 React JSX 互扰
     vue({ include: [/\.vue$/] }),
@@ -143,6 +151,7 @@ export default defineConfig(({ mode }) => {
         'node_modules/@huggingface/transformers/dist/transformers.web.min.js',
       ),
       '@': path.resolve(__dirname, 'src'),
+      '@infinite': path.resolve(__dirname, 'src-infinite-canvas'),
       '@components': path.resolve(__dirname, 'src/components'),
       '@assets': path.resolve(__dirname, 'src/assets'),
       '@styles': path.resolve(__dirname, 'src/styles'),
@@ -173,6 +182,10 @@ export default defineConfig(({ mode }) => {
 
     // 代码分割：按厂商库与业务模块隔离，提升缓存命中率
     rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        infiniteCanvas: path.resolve(__dirname, 'infinite-canvas.html'),
+      },
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) {

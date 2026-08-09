@@ -13,6 +13,7 @@ const Workflow = () => import('../views/workflow/index.vue')
 const Install = () => import('../views/install/InstallView.vue')
 const PolicyDetail = () => import('../views/policies/PolicyDetail.vue')
 const AgenticAssetsCanvasView = () => import('../views/agentic-assets-canvas/AgenticAssetsCanvasView.vue')
+const InfiniteCanvasReplicaView = () => import('../views/infinite-canvas-replica/InfiniteCanvasReplicaView.vue')
 const AdminLayout = () => import('../components/admin/layout/AdminLayout.vue')
 const AdminDashboard = () => import('../views/admin/dashboard/AdminDashboard.vue')
 const AdminAssets = () => import('../views/admin/assets/AdminAssets.vue')
@@ -56,10 +57,10 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/canvas',
     name: 'Canvas',
-    // 画布入口统一承载工作流；原本的本地参考画布不再作为运行时界面暴露。
-    component: Workflow,
+    component: InfiniteCanvasReplicaView,
     meta: {
-      workspace: 'workflow',
+      requiresAuth: true,
+      workspace: 'infinite-canvas-replica',
     },
   },
   {
@@ -90,6 +91,11 @@ const routes: RouteRecordRaw[] = [
     name: 'AgenticAssetsCanvas',
     component: AgenticAssetsCanvasView,
     props: { projectKind: 'canvas' },
+  },
+  {
+    path: '/infinite-canvas-workbench',
+    name: 'InfiniteCanvasReplica',
+    redirect: (to) => ({ path: '/canvas', query: to.query, hash: to.hash }),
   },
   {
     path: '/agentic-assets-workflow',

@@ -119,8 +119,6 @@ let toastTimer = 0
 let saveTimer = 0
 let previousCompact = false
 let restoring = false
-let faviconElement: HTMLLinkElement | null = null
-let previousFaviconHref = ''
 
 const storageKey = computed(() => createCanvasStorageKey(route.query.projectId))
 const drawerVisible = computed(() => agentOpen.value)
@@ -866,21 +864,6 @@ function handleBack() {
   else void router.push('/')
 }
 
-function useLocalFavicon() {
-  faviconElement = document.querySelector('link[rel="icon"]')
-  if (!faviconElement) {
-    faviconElement = document.createElement('link')
-    faviconElement.rel = 'icon'
-    document.head.appendChild(faviconElement)
-  }
-  previousFaviconHref = faviconElement.getAttribute('href') || ''
-  faviconElement.href = '/vite.svg'
-}
-
-function restoreFavicon() {
-  if (faviconElement && previousFaviconHref) faviconElement.href = previousFaviconHref
-}
-
 function onDocumentPointerDown(event: PointerEvent) {
   const target = event.target
   if (!(target instanceof Node)) return
@@ -973,7 +956,6 @@ watch(storageKey, () => {
 })
 
 onMounted(() => {
-  useLocalFavicon()
   const restored = restoreLocalState()
   initializeBreakpoint(restored)
   window.addEventListener('resize', checkBreakpoint)
@@ -990,7 +972,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('keyup', onGlobalKeyup)
   window.removeEventListener('blur', releaseSpacePan)
   document.removeEventListener('pointerdown', onDocumentPointerDown)
-  restoreFavicon()
   window.clearTimeout(toastTimer)
   window.clearTimeout(saveTimer)
   if (queuedFrame) cancelAnimationFrame(queuedFrame)

@@ -57,7 +57,7 @@ const paragraphs = computed(() => currentContent.value.split(/\n{2,}/).map(item 
 
 const syncDocument = () => {
   if (typeof document === 'undefined') return
-  document.title = `${currentTitle.value} - ${siteInfo.value.siteName || 'Canana'}`
+  document.title = 'kina'
 }
 
 onMounted(async () => {

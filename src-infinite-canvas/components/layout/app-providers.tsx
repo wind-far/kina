@@ -95,7 +95,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         document.documentElement.lang = locale;
-        document.title = t("meta.title");
+        document.title = "kina";
         document.querySelector('meta[name="description"]')?.setAttribute("content", t("meta.description"));
         dayjs.locale(locale === "zh-CN" ? "zh-cn" : "en");
     }, [locale, t]);

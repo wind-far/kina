@@ -61,16 +61,15 @@ const createDefaultSettings = (): SystemConfigPayload => ({
 const publicSystemSettings = ref<SystemConfigPayload>(createDefaultSettings())
 const settingsLoading = ref(false)
 let loadSettingsPromise: Promise<SystemConfigPayload> | null = null
+const BROWSER_TAB_TITLE = 'kina'
+const EMPTY_FAVICON_HREF = 'data:,'
 
 const syncSiteRuntime = (settings: SystemConfigPayload) => {
   if (typeof document === 'undefined') {
     return
   }
 
-  const siteName = String(settings.siteInfo.siteName || '').trim()
-  if (siteName) {
-    document.title = siteName
-  }
+  document.title = BROWSER_TAB_TITLE
 
   const description = String(settings.siteInfo.siteDescription || '').trim()
   let descriptionMeta = document.querySelector('meta[name="description"]')
@@ -81,19 +80,14 @@ const syncSiteRuntime = (settings: SystemConfigPayload) => {
   }
   descriptionMeta.setAttribute('content', description)
 
-  const iconUrl = String(settings.siteInfo.siteIconUrl || '').trim()
-  if (!iconUrl) {
-    return
-  }
-
   let favicon = document.querySelector('link[rel="icon"]') as HTMLLinkElement | null
   if (!favicon) {
     favicon = document.createElement('link')
     favicon.rel = 'icon'
     document.head.appendChild(favicon)
   }
-
-  favicon.href = iconUrl
+  favicon.removeAttribute('type')
+  favicon.href = EMPTY_FAVICON_HREF
 }
 
 const syncThemeRuntime = (settings: SystemConfigPayload) => {

@@ -5,8 +5,9 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 const readSource = (path) => readFile(fileURLToPath(new URL(path, import.meta.url)), 'utf8')
-const [html, systemSettings, canvasWorkspace, infiniteProviders, policyDetail] = await Promise.all([
+const [html, infiniteHtml, systemSettings, canvasWorkspace, infiniteProviders, policyDetail] = await Promise.all([
   readSource('../../index.html'),
+  readSource('../../infinite-canvas.html'),
   readSource('../../src/stores/system-settings.ts'),
   readSource('../../src/views/canana/CanvasWorkspaceView.vue'),
   readSource('../../src-infinite-canvas/components/layout/app-providers.tsx'),
@@ -15,6 +16,8 @@ const [html, systemSettings, canvasWorkspace, infiniteProviders, policyDetail] =
 
 assert.match(html, /<title>kina<\/title>/)
 assert.match(html, /<link rel="icon" href="data:," \/>/)
+assert.match(infiniteHtml, /<title>kina<\/title>/)
+assert.match(infiniteHtml, /<link rel="icon" href="data:," \/>/)
 assert.match(systemSettings, /const BROWSER_TAB_TITLE = 'kina'/)
 assert.match(systemSettings, /const EMPTY_FAVICON_HREF = 'data:,'/)
 assert.match(systemSettings, /document\.title = BROWSER_TAB_TITLE/)

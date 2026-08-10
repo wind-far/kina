@@ -26,7 +26,7 @@ export interface Material {
 // 创建单例状态
 const isAccountRefreshing = ref(false)
 const materials = ref<Material[]>([])
-const theme = ref('dark')
+const theme = ref('light')
 
 /**
  * 应用全局状态管理（单例模式）

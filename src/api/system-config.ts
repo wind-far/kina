@@ -390,7 +390,7 @@ export const createDefaultGenerationProgressSettings = (): SystemGenerationProgr
 export const createDefaultGlobalThemeSettings = (): SystemGlobalThemeSettingsConfig => ({
   modePolicy: {
     allowUserToggle: true,
-    defaultMode: 'dark',
+    defaultMode: 'light',
     supportSystemMode: true,
   },
   themes: {

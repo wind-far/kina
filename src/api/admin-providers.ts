@@ -13,6 +13,7 @@ export interface AdminProviderItem {
   imageEndpoint: string
   imageEditEndpoint: string
   videoEndpoint: string
+  videoReferenceTransport: 'url' | 'file'
   defaultChatModel: string
   supportedTypes: string[]
   isEnabled: boolean
@@ -39,6 +40,7 @@ export interface AdminProviderPayload {
   imageEndpoint: string
   imageEditEndpoint: string
   videoEndpoint: string
+  videoReferenceTransport: 'auto' | 'url' | 'file'
   defaultChatModel: string
   supportedTypes: string[]
   isEnabled: boolean

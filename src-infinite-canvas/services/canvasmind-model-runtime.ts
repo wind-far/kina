@@ -1,5 +1,7 @@
 import { decodeChannelModel, encodeChannelModel, resolveModelChannel, type AiConfig, type ModelCapability, type ModelChannel, useConfigStore } from "@infinite/stores/use-config-store";
 import { normalizeVideoAspectRatio } from "@infinite/lib/video-aspect-ratio";
+import { getImageBlob } from "@infinite/services/image-storage";
+import type { ReferenceImage } from "@infinite/types/image";
 
 type CanvasMindModelCategory = "CHAT" | "IMAGE" | "VIDEO";
 
@@ -49,6 +51,11 @@ type CanvasMindTaskPayload = {
     requestBody: Record<string, unknown>;
 };
 
+type CanvasMindStorageUpload = {
+    publicUrl?: string;
+    providerPublicUrl?: string | null;
+};
+
 export type CanvasMindTaskCreated = Pick<CanvasMindGenerationRecord, "id">;
 type RequestOptions = {
     signal?: AbortSignal;
@@ -59,6 +66,7 @@ const RUNTIME_BASE_URL = "canvasmind://local-environment";
 const RUNTIME_SESSION_MARKER = "canvasmind-session";
 const RUNTIME_CHANNEL_PREFIX = "canvasmind:";
 let catalogPromise: Promise<CanvasMindModelCatalog> | null = null;
+const runtimeReferenceImageUploads = new Map<string, Promise<CanvasMindStorageUpload>>();
 
 export function isCanvasMindRuntimeChannel(channel: ModelChannel | string) {
     const channelId = typeof channel === "string" ? channel : channel.id;
@@ -198,6 +206,112 @@ async function createTask(payload: CanvasMindTaskPayload, options?: RequestOptio
         body: JSON.stringify(payload),
     });
     return readApiData<CanvasMindGenerationRecord>(response);
+}
+
+async function readRuntimeReferenceImageBlob(image: ReferenceImage) {
+    const source = String(image.dataUrl || image.url || "").trim();
+    if (!source) throw new Error("视频参考图内容为空");
+    const response = await fetch(source);
+    if (!response.ok) throw new Error(`视频参考图读取失败 (${response.status})`);
+    return response.blob();
+}
+
+async function uploadRuntimeReferenceImage(image: ReferenceImage, blob: Blob, signal?: AbortSignal) {
+    const mimeType = blob.type || image.type || "image/png";
+    if (!mimeType.startsWith("image/")) throw new Error("视频参考素材必须是图片");
+    const response = await fetch("/api/storage/upload", {
+        method: "POST",
+        credentials: "include",
+        signal,
+        headers: {
+            "Content-Type": mimeType,
+            "x-upload-filename": encodeURIComponent(image.name || "video-reference.png"),
+            "x-upload-category": "reference",
+        },
+        body: blob,
+    });
+    const uploaded = await readApiData<CanvasMindStorageUpload>(response);
+    return uploaded;
+}
+
+const uploadedReferenceImageUrl = (uploaded: CanvasMindStorageUpload, purpose: "task" | "provider") => {
+    const value = String(purpose === "provider"
+        ? uploaded.providerPublicUrl || ""
+        : uploaded.publicUrl || uploaded.providerPublicUrl || "").trim();
+    if (purpose === "task" && (value.startsWith("/uploads/") || /^https?:\/\//i.test(value))) return value;
+    if (purpose === "provider" && /^https:\/\//i.test(value)) return value;
+    throw new Error(purpose === "provider"
+        ? "视频参考图上传后没有公网 URL；请配置对象存储或 VIDEO_REFERENCE_PUBLIC_BASE_URL"
+        : "视频参考图上传后未返回稳定 URL");
+};
+
+const isProviderPublicHttpsUrl = (value: string) => {
+    try {
+        const url = new URL(value);
+        const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+        if (url.protocol !== "https:" || url.username || url.password
+            || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local")) return false;
+        const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname);
+        if (ipv4) {
+            const [first, second] = ipv4.slice(1).map(Number);
+            if (first === 0 || first === 10 || first === 127 || first >= 224
+                || (first === 100 && second >= 64 && second <= 127)
+                || (first === 169 && second === 254)
+                || (first === 172 && second >= 16 && second <= 31)
+                || (first === 192 && second === 168)
+                || (first === 198 && (second === 18 || second === 19))
+                || (first === 192 && second === 0)
+                || (first === 198 && second === 51)
+                || (first === 203 && second === 0)) return false;
+        }
+        if (hostname.includes(":")) {
+            return hostname !== "::" && hostname !== "::1"
+                && !hostname.startsWith("fc") && !hostname.startsWith("fd")
+                && !hostname.startsWith("fe80:") && !hostname.startsWith("::ffff:");
+        }
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+async function resolveRuntimeReferenceImageUrl(image: ReferenceImage, signal: AbortSignal | undefined, purpose: "task" | "provider") {
+    if (image.storageKey) {
+        const existingUpload = runtimeReferenceImageUploads.get(image.storageKey);
+        if (existingUpload) return uploadedReferenceImageUrl(await existingUpload, purpose);
+        const storedBlob = await getImageBlob(image.storageKey);
+        if (storedBlob) {
+            const upload = uploadRuntimeReferenceImage(image, storedBlob, signal);
+            runtimeReferenceImageUploads.set(image.storageKey, upload);
+            try {
+                return uploadedReferenceImageUrl(await upload, purpose);
+            } catch (error) {
+                runtimeReferenceImageUploads.delete(image.storageKey);
+                throw error;
+            }
+        }
+    }
+    const candidates = [image.url, image.dataUrl]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+    const remoteUrl = candidates.find((value) => purpose === "provider"
+        ? isProviderPublicHttpsUrl(value)
+        : /^https?:\/\//i.test(value));
+    if (remoteUrl) return remoteUrl;
+    const managedUrl = candidates.find((value) => value.startsWith("/uploads/"));
+    if (managedUrl && purpose === "task") return managedUrl;
+    const blob = await readRuntimeReferenceImageBlob(image);
+    return uploadedReferenceImageUrl(await uploadRuntimeReferenceImage(image, blob, signal), purpose);
+}
+
+/** CanvasMind 后台任务只需稳定 URL；站内路径由服务端在请求上游前转换。 */
+export async function runtimeTaskReferenceImageUrl(image: ReferenceImage, signal?: AbortSignal) {
+    return resolveRuntimeReferenceImageUrl(image, signal, "task");
+}
+
+/** 浏览器直连视频供应商时，参考图必须先物化为公网 HTTPS URL。 */
+export async function runtimeReferenceImageUrl(image: ReferenceImage, signal?: AbortSignal) {
+    return resolveRuntimeReferenceImageUrl(image, signal, "provider");
 }
 
 async function notifyTaskCreated(task: CanvasMindTaskCreated, options?: RequestOptions) {

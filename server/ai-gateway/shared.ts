@@ -33,11 +33,15 @@ export const readRawBody = async (req: any): Promise<string> => {
   return Buffer.concat(chunks).toString('utf8').trim()
 }
 
-export const readRawBuffer = async (req: any): Promise<Buffer> => {
+export const readRawBuffer = async (req: any, maxBytes = Number.POSITIVE_INFINITY): Promise<Buffer> => {
   const chunks: Buffer[] = []
+  let totalBytes = 0
 
   for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    totalBytes += buffer.byteLength
+    if (totalBytes > maxBytes) throw new Error('请求体大小超过限制')
+    chunks.push(buffer)
   }
 
   return Buffer.concat(chunks)

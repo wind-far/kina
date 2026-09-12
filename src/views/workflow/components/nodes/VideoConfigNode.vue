@@ -23,6 +23,7 @@ import {
 import { VIDEO_RATIO_LIST, getAllVideoModels, getDefaultVideoModelKey, getModelByName, loadPublicModelCatalog } from '@/config/models'
 import { createGenerationTask, resolveGenerationTaskModel, subscribeGenerationTaskEvents } from '@/api/generation-tasks'
 import type { SkillMediaReference } from '@/shared/skill-runtime'
+import { ensureVideoReferenceImageUrl } from '@/shared/video-reference-url'
 import { buildWorkflowGenerationMetadata } from '@/shared/workflow-generation-metadata'
 import { confirmCanvasGenerationResult, notifyCanvasGenerationResultConfirmed } from '@/shared/canvas-generation-confirmation'
 import WfSelect from '@/components/common/WfSelect.vue'
@@ -103,7 +104,7 @@ const updateConfig = () => {
 }
 
 // 收集输入
-const collectInputs = () => {
+const collectInputs = async () => {
   const incoming = edges.value.filter(e => e.target === props.id)
   let prompt = ''
   const mediaReferences: SkillMediaReference[] = []
@@ -116,7 +117,10 @@ const collectInputs = () => {
     if (isImageNode(src) && src.data.url) {
       const legacyRole = readImageRole(edge.data)
       const role = readMediaRole(edge.data) || (legacyRole === 'first_frame_image' ? 'first_frame' : legacyRole === 'last_frame_image' ? 'last_frame' : 'reference')
-      mediaReferences.push({ mediaType: 'image', url: src.data.url, role: role as SkillMediaReference['role'], sourceNodeId: src.id })
+      const sourceUrl = String(src.data.url)
+      const url = await ensureVideoReferenceImageUrl(sourceUrl, `${src.data.label || src.id}.png`)
+      if (url !== sourceUrl) updateNode(src.id, { url })
+      mediaReferences.push({ mediaType: 'image', url, role: role as SkillMediaReference['role'], sourceNodeId: src.id })
     }
     if (isVideoNode(src) && src.data.url) {
       mediaReferences.push({ mediaType: 'video', url: src.data.url, role: (readMediaRole(edge.data) || 'video_reference') as SkillMediaReference['role'], sourceNodeId: src.id })
@@ -208,7 +212,15 @@ const resumePendingTask = () => {
 }
 
 const handleGenerate = async () => {
-  const { prompt, mediaReferences } = collectInputs()
+  let collectedInputs: Awaited<ReturnType<typeof collectInputs>>
+  try {
+    collectedInputs = await collectInputs()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '视频参考图处理失败'
+    updateNode(props.id, { loading: false, error: message, generationStatus: 'failed' })
+    return
+  }
+  const { prompt, mediaReferences } = collectedInputs
   if (!prompt && !mediaReferences.length) return
 
   isGenerating.value = true

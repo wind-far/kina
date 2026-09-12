@@ -223,6 +223,16 @@
           </div>
 
           <div class="admin-form__field">
+            <label class="admin-form__label" for="provider-video-reference-transport">视频参考图传输</label>
+            <select id="provider-video-reference-transport" v-model="providerForm.videoReferenceTransport" class="admin-input">
+              <option value="auto">自动识别（推荐）</option>
+              <option value="url">URL</option>
+              <option value="file">File（OpenAI Videos）</option>
+            </select>
+            <div class="admin-form__hint">自动模式会为 OpenAI 官方端点选择 multipart 文件，其他视频接口默认传公网 URL。</div>
+          </div>
+
+          <div class="admin-form__field">
             <label class="admin-form__label" for="provider-default-chat-model">默认对话模型</label>
             <input id="provider-default-chat-model" v-model.trim="providerForm.defaultChatModel" class="admin-input" type="text" placeholder="例如: gpt-4.1-mini">
           </div>
@@ -655,6 +665,7 @@ const providerForm = reactive<AdminProviderPayload>({
   imageEndpoint: '/images/generations',
   imageEditEndpoint: '/images/edits',
   videoEndpoint: '/videos',
+  videoReferenceTransport: 'auto',
   defaultChatModel: '',
   supportedTypes: ['CHAT'],
   isEnabled: true,
@@ -748,6 +759,7 @@ const resetProviderForm = () => {
   providerForm.imageEndpoint = '/images/generations'
   providerForm.imageEditEndpoint = '/images/edits'
   providerForm.videoEndpoint = '/videos'
+  providerForm.videoReferenceTransport = 'auto'
   providerForm.defaultChatModel = ''
   providerForm.supportedTypes = ['CHAT']
   providerForm.isEnabled = true
@@ -766,6 +778,7 @@ const applyProviderForm = (provider: AdminProviderDetail) => {
   providerForm.imageEndpoint = provider.imageEndpoint
   providerForm.imageEditEndpoint = provider.imageEditEndpoint
   providerForm.videoEndpoint = provider.videoEndpoint
+  providerForm.videoReferenceTransport = provider.videoReferenceTransport || 'url'
   providerForm.defaultChatModel = provider.defaultChatModel || ''
   providerForm.supportedTypes = Array.isArray(provider.supportedTypes) ? [...provider.supportedTypes] : ['CHAT']
   providerForm.isEnabled = provider.isEnabled
@@ -931,6 +944,7 @@ const buildProviderPayload = (): AdminProviderPayload => ({
   imageEndpoint: providerForm.imageEndpoint,
   imageEditEndpoint: providerForm.imageEditEndpoint,
   videoEndpoint: providerForm.videoEndpoint,
+  videoReferenceTransport: providerForm.videoReferenceTransport,
   defaultChatModel: providerForm.defaultChatModel,
   supportedTypes: providerForm.supportedTypes,
   isEnabled: Boolean(providerForm.isEnabled),

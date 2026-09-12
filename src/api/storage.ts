@@ -9,6 +9,7 @@ export interface UploadedStorageFile {
   filePath: string
   relativePath: string
   publicUrl: string
+  providerPublicUrl?: string | null
   filename: string
   mimeType: string
   size: number
@@ -25,6 +26,7 @@ export const uploadStorageFile = async (
   // 以原始二进制方式发给后端，避免额外 multipart 依赖。
   const response = await fetch(buildApiUrl('/api/storage/upload'), {
     method: 'POST',
+    credentials: 'include',
     headers: {
       'Content-Type': file.type || 'application/octet-stream',
       'x-upload-filename': encodeURIComponent(file.name || 'file'),

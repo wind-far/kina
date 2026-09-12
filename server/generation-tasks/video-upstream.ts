@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { joinUpstreamUrl } from '../ai-gateway/shared'
 import { resolveGatewayProviderUpstream } from '../provider-config/service'
-import { getUploadsDir, saveUploadedBuffer } from '../storage/service'
+import { getUploadsDir, resolveProviderPublicUploadUrl, saveUploadedBuffer } from '../storage/service'
 import { isPathInsideDirectory } from '../shared/path-security'
 import type { SkillMediaReference } from '../../src/shared/skill-runtime'
 
@@ -39,11 +39,29 @@ type VideoOutputMaterializeDependencies = {
 }
 
 type H3TaskMode = 't2va' | 'i2va' | 'l2va' | 'fl2va' | 'ref2va'
+type VideoReferenceTransport = 'url' | 'file'
 
 const isMiniMaxH3Upstream = (upstream: { code?: string; extraJson?: Record<string, unknown> }) => (
   String(upstream.code || '').trim().toLowerCase() === 'minimax-h3'
   || String(upstream.extraJson?.adapter || '').trim().toLowerCase() === 'minimax-h3'
 )
+
+export const resolveVideoReferenceTransport = (upstream: {
+  code?: string
+  baseUrl?: string
+  extraJson?: Record<string, unknown>
+}): VideoReferenceTransport => {
+  const configured = String(upstream.extraJson?.videoReferenceTransport || '').trim().toLowerCase()
+  if (configured === 'url' || configured === 'file') return configured
+  const providerCode = String(upstream.code || '').trim().toLowerCase()
+  let hostname = ''
+  try {
+    hostname = new URL(String(upstream.baseUrl || '')).hostname.toLowerCase()
+  } catch {
+    hostname = ''
+  }
+  return providerCode === 'openai' || hostname === 'api.openai.com' ? 'file' : 'url'
+}
 
 const readH3TaskId = (payload: unknown) => readFirstString(payload, [
   ['task', 'id'], ['data', 'task', 'id'], ['data', 'id'], ['task_id'], ['id'],
@@ -167,8 +185,17 @@ const requestMiniMaxH3Generation = async (
   input: VideoGenerationUpstreamInput,
   upstream: { baseUrl: string; apiKey: string; endpoint: string; extraJson?: Record<string, unknown> },
 ): Promise<VideoGenerationUpstreamResult> => {
-  const references = input.mediaReferences || []
+  const references = await Promise.all((input.mediaReferences || []).map(async reference => (
+    reference.mediaType === 'image'
+      ? { ...reference, url: await materializeVideoReferenceUrl(reference.url, input.signal) }
+      : reference
+  )))
   assertH3MediaLimits(references)
+  for (const reference of references) {
+    if (reference.mediaType === 'image' && !isProviderHttpUrl(reference.url)) {
+      throw new Error('MiniMax H3 视频参考素材必须使用上游可访问的 HTTPS URL')
+    }
+  }
   const h3 = upstream.extraJson?.h3 && typeof upstream.extraJson.h3 === 'object' && !Array.isArray(upstream.extraJson.h3)
     ? upstream.extraJson.h3 as Record<string, unknown> : {}
   // H3 开源权重与 MiniMax 托管 Video API 不是同一份公开请求契约；禁止猜测端点后发起请求。
@@ -366,7 +393,7 @@ const inferImageMimeType = (value: string) => {
   return 'image/png'
 }
 
-const resolveReferenceImageBlob = async (imageValue: string) => {
+const resolveReferenceImageBlob = async (imageValue: string, signal?: AbortSignal) => {
   const normalizedValue = String(imageValue || '').trim()
   if (normalizedValue.startsWith(UPLOADS_PUBLIC_PATH_PREFIX)) {
     const uploadsDir = getUploadsDir()
@@ -378,9 +405,48 @@ const resolveReferenceImageBlob = async (imageValue: string) => {
   if (normalizedValue.startsWith('blob:')) {
     throw new Error('浏览器临时图片无法用于服务端视频生成，请先上传后再运行')
   }
-  const response = await fetch(normalizedValue)
+  const publicUrl = resolveProviderPublicUploadUrl(normalizedValue)
+  if (!publicUrl) throw new Error('视频参考图必须是可访问的公网 HTTPS URL')
+  const response = await fetch(publicUrl, { signal })
   if (!response.ok) throw new Error(`参考图读取失败 (${response.status})`)
   return response.blob()
+}
+
+const isProviderAssetUrl = (value: string) => String(value || '').trim().startsWith('asset://')
+const isProviderHttpUrl = (value: string) => /^https:\/\//i.test(String(value || '').trim())
+
+const absoluteManagedVideoReferenceUrl = (value: string) => {
+  const normalizedValue = String(value || '').trim()
+  if (isProviderAssetUrl(normalizedValue)) return normalizedValue
+  return resolveProviderPublicUploadUrl(normalizedValue)
+}
+
+const materializeVideoReferenceUrl = async (imageValue: string, signal?: AbortSignal) => {
+  const normalizedValue = String(imageValue || '').trim()
+  if (isProviderAssetUrl(normalizedValue)) return normalizedValue
+  const managedUrl = absoluteManagedVideoReferenceUrl(normalizedValue)
+  if (managedUrl) return managedUrl
+
+  if (normalizedValue.startsWith(UPLOADS_PUBLIC_PATH_PREFIX)) {
+    throw new Error('视频参考图缺少公网 URL；请配置对象存储或 VIDEO_REFERENCE_PUBLIC_BASE_URL')
+  }
+
+  if (/^https?:\/\//i.test(normalizedValue)) {
+    throw new Error('视频参考图必须是可访问的公网 HTTPS URL')
+  }
+
+  const blob = await resolveReferenceImageBlob(normalizedValue, signal)
+  const stored = await saveUploadedBuffer({
+    buffer: Buffer.from(await blob.arrayBuffer()),
+    filename: 'video-reference',
+    mimeType: blob.type || inferImageMimeType(normalizedValue),
+    category: 'generation/reference',
+  })
+  const storedUrl = stored.providerPublicUrl || absoluteManagedVideoReferenceUrl(stored.publicUrl)
+  if (!storedUrl) {
+    throw new Error('视频参考图缺少公网 URL；请配置对象存储或 VIDEO_REFERENCE_PUBLIC_BASE_URL')
+  }
+  return storedUrl
 }
 
 const normalizeReferenceRole = (value: string) => {
@@ -390,20 +456,28 @@ const normalizeReferenceRole = (value: string) => {
     : 'input_reference'
 }
 
-const appendReferenceImages = async (
+export const appendVideoReferenceImages = async (
   formData: FormData,
   referenceImages: string[],
   referenceImageRoles: string[],
+  transport: VideoReferenceTransport,
+  signal?: AbortSignal,
+  dependencies: {
+    materializeUrl?: typeof materializeVideoReferenceUrl
+    resolveBlob?: typeof resolveReferenceImageBlob
+  } = {},
 ) => {
+  const materializeUrl = dependencies.materializeUrl || materializeVideoReferenceUrl
+  const resolveBlob = dependencies.resolveBlob || resolveReferenceImageBlob
   for (const [index, imageValue] of referenceImages.entries()) {
     const normalizedValue = String(imageValue || '').trim()
     if (!normalizedValue) continue
     const role = normalizeReferenceRole(referenceImageRoles[index] || '')
-    if (/^https?:\/\//i.test(normalizedValue)) {
-      formData.append(role, normalizedValue)
+    if (transport === 'url') {
+      formData.append(role, await materializeUrl(normalizedValue, signal))
       continue
     }
-    const blob = await resolveReferenceImageBlob(normalizedValue)
+    const blob = await resolveBlob(normalizedValue, signal)
     formData.append(role, blob, `reference-${index + 1}.${blob.type === 'image/jpeg' ? 'jpg' : 'png'}`)
   }
 }
@@ -427,7 +501,13 @@ export const requestVideoGeneration = async (
   if (input.ratio) formData.append('ratio', input.ratio)
   if (input.resolution) formData.append('quality', input.resolution)
   if (input.duration) formData.append('duration', input.duration)
-  await appendReferenceImages(formData, input.referenceImages, input.referenceImageRoles)
+  await appendVideoReferenceImages(
+    formData,
+    input.referenceImages,
+    input.referenceImageRoles,
+    resolveVideoReferenceTransport(upstream),
+    input.signal,
+  )
 
   const response = await fetch(upstreamUrl, {
     method: 'POST',

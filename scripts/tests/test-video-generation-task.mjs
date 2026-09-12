@@ -2,10 +2,12 @@ import assert from 'node:assert/strict'
 import { resolveGenerationTaskStrategy } from '../../server/generation-tasks/strategy.ts'
 import { executeVideoTask } from '../../server/generation-tasks/video-task-executor.ts'
 import {
+  appendVideoReferenceImages,
   extractVideoTaskId,
   extractVideoTaskStatus,
   extractVideoUrl,
   materializeVideoOutput,
+  resolveVideoReferenceTransport,
 } from '../../server/generation-tasks/video-upstream.ts'
 
 assert.equal(resolveGenerationTaskStrategy({ type: 'video', prompt: '' }).key, 'video')
@@ -13,6 +15,33 @@ assert.equal(extractVideoTaskId({ data: { task_id: 'task-1' } }), 'task-1')
 assert.equal(extractVideoTaskStatus({ result: { state: 'SUCCEEDED' } }), 'succeeded')
 assert.equal(extractVideoUrl({ data: [{ url: 'https://cdn.example/video.mp4' }] }), 'https://cdn.example/video.mp4')
 assert.equal(extractVideoUrl({ output: { video_url: 'https://cdn.example/output.webm' } }), 'https://cdn.example/output.webm')
+assert.equal(resolveVideoReferenceTransport({ code: 'seedance', baseUrl: 'https://ark.example/v1' }), 'url')
+assert.equal(resolveVideoReferenceTransport({ code: 'openai', baseUrl: 'https://proxy.example/v1' }), 'file')
+assert.equal(resolveVideoReferenceTransport({ code: 'custom', baseUrl: 'https://api.openai.com/v1' }), 'file')
+assert.equal(resolveVideoReferenceTransport({ code: 'openai', baseUrl: 'https://api.openai.com/v1', extraJson: { videoReferenceTransport: 'url' } }), 'url')
+
+const urlReferenceForm = new FormData()
+await appendVideoReferenceImages(
+  urlReferenceForm,
+  ['/uploads/reference.png'],
+  ['first_frame_image'],
+  'url',
+  undefined,
+  { materializeUrl: async () => 'https://cdn.example.com/reference.png' },
+)
+assert.equal(urlReferenceForm.get('first_frame_image'), 'https://cdn.example.com/reference.png')
+
+const fileReferenceForm = new FormData()
+await appendVideoReferenceImages(
+  fileReferenceForm,
+  ['https://cdn.example.com/reference.png'],
+  ['input_reference'],
+  'file',
+  undefined,
+  { resolveBlob: async () => new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }) },
+)
+assert.ok(fileReferenceForm.get('input_reference') instanceof File)
+assert.equal(fileReferenceForm.get('input_reference').type, 'image/png')
 
 let downloadAuthorization = ''
 const materializedOutput = await materializeVideoOutput({

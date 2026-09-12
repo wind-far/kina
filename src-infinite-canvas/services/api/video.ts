@@ -11,7 +11,7 @@ import { buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelSc
 import { runModelPlugin } from "./model-plugin";
 import type { ReferenceImage } from "@infinite/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@infinite/types/media";
-import { requestCanvasMindVideo, runtimeMediaUrl, shouldUseCanvasMindModelRuntime, type CanvasMindTaskCreated } from "@infinite/services/canvasmind-model-runtime";
+import { requestCanvasMindVideo, runtimeMediaUrl, runtimeReferenceImageUrl, runtimeTaskReferenceImageUrl, shouldUseCanvasMindModelRuntime, type CanvasMindTaskCreated } from "@infinite/services/canvasmind-model-runtime";
 
 type VideoResponse = { id: string; status?: string; error?: { message?: string }; url?: string; result_url?: string; video_url?: string; content?: { video_url?: string; url?: string } | null };
 type ApiVideoResponse = VideoResponse | { code?: number | string; data?: VideoResponse | null; msg?: string; message?: string; error?: { message?: string } };
@@ -48,7 +48,7 @@ function aiHeaders(config: AiConfig, contentType?: string) {
 
 export async function requestVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[] = [], videoReferences: ReferenceVideo[] = [], audioReferences: ReferenceAudio[] = [], options?: RequestOptions): Promise<VideoGenerationResult> {
     if (shouldUseCanvasMindModelRuntime(config, "video")) {
-        const imageUrls = await Promise.all(references.map((image) => imageToDataUrl(image)));
+        const imageUrls = await Promise.all(references.map((image) => runtimeTaskReferenceImageUrl(image, options?.signal)));
         const mediaReferences = await Promise.all([
             ...videoReferences.map(async (video) => ({ mediaType: "video" as const, url: await runtimeMediaUrl(video.url), role: "video_reference" })),
             ...audioReferences.map(async (audio) => ({ mediaType: "audio" as const, url: await runtimeMediaUrl(audio.url), role: "audio_reference" })),
@@ -199,7 +199,7 @@ async function createSeedanceTask(config: AiConfig, model: string, prompt: strin
     }
     assertSeedanceVideoReferences(videoReferences);
     assertSeedanceAudioReferences(audioReferences);
-    const content = await buildSeedanceContent(config, prompt, references, videoReferences, audioReferences);
+    const content = await buildSeedanceContent(prompt, references, videoReferences, audioReferences, options?.signal);
     if (!content.length) throw new Error(apiText("videoPromptRequired"));
     const payload = {
         model: modelOptionName(model),
@@ -259,12 +259,12 @@ function seedanceApiUrl(config: AiConfig, taskId?: string) {
     return buildApiUrl(config.baseUrl, `/contents/generations/tasks${taskId ? `/${encodeURIComponent(taskId)}` : ""}`);
 }
 
-async function buildSeedanceContent(config: AiConfig, prompt: string, references: ReferenceImage[], videoReferences: ReferenceVideo[], audioReferences: ReferenceAudio[]) {
+async function buildSeedanceContent(prompt: string, references: ReferenceImage[], videoReferences: ReferenceVideo[], audioReferences: ReferenceAudio[], signal?: AbortSignal) {
     const content: Array<Record<string, unknown>> = [];
     const text = buildSeedancePromptText(prompt, references, videoReferences, audioReferences);
     if (text) content.push({ type: "text", text });
     for (const image of references.slice(0, SEEDANCE_REFERENCE_LIMITS.images)) {
-        content.push({ type: "image_url", image_url: { url: await resolveSeedanceImageUrl(config, image) }, role: "reference_image" });
+        content.push({ type: "image_url", image_url: { url: await resolveSeedanceImageUrl(image, signal) }, role: "reference_image" });
     }
     for (const video of videoReferences.slice(0, SEEDANCE_REFERENCE_LIMITS.videos)) {
         content.push({ type: "video_url", video_url: { url: await resolveSeedanceVideoUrl(video) }, role: "reference_video" });
@@ -275,12 +275,10 @@ async function buildSeedanceContent(config: AiConfig, prompt: string, references
     return content;
 }
 
-async function resolveSeedanceImageUrl(config: AiConfig, image: ReferenceImage) {
-    const directUrl = image.url || image.dataUrl;
-    if (isPublicMediaUrl(directUrl) || directUrl.startsWith("asset://")) return directUrl;
-    const dataUrl = await imageToDataUrl(image);
-    if (!dataUrl) throw new Error(apiText("referenceImageReadFailed"));
-    return dataUrl;
+async function resolveSeedanceImageUrl(image: ReferenceImage, signal?: AbortSignal) {
+    const directUrl = String(image.url || image.dataUrl || "").trim();
+    if (directUrl.startsWith("asset://")) return directUrl;
+    return runtimeReferenceImageUrl(image, signal);
 }
 
 async function resolveSeedanceVideoUrl(video: ReferenceVideo) {

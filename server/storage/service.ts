@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { isIP } from 'node:net'
 import { deleteObjectFromActiveObjectStorage, uploadBufferToActiveObjectStorage } from '../storage-config/service'
 
 // 默认上传根目录。
@@ -74,6 +75,62 @@ const ensureDirectory = async (directoryPath: string) => {
   await fs.mkdir(directoryPath, { recursive: true })
 }
 
+const isPrivateOrReservedHost = (hostname: string) => {
+  const normalized = String(hostname || '').trim().toLowerCase().replace(/^\[|\]$/g, '')
+  if (!normalized || normalized === 'localhost' || normalized.endsWith('.localhost') || normalized.endsWith('.local')) return true
+  if (isIP(normalized) === 4) {
+    const [first, second] = normalized.split('.').map(Number)
+    return first === 0 || first === 10 || first === 127 || first >= 224
+      || (first === 100 && second >= 64 && second <= 127)
+      || (first === 169 && second === 254)
+      || (first === 172 && second >= 16 && second <= 31)
+      || (first === 192 && second === 168)
+      || (first === 198 && (second === 18 || second === 19))
+      || (first === 192 && second === 0)
+      || (first === 198 && second === 51)
+      || (first === 203 && second === 0)
+  }
+  if (isIP(normalized) === 6) {
+    return normalized === '::1' || normalized === '::'
+      || normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80:')
+      || normalized.startsWith('::ffff:')
+  }
+  return false
+}
+
+const parseProviderPublicHttpUrl = (value: string) => {
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || url.username || url.password || isPrivateOrReservedHost(url.hostname)) return ''
+    return url.toString()
+  } catch {
+    return ''
+  }
+}
+
+/** 将站内上传地址解析为第三方模型供应商可访问的公网 URL。 */
+export const resolveProviderPublicUploadUrl = (
+  publicUrl: string,
+  environment: NodeJS.ProcessEnv = process.env,
+) => {
+  const normalized = String(publicUrl || '').trim()
+  if (/^https?:\/\//i.test(normalized)) return parseProviderPublicHttpUrl(normalized)
+  if (!normalized.startsWith('/uploads/')) return ''
+  const publicBaseUrl = String(environment.VIDEO_REFERENCE_PUBLIC_BASE_URL || '').trim()
+  if (!publicBaseUrl) return ''
+  const parsedBaseUrl = parseProviderPublicHttpUrl(publicBaseUrl)
+  if (!parsedBaseUrl) throw new Error('VIDEO_REFERENCE_PUBLIC_BASE_URL 必须是外部供应商可访问的公网 HTTPS 地址')
+  return parseProviderPublicHttpUrl(new URL(normalized, parsedBaseUrl).toString())
+}
+
+const tryResolveProviderPublicUploadUrl = (publicUrl: string) => {
+  try {
+    return resolveProviderPublicUploadUrl(publicUrl) || null
+  } catch {
+    return null
+  }
+}
+
 // 生成上传对象的存储键。
 const buildStorageObjectKey = (input: {
   filename?: string
@@ -119,6 +176,7 @@ export const saveUploadedBuffer = async (input: {
       filePath: uploadedObject.relativePath,
       relativePath: uploadedObject.relativePath,
       publicUrl: uploadedObject.publicUrl,
+      providerPublicUrl: tryResolveProviderPublicUploadUrl(uploadedObject.publicUrl),
       filename: path.basename(uploadedObject.relativePath),
       mimeType: input.mimeType || 'application/octet-stream',
       size: input.buffer.byteLength,
@@ -146,10 +204,12 @@ export const saveUploadedBuffer = async (input: {
   const relativePath = path.relative(uploadsDir, filePath).split(path.sep).join('/')
 
   // 返回前端可直接访问的 URL。
+  const publicUrl = `/uploads/${relativePath}`
   return {
     filePath,
     relativePath,
-    publicUrl: `/uploads/${relativePath}`,
+    publicUrl,
+    providerPublicUrl: tryResolveProviderPublicUploadUrl(publicUrl),
     filename: path.basename(relativePath),
     mimeType: input.mimeType || 'application/octet-stream',
     size: input.buffer.byteLength,

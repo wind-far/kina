@@ -74,6 +74,7 @@ export interface AdminProviderPayload {
   imageEndpoint?: string
   imageEditEndpoint?: string
   videoEndpoint?: string
+  videoReferenceTransport?: 'auto' | 'url' | 'file'
   defaultChatModel?: string
   supportedTypes?: string[]
   isEnabled?: boolean
@@ -174,6 +175,30 @@ const normalizeSupportedTypes = (input?: string[]) => {
   return Array.from(new Set(normalizedValues.length ? normalizedValues : DEFAULT_SUPPORTED_TYPES))
 }
 
+const inferVideoReferenceTransport = (code: string, baseUrl: string): 'url' | 'file' => {
+  let hostname = ''
+  try {
+    hostname = new URL(baseUrl).hostname.toLowerCase()
+  } catch {
+    hostname = ''
+  }
+  return code === 'openai' || hostname === 'api.openai.com' ? 'file' : 'url'
+}
+
+const readStoredVideoReferenceTransport = (provider: { code: string; baseUrl: string; extraJson?: unknown }) => {
+  const configured = provider.extraJson && typeof provider.extraJson === 'object' && !Array.isArray(provider.extraJson)
+    ? (provider.extraJson as Record<string, unknown>).videoReferenceTransport
+    : undefined
+  return normalizeVideoReferenceTransport(configured, provider.code, provider.baseUrl)
+}
+
+const normalizeVideoReferenceTransport = (value: unknown, code: string, baseUrl: string): 'url' | 'file' => {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (!normalized || normalized === 'auto') return inferVideoReferenceTransport(code, baseUrl)
+  if (normalized === 'url' || normalized === 'file') return normalized
+  throw new Error('视频参考图传输方式只能是 auto、url 或 file')
+}
+
 const normalizeProviderPayload = (payload: AdminProviderPayload, options: { isCreate: boolean }) => {
   const code = normalizeCode(String(payload.code || ''))
   const name = String(payload.name || '').trim()
@@ -202,6 +227,7 @@ const normalizeProviderPayload = (payload: AdminProviderPayload, options: { isCr
     imageEndpoint: String(payload.imageEndpoint || '/images/generations').trim() || '/images/generations',
     imageEditEndpoint: String(payload.imageEditEndpoint || '/images/edits').trim() || '/images/edits',
     videoEndpoint: String(payload.videoEndpoint || '/videos').trim() || '/videos',
+    videoReferenceTransport: normalizeVideoReferenceTransport(payload.videoReferenceTransport, code, baseUrl),
     defaultChatModel: String(payload.defaultChatModel || '').trim(),
     supportedTypes: normalizeSupportedTypes(payload.supportedTypes),
     isEnabled: payload.isEnabled !== false,
@@ -233,6 +259,7 @@ const buildProviderListItem = (provider: {
     category: string
     isEnabled: boolean
   }>
+  extraJson?: unknown
 }) => {
   const supportedTypes = Array.isArray(provider.supportedTypesJson)
     ? provider.supportedTypesJson.map(item => String(item || '').trim()).filter(Boolean)
@@ -254,6 +281,7 @@ const buildProviderListItem = (provider: {
     imageEndpoint: provider.imageEndpoint,
     imageEditEndpoint: provider.imageEditEndpoint,
     videoEndpoint: provider.videoEndpoint,
+    videoReferenceTransport: readStoredVideoReferenceTransport(provider),
     defaultChatModel: provider.defaultChatModel || '',
     supportedTypes,
     isEnabled: provider.isEnabled,
@@ -437,6 +465,7 @@ export const createAdminProvider = async (payload: AdminProviderPayload) => {
       imageEndpoint: normalizedPayload.imageEndpoint,
       imageEditEndpoint: normalizedPayload.imageEditEndpoint,
       videoEndpoint: normalizedPayload.videoEndpoint,
+      extraJson: { videoReferenceTransport: normalizedPayload.videoReferenceTransport },
       defaultChatModel: normalizedPayload.defaultChatModel || null,
       supportedTypesJson: normalizedPayload.supportedTypes,
       isEnabled: normalizedPayload.isEnabled,
@@ -472,6 +501,9 @@ export const updateAdminProvider = async (id: string, payload: AdminProviderPayl
 
   const normalizedPayload = normalizeProviderPayload(payload, { isCreate: false })
   await assertProviderCodeDuplicated(normalizedPayload.code, providerId)
+  const nextVideoReferenceTransport = payload.videoReferenceTransport === undefined
+    ? readStoredVideoReferenceTransport(existingProvider)
+    : normalizedPayload.videoReferenceTransport
 
   // 后台编辑模型/端点时通常不会重新填写密钥；空值必须表示“保持原密钥”，
   // 不能把已有的加密凭据覆盖为空字符串。
@@ -495,6 +527,12 @@ export const updateAdminProvider = async (id: string, payload: AdminProviderPayl
       imageEndpoint: normalizedPayload.imageEndpoint,
       imageEditEndpoint: normalizedPayload.imageEditEndpoint,
       videoEndpoint: normalizedPayload.videoEndpoint,
+      extraJson: {
+        ...(existingProvider.extraJson && typeof existingProvider.extraJson === 'object' && !Array.isArray(existingProvider.extraJson)
+          ? existingProvider.extraJson as Record<string, unknown>
+          : {}),
+        videoReferenceTransport: nextVideoReferenceTransport,
+      },
       defaultChatModel: normalizedPayload.defaultChatModel || null,
       supportedTypesJson: normalizedPayload.supportedTypes,
       isEnabled: normalizedPayload.isEnabled,

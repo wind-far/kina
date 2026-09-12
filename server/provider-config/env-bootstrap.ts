@@ -4,6 +4,7 @@ import { invalidatePublicModelCatalogCache } from './service'
 
 type ProviderCategory = 'CHAT' | 'IMAGE' | 'VIDEO'
 type ProviderModality = 'text' | 'image' | 'video'
+type VideoReferenceTransport = 'url' | 'file'
 
 interface EnvironmentProviderDefinition {
   modality: ProviderModality
@@ -15,6 +16,7 @@ interface EnvironmentProviderDefinition {
   modelKey: string
   endpoint: string
   imageEditEndpoint?: string
+  videoReferenceTransport?: VideoReferenceTransport
   sortOrder: number
 }
 
@@ -36,6 +38,22 @@ const MODEL_CATEGORY_BY_MODALITY: Record<ProviderModality, ProviderCategory> = {
 const readEnabled = (value: unknown) => String(value || '').trim().toLowerCase() === 'true'
 
 const readOptional = (environment: NodeJS.ProcessEnv, key: string) => String(environment[key] || '').trim()
+
+const readVideoReferenceTransport = (environment: NodeJS.ProcessEnv): VideoReferenceTransport | undefined => {
+  const variableName = 'VIDEO_PROVIDER_REFERENCE_TRANSPORT'
+  const value = readOptional(environment, variableName).toLowerCase()
+  if (!value) return undefined
+  if (value === 'url' || value === 'file') return value
+  throw new Error(`${variableName} 只能是 url 或 file`)
+}
+
+export const inferEnvironmentVideoReferenceTransport = (baseUrl: string): VideoReferenceTransport => {
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === 'api.openai.com' ? 'file' : 'url'
+  } catch {
+    return 'url'
+  }
+}
 
 const assertHttpUrl = (value: string, variableName: string) => {
   try {
@@ -133,6 +151,9 @@ export const readEnvironmentProviderDefinitions = (environment: NodeJS.ProcessEn
       modelKey,
       endpoint,
       imageEditEndpoint,
+      videoReferenceTransport: configuration.modality === 'video'
+        ? readVideoReferenceTransport(environment)
+        : undefined,
       sortOrder: configuration.sortOrder,
     })
   }
@@ -181,7 +202,13 @@ export const bootstrapEnvironmentProviders = async (environment: NodeJS.ProcessE
       isEnabled: true,
       isBuiltIn: true,
       sortOrder: definition.sortOrder,
-      extraJson: { [MANAGED_MARKER]: true, modality: definition.modality },
+      extraJson: {
+        [MANAGED_MARKER]: true,
+        modality: definition.modality,
+        ...(definition.category === 'VIDEO'
+          ? { videoReferenceTransport: definition.videoReferenceTransport || inferEnvironmentVideoReferenceTransport(definition.baseUrl) }
+          : {}),
+      },
     }
 
     const provider = existing

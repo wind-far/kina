@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
-import { readEnvironmentProviderDefinitions } from '../../server/provider-config/env-bootstrap.ts'
+import { inferEnvironmentVideoReferenceTransport, readEnvironmentProviderDefinitions } from '../../server/provider-config/env-bootstrap.ts'
 
 const root = new URL('../..', import.meta.url)
 const read = (file) => readFile(new URL(file, root), 'utf8')
@@ -40,11 +40,49 @@ assert.deepEqual(
   ],
 )
 
+const [defaultVideoProvider] = readEnvironmentProviderDefinitions({
+  AI_ENV_PROVIDER_BOOTSTRAP: 'true',
+  VIDEO_PROVIDER_BASE_URL: 'https://videos.example.com/v1',
+  VIDEO_PROVIDER_API_KEY: 'test-video-key',
+  VIDEO_PROVIDER_DEFAULT_MODEL: 'video-model',
+})
+assert.equal(defaultVideoProvider.videoReferenceTransport, undefined)
+
+const [fileVideoProvider] = readEnvironmentProviderDefinitions({
+  AI_ENV_PROVIDER_BOOTSTRAP: 'true',
+  VIDEO_PROVIDER_BASE_URL: 'https://videos.example.com/v1',
+  VIDEO_PROVIDER_API_KEY: 'test-video-key',
+  VIDEO_PROVIDER_DEFAULT_MODEL: 'video-model',
+  VIDEO_PROVIDER_REFERENCE_TRANSPORT: 'file',
+})
+assert.equal(fileVideoProvider.videoReferenceTransport, 'file')
+const [openAiVideoProvider] = readEnvironmentProviderDefinitions({
+  AI_ENV_PROVIDER_BOOTSTRAP: 'true',
+  VIDEO_PROVIDER_BASE_URL: 'https://api.openai.com/v1',
+  VIDEO_PROVIDER_API_KEY: 'test-video-key',
+  VIDEO_PROVIDER_DEFAULT_MODEL: 'sora-2',
+})
+assert.equal(openAiVideoProvider.videoReferenceTransport, undefined)
+assert.equal(inferEnvironmentVideoReferenceTransport('https://videos.example.com/v1'), 'url')
+assert.equal(inferEnvironmentVideoReferenceTransport('https://api.openai.com/v1'), 'file')
+assert.throws(
+  () => readEnvironmentProviderDefinitions({
+    AI_ENV_PROVIDER_BOOTSTRAP: 'true',
+    VIDEO_PROVIDER_BASE_URL: 'https://videos.example.com/v1',
+    VIDEO_PROVIDER_API_KEY: 'test-video-key',
+    VIDEO_PROVIDER_DEFAULT_MODEL: 'video-model',
+    VIDEO_PROVIDER_REFERENCE_TRANSPORT: 'base64',
+  }),
+  /VIDEO_PROVIDER_REFERENCE_TRANSPORT.*url.*file/,
+)
+assert.match(bootstrapSource, /videoReferenceTransport: definition\.videoReferenceTransport \|\| inferEnvironmentVideoReferenceTransport\(definition\.baseUrl\)/)
+
 for (const example of [developmentExample, productionExample]) {
   assert.match(example, /AI_ENV_PROVIDER_BOOTSTRAP=false/)
   assert.match(example, /TEXT_PROVIDER_API_KEY=/)
   assert.match(example, /IMAGE_PROVIDER_API_KEY=/)
   assert.match(example, /VIDEO_PROVIDER_API_KEY=/)
+  assert.match(example, /VIDEO_PROVIDER_REFERENCE_TRANSPORT=url/)
 }
 
 console.log('provider environment bootstrap tests passed')

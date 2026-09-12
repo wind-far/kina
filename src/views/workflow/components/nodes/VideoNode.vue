@@ -45,11 +45,11 @@ import {
   type WorkflowVideoNodeData,
 } from '../../composables/useWorkflowCanvas'
 import { uploadStorageFile } from '@/api/storage'
+import { uploadVideoReferenceImage } from '@/shared/video-reference-url'
 import { getAllVideoModels, getDefaultVideoModelKey, loadPublicModelCatalog } from '@/config/models'
 import {
   getWorkflowPromptAvailableReferenceSlots,
   mergeWorkflowPromptReferences,
-  workflowPromptFileToDataUrl,
 } from '@/shared/workflow-prompt-references'
 import {
   resolveWorkflowVideoReferenceRole,
@@ -226,12 +226,14 @@ const handlePromptFiles = async (files: File[]) => {
   const selectedFiles = files.slice(0, availableSlots)
   const settled = await Promise.allSettled(selectedFiles.map(async file => ({
     id: `video-upload-${Date.now()}-${file.name}-${Math.random().toString(36).slice(2, 7)}`,
-    url: await workflowPromptFileToDataUrl(file),
+    url: await uploadVideoReferenceImage(file),
     label: file.name,
   })))
   promptUploadedReferences.value.push(...settled
     .filter((result): result is PromiseFulfilledResult<WorkflowPromptReference & { url: string }> => result.status === 'fulfilled')
     .map(result => result.value))
+  const failedCount = settled.filter(result => result.status === 'rejected').length
+  if (failedCount) ElMessage.error(`${failedCount} 张视频参考图上传失败`)
 }
 
 const handlePromptRemoveReference = (id: string) => {

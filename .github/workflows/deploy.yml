@@ -100,6 +100,7 @@ jobs:
             cat > .env <<'EOF'
             SERVER_PORT=5409
             VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
+            VIDEO_REFERENCE_PUBLIC_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
             VITE_PROVIDER_DEFAULT_BASE_URL=https://api.chatfire.site/v1
             STATIC_DIST_DIR=/app/dist
             UPLOADS_DIR=/app/uploads

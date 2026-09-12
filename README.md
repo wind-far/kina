@@ -1,17 +1,19 @@
 ## ⚠️ 免责声明 (Disclaimer)
 
-本项目（kina）是一个基于 Vue 3 的**前端交互框架与界面演示原型**，旨在展示无限画布、拖拽交互及 AI 对话界面的技术实现。
+本项目（kina）是一个包含 Vue 3 创作端、Node/Prisma 服务端与运营后台的 **AI 创作平台原型**，用于展示 Agent、多模态生成、无限画布、可视化工作流及平台运营能力的技术实现。
 
 1. **非官方产品**：本项目**并非**任何商业AI平台（包括但不限于即梦AI、字节跳动旗下产品）的官方软件、破解版或衍生品。项目名称、图标及视觉设计均与上述平台无关。
 2. **仅供学习与研究**：本项目代码以 MIT 协议开源，**仅限于技术学习、研究与个人非商业用途**。开发者不鼓励、不支持任何侵犯第三方知识产权的行为。
 3. **版权与风险提示**：本项目的界面布局、交互逻辑可能涉及第三方（如即梦AI）的独创性设计。**任何个人或组织若将本项目用于商业目的，须自行承担因界面相似性引发的全部版权侵权、不正当竞争等法律风险与后果**。项目原作者不承担任何连带或赔偿责任。
 4. **使用即同意**：一旦您使用、复制、修改或分发本项目代码，即表示您已阅读并同意本免责声明的所有条款。若您不同意，请立即停止使用并删除本项目。
 
-# kina
+# Kina
 
 > 一站式 AI 创作与后台运营平台
 
 `kina` 一个包含 **Vue 3 前台创作端 + Node/Prisma 后台服务 + 管理后台** 的完整项目骨架。
+
+> 当前仓库以功能原型和工程验证为主。真实模型效果、生成成本、生产规模稳定性与商业化指标，需要结合实际厂商、数据和部署环境单独验证。
 
 当前项目重点覆盖：
 
@@ -23,6 +25,13 @@
 - 用户管理、登录方式管理（验证码 + 多平台 OAuth）
 - Prisma + PostgreSQL 的可落库服务端结构
 - 可选 Redis 集成（限流、并发控制、跨实例 SSE 广播、缓存）
+
+## 📚 项目文档
+
+- [Kina 产品需求文档（PRD V1.0）](docs/KINA_PRD_V1.0.md)
+- [无限画布与工作流功能状态](docs/CANVAS_WORKFLOW_STATUS.md)
+- [智能画布本地参考页规格](docs/CANVAS_REFERENCE_SPEC.md)
+- [2026-08-07 发布说明](docs/RELEASE_NOTES_2026-08-07.md)
 
 ## 🎯 当前项目定位
 
@@ -50,7 +59,7 @@
 
 - 独立 Node 服务承载 `/api/...`（基于策略模式的轻量分发，未引入 Express/Koa）
 - Prisma 管理数据库结构与迁移（50+ 数据模型）
-- 生成任务统一调度（图片 / Agent 对话 / Agent 工作台 三类策略）
+- 生成任务统一调度（图片 / 视频 / Agent 对话 / Agent 工作台 / 深度研究五类策略）
 - AI 网关统一转发上游 OpenAI 兼容厂商
 - 系统设置、会话配置、积分/营销/资源等数据接口
 - 本地存储与 S3 兼容对象存储双通道
@@ -75,7 +84,8 @@
 - 4 类内置工作流模板：`text_to_image / text_to_image_to_video / storyboard / multi_angle_storyboard`
 - 工作流定义入库与版本快照（`WorkflowDefinition + WorkflowDefinitionVersion`）
 - 历史版本回滚会创建新草稿版本，不覆盖既有快照
-- 整图运行前校验依赖图，由服务端按拓扑顺序执行 LLM / 图片生成节点；视频整图执行仍在接入中
+- 整图运行前校验依赖图，由服务端按拓扑顺序执行 LLM / 图片 / 视频生成节点
+- 页面关闭后服务端任务继续运行；重新进入可恢复运行状态和结果，失败或中断后可从失败节点重试
 - 节点生成统一通过任务事件订阅获取进度
 
 无限画布与工作流的当前完成度、运行边界和验收步骤见 [功能状态说明](docs/CANVAS_WORKFLOW_STATUS.md)。
@@ -90,7 +100,7 @@
 
 ### 基础设施
 
-- Prisma 数据库模型与迁移（9 个迁移版本）
+- Prisma 数据库模型与迁移（当前 Schema 使用 PostgreSQL）
 - 本地上传与对象存储上传（含路径穿越保护）
 - 管理员权限路由守卫
 - 登录方式配置与后台管理（验证码 + 多平台 OAuth）
@@ -102,20 +112,20 @@
 ### 环境要求
 
 - `Node.js >= 20.19.0`
-- `npm >= 9`
+- `pnpm 11`（仓库声明版本：`pnpm@11.11.0`）
 - `PostgreSQL 17+`（Prisma 连接数据库）
 - `Redis`（可选；用于任务运行态、缓存、跨实例事件广播）
 
 ### 安装依赖
 
 ```bash
-npm install
+pnpm install
 ```
 
 ### 本地开发
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 该命令会同时启动：
@@ -157,9 +167,6 @@ REDIS_AUTH_LOGIN_RATE_LIMIT=10
 - `REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`、`REDIS_DATABASE` 为推荐写法
 - `REDIS_URL` 为兼容保留字段，不填时会根据以上拆分字段自动拼接
 - `REDIS_PREFIX`、`REDIS_ENV` 以及各类 TTL 配置均为可选项，不配置会使用服务端默认值
-- 更完整的架构规划可参考：
-  - `docs/redis-enterprise-phase2-plan.md`
-
 当前实现支持“无 Redis 降级运行”：
 
 - 未配置 Redis：继续使用本机内存态，不影响现有开发流程
@@ -176,31 +183,31 @@ GET /api/system-config/admin/redis-health
 ### 生成 Prisma Client
 
 ```bash
-npm run prisma:generate
+pnpm prisma:generate
 ```
 
 ### 开发库迁移
 
 ```bash
-npm run prisma:migrate:dev
+pnpm prisma:migrate:dev
 ```
 
 ### 类型检查
 
 ```bash
-npm run type-check
+pnpm type-check
 ```
 
 ### 前端构建
 
 ```bash
-npm run build
+pnpm build
 ```
 
 ### 生产启动
 
 ```bash
-npm run start
+pnpm start
 ```
 
 生产启动流程会自动处理：
@@ -238,6 +245,31 @@ npm run start
 - `size`（有值时发送）
 - 一个或多个 `image`
 
+## 🎬 视频生成与参考图链路
+
+视频任务支持文生视频、图生视频和工作流视频节点。参考图会先被规范化为服务端可持久访问的资源，再按不同厂商的接口协议发送：
+
+- `auto`：默认策略；OpenAI 官方端点使用 multipart 文件，其余厂商默认使用 HTTPS URL
+- `url`：向上游发送公网 HTTPS 图片 URL
+- `file`：由服务端读取参考图并以 multipart 文件上传
+
+管理员可在 `厂商配置` 中选择参考图传输方式，也可通过环境变量配置：
+
+```env
+# 站内 /uploads 图片转换为厂商可访问 URL 时使用；必须为公网 HTTPS 地址
+VIDEO_REFERENCE_PUBLIC_BASE_URL=https://your-domain.com
+
+# 可选：url 或 file；省略时自动判断
+VIDEO_PROVIDER_REFERENCE_TRANSPORT=url
+```
+
+注意：
+
+- URL 模式不接受 localhost、内网、保留地址或携带凭据的 URL
+- 使用公网对象存储且上传结果已包含公网地址时，可不配置 `VIDEO_REFERENCE_PUBLIC_BASE_URL`
+- 页面停止任务会终止本地请求和轮询，但第三方视频任务是否真正取消取决于厂商协议
+- 视频任务的参考素材数量、字段角色和格式仍以所选模型能力为准
+
 ## 🐳 Docker 部署
 
 仓库已提供：
@@ -250,6 +282,7 @@ npm run start
 ```env
 APP_PORT=5409
 VITE_API_BASE_URL=https://你的域名或接口地址
+VIDEO_REFERENCE_PUBLIC_BASE_URL=https://你的域名或接口地址
 STATIC_DIST_DIR=/app/dist
 UPLOADS_DIR=/app/uploads
 CORS_ALLOWED_ORIGINS=https://你的前端域名
@@ -286,20 +319,23 @@ docker compose up -d --force-recreate --remove-orphans
 ## 🧩 常用脚本
 
 ```bash
-npm run dev
-npm run build
-npm run start
-npm run preview
-npm run type-check
-npm run prisma:generate
-npm run prisma:migrate:dev
-npm run prisma:migrate:deploy
+pnpm dev
+pnpm build
+pnpm build:service
+pnpm start
+pnpm preview
+pnpm type-check
+pnpm test:scripts
+pnpm prisma:generate
+pnpm prisma:migrate:dev
+pnpm prisma:migrate:deploy:local
+pnpm prisma:migrate:deploy:prod
 ```
 
 ## 🗂️ 当前项目结构
 
 ```text
-canana-vue/
+kina/
 ├── src/                              # Vue 3 前端
 │   ├── api/                          # 前端 API 封装（含 admin/ai-gateway/storage/...）
 │   ├── components/                   # 公共组件 + 业务组件
@@ -313,7 +349,9 @@ canana-vue/
 │   └── views/
 │       ├── generate/                 # 创作与生成页面
 │       ├── workflow/                 # 可视化工作流（components/composables/config/api）
-│       ├── canana/                   # 无限画布
+│       ├── infinite-canvas-replica/  # 无限画布入口与宿主集成
+│       ├── agentic-assets-canvas/    # 画布 / 工作流项目工作台
+│       ├── video-editor/             # 视频工程与编辑器
 │       ├── home/                     # 首页
 │       ├── account/                  # 账户中心
 │       ├── publish/                  # 发布中心
@@ -326,40 +364,48 @@ canana-vue/
 │           ├── dashboard/            # 后台首页
 │           ├── generations/          # 生成记录管理
 │           ├── marketing/            # 营销中心
-│           ├── models/               # 模型管理（重定向至 providers）
 │           ├── providers/            # 厂商配置
+│           ├── plugins/              # 画布插件管理
 │           ├── redis/                # Redis 健康监控
 │           ├── skills/               # 技能管理
 │           ├── storage/              # 存储配置
 │           ├── system/               # 系统设置
 │           ├── theme/                # 主题色配置
 │           └── users/                # 用户管理
+├── src-infinite-canvas/               # React 无限画布工作台源码
 ├── server/                           # 独立 Node 后端（无 Express/Koa）
 │   ├── ai-gateway/                   # AI 上游网关转发
-│   ├── auth/                         # 认证（含 5 种登录策略）
+│   ├── auth/                         # 验证码、管理员密码与 OAuth 认证
 │   ├── admin-dashboard/              # 后台仪表盘接口
 │   ├── admin-generation-sessions/    # 后台会话/生成接口
 │   ├── admin-marketing/              # 营销中心后台接口
 │   ├── admin-users/                  # 用户后台接口
 │   ├── asset-items/                  # 资源中心接口
+│   ├── canvas-plugins/               # 受信画布插件管理
+│   ├── canvas-projects/              # 画布项目接口
+│   ├── canvas-prompts/               # 画布提示词库与来源
 │   ├── conversation-settings/        # 会话配置接口
 │   ├── generation-records/           # 生成记录
 │   ├── generation-sessions/          # 会话数据
 │   ├── generation-tasks/             # 生成任务调度（核心，含 SSE 事件总线）
 │   ├── marketing-center/             # 营销中心前台接口
 │   ├── provider-config/              # 厂商配置
+│   ├── research/                     # 深度研究执行链路
 │   ├── skill-config/                 # 技能配置
 │   ├── storage/                      # 上传服务
 │   ├── storage-config/               # 对象存储配置
 │   ├── system-config/                # 系统设置
 │   ├── system-init/                  # 首次初始化
+│   ├── video-projects/               # 视频工程接口
 │   ├── workflow-definitions/         # 工作流定义与版本
+│   ├── workflow-runs/                # 工作流运行与节点状态
 │   ├── redis/                        # Redis 全套能力（缓存/锁/限流/Pub-Sub）
 │   ├── db/                           # Prisma 客户端单例
 │   └── shared/                       # 共享日志
 ├── prisma/
-│   ├── schema.prisma                 # 50+ 数据模型 / 40+ 枚举
+│   ├── schema.prisma                 # PostgreSQL 数据模型与枚举
 │   └── migrations/                   # 数据库迁移
+├── docs/                             # PRD、功能状态、规格与发布说明
 ├── scripts/                          # 构建、生产启动、类清理脚本
 ├── public/                           # 公共静态资源
 ├── uploads/                          # 本地上传根目录（运行时）
@@ -475,7 +521,8 @@ canana-vue/
 
 ### 前端
 
-- `Vue 3`（`<script setup>` + Composition API）
+- `Vue 3`（主应用，`<script setup>` + Composition API）
+- `React 19`（无限画布工作台）
 - `Vue Router 4`
 - `Vite 7`
 - `TypeScript 5`
